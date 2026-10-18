@@ -42,6 +42,8 @@ component OversizeBanner inherits Rectangle {
 }
 
 component UnsentBanner inherits Rectangle {
+    in property <bool> restorable: true;
+
     callback restore-clicked();
     callback discard-clicked();
 
@@ -69,7 +71,7 @@ component UnsentBanner inherits Rectangle {
                 : (UnsentView.edit-caption && UnsentView.body == "" ? @tr("No caption") : UnsentView.body);
         }
 
-        LinkButton {
+        if root.restorable: LinkButton {
             text: @tr("Restore");
             pad: 2 * Space.sm;
             label: UnsentView.is-edit
@@ -104,15 +106,26 @@ export component MessageInput inherits Rectangle {
     in property <length> overlay-height;
 
     property <PickerSection> picker-section;
-    property <string> attach-label: RoomView.may-start-polls
+    property <bool> writable: RoomView.may-send-messages;
+    property <bool> offers-stickers: RoomView.may-send-stickers && !Composer.editing;
+    property <bool> picker-offered: root.writable || root.offers-stickers;
+    property <bool> attach-offered: root.writable || RoomView.may-start-polls;
+    property <string> attach-label: !root.writable
+        ? @tr("Create a poll")
+        : RoomView.may-start-polls
         ? @tr("Attach a file or create a poll")
         : @tr("Attach a photo or a file");
-    property <string> picker-label: Composer.editing ? @tr("Emoji and emotes") : @tr("Emoji, emotes and stickers");
+    property <string> picker-label: !root.writable
+        ? @tr("Stickers")
+        : root.offers-stickers
+        ? @tr("Emoji, emotes and stickers")
+        : @tr("Emoji and emotes");
     property <bool> edits-caption: Composer.editing && Composer.edited.caption;
     property <string> placeholder: !Composer.editing
         ? @tr("Send a message...")
         : (root.edits-caption ? @tr("Add a caption...") : @tr("Edit the message..."));
     property <bool> is-replying: Composer.reply-event-id != "";
+    property <bool> carries-replies: root.writable || RoomView.may-send-stickers;
     property <int> settled-submission: 0;
     property <bool> replaced: UpgradeView.successor != UpgradeLink.hidden
         && UpgradeView.room-id == root.room-id;
@@ -128,7 +141,7 @@ export component MessageInput inherits Rectangle {
     property <int> edit-requests: Composer.edit-requests;
 
     property <length> surface-inset: Metrics.timeline-inset;
-    property <bool> composing: root.message != "";
+    property <bool> composing: root.writable && root.message != "";
     property <int> edits: field.edits;
     property <int> shorten-by: 0;
 
@@ -141,6 +154,23 @@ export component MessageInput inherits Rectangle {
 
     changed room-id => {
         root.report-activity();
+    }
+
+    changed writable => {
+        Shell.picker-open = false;
+        Shell.attach-open = false;
+    }
+
+    changed picker-offered => {
+        if !self.picker-offered {
+            Shell.picker-open = false;
+        }
+    }
+
+    changed attach-offered => {
+        if !self.attach-offered {
+            Shell.attach-open = false;
+        }
     }
 
     changed composing => {
@@ -312,7 +342,11 @@ export component MessageInput inherits Rectangle {
         width: root.overlay-width;
         height: root.overlay-height;
         dim: false;
-        label: Composer.editing ? @tr("Emoji and emote picker") : @tr("Emoji, emote and sticker picker");
+        label: !root.writable
+            ? @tr("Sticker picker")
+            : root.offers-stickers
+            ? @tr("Emoji, emote and sticker picker")
+            : @tr("Emoji and emote picker");
         dismissed => {
             root.close-picker();
         }
@@ -326,7 +360,8 @@ export component MessageInput inherits Rectangle {
             x: root.width - self.width - Space.md - root.overlay-x;
             y: -self.height - Space.md - root.overlay-y;
             section <=> root.picker-section;
-            stickers: !Composer.editing;
+            emoji: root.writable;
+            stickers: root.offers-stickers;
             emoji-picked(glyph) => {
                 field.insert-at-caret(glyph);
             }
@@ -399,6 +434,10 @@ export component MessageInput inherits Rectangle {
         text <=> root.message;
         placeholder: root.placeholder;
         input-label: root.edits-caption ? @tr("Caption") : @tr("Message");
+        writable: root.writable;
+        notice: @tr("You cannot send messages in this room");
+        lead-shown: root.attach-offered;
+        emoji-shown: root.picker-offered;
         lead-icon: IconSet.Paperclip;
         lead-label: root.attach-label;
         lead-active: Shell.attach-open;
@@ -454,6 +493,7 @@ export component MessageInput inherits Rectangle {
         if root.replaced: UpgradeBanner { }
 
         if root.has-unsent: UnsentBanner {
+            restorable: root.writable;
             restore-clicked => {
                 root.restore-unsent();
             }
@@ -462,7 +502,7 @@ export component MessageInput inherits Rectangle {
             }
         }
 
-        if Composer.editing: EditBar {
+        if Composer.editing && root.writable: EditBar {
             caption: Composer.edited.caption;
             preview: Composer.edited.preview;
             cancel-clicked => {
@@ -470,7 +510,7 @@ export component MessageInput inherits Rectangle {
             }
         }
 
-        if root.is-replying && !Composer.editing: ReplyBar {
+        if root.is-replying && !Composer.editing && root.carries-replies: ReplyBar {
             sender: Composer.reply-sender;
             preview: Composer.reply-preview;
             cancel-clicked => {
@@ -478,7 +518,7 @@ export component MessageInput inherits Rectangle {
             }
         }
 
-        if root.shorten-by > 0: OversizeBanner {
+        if root.shorten-by > 0 && root.writable: OversizeBanner {
             saving: Composer.editing;
             shorten-by: root.shorten-by;
         }

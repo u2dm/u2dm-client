@@ -29,17 +29,19 @@ export component PickerPanel inherits PickerCard {
     callback sticker-picked(string, string);
 
     in-out property <PickerSection> section: PickerSection.emoji;
+    in property <bool> emoji: true;
     in property <bool> stickers: true;
     in property <bool> above-modal: false;
 
-    property <bool> shows-stickers: root.stickers && root.section == PickerSection.stickers;
+    property <bool> shows-stickers: root.stickers
+        && (root.section == PickerSection.stickers || !root.emoji);
 
     VerticalLayout {
         padding: Space.md;
         padding-bottom: 0;
         spacing: Space.md;
 
-        if root.stickers: HorizontalLayout {
+        if root.emoji && root.stickers: HorizontalLayout {
             height: Size.md;
             spacing: Space.sm;
 

@@ -124,6 +124,10 @@ impl Submissions {
                     tracing::info!(%oversize, "refused a submission over the size limit");
                     Enqueue::Oversized(oversize)
                 }
+                Err(AppError::SendNotAllowed) => {
+                    tracing::info!("refused a submission the power levels do not allow");
+                    Enqueue::Refused
+                }
                 Err(e) => {
                     tracing::warn!("failed to enqueue a submission: {e}");
                     Enqueue::Refused

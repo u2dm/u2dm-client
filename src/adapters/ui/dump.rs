@@ -143,7 +143,11 @@ pub struct PollPermissionsDump {
 }
 
 #[derive(Serialize)]
+#[allow(clippy::struct_excessive_bools)]
 pub struct MessagePermissionsDump {
+    pub send_messages: bool,
+    pub react: bool,
+    pub send_stickers: bool,
     pub delete_own: bool,
     pub delete_others: bool,
     pub pin: bool,
@@ -309,6 +313,9 @@ fn collect<B: UiBackend>(window: &B::Window) -> TimelineDump {
             start: window.get_bool(BoolProp::MayStartPolls),
         },
         message_permissions: MessagePermissionsDump {
+            send_messages: window.get_bool(BoolProp::MaySendMessages),
+            react: window.get_bool(BoolProp::MayReact),
+            send_stickers: window.get_bool(BoolProp::MaySendStickers),
             delete_own: window.get_bool(BoolProp::MayDeleteOwn),
             delete_others: window.get_bool(BoolProp::MayDeleteOthers),
             pin: window.get_bool(BoolProp::MayPin),

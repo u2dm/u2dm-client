@@ -1,6 +1,7 @@
 import { Palette } from "std-widgets.slint";
 
 import { ReactionEntry } from "../../../../types.slint";
+import { Reactions } from "../../../../local.slint";
 import { ReactionKeys } from "../../../../messages.slint";
 import { ClickArea } from "../../../../components/a11y.slint";
 import { AppStyle, Fonts, IconSize, Metrics, Radius, Size, Space, Weight } from "../../../../theme.slint";
@@ -62,7 +63,10 @@ export component ReactionDetail inherits ListPopup {
 
     for entry in root.items: DetailRow {
         entry: entry;
-        label: entry.mine
+        enabled: Reactions.may-toggle(entry);
+        label: !self.enabled
+            ? ReactionKeys.label(entry.art, entry.label)
+            : entry.mine
             ? @tr("Remove your {} reaction", ReactionKeys.label(entry.art, entry.label))
             : @tr("React with {}", ReactionKeys.label(entry.art, entry.label));
         clicked => {

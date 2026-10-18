@@ -44,6 +44,9 @@ pub enum AppError {
     #[error("the event would be {0}")]
     EventTooLarge(Oversize),
 
+    #[error("the room's power levels do not let you send it")]
+    SendNotAllowed,
+
     #[error("{0}")]
     Other(String),
 }

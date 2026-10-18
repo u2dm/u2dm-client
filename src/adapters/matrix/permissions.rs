@@ -3,6 +3,7 @@ use matrix_sdk::ruma::UserId;
 use matrix_sdk::ruma::events::room::power_levels::{RoomPowerLevels, UserPowerLevel};
 use matrix_sdk::ruma::events::{MessageLikeEventType, StateEventType};
 
+use crate::domain::event_size::Encryption;
 use crate::domain::message::MessagePermissions;
 use crate::domain::poll::PollPermissions;
 use crate::domain::room::SpacePowers;
@@ -16,12 +17,71 @@ pub(super) struct RoomPermissions {
     pub(super) calls: bool,
 }
 
+struct Sending<'a> {
+    levels: &'a RoomPowerLevels,
+    own: &'a UserId,
+    encryption: Encryption,
+}
+
+impl<'a> Sending<'a> {
+    fn in_room(room: &'a Room, levels: &'a RoomPowerLevels) -> Self {
+        Self {
+            levels,
+            own: room.own_user_id(),
+            encryption: Encryption::when(room.encryption_state().is_encrypted()),
+        }
+    }
+
+    fn allows(&self, event_type: MessageLikeEventType) -> bool {
+        let on_the_wire = sent_as(&event_type, self.encryption);
+        self.levels.user_can_send_message(self.own, on_the_wire)
+            && self.levels.user_can_send_message(self.own, event_type)
+    }
+
+    fn polls(&self) -> PollPermissions {
+        PollPermissions {
+            vote: self.allows(MessageLikeEventType::UnstablePollResponse),
+            end: self.allows(MessageLikeEventType::UnstablePollEnd),
+            start: self.allows(MessageLikeEventType::UnstablePollStart),
+        }
+    }
+
+    fn messages(&self) -> MessagePermissions {
+        MessagePermissions {
+            send_messages: self.allows(MessageLikeEventType::RoomMessage),
+            react: self.allows(MessageLikeEventType::Reaction),
+            send_stickers: self.allows(MessageLikeEventType::Sticker),
+            delete_own: self.levels.user_can_redact_own_event(self.own),
+            delete_others: self.levels.user_can_redact_event_of_other(self.own),
+            pin: self
+                .levels
+                .user_can_send_state(self.own, StateEventType::RoomPinnedEvents),
+            notify_room: self.levels.user_can_trigger_room_notification(self.own),
+        }
+    }
+}
+
+fn sent_in_the_clear(event_type: &MessageLikeEventType) -> bool {
+    matches!(
+        event_type,
+        MessageLikeEventType::Reaction | MessageLikeEventType::RoomRedaction
+    )
+}
+
+fn sent_as(event_type: &MessageLikeEventType, encryption: Encryption) -> MessageLikeEventType {
+    match encryption {
+        Encryption::Megolm if !sent_in_the_clear(event_type) => MessageLikeEventType::RoomEncrypted,
+        Encryption::Megolm | Encryption::Plain => event_type.clone(),
+    }
+}
+
 pub(super) async fn room_permissions(room: &Room) -> RoomPermissions {
     let levels = room.power_levels_or_default().await;
     let own = room.own_user_id();
+    let sending = Sending::in_room(room, &levels);
     RoomPermissions {
-        polls: polls(room, &levels),
-        messages: messages(own, &levels),
+        polls: sending.polls(),
+        messages: sending.messages(),
         invite: levels.user_can_invite(own),
         calls: levels.user_can_send_state(own, StateEventType::CallMember),
     }
@@ -43,32 +103,27 @@ pub(super) async fn may_invite(room: &Room) -> bool {
 }
 
 pub(super) async fn poll_permissions(room: &Room) -> PollPermissions {
-    polls(room, &room.power_levels_or_default().await)
+    let levels = room.power_levels_or_default().await;
+    Sending::in_room(room, &levels).polls()
 }
 
 pub(super) async fn message_permissions(room: &Room) -> MessagePermissions {
-    messages(room.own_user_id(), &room.power_levels_or_default().await)
+    let levels = room.power_levels_or_default().await;
+    Sending::in_room(room, &levels).messages()
 }
 
-fn polls(room: &Room, levels: &RoomPowerLevels) -> PollPermissions {
-    let own = room.own_user_id();
-    let may_send = |event_type| levels.user_can_send_message(own, event_type);
-    let delivered =
-        !room.encryption_state().is_encrypted() || may_send(MessageLikeEventType::RoomEncrypted);
-    PollPermissions {
-        vote: delivered && may_send(MessageLikeEventType::UnstablePollResponse),
-        end: delivered && may_send(MessageLikeEventType::UnstablePollEnd),
-        start: delivered && may_send(MessageLikeEventType::UnstablePollStart),
+pub(super) async fn may_send(
+    room: &Room,
+    event_type: MessageLikeEventType,
+    encryption: Encryption,
+) -> bool {
+    let levels = room.power_levels_or_default().await;
+    Sending {
+        levels: &levels,
+        own: room.own_user_id(),
+        encryption,
     }
-}
-
-fn messages(own: &UserId, levels: &RoomPowerLevels) -> MessagePermissions {
-    MessagePermissions {
-        delete_own: levels.user_can_redact_own_event(own),
-        delete_others: levels.user_can_redact_event_of_other(own),
-        pin: levels.user_can_send_state(own, StateEventType::RoomPinnedEvents),
-        notify_room: levels.user_can_trigger_room_notification(own),
-    }
+    .allows(event_type)
 }
 
 pub(super) fn member_role(level: UserPowerLevel) -> MemberRole {

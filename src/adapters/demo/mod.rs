@@ -24,6 +24,7 @@ mod names;
 pub mod notifications;
 mod pinned;
 mod polls;
+mod powers;
 mod presence;
 pub mod probe;
 mod reactions;

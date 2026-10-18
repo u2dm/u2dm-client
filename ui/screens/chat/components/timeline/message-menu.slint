@@ -143,10 +143,11 @@ component MessageMenuCard inherits MenuCard {
 
     public pure function available(action: MenuAction) -> bool {
         if action == MenuAction.reply {
-            return root.is-remote-message && !Composer.editing;
+            return root.is-remote-message && !Composer.editing && RoomView.may-send-messages;
         }
         if action == MenuAction.edit {
-            return root.msg.text-editable || (root.msg.poll-editable && RoomView.may-start-polls);
+            return (root.msg.text-editable && RoomView.may-send-messages)
+                || (root.msg.poll-editable && RoomView.may-start-polls);
         }
         if action == MenuAction.copy-text {
             return root.is-service || MessageShape.has-selectable-text(root.msg);
@@ -413,7 +414,9 @@ export component MessageMenuOverlay inherits Rectangle {
     property <length> edge: Space.md;
     property <length> gap: Space.sm;
     property <MessageEntry> msg: MessageMenu.target;
-    property <bool> shows-bar: root.msg.event-id != "" && root.msg.message-type != MessageKind.service;
+    property <bool> shows-bar: root.msg.event-id != ""
+        && root.msg.message-type != MessageKind.service
+        && RoomView.may-react;
 
     pure function text-of(msg: MessageEntry) -> string {
         if msg.message-type == MessageKind.service {

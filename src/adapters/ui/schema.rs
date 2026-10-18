@@ -338,6 +338,9 @@ macro_rules! bool_props {
         MayDeleteOwn RoomView "RoomView" "may-delete-own" set_may_delete_own get_may_delete_own;
         MayDeleteOthers RoomView "RoomView" "may-delete-others" set_may_delete_others get_may_delete_others;
         MayPin RoomView "RoomView" "may-pin" set_may_pin get_may_pin;
+        MaySendMessages RoomView "RoomView" "may-send-messages" set_may_send_messages get_may_send_messages;
+        MayReact RoomView "RoomView" "may-react" set_may_react get_may_react;
+        MaySendStickers RoomView "RoomView" "may-send-stickers" set_may_send_stickers get_may_send_stickers;
         PackRoomEncrypted PackView "PackView" "room-encrypted" set_room_encrypted get_room_encrypted;
         #[cfg(feature = "demo")] ProbeEnabled Probe "Probe" "enabled" set_enabled get_enabled;
         PackLoading PackView "PackView" "loading" set_loading get_loading;
@@ -721,6 +724,7 @@ macro_rules! user_message_kinds {
         LocalDataClaimFailed      LocalDataClaimFailed    "local-data-claim-failed";
         SessionSaveFailed         SessionSaveFailed       "session-save-failed";
         SendMessageFailed         SendMessageFailed       "send-message-failed";
+        SendNotAllowed            SendNotAllowed          "send-not-allowed";
         LoadMoreFailed            LoadMoreFailed          "load-more-failed";
         MessageNotFound           MessageNotFound         "message-not-found";
         MessageNotShowable        MessageNotShowable      "message-not-showable";

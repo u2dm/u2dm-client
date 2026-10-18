@@ -333,6 +333,9 @@ pub enum PinChange {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[allow(clippy::struct_excessive_bools)]
 pub struct MessagePermissions {
+    pub send_messages: bool,
+    pub react: bool,
+    pub send_stickers: bool,
     pub delete_own: bool,
     pub delete_others: bool,
     pub pin: bool,
@@ -341,11 +344,22 @@ pub struct MessagePermissions {
 
 impl MessagePermissions {
     pub const UNRESTRICTED: Self = Self {
+        send_messages: true,
+        react: true,
+        send_stickers: true,
         delete_own: true,
         delete_others: true,
         pin: true,
         notify_room: true,
     };
+
+    pub fn allows_toggle(self, own: Option<ReactionSend>) -> bool {
+        match own {
+            None => self.react,
+            Some(ReactionSend::Sent) => self.delete_own,
+            Some(ReactionSend::Sending | ReactionSend::Failed) => true,
+        }
+    }
 }
 
 impl Default for MessagePermissions {

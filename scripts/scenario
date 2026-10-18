@@ -57,6 +57,9 @@ scenario_env() {
     message-pin-failures) echo 'U2DM_DEMO_MESSAGE_MENU=pin-fails' ;;
     message-delete)  echo 'U2DM_DEMO_MESSAGE_MENU=slow U2DM_DEMO_PINNED=slow' ;;
     message-delete-failures) echo 'U2DM_DEMO_MESSAGE_MENU=delete-fails,member' ;;
+    read-only-room)  echo 'U2DM_DEMO_POWERS=read-only U2DM_DEMO_WINDOW=900x760' ;;
+    announcement-room) echo 'U2DM_DEMO_POWERS=reactions-only U2DM_DEMO_WINDOW=900x760' ;;
+    powers-revoked)  echo 'U2DM_DEMO_POWERS=revoked U2DM_DEMO_WINDOW=900x760' ;;
     readers)         echo 'U2DM_DEMO_RECEIPTS=late,throng U2DM_DEMO_ROOM_INFO=slow' ;;
     room-search)     echo 'U2DM_DEMO_WINDOW=900x760' ;;
     room-search-open) echo 'U2DM_DEMO_WINDOW=900x760' ;;
@@ -363,6 +366,23 @@ scenario_steps() {
       echo '{"op":"dismiss_toast"}'
       echo '{"op":"delete_message","event_id":"demo-rust-3"}'
       echo 'sleep 2' ;;
+    read-only-room)
+      echo '{"op":"select_room","room_id":"!rust:demo.local"}'
+      echo 'sleep 2'
+      echo '{"op":"toggle_reaction","event_id":"demo-rust-25","key":"🎉"}'
+      echo '{"op":"send_message","body":"sent anyway"}'
+      echo 'sleep 1'
+      echo '{"op":"send_sticker","pack":"cats","shortcode":"ship"}'
+      echo 'sleep 1' ;;
+    announcement-room)
+      echo '{"op":"select_room","room_id":"!rust:demo.local"}'
+      echo 'sleep 2'
+      echo '{"op":"toggle_reaction","event_id":"demo-rust-25","key":"🎉"}'
+      echo '{"op":"send_message","body":"sent anyway"}'
+      echo 'sleep 1' ;;
+    powers-revoked)
+      echo '{"op":"select_room","room_id":"!rust:demo.local"}'
+      echo 'sleep 6' ;;
     readers)
       echo '{"op":"select_room","room_id":"!rust:demo.local"}'
       echo 'sleep 3'
@@ -752,6 +772,9 @@ scenario_note() {
     spoilers)        echo 'in !design, every spoiler is a Spoiler chip carrying its reason, and the reply band, the copied text and the composer'"'"'s reply preview read the chips (spoilers, body, preview_body, reply_body); clicking a chip, or activating the row, reveals every spoiler of that message' ;;
     message-types)   echo 'in !rust, notices in a muted ink, emotes led by "* Sarah Chen", files with their captions under the card, locations with an Open in OpenStreetMap link (none for the Mars crater), and unknown msgtypes as cards with their fallback body (message_type, body, filename, map_link, unsupported_kind)' ;;
     message-delete-failures) echo 'an own deletion comes back with the toast; a member may not delete someone else'"'"'s message' ;;
+    read-only-room)  echo 'in !rust, read-only as every room: the composer is its notice, a reaction on Sarah'"'"'s message is refused, a text comes back as Not sent with Discard only, a sticker toasts send-not-allowed (message_permissions, rows[].reactions, unsent, toast)' ;;
+    announcement-room) echo 'in !rust, which lets you only react: the composer is its notice, a reaction on Sarah'"'"'s message lands, a text comes back as Not sent (message_permissions, rows[].reactions, unsent)' ;;
+    powers-revoked)  echo 'in !rust, the room list bars sending 5 s after the room opens: the composer turns into its notice (message_permissions)' ;;
     readers)         echo 'in !rust, the 123 readers of an older message load slowly, then the 121 readers of your newest message page in fifty at a time' ;;
     room-search)     echo 'in All Rooms, "design" lists the Design Team room, then the Design space' ;;
     room-search-open) echo '"web" matches only the Web space under Rust (Web Accessibility is too deep to open); opening it selects Rust and its Web subspace' ;;
@@ -833,7 +856,8 @@ names() {
     space-index polls poll-edits room-info room-leave room-info-failures room-info-pane room-menu room-menu-leave \
     room-menu-failures room-log user-info user-info-failures user-dm user-dm-start user-dm-failures user-ignore user-moderation \
     user-moderation-failures user-tags custom-emoji spoilers message-types message-link message-source message-pins message-pin-failures message-delete \
-    message-delete-failures readers room-search room-search-open mentions room-mention display-names \
+    message-delete-failures read-only-room announcement-room powers-revoked \
+    readers room-search room-search-open mentions room-mention display-names \
     message-shields identity-alerts identity-held-sends invites invite-failures room-upgrades room-upgrade-failures room-state \
     room-links room-finder room-link-failures \
     create-room create-space create-in-space create-room-failures invite-people invite-people-failures \

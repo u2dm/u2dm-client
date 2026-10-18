@@ -24,6 +24,7 @@ pub(super) fn send(
                 AppError::EventTooLarge(oversize) => {
                     UserMessage::about(UserMessageKind::PollTooLong, &oversize.shorten_by())
                 }
+                AppError::SendNotAllowed => UserMessage::new(UserMessageKind::SendNotAllowed),
                 _ => UserMessage::new(UserMessageKind::SendMessageFailed),
             };
             show_toast(output.as_ref(), Toast::Error(message));

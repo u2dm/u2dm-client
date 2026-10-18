@@ -51,6 +51,7 @@ pub enum UserMessageKind {
     LocalDataClaimFailed,
     SessionSaveFailed,
     SendMessageFailed,
+    SendNotAllowed,
     LoadMoreFailed,
     MessageNotFound,
     MessageNotShowable,

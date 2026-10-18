@@ -15,7 +15,7 @@ use matrix_sdk::ruma::api::error::ErrorKind;
 use matrix_sdk::ruma::events::space::parent::SpaceParentEventContent;
 use matrix_sdk::ruma::events::{
     AnyGlobalAccountDataEventContent, AnySyncStateEvent, GlobalAccountDataEventType,
-    StateEventType, SyncStateEvent,
+    MessageLikeEventType, StateEventType, SyncStateEvent,
 };
 use matrix_sdk::ruma::serde::Raw;
 use matrix_sdk::ruma::{OwnedMxcUri, OwnedRoomId, OwnedUserId, assign};
@@ -27,7 +27,7 @@ use tokio::sync::Semaphore;
 use tokio::task::JoinSet;
 
 use super::session::ClientHandle;
-use super::timeline::refuse_oversized;
+use super::timeline::{refuse_oversized, refuse_unpermitted};
 use super::user_info::own_user;
 use crate::domain::image_pack::{ImagePack, ImageUsage, PackId, PackImage, PackOrigin, PackTitle};
 use crate::domain::room::RoomId;
@@ -900,6 +900,7 @@ impl ImagePackPort for MatrixImagePacks {
     ) -> Result<()> {
         let content = self.sticker_event_content(pack, shortcode, in_reply_to)?;
         let room = self.matrix.room(room_id).await?;
+        refuse_unpermitted(&room, MessageLikeEventType::Sticker).await?;
         refuse_oversized(&room, &content, STICKER_EVENT_TYPE).await?;
         let content = Raw::new(&content)
             .map_err(|e| AppError::Other(e.to_string()))?

@@ -5,7 +5,7 @@ import { EmojiArt, ReactionSend } from "../../../../enums.slint";
 import { ReactionKeys } from "../../../../messages.slint";
 import { Avatar } from "../../../../components/avatar.slint";
 import { Pill } from "../../../../components/pill.slint";
-import { AnchorRect } from "../../../../local.slint";
+import { AnchorRect, Reactions } from "../../../../local.slint";
 import { AppStyle, Fonts, Glyph, IconSize, Metrics, Opacity, Space, Stroke, Weight } from "../../../../theme.slint";
 import { CustomEmojiImage } from "./custom-emoji.slint";
 
@@ -68,7 +68,8 @@ component ReactionChip inherits Pill {
     fill: root.failed
         ? AppStyle.danger-background
         : root.entry.mine ? root.mine-fill : root.other-fill;
-    hover-lift: root.entry.mine ? 0.15 : 0.25;
+    hover-lift: !root.enabled ? 0 : root.entry.mine ? 0.15 : 0.25;
+    hovers-when-disabled: true;
     opacity: root.entry.send == ReactionSend.sending ? Opacity.pending : 1;
 
     if !root.entry.overflow: ReactionGlyph {
@@ -130,7 +131,7 @@ export component ReactionRow inherits FlexboxLayout {
 
         entry: entry;
         is-own: root.is-own;
-        enabled: entry.overflow || root.can-react;
+        enabled: root.toggles(entry);
         label: root.chip-label(entry);
         clicked => {
             if entry.overflow {
@@ -149,6 +150,10 @@ export component ReactionRow inherits FlexboxLayout {
         }
     }
 
+    pure function toggles(entry: ReactionEntry) -> bool {
+        return entry.overflow || (root.can-react && Reactions.may-toggle(entry));
+    }
+
     pure function reactor-text(entry: ReactionEntry) -> string {
         return entry.hidden-reactors > 0
             ? @tr("{} and {} more" , entry.reactors, entry.hidden-reactors)
@@ -158,6 +163,9 @@ export component ReactionRow inherits FlexboxLayout {
     pure function chip-label(entry: ReactionEntry) -> string {
         if entry.overflow {
             return @tr("Show {} more reactions", entry.count);
+        }
+        if !root.toggles(entry) {
+            return @tr("{}, reacted by {}", ReactionKeys.label(entry.art, entry.label), root.reactor-text(entry));
         }
         if entry.mine {
             return @tr("Remove your {} reaction, reacted by {}", ReactionKeys.label(entry.art, entry.label), root.reactor-text(entry));

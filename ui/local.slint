@@ -1,4 +1,4 @@
-import { Delivery, LoginPhase, MessageKind, PollPhase, RoomInfoPlacement, Shield } from "./enums.slint";
+import { Delivery, LoginPhase, MessageKind, PollPhase, ReactionSend, RoomInfoPlacement, Shield } from "./enums.slint";
 import { AttachmentView, CreateRoomView, EncryptionView, InvitePeopleView, InviteView, LoginView, ReadersView, RoomInfoView, RoomLogView, RoomMenuView, RoomPreviewView, RoomView, SourceView, UserInfoView, VerificationView, VideoView, WindowView } from "./views.slint";
 import { Actions } from "./actions.slint";
 import { MessageEntry, ReactionEntry } from "./types.slint";
@@ -273,6 +273,13 @@ export global Reactions {
     out property <bool> strip-pending: root.strip-anchor.event-id != "" && !root.open;
     out property <bool> strip-visible: root.strip-pending && root.strip-revealed;
 
+    public pure function may-toggle(entry: ReactionEntry) -> bool {
+        if !entry.mine {
+            return RoomView.may-react;
+        }
+        return entry.send != ReactionSend.sent || RoomView.may-delete-own;
+    }
+
     public function hover-bubble(a: AnchorRect) {
         if !root.open {
             if root.strip-anchor.event-id != a.event-id {
@@ -430,7 +437,8 @@ export global ReplySwipe {
         && !MessageMenu.visible
         && !RoomMenu.visible
         && !Shell.modal-open
-        && !Composer.editing;
+        && !Composer.editing
+        && RoomView.may-send-messages;
 
     out property <MessageEntry> target: TimelineRows.at(root.anchor.row);
     out property <string> event-id: (root.armed

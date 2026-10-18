@@ -2149,6 +2149,9 @@ fn apply_poll_permissions(w: &impl UiProps, polls: PollPermissions) {
 }
 
 fn apply_message_permissions(w: &impl UiProps, messages: MessagePermissions) {
+    w.set_bool(BoolProp::MaySendMessages, messages.send_messages);
+    w.set_bool(BoolProp::MayReact, messages.react);
+    w.set_bool(BoolProp::MaySendStickers, messages.send_stickers);
     w.set_bool(BoolProp::MayDeleteOwn, messages.delete_own);
     w.set_bool(BoolProp::MayDeleteOthers, messages.delete_others);
     w.set_bool(BoolProp::MayPin, messages.pin);

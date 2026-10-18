@@ -7,7 +7,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use super::dto::{DemoData, InviteDto, RoomDto, SpaceDto, UnjoinedDto};
 use super::names::{self, NameBook};
 use super::timeline::{self, scenario};
-use super::{calls, invite_people, media, message_menu, polls};
+use super::{calls, invite_people, media, powers};
 use crate::adapters::markdown::{self, Composed, RoomMentions};
 use crate::domain::auth::Session;
 use crate::domain::emote::Emote;
@@ -198,8 +198,8 @@ fn started_chat(room_id: &str, user_id: &str, now: u64) -> Room {
         is_encrypted: true,
         event_ids: EventIds::Hashed,
         history_visibility: HistoryVisibility::default(),
-        poll_permissions: polls::permissions(),
-        message_permissions: message_menu::permissions(),
+        poll_permissions: powers::polls(),
+        message_permissions: powers::messages(),
         may_invite: invite_people::may_invite(),
         may_join_calls: true,
         call: None,
@@ -232,8 +232,8 @@ fn created_room(created: &Created) -> Room {
         is_encrypted: created.encrypted,
         event_ids: EventIds::Hashed,
         history_visibility: HistoryVisibility::default(),
-        poll_permissions: polls::permissions(),
-        message_permissions: message_menu::permissions(),
+        poll_permissions: powers::polls(),
+        message_permissions: powers::messages(),
         may_invite: invite_people::may_invite(),
         may_join_calls: true,
         call: None,
@@ -1049,7 +1049,7 @@ pub fn pronouns(user_id: &str) -> Vec<String> {
 }
 
 pub fn own_composition(composer: &str, emotes: &[Emote]) -> Composed {
-    let notify_room = message_menu::permissions().notify_room;
+    let notify_room = powers::messages().notify_room;
     markdown::compose(
         composer,
         own_user(),

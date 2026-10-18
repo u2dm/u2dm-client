@@ -15,6 +15,7 @@ import {
     TextSelection,
 } from "../../../../local.slint";
 import { Actions } from "../../../../actions.slint";
+import { RoomView } from "../../../../views.slint";
 import { Fonts, Glyph, IconSize, Metrics, Motion, Size, Space, Weight } from "../../../../theme.slint";
 
 enum RowAction {
@@ -32,8 +33,9 @@ export component RowActions inherits Rectangle {
     callback anchor() -> AnchorRect;
 
     property <bool> has-remote-id: root.msg.event-id != "";
-    property <bool> can-edit: root.msg.text-editable;
-    property <bool> can-reply: root.has-remote-id && !Composer.editing;
+    property <bool> can-edit: root.msg.text-editable && RoomView.may-send-messages;
+    property <bool> can-reply: root.has-remote-id && !Composer.editing && RoomView.may-send-messages;
+    property <bool> can-react: root.has-remote-id && RoomView.may-react;
     property <bool> can-select-text: MessageShape.has-selectable-text(root.msg);
     property <[RowAction]> row-actions: root.offered-actions();
     property <bool> has-actions: root.row-actions.length > 0;
@@ -68,7 +70,7 @@ export component RowActions inherits Rectangle {
     }
 
     pure function offered-actions() -> [RowAction] {
-        if root.can-reply {
+        if root.can-reply && root.can-react {
             if root.can-edit && root.can-select-text {
                 return [RowAction.edit, RowAction.select-text, RowAction.reply, RowAction.react];
             }
@@ -80,7 +82,19 @@ export component RowActions inherits Rectangle {
             }
             return [RowAction.reply, RowAction.react];
         }
-        if root.has-remote-id {
+        if root.can-reply {
+            if root.can-edit && root.can-select-text {
+                return [RowAction.edit, RowAction.select-text, RowAction.reply];
+            }
+            if root.can-edit {
+                return [RowAction.edit, RowAction.reply];
+            }
+            if root.can-select-text {
+                return [RowAction.select-text, RowAction.reply];
+            }
+            return [RowAction.reply];
+        }
+        if root.can-react {
             if root.can-edit && root.can-select-text {
                 return [RowAction.edit, RowAction.select-text, RowAction.react];
             }
@@ -114,7 +128,7 @@ export component RowActions inherits Rectangle {
         if action == RowAction.reply {
             return root.can-reply;
         }
-        return root.has-remote-id;
+        return root.can-react;
     }
 
     function open-menu() {
@@ -294,7 +308,7 @@ export component RowActions inherits Rectangle {
                 root.run-action(RowAction.react);
             }
             changed has-hover => {
-                if self.has-hover && root.has-remote-id {
+                if self.has-hover && root.can-react {
                     Reactions.hover-bubble(root.anchor());
                 } else {
                     Reactions.leave-bubble(root.msg.event-id);

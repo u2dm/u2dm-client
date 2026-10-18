@@ -301,6 +301,7 @@ fn failure_message(error: &AppError) -> UserMessage {
         AppError::EventTooLarge(oversize) => {
             UserMessage::about(UserMessageKind::CaptionTooLong, &oversize.shorten_by())
         }
+        AppError::SendNotAllowed => UserMessage::new(UserMessageKind::SendNotAllowed),
         AppError::Io(_) => UserMessage::new(UserMessageKind::AttachmentUnreadable),
         _ => UserMessage::new(UserMessageKind::SendAttachmentFailed),
     }

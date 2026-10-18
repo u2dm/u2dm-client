@@ -363,7 +363,11 @@ struct PollPermissionsDto {
 }
 
 #[derive(Serialize)]
+#[allow(clippy::struct_excessive_bools)]
 struct MessagePermissionsDto {
+    send_messages: bool,
+    react: bool,
+    send_stickers: bool,
     delete_own: bool,
     delete_others: bool,
     pin: bool,
@@ -1185,6 +1189,9 @@ fn room(source: &Room) -> RoomDto {
             start: source.poll_permissions.start,
         },
         message_permissions: MessagePermissionsDto {
+            send_messages: source.message_permissions.send_messages,
+            react: source.message_permissions.react,
+            send_stickers: source.message_permissions.send_stickers,
             delete_own: source.message_permissions.delete_own,
             delete_others: source.message_permissions.delete_others,
             pin: source.message_permissions.pin,

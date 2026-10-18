@@ -120,7 +120,7 @@ fn local_id(event: &EventTimelineItem) -> Option<String> {
     Some(format!("{LOCAL_ID_PREFIX}{txn}"))
 }
 
-fn reaction_send(info: Option<&ReactionInfo>) -> ReactionSend {
+pub(super) fn reaction_send(info: Option<&ReactionInfo>) -> ReactionSend {
     match info.and_then(|info| info.send_state.as_ref()) {
         None | Some(EventSendState::Sent { .. }) => ReactionSend::Sent,
         Some(EventSendState::SendingFailed { .. }) => ReactionSend::Failed,

@@ -17,7 +17,7 @@ export component AttachMenu inherits PickerCard {
         padding: Space.sm;
         spacing: Space.xs;
 
-        MenuRow {
+        if RoomView.may-send-messages: MenuRow {
             height: Metrics.attach-row;
             icon: IconSet.Image;
             label: @tr("Photo or video");
@@ -26,7 +26,7 @@ export component AttachMenu inherits PickerCard {
             }
         }
 
-        MenuRow {
+        if RoomView.may-send-messages: MenuRow {
             height: Metrics.attach-row;
             icon: IconSet.File;
             label: @tr("Document");

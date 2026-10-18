@@ -10,6 +10,7 @@ use crate::commands::messages::{UserMessage, UserMessageKind};
 use crate::commands::view::{PackView, Toast};
 use crate::domain::image_pack::{PackId, PackOrigin};
 use crate::domain::room::RoomId;
+use crate::error::AppError;
 use crate::ports::matrix::{ImagePackPort, PackCatalog};
 use crate::ports::output::AppOutputPort;
 
@@ -105,10 +106,11 @@ impl Packs {
                 .await;
             if let Err(e) = result {
                 tracing::warn!("failed to send sticker: {e}");
-                show_toast(
-                    output.as_ref(),
-                    Toast::Error(UserMessage::new(UserMessageKind::SendMessageFailed)),
-                );
+                let kind = match e {
+                    AppError::SendNotAllowed => UserMessageKind::SendNotAllowed,
+                    _ => UserMessageKind::SendMessageFailed,
+                };
+                show_toast(output.as_ref(), Toast::Error(UserMessage::new(kind)));
             }
         });
     }

@@ -39,6 +39,7 @@ export component FocusRing inherits Rectangle {
 
 export component ClickArea inherits Rectangle {
     in property <bool> enabled: true;
+    in property <bool> hovers-when-disabled: false;
     in property <bool> above-modal: false;
     in property <bool> draggable: false;
     in property <string> label;
@@ -90,15 +91,17 @@ export component ClickArea inherits Rectangle {
     }
 
     touch := TouchArea {
-        enabled: root.enabled;
+        enabled: root.enabled || root.hovers-when-disabled;
         mouse-cursor: root.enabled ? pointer : default;
         moved => {
-            if root.draggable {
+            if root.enabled && root.draggable {
                 root.moved(self.mouse-y - self.pressed-y);
             }
         }
         clicked => {
-            root.clicked();
+            if root.enabled {
+                root.clicked();
+            }
         }
     }
 

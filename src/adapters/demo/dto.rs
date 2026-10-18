@@ -3,7 +3,7 @@ use std::time::Duration;
 
 use serde::Deserialize;
 
-use super::{create_room, invite_people, media, message_menu, polls, reactions};
+use super::{create_room, invite_people, media, powers, reactions};
 use crate::domain::auth::Session;
 use crate::domain::event_size::EventIds;
 use crate::domain::image_pack::{ImagePack, ImageUsage, PackId, PackImage, PackOrigin, PackTitle};
@@ -825,8 +825,8 @@ impl RoomDto {
             is_encrypted: self.encrypted,
             event_ids: EventIds::Hashed,
             history_visibility: self.history_visibility.to_visibility(),
-            poll_permissions: polls::permissions(),
-            message_permissions: message_menu::permissions(),
+            poll_permissions: powers::polls(),
+            message_permissions: powers::messages(),
             may_invite: invite_people::may_invite(),
             may_join_calls: true,
             call: None,
@@ -895,8 +895,8 @@ impl UnjoinedDto {
             is_encrypted: false,
             event_ids: EventIds::Hashed,
             history_visibility: HistoryVisibility::default(),
-            poll_permissions: polls::permissions(),
-            message_permissions: message_menu::permissions(),
+            poll_permissions: powers::polls(),
+            message_permissions: powers::messages(),
             may_invite: invite_people::may_invite(),
             may_join_calls: true,
             call: None,
@@ -959,8 +959,8 @@ impl InviteDto {
             is_encrypted: self.encrypted,
             event_ids: EventIds::Hashed,
             history_visibility: HistoryVisibility::default(),
-            poll_permissions: polls::permissions(),
-            message_permissions: message_menu::permissions(),
+            poll_permissions: powers::polls(),
+            message_permissions: powers::messages(),
             may_invite: invite_people::may_invite(),
             may_join_calls: true,
             call: None,

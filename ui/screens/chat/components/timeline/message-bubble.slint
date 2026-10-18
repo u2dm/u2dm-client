@@ -393,7 +393,7 @@ export component MessageBubble inherits VerticalLayout {
                                 }
                                 changed has-hover => {
                                     message-row.bubble-hovered = self.has-hover;
-                                    if self.has-hover && root.has-remote-id {
+                                    if self.has-hover && root.has-remote-id && RoomView.may-react {
                                         Reactions.hover-bubble(bubble.anchor());
                                     } else {
                                         Reactions.leave-bubble(root.msg.event-id);

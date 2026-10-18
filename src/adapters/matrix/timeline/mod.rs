@@ -13,6 +13,7 @@ mod poll_ends;
 mod polls;
 mod receipts;
 mod rowless_sends;
+mod send_gate;
 mod size_limit;
 mod source;
 mod state_rows;
@@ -30,11 +31,13 @@ use matrix_sdk::room::reply::{EnforceThread, Reply};
 use matrix_sdk::ruma::events::room::message::{
     AddMentions, MessageType, RoomMessageEventContent, RoomMessageEventContentWithoutRelation,
 };
-use matrix_sdk::ruma::events::{AnyMessageLikeEventContent, Mentions, MessageLikeEventContent};
+use matrix_sdk::ruma::events::{
+    AnyMessageLikeEventContent, Mentions, MessageLikeEventContent, MessageLikeEventType,
+};
 use matrix_sdk::ruma::serde::Raw;
 use matrix_sdk::ruma::{IdParseError, OwnedEventId};
 use matrix_sdk::send_queue::{LocalEchoContent, SendHandle};
-use matrix_sdk::{Client, Room};
+use matrix_sdk::{Client, EncryptionState, Room};
 use mime::Mime;
 use serde_json::{Map, Value};
 use tokio::fs;
@@ -52,6 +55,7 @@ use self::members::Members;
 pub(super) use self::pinned::MatrixPinned;
 use self::poll_ends::EndingPolls;
 use self::receipts::ReceiptLane;
+pub(super) use self::send_gate::refuse_unpermitted;
 pub(super) use self::size_limit::refuse_oversized;
 use self::subscribe::subscribe_timeline;
 use self::undecrypted::UndecryptedResponses;
@@ -64,6 +68,7 @@ use crate::adapters::draft_size::MediaDraft;
 use crate::adapters::markdown::{self, Composed, RoomMentions};
 use crate::adapters::poll_content;
 use crate::domain::emote::Emote;
+use crate::domain::event_size::Encryption;
 use crate::domain::media::OutgoingAttachment;
 use crate::domain::message::MessageEdit;
 use crate::domain::poll::PollDraft;
@@ -248,6 +253,7 @@ async fn composed(room: &Room, text: &str, emotes: &[Emote]) -> Composed {
 }
 
 async fn queue(room: &Room, content: AnyMessageLikeEventContent) -> Result<()> {
+    refuse_unpermitted(room, content.event_type()).await?;
     refuse_oversized(room, &content, &content.event_type().to_string()).await?;
     room.send_queue()
         .send(content)
@@ -306,6 +312,28 @@ fn relation_content(relation: Value) -> Map<String, Value> {
         .collect()
 }
 
+async fn latest_encryption(room: &Room) -> Encryption {
+    match timeout(PRE_QUEUE_LOOKUP_WAIT, room.latest_encryption_state()).await {
+        Ok(Ok(EncryptionState::NotEncrypted)) => Encryption::Plain,
+        Ok(Ok(_)) => Encryption::Megolm,
+        Ok(Err(e)) => {
+            tracing::warn!(
+                room_id = %room.room_id(),
+                "treating the room as encrypted, since its encryption failed to load: {e}"
+            );
+            Encryption::Megolm
+        }
+        Err(_) => {
+            tracing::warn!(
+                room_id = %room.room_id(),
+                waited = ?PRE_QUEUE_LOOKUP_WAIT,
+                "treating the room as encrypted, since its encryption did not arrive in time"
+            );
+            Encryption::Megolm
+        }
+    }
+}
+
 async fn upload_limit(client: &Client) -> Option<u64> {
     let lookup = client.load_or_fetch_max_upload_size();
     match timeout(PRE_QUEUE_LOOKUP_WAIT, lookup).await {
@@ -328,6 +356,7 @@ async fn queueable_attachment(
     room: &Room,
     attachment: &OutgoingAttachment,
 ) -> Result<QueueableAttachment> {
+    refuse_unpermitted(room, MessageLikeEventType::RoomMessage).await?;
     let picked = &attachment.picked;
     let content_type = attachment::content_type(picked, attachment.as_document);
     size_limit::refuse_oversized_media(

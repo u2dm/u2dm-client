@@ -20,8 +20,9 @@ use super::encryption::{self, EncryptionBook};
 use super::identity::{self, IdentityBook, SendHold};
 use super::{
     attachments, audio, create_room, data, invite_people, invites, links, login, logout, media,
-    message_menu, notifications, pinned, polls, presence, reactions, receipts, room_info, source,
-    space_index, stickers, sync, timeline, typing, upgrades, user_info, verification, videos,
+    message_menu, notifications, pinned, polls, powers, presence, reactions, receipts, room_info,
+    source, space_index, stickers, sync, timeline, typing, upgrades, user_info, verification,
+    videos,
 };
 use crate::adapters::draft_size::{self, MediaDraft, RoomFacts};
 use crate::adapters::markdown::RoomMentions;
@@ -862,6 +863,15 @@ impl DemoAuthed {
             let Some(message) = active.messages.get_mut(offset) else {
                 return;
             };
+            let own = reactions::own_send(message, key);
+            if !powers::messages().allows_toggle(own) {
+                tracing::info!(
+                    event_id,
+                    ?own,
+                    "demo: the power levels refuse this reaction toggle"
+                );
+                return;
+            }
             reactions::toggle(message, key, data::own_user());
             (active.timeline_tx.clone(), row, message.clone())
         };
@@ -976,7 +986,7 @@ impl DemoAuthed {
         answer_id: &str,
         timeline_tx: &mpsc::Sender<TimelineUpdate>,
     ) {
-        if !polls::permissions().vote {
+        if !powers::polls().vote {
             refuse_poll_action(timeline_tx, PollAction::Vote).await;
             return;
         }
@@ -1003,7 +1013,7 @@ impl DemoAuthed {
     }
 
     async fn end_poll(&self, event_id: &str, timeline_tx: &mpsc::Sender<TimelineUpdate>) {
-        if !polls::permissions().end {
+        if !powers::polls().end {
             refuse_poll_action(timeline_tx, PollAction::End).await;
             return;
         }
@@ -1040,7 +1050,7 @@ impl DemoAuthed {
         draft: &PollDraft,
         timeline_tx: &mpsc::Sender<TimelineUpdate>,
     ) {
-        if !polls::permissions().start {
+        if !powers::polls().start {
             refuse_poll_action(timeline_tx, PollAction::Edit).await;
             return;
         }
@@ -1170,6 +1180,7 @@ impl DemoAuthed {
         );
         spawn_poll_activity(&self.active, &timeline_tx);
         self.spawn_poll_revocation();
+        self.spawn_power_change();
 
         let mut history = 0_u64;
         while let Some(command) = cmd_rx.recv().await {
@@ -1403,6 +1414,19 @@ impl DemoAuthed {
         tokio::spawn(async move {
             sleep(polls::REVOKED_AFTER).await;
             if polls::revoke() {
+                sink(SyncEvent::Rooms(current_lists(&lists).rooms().into()));
+            }
+        });
+    }
+
+    fn spawn_power_change(&self) {
+        let Some(sink) = self.sync_sink() else {
+            return;
+        };
+        let lists = Arc::clone(&self.lists);
+        tokio::spawn(async move {
+            sleep(powers::SWITCH_AFTER).await;
+            if powers::switch() {
                 sink(SyncEvent::Rooms(current_lists(&lists).rooms().into()));
             }
         });
@@ -2627,6 +2651,7 @@ impl TimelinePort for DemoAuthed {
     }
 
     async fn send_text(&self, room_id: &RoomId, body: &str, emotes: &[Emote]) -> Result<()> {
+        powers::refuse_unless(powers::messages().send_messages, "sending messages")?;
         if timeline::scenario().sends_are_refused {
             return Err(unavailable("sending messages"));
         }
@@ -2642,6 +2667,7 @@ impl TimelinePort for DemoAuthed {
         emotes: &[Emote],
         in_reply_to: &str,
     ) -> Result<()> {
+        powers::refuse_unless(powers::messages().send_messages, "sending replies")?;
         if timeline::scenario().sends_are_refused {
             return Err(unavailable("sending replies"));
         }
@@ -2655,6 +2681,7 @@ impl TimelinePort for DemoAuthed {
     }
 
     async fn edit_message(&self, room_id: &RoomId, edit: &MessageEdit) -> Result<()> {
+        powers::refuse_unless(powers::messages().send_messages, "editing messages")?;
         if timeline::scenario().edits_are_refused {
             return Err(unavailable("editing messages"));
         }
@@ -2689,6 +2716,7 @@ impl TimelinePort for DemoAuthed {
     }
 
     async fn send_poll(&self, room_id: &RoomId, draft: &PollDraft) -> Result<()> {
+        powers::refuse_unless(powers::polls().start, "starting polls")?;
         if timeline::scenario().sends_are_refused {
             return Err(unavailable("sending polls"));
         }
@@ -2725,7 +2753,7 @@ impl TimelinePort for DemoAuthed {
             .find(|message| message.event_id.as_deref() == Some(event_id))
             .map(|message| message.is_own)
             .ok_or_else(|| AppError::Other(format!("{event_id} is not in {room_id}")))?;
-        let permissions = message_menu::permissions();
+        let permissions = powers::messages();
         let allowed = if own {
             permissions.delete_own
         } else {
@@ -2764,6 +2792,7 @@ impl TimelinePort for DemoAuthed {
         attachment: &OutgoingAttachment,
         abandon: CancellationToken,
     ) -> Result<AttachmentHandoff> {
+        powers::refuse_unless(powers::messages().send_messages, "sending attachments")?;
         if attachments::scenario().refuses_size {
             return Err(AppError::AttachmentTooLarge {
                 limit: attachments::upload_limit(),
@@ -2836,7 +2865,7 @@ impl PinnedPort for DemoAuthed {
 
     async fn change_pin(&self, room_id: &RoomId, event_id: &str, change: PinChange) -> Result<()> {
         message_menu::pause().await;
-        if !message_menu::permissions().pin {
+        if !powers::messages().pin {
             return Err(unavailable("pinning in this room"));
         }
         if message_menu::scenario().pin_fails {
@@ -3008,6 +3037,7 @@ impl ImagePackPort for DemoAuthed {
         shortcode: &str,
         in_reply_to: Option<&str>,
     ) -> Result<()> {
+        powers::refuse_unless(powers::messages().send_stickers, "sending stickers")?;
         if stickers::scenario().send_fails {
             return Err(unavailable("sending stickers"));
         }
@@ -3723,7 +3753,7 @@ fn with_room_facts<T>(room_id: &RoomId, measure: impl FnOnce(&RoomFacts<'_>) -> 
         device_id: &session.device_id,
         encryption: Encryption::when(data::room_is_encrypted(room_id)),
         event_ids: EventIds::Hashed,
-        room_mentions: RoomMentions::when(message_menu::permissions().notify_room),
+        room_mentions: RoomMentions::when(powers::messages().notify_room),
     })
 }
 

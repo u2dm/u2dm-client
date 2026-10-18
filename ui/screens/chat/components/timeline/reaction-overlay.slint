@@ -5,7 +5,7 @@ import { ModalHost, Placement, TipCard } from "../../../../components/overlay.sl
 import { MetaMark, MetaTip, ReactionPopup, Reactions, Shell } from "../../../../local.slint";
 import { Actions } from "../../../../actions.slint";
 import { Deliveries, DeliveryStatus, ShieldReasons } from "../../../../messages.slint";
-import { PackView } from "../../../../views.slint";
+import { PackView, RoomView } from "../../../../views.slint";
 import { Metrics, Motion, Space } from "../../../../theme.slint";
 
 component ReactionPopover inherits ModalHost {
@@ -60,6 +60,18 @@ export component ReactionOverlay inherits Rectangle {
     property <bool> strip-in-view:
         Reactions.strip-anchor.y + Reactions.strip-anchor.height > root.timeline-top
         && Reactions.strip-anchor.y < root.timeline-bottom;
+    property <bool> may-react: RoomView.may-react;
+
+    changed may-react => {
+        if self.may-react {
+            return;
+        }
+        Reactions.close-strip();
+        if Reactions.popup == ReactionPopup.picker {
+            Reactions.close();
+            root.closed();
+        }
+    }
 
     Timer {
         interval: Motion.reveal-delay;
@@ -79,7 +91,7 @@ export component ReactionOverlay inherits Rectangle {
         }
     }
 
-    if Reactions.strip-visible && root.strip-in-view: ReactionStrip {
+    if Reactions.strip-visible && root.strip-in-view && root.may-react: ReactionStrip {
         x: Reactions.strip-anchor.is-own
             ? Reactions.strip-anchor.x - self.width + Metrics.reaction-strip-overlap
             : Reactions.strip-anchor.x + Reactions.strip-anchor.width - Metrics.reaction-strip-overlap;

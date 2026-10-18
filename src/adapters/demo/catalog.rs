@@ -4,7 +4,7 @@ use std::process::ExitCode;
 
 use super::{
     attachments, audio, calls, create_room, encryption, identity, invite_people, invites, links,
-    login, logout, message_menu, msgtypes, names, notifications, pinned, polls, presence,
+    login, logout, message_menu, msgtypes, names, notifications, pinned, polls, powers, presence,
     reactions, receipts, richtext, room_info, shields, space_index, stickers, sync, timeline,
     typing, upgrades, user_info, verification, videos,
 };
@@ -53,6 +53,7 @@ pub fn all() -> &'static [&'static Scenarios] {
         &identity::CATALOG,
         &encryption::CATALOG,
         &message_menu::CATALOG,
+        &powers::CATALOG,
         &login::CATALOG,
         &logout::CATALOG,
         &sync::CATALOG,

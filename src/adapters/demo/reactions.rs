@@ -223,6 +223,14 @@ fn own_send_state() -> ReactionSend {
     ReactionSend::Sent
 }
 
+pub fn own_send(message: &TimelineMessage, key: &str) -> Option<ReactionSend> {
+    message
+        .reactions
+        .iter()
+        .find(|reaction| reaction.key == key && reaction.mine)
+        .map(|reaction| reaction.send)
+}
+
 pub fn toggle(message: &mut TimelineMessage, key: &str, own_user: &str) {
     let send = own_send_state();
     let Some(position) = message.reactions.iter().position(|r| r.key == key) else {

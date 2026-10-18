@@ -74,6 +74,10 @@ export component ComposerField inherits Rectangle {
     in property <bool> text-optional: false;
     in property <bool> busy: false;
     in property <bool> above-modal: false;
+    in property <bool> writable: true;
+    in property <string> notice;
+    in property <bool> lead-shown: true;
+    in property <bool> emoji-shown: true;
     out property <length> row-inset: Space.sm;
     out property <int> caret: 0;
     out property <bool> input-focused: text-input.has-focus;
@@ -86,15 +90,16 @@ export component ComposerField inherits Rectangle {
     callback key-captured(KeyEvent) -> EventResult;
 
     property <bool> has-text: root.text != "";
-    property <bool> can-send: !root.busy && (root.has-text || root.text-optional);
+    property <bool> can-send: root.writable && !root.busy && (root.has-text || root.text-optional);
     property <TextSplice> pending-insert;
 
     property <length> text-inset: Space.md;
     property <length> line-height: line-probe.preferred-height;
-    property <length> text-height: min(
+    property <length> typed-height: min(
         max(text-input.preferred-height, root.line-height),
         root.line-height * Metrics.composer-max-lines,
     );
+    property <length> text-height: root.writable ? root.typed-height : root.line-height;
     property <length> row-height: max(
         Metrics.composer-row,
         root.text-height + 2 * root.text-inset,
@@ -107,8 +112,16 @@ export component ComposerField inherits Rectangle {
     border-color: AppStyle.border;
     clip: true;
 
+    changed writable => {
+        if !self.writable {
+            text-input.clear-focus();
+        }
+    }
+
     public function focus-input() {
-        text-input.focus();
+        if root.writable {
+            text-input.focus();
+        }
     }
 
     public function clear() {
@@ -186,7 +199,7 @@ export component ComposerField inherits Rectangle {
             padding-left: root.row-inset;
             padding-right: root.row-inset;
 
-            ComposerButton {
+            if root.lead-shown: ComposerButton {
                 cross-axis-self-alignment: end;
                 icon: root.lead-icon;
                 label: root.lead-label;
@@ -223,6 +236,7 @@ export component ComposerField inherits Rectangle {
                         y: (parent.height - self.height) / 2;
                         width: parent.width;
                         height: root.text-height;
+                        visible: root.writable;
                         interactive: false;
                         content-width: self.width;
                         content-height: max(self.height, text-input.preferred-height);
@@ -235,8 +249,8 @@ export component ComposerField inherits Rectangle {
                             single-line: false;
                             wrap: word-wrap;
                             page-height: scroll.height;
-                            enabled: Interaction.actionable(true, root.above-modal);
-                            read-only: root.busy;
+                            enabled: Interaction.actionable(root.writable, root.above-modal);
+                            read-only: root.busy || !root.writable;
                             accessible-label: root.input-label;
                             accessible-placeholder-text: root.placeholder;
                             text <=> root.text;
@@ -252,7 +266,7 @@ export component ComposerField inherits Rectangle {
                         }
                     }
 
-                    if !root.has-text: Text {
+                    if root.writable && !root.has-text: Text {
                         x: 0;
                         y: scroll.y;
                         width: parent.width;
@@ -263,10 +277,23 @@ export component ComposerField inherits Rectangle {
                         vertical-alignment: center;
                         horizontal-alignment: left;
                     }
+
+                    if !root.writable: Text {
+                        x: 0;
+                        y: scroll.y;
+                        width: parent.width;
+                        height: scroll.height;
+                        text: root.notice;
+                        color: AppStyle.foreground-muted;
+                        font-size: Fonts.body;
+                        overflow: elide;
+                        vertical-alignment: center;
+                        horizontal-alignment: center;
+                    }
                 }
             }
 
-            ComposerButton {
+            if root.emoji-shown: ComposerButton {
                 cross-axis-self-alignment: end;
                 icon: IconSet.Smile;
                 label: root.emoji-label;
@@ -278,7 +305,7 @@ export component ComposerField inherits Rectangle {
                 }
             }
 
-            ComposerButton {
+            if root.writable: ComposerButton {
                 cross-axis-self-alignment: end;
                 icon: root.send-icon;
                 label: root.send-label;

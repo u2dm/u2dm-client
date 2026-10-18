@@ -12,7 +12,7 @@ use matrix_sdk::ruma::events::room::message::{
 };
 use matrix_sdk::ruma::events::{
     AnyMessageLikeEventContent, AnySyncMessageLikeEvent, AnySyncTimelineEvent, Mentions,
-    SyncMessageLikeEvent,
+    MessageLikeEventType, SyncMessageLikeEvent,
 };
 use matrix_sdk::ruma::html::{HtmlSanitizerMode, RemoveReplyFallback};
 use matrix_sdk::ruma::serde::Raw;
@@ -21,7 +21,9 @@ use matrix_sdk::send_queue::{LocalEcho, LocalEchoContent, SendHandle};
 use matrix_sdk_ui::timeline::EventTimelineItem;
 use tokio::time::timeout;
 
-use super::{PRE_QUEUE_LOOKUP_WAIT, composed, local_transaction, queue, refuse_oversized};
+use super::{
+    PRE_QUEUE_LOOKUP_WAIT, composed, local_transaction, queue, refuse_oversized, refuse_unpermitted,
+};
 use crate::adapters::body_emoji;
 use crate::adapters::draft_size::MESSAGE_TYPE;
 use crate::adapters::markdown::{self, Composed};
@@ -301,6 +303,7 @@ fn original_message(raw: &Raw<AnySyncTimelineEvent>) -> Option<OriginalSyncRoomM
 }
 
 async fn edit_queued(room: &Room, local_id: &str, edit: &MessageEdit) -> Result<()> {
+    refuse_unpermitted(room, MessageLikeEventType::RoomMessage).await?;
     let transaction = local_transaction(local_id);
     let (echoes, _updates) = room
         .send_queue()

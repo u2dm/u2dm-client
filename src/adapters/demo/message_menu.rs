@@ -126,16 +126,17 @@ pub fn permissions() -> MessagePermissions {
     match scenario().powers {
         Powers::Unrestricted => MessagePermissions::UNRESTRICTED,
         Powers::Member => MessagePermissions {
-            delete_own: true,
             delete_others: false,
             pin: false,
             notify_room: false,
+            ..MessagePermissions::UNRESTRICTED
         },
         Powers::Barred => MessagePermissions {
             delete_own: false,
             delete_others: false,
             pin: false,
             notify_room: false,
+            ..MessagePermissions::UNRESTRICTED
         },
     }
 }

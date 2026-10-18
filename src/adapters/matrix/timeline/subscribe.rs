@@ -11,9 +11,8 @@ use matrix_sdk::ruma::{EventId, IdParseError, OwnedEventId, OwnedRoomId, UserId}
 use matrix_sdk::{Client, Room};
 use matrix_sdk_ui::eyeball_im::VectorDiff;
 use matrix_sdk_ui::timeline::{
-    Error as TimelineError, EventSendState, EventTimelineItem, Timeline,
-    TimelineEventFocusThreadMode, TimelineEventItemId, TimelineFocus as SdkTimelineFocus,
-    TimelineItem, VirtualTimelineItem,
+    Error as TimelineError, EventTimelineItem, Timeline, TimelineEventFocusThreadMode,
+    TimelineEventItemId, TimelineFocus as SdkTimelineFocus, TimelineItem, VirtualTimelineItem,
 };
 use serde_json::{Map, Value};
 use tokio::sync::{Semaphore, mpsc};
@@ -21,7 +20,7 @@ use tokio::task::JoinSet;
 use tracing::Instrument;
 
 use super::commands::Commands;
-use super::convert::{event_media, involves, reacted_with};
+use super::convert::{event_media, involves, reacted_with, reaction_send};
 use super::diff::{diff_to_patch, stamp_editable_polls, stamp_read_marks};
 use super::edits::DiscardedEdits;
 use super::emoji_files::{EmojiFiles, Settled, download_emoji_files};
@@ -33,6 +32,7 @@ use super::poll_ends::EndingPolls;
 use super::polls;
 use super::receipts::ReceiptLane;
 use super::rowless_sends::{RowlessSendEvent, RowlessSendGuard};
+use super::send_gate::refuse_unpermitted_toggle;
 use super::source;
 use super::undecrypted::UndecryptedResponses;
 use super::{EnrichmentClaim, EnrichmentPool, TimelineContext};
@@ -40,7 +40,7 @@ use crate::adapters::matrix::media::{MediaService, ThumbnailRequest};
 use crate::adapters::matrix::profile::PronounCache;
 use crate::domain::emote::Emote;
 use crate::domain::media::{ContentKey, ThumbnailOutcome};
-use crate::domain::message::TimelineMessage;
+use crate::domain::message::{ReactionSend, TimelineMessage};
 use crate::domain::room::RoomId;
 use crate::domain::timeline::{
     AudioLookup, EnrichmentDelta, JumpTarget, PaginationDirection, PaginationOutcome,
@@ -249,16 +249,14 @@ fn process_diffs(
     })
 }
 
-async fn own_reaction_failed(timeline: &Timeline, target: &EventId, key: &str) -> bool {
-    let Some(item) = timeline.item_by_event_id(target).await else {
-        return false;
-    };
+async fn own_reaction(timeline: &Timeline, target: &EventId, key: &str) -> Option<ReactionSend> {
+    let item = timeline.item_by_event_id(target).await?;
     let own = timeline.room().own_user_id();
     item.content()
         .reactions()
         .and_then(|by_key| by_key.get(key))
         .and_then(|by_sender| by_sender.get(own))
-        .is_some_and(|info| matches!(info.send_state, Some(EventSendState::SendingFailed { .. })))
+        .map(|info| reaction_send(Some(info)))
 }
 
 #[derive(Debug)]
@@ -274,7 +272,8 @@ async fn toggle_own_reaction(
     key: &str,
     shortcode: Option<&str>,
 ) -> Result<ReactionToggle> {
-    let failed = own_reaction_failed(timeline, &target, key).await;
+    let own = own_reaction(timeline, &target, key).await;
+    refuse_unpermitted_toggle(timeline.room(), own).await?;
     let added = timeline
         .toggle_reaction_with_extra_content(
             &TimelineEventItemId::EventId(target),
@@ -283,10 +282,10 @@ async fn toggle_own_reaction(
         )
         .await
         .map_err(|e| AppError::Other(e.to_string()))?;
-    Ok(match (added, failed) {
+    Ok(match (added, own) {
         (true, _) => ReactionToggle::Added,
-        (false, true) => ReactionToggle::DiscardedFailedSend,
-        (false, false) => ReactionToggle::Removed,
+        (false, Some(ReactionSend::Failed)) => ReactionToggle::DiscardedFailedSend,
+        (false, _) => ReactionToggle::Removed,
     })
 }
 
