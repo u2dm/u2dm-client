@@ -123,6 +123,8 @@ pub enum UiCommand {
     RetryUserInfo,
     #[strum(to_string = "MessageUser({0})")]
     MessageUser(UserId),
+    #[strum(to_string = "VerifyUser({0})")]
+    VerifyUser(UserId),
     #[strum(to_string = "IgnoreUser({0})")]
     IgnoreUser(UserId),
     #[strum(to_string = "UnignoreUser({0})")]
@@ -430,6 +432,7 @@ impl UiCommand {
             | Self::CloseUserInfo
             | Self::RetryUserInfo
             | Self::MessageUser(_)
+            | Self::VerifyUser(_)
             | Self::IgnoreUser(_)
             | Self::UnignoreUser(_)
             | Self::KickUser(_)

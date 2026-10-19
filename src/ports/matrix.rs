@@ -35,7 +35,9 @@ use crate::domain::room_preview::PreviewResult;
 use crate::domain::space_index::HierarchyPage;
 use crate::domain::sync::{SyncEvent, SyncOutcome};
 use crate::domain::timeline::{TimelineCommand, TimelineFocus, TimelineUpdate};
-use crate::domain::user_info::{GlobalProfile, IgnoreChange, Moderation, UserId, UserProfile};
+use crate::domain::user_info::{
+    GlobalProfile, IgnoreChange, Moderation, UserId, UserProfile, UserTrust,
+};
 use crate::domain::verification::VerificationEvent;
 use crate::error::Result;
 
@@ -350,6 +352,8 @@ pub trait UserInfoPort: Send + Sync {
     async fn start_dm(&self, user_id: &UserId) -> Result<RoomId>;
     async fn set_ignored(&self, user_id: &UserId, change: IgnoreChange) -> Result<()>;
     async fn moderate(&self, room_id: &RoomId, user_id: &UserId, action: Moderation) -> Result<()>;
+    async fn follow_trust(&self, user_id: &UserId, trust_tx: mpsc::Sender<UserTrust>)
+    -> Result<()>;
 }
 
 #[async_trait]
@@ -437,6 +441,7 @@ pub trait VerificationPort: Send + Sync {
         tx: mpsc::UnboundedSender<VerificationEvent>,
     ) -> Result<()>;
     async fn verify_this_session(&self) -> Result<()>;
+    async fn verify_user(&self, user_id: &UserId) -> Result<()>;
     async fn accept_verification(&self) -> Result<()>;
     async fn confirm_verification(&self) -> Result<()>;
     async fn reject_verification(&self) -> Result<()>;

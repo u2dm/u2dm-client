@@ -73,6 +73,9 @@ pub enum ServiceEvent {
         video: bool,
         declined_by: Option<NamedUser>,
     },
+    VerificationRequested {
+        target: NamedUser,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
@@ -169,6 +172,11 @@ pub enum MessageBody {
 pub enum DecryptionFailure {
     #[default]
     Unexplained,
+    SentBeforeJoining,
+    WithheldFromUnverified,
+    WithheldBySender,
+    HistoryWithoutBackup,
+    HistoryNeedsVerification,
     UnsignedDevice,
     UnknownDevice,
     VerificationViolation,
@@ -203,6 +211,7 @@ impl ServiceEvent {
             | Self::Unbanned { target }
             | Self::KnockAccepted { target }
             | Self::KnockDenied { target }
+            | Self::VerificationRequested { target }
             | Self::CallNotification {
                 declined_by: Some(target),
                 ..
@@ -221,6 +230,7 @@ impl ServiceEvent {
             | Self::Unbanned { target }
             | Self::KnockAccepted { target }
             | Self::KnockDenied { target }
+            | Self::VerificationRequested { target }
             | Self::CallNotification {
                 declined_by: Some(target),
                 ..

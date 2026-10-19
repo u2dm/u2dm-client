@@ -49,6 +49,41 @@ pub enum IdentityTrust {
     Verified,
     Unverified,
     NoLongerVerified,
+    NoIdentity,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DeviceTrust {
+    Verified,
+    SignedByOwner,
+    NotSignedByOwner,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UserDevice {
+    pub device_id: String,
+    pub name: Option<String>,
+    pub trust: DeviceTrust,
+}
+
+impl UserDevice {
+    fn sort_key(&self) -> (String, &str) {
+        let name = self.name.as_deref().unwrap_or(&self.device_id);
+        (name.to_lowercase(), self.device_id.as_str())
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UserTrust {
+    pub identity: IdentityTrust,
+    pub devices: Vec<UserDevice>,
+}
+
+impl UserTrust {
+    pub fn new(identity: IdentityTrust, mut devices: Vec<UserDevice>) -> Self {
+        devices.sort_by(|a, b| a.sort_key().cmp(&b.sort_key()));
+        Self { identity, devices }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

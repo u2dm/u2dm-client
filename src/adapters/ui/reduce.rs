@@ -416,7 +416,7 @@ fn apply_snapshot<B: UiBackend>(
     if last.is_none_or(|l| l.room_menu != *room_menu) {
         apply_room_menu(w, room_menu.as_ref());
     }
-    apply_user_info(w, last.map(|l| &l.user_info), user_info, ctx.media);
+    apply_user_info::<B>(w, last.map(|l| &l.user_info), user_info, ctx);
     if last.is_none_or(|l| l.pagination != *pagination) {
         sync_timeline_chrome(w, pagination);
     }
@@ -1304,15 +1304,18 @@ fn shown_topic(card: Option<&RoomCard>, about: Option<&RoomAbout>) -> Option<Ric
     }
 }
 
-fn apply_user_info(
-    w: &impl UiProps,
+fn apply_user_info<B: UiBackend>(
+    w: &B::Window,
     last: Option<&UserInfoView>,
     user_info: &UserInfoView,
-    media: &dyn MediaCache,
+    ctx: &UiEventContext<'_, B>,
 ) {
+    let media = ctx.media;
     let UserInfoView {
         card,
         direct,
+        verify,
+        sessions,
         ignore_busy,
         moderating,
         avatars_ready,
@@ -1321,6 +1324,18 @@ fn apply_user_info(
 
     if last.is_none_or(|l| l.direct != *direct) {
         w.set_user_info_direct(*direct);
+    }
+    if last.is_none_or(|l| l.verify != *verify) {
+        w.set_user_info_verify(*verify);
+    }
+    if last.is_none_or(|l| l.sessions != *sessions) {
+        w.set_bool(BoolProp::UserInfoSessionsKnown, sessions.is_some());
+        let rows = sessions
+            .iter()
+            .flat_map(|devices| devices.iter())
+            .map(B::convert_user_device)
+            .collect::<Vec<_>>();
+        ctx.models.user_devices.set_vec(rows);
     }
     if last.is_none_or(|l| l.ignore_busy != *ignore_busy) {
         w.set_bool(BoolProp::UserInfoIgnoreBusy, *ignore_busy);
@@ -2037,8 +2052,8 @@ fn apply_verification_flow(w: &impl UiProps, event: &DomainVerificationEvent) {
         DomainVerificationEvent::Requested { sender, is_self } => {
             open_verification(w, VerifyStep::Requested, sender, *is_self);
         }
-        DomainVerificationEvent::RequestSent { own_user } => {
-            open_verification(w, VerifyStep::Waiting, own_user, true);
+        DomainVerificationEvent::RequestSent { to, is_self } => {
+            open_verification(w, VerifyStep::Waiting, to, *is_self);
         }
         DomainVerificationEvent::Emojis(emojis) => {
             w.set_verification_phase(VerifyStep::Emojis);

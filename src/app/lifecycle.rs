@@ -260,6 +260,7 @@ pub(super) fn command_allowed(phase: AppPhase, cmd: &UiCommand) -> bool {
         | UiCommand::CloseUserInfo
         | UiCommand::RetryUserInfo
         | UiCommand::MessageUser(_)
+        | UiCommand::VerifyUser(_)
         | UiCommand::IgnoreUser(_)
         | UiCommand::UnignoreUser(_)
         | UiCommand::KickUser(_)

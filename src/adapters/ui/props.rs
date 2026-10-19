@@ -12,6 +12,7 @@ use crate::commands::view::{
     EncryptionActivity, EncryptionStep, JoinRefusal, LoginActivity, LoginStep, MicrophoneView,
     PendingAnswer, PendingModeration, PeopleSearchStatus, ReadersStatus, RoomInfoPlacement,
     RoomPreviewSheet, RoomScope, RosterStatus, SourceState, SpaceIndexStatus, UpgradeLink,
+    VerifyOffer,
 };
 use crate::domain::auth::LoginMethod;
 use crate::domain::call::video::ScreenRefusal;

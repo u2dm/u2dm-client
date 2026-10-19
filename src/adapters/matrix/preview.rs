@@ -1,6 +1,7 @@
 use matrix_sdk::ruma::events::poll::unstable_start::UnstablePollStartEventContent;
 use matrix_sdk::ruma::events::room::message::{MessageFormat, MessageType};
 
+use crate::domain::member_name::NamedUser;
 use crate::domain::message::{MessagePreviewKind, RichText, ServiceEvent};
 
 pub(super) struct MessagePreview {
@@ -63,6 +64,11 @@ pub(super) fn from_msgtype(msgtype: &MessageType) -> MessagePreview {
             content.filename.as_deref().unwrap_or(&content.body),
         ),
         MessageType::Location(_) => return MessagePreview::labelled(MessagePreviewKind::Location),
+        MessageType::VerificationRequest(request) => {
+            return MessagePreview::service(ServiceEvent::VerificationRequested {
+                target: NamedUser::unnamed(request.to.as_str()),
+            });
+        }
         other => (MessagePreviewKind::Text, other.body()),
     };
     MessagePreview {

@@ -246,7 +246,7 @@ fn wake_if(concerns_us: bool) -> Wake {
     }
 }
 
-fn names<V, W>(
+pub(super) fn names<V, W>(
     new: &BTreeMap<OwnedUserId, V>,
     changed: &BTreeMap<OwnedUserId, W>,
     user: &UserId,

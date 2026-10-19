@@ -75,8 +75,8 @@ use crate::domain::timeline::{
     TimelineUpdate, locate_audio,
 };
 use crate::domain::user_info::{
-    GlobalProfile, IgnoreChange, Moderation, RoomMembership, UserId, UserProfile, localpart,
-    server_part,
+    GlobalProfile, IdentityTrust, IgnoreChange, Moderation, RoomMembership, UserId, UserProfile,
+    UserTrust, localpart, server_part,
 };
 use crate::domain::verification::{VerificationCancellation, VerificationEvent};
 use crate::error::{AppError, Result};
@@ -399,6 +399,14 @@ fn revised_caption(text: &str, sent: RichText) -> Option<RichText> {
     (!text.is_empty()).then_some(sent)
 }
 
+#[derive(Default, Clone, PartialEq, Eq)]
+enum OutgoingFlow {
+    #[default]
+    None,
+    Session,
+    Person(String),
+}
+
 struct OpenedWindow {
     all: Vec<TimelineMessage>,
     newer: usize,
@@ -414,7 +422,7 @@ struct DemoAuthed {
     arrived: Mutex<HashMap<RoomId, Vec<TimelineMessage>>>,
     verification_tx: Mutex<Option<mpsc::UnboundedSender<VerificationEvent>>>,
     sas_started: Arc<AtomicBool>,
-    outgoing_flow: AtomicBool,
+    outgoing: Arc<Mutex<OutgoingFlow>>,
     flows: Arc<AtomicU64>,
     sync_sink: Mutex<Option<SyncSink>>,
     lists: Arc<Mutex<RoomLists>>,
@@ -426,6 +434,7 @@ struct DemoAuthed {
     shared_packs: Mutex<HashMap<String, bool>>,
     identity: IdentityBook,
     encryption: EncryptionBook,
+    verified_people: user_info::VerifiedPeople,
     typing_notices: typing::NoticeClock,
     presence: presence::PresenceBook,
 }
@@ -793,6 +802,24 @@ impl DemoAuthed {
         };
         let (timeline_tx, message) = prepared;
 
+        send_patch(&timeline_tx, TimelinePatch::PushBack(message)).await;
+    }
+
+    async fn post_own_row(&self, room_id: &RoomId, message: TimelineMessage) {
+        self.keep_own_send(room_id, &message);
+        let timeline_tx = {
+            let Ok(mut guard) = self.active.lock() else {
+                return;
+            };
+            let Some(active) = guard
+                .as_mut()
+                .filter(|active| &active.room_id == room_id && active.live)
+            else {
+                return;
+            };
+            active.messages.push(message.clone());
+            active.timeline_tx.clone()
+        };
         send_patch(&timeline_tx, TimelinePatch::PushBack(message)).await;
     }
 
@@ -1232,7 +1259,7 @@ impl DemoAuthed {
     }
 
     async fn stop_verification(&self, reason: VerificationCancellation) -> Result<()> {
-        if self.outgoing_flow.swap(false, Ordering::Relaxed) {
+        if self.take_outgoing() != OutgoingFlow::None {
             self.flows.fetch_add(1, Ordering::Relaxed);
             verification::pause().await;
             let reason = match reason {
@@ -1255,18 +1282,71 @@ impl DemoAuthed {
 
     async fn confirm_own_request(&self) -> Result<()> {
         verification::pause().await;
-        if encryption::scenario().fails {
+        let for_this_session = self
+            .outgoing
+            .lock()
+            .is_ok_and(|outgoing| *outgoing == OutgoingFlow::Session);
+        if for_this_session && encryption::scenario().fails {
             return Err(unavailable("Confirming a verification"));
         }
         self.emit_verification(VerificationEvent::Confirming);
         verification::pause().await;
-        if !self.outgoing_flow.swap(false, Ordering::Relaxed) {
-            return Ok(());
+        match self.take_outgoing() {
+            OutgoingFlow::None => return Ok(()),
+            OutgoingFlow::Session => {
+                self.encryption.verified_by_another_session();
+                tracing::debug!("demo: another session verified this one");
+            }
+            OutgoingFlow::Person(user_id) => {
+                self.verified_people.verify(&user_id);
+                tracing::debug!(%user_id, "demo: verified the person");
+            }
         }
-        self.encryption.verified_by_another_session();
-        tracing::debug!("demo: another session verified this one");
         self.emit_verification(VerificationEvent::Done);
         Ok(())
+    }
+
+    fn take_outgoing(&self) -> OutgoingFlow {
+        self.outgoing
+            .lock()
+            .map(|mut outgoing| mem::take(&mut *outgoing))
+            .unwrap_or_default()
+    }
+
+    fn outgoing_runs(&self) -> bool {
+        self.outgoing
+            .lock()
+            .is_ok_and(|outgoing| *outgoing != OutgoingFlow::None)
+    }
+
+    fn begin_outgoing(&self, flow: OutgoingFlow) -> u64 {
+        if let Ok(mut outgoing) = self.outgoing.lock() {
+            *outgoing = flow;
+        }
+        self.sas_started.store(false, Ordering::Relaxed);
+        self.flows.fetch_add(1, Ordering::Relaxed).wrapping_add(1)
+    }
+
+    fn trust_of(&self, user_id: &str) -> IdentityTrust {
+        if !user_info::has_identity(user_id) {
+            return IdentityTrust::NoIdentity;
+        }
+        if self.verified_people.contains(user_id) {
+            return IdentityTrust::Verified;
+        }
+        if let Some(trust) = self.identity.trust_of(user_id) {
+            return trust;
+        }
+        if user_info::verified_from_the_start(user_id) {
+            IdentityTrust::Verified
+        } else {
+            IdentityTrust::Unverified
+        }
+    }
+
+    fn user_trust(&self, user_id: &str) -> UserTrust {
+        let identity = self.trust_of(user_id);
+        UserTrust::new(identity, user_info::devices(user_id, identity))
     }
 }
 
@@ -1680,8 +1760,8 @@ impl DemoAuthed {
         profile.direct_room = self.chat_with(user_id);
         profile.ignored = self.is_ignored(user_id);
         user_info::shape(&mut profile);
-        if let Some(trust) = self.identity.trust_of(user_id) {
-            profile.trust = trust;
+        if !profile.is_self {
+            profile.trust = self.trust_of(user_id);
         }
         if let Some(membership) = self.membership_override(room_id, user_id) {
             profile.membership = membership;
@@ -2492,6 +2572,33 @@ impl UserInfoPort for DemoAuthed {
         self.replay_live_window();
         Ok(())
     }
+
+    async fn follow_trust(
+        &self,
+        user_id: &UserId,
+        trust_tx: mpsc::Sender<UserTrust>,
+    ) -> Result<()> {
+        user_info::pause().await;
+        let mut decisions = self.identity.subscribe();
+        let mut verifications = self.verified_people.subscribe();
+        let mut reported = None;
+        loop {
+            let trust = self.user_trust(user_id);
+            if reported.as_ref() != Some(&trust) {
+                if trust_tx.send(trust.clone()).await.is_err() {
+                    return Ok(());
+                }
+                reported = Some(trust);
+            }
+            let changed = tokio::select! {
+                changed = decisions.changed() => changed,
+                changed = verifications.changed() => changed,
+            };
+            if changed.is_err() {
+                return Ok(());
+            }
+        }
+    }
 }
 
 #[async_trait]
@@ -3108,12 +3215,11 @@ impl VerificationPort for DemoAuthed {
                 "verification requests are not followed".to_owned(),
             ));
         };
-        self.outgoing_flow.store(true, Ordering::Relaxed);
-        self.sas_started.store(false, Ordering::Relaxed);
-        let flow = self.flows.fetch_add(1, Ordering::Relaxed).wrapping_add(1);
+        let flow = self.begin_outgoing(OutgoingFlow::Session);
         tracing::debug!("demo: asked the account's other sessions to verify this one");
         self.emit_verification(VerificationEvent::RequestSent {
-            own_user: data::own_user().to_owned(),
+            to: data::own_user().to_owned(),
+            is_self: true,
         });
         let flows = Arc::clone(&self.flows);
         let sas_started = Arc::clone(&self.sas_started);
@@ -3124,6 +3230,78 @@ impl VerificationPort for DemoAuthed {
                 if tx.send(verification::emojis()).is_err() {
                     tracing::debug!("demo: verification listener is gone");
                 }
+            }
+        });
+        Ok(())
+    }
+
+    async fn verify_user(&self, user_id: &UserId) -> Result<()> {
+        user_info::pause().await;
+        if user_info::scenario().verify_fails {
+            return Err(unavailable("Asking people to verify"));
+        }
+        let Some(chat) = self.chat_with(user_id) else {
+            return Err(AppError::Other(
+                "there is no direct chat with this person to send the request in".to_owned(),
+            ));
+        };
+        if self.trust_of(user_id) != IdentityTrust::Unverified {
+            return Err(AppError::Other(
+                "this person cannot be verified now".to_owned(),
+            ));
+        }
+        let Some(tx) = self
+            .verification_tx
+            .lock()
+            .ok()
+            .and_then(|guard| guard.clone())
+        else {
+            return Err(AppError::Other(
+                "verification requests are not followed".to_owned(),
+            ));
+        };
+        let flow = self.begin_outgoing(OutgoingFlow::Person(user_id.to_string()));
+        tracing::debug!(%user_id, room_id = %chat, "demo: asked the person to verify in your chat");
+        let target = NamedUser::new(user_id.to_string(), data::names_in(&chat, []).of(user_id));
+        let request =
+            data::own_verification_request(self.sent.fetch_add(1, Ordering::Relaxed), target);
+        self.post_own_row(&chat, request).await;
+        self.emit_verification(VerificationEvent::RequestSent {
+            to: user_id.to_string(),
+            is_self: false,
+        });
+        let flows = Arc::clone(&self.flows);
+        let sas_started = Arc::clone(&self.sas_started);
+        let outgoing = Arc::clone(&self.outgoing);
+        let answer = user_info::scenario().verify_answer;
+        tokio::spawn(async move {
+            let event = match answer {
+                user_info::VerifyAnswer::Emoji => {
+                    encryption::pause_sas().await;
+                    verification::emojis()
+                }
+                user_info::VerifyAnswer::Declined => {
+                    encryption::pause_sas().await;
+                    VerificationEvent::Cancelled(VerificationCancellation::Remote)
+                }
+                user_info::VerifyAnswer::Unanswered => {
+                    verification::wait_for_request().await;
+                    VerificationEvent::Cancelled(VerificationCancellation::TimedOut)
+                }
+            };
+            if flows.load(Ordering::Relaxed) != flow {
+                return;
+            }
+            let ended = matches!(event, VerificationEvent::Cancelled(_));
+            if ended && let Ok(mut outgoing) = outgoing.lock() {
+                *outgoing = OutgoingFlow::None;
+            }
+            sas_started.store(
+                matches!(event, VerificationEvent::Emojis(_)),
+                Ordering::Relaxed,
+            );
+            if tx.send(event).is_err() {
+                tracing::debug!("demo: verification listener is gone");
             }
         });
         Ok(())
@@ -3143,7 +3321,7 @@ impl VerificationPort for DemoAuthed {
     }
 
     async fn confirm_verification(&self) -> Result<()> {
-        if self.outgoing_flow.load(Ordering::Relaxed) {
+        if self.outgoing_runs() {
             return self.confirm_own_request().await;
         }
         let Some(demo) = verification::requested() else {

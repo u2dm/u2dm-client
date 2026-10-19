@@ -3,13 +3,15 @@ use std::env;
 use std::sync::{Mutex, OnceLock};
 use std::time::Duration;
 
+use tokio::sync::watch;
 use tokio::time::sleep;
 
 use super::catalog::{Flag, Scenarios};
 use super::{data, room_info};
 use crate::domain::room_info::{ADMIN_LEVEL, MODERATOR_LEVEL, MemberRole};
 use crate::domain::user_info::{
-    IdentityTrust, Moderation, ModerationPowers, Pronouns, RoomMembership, UserProfile,
+    DeviceTrust, IdentityTrust, Moderation, ModerationPowers, Pronouns, RoomMembership, UserDevice,
+    UserProfile, localpart,
 };
 
 const ENV_VAR: &str = "U2DM_DEMO_USER_INFO";
@@ -74,11 +76,28 @@ pub const CATALOG: Scenarios = Scenarios {
             effect: "Guest 1 has left and Guest 2 is banned in every room",
             note: "neither posts, so open them with the probe's open_user_info",
         },
+        Flag {
+            value: "verify-fails",
+            effect: "asking someone to verify fails, so the inline error is reachable",
+            note: "",
+        },
+        Flag {
+            value: "verify-declined",
+            effect: "the person you ask to verify declines 2s later, so the dialog stops",
+            note: "",
+        },
+        Flag {
+            value: "verify-unanswered",
+            effect: "the person you ask to verify never answers; the request expires 4s later",
+            note: "",
+        },
     ],
     notes: &[
         "a member's name, avatar and role come from the room info roster; anyone else is outside the room and is named from the global profile",
         "a started chat returns first and reaches the room list ~0.6s later, as a real sync echo does; `slow` also delays starting one",
         "an ignore change replays the open room's timeline ~0.6s later without the ignored person, the way the event cache clears every room when the ignore list echoes back",
+        "everyone has sessions: Nadia's old tablet and one of Jordan's are not verified by their owner, and Marcus has no cross-signing identity",
+        "the person you ask to verify answers 2s later with the emoji; They match verifies them for the session",
     ],
 };
 
@@ -100,6 +119,16 @@ pub struct Scenario {
     pub kick_fails: bool,
     pub ban_fails: bool,
     pub unban_fails: bool,
+    pub verify_fails: bool,
+    pub verify_answer: VerifyAnswer,
+}
+
+#[derive(Default, Clone, Copy, PartialEq, Eq)]
+pub enum VerifyAnswer {
+    #[default]
+    Emoji,
+    Declined,
+    Unanswered,
 }
 
 pub fn scenario() -> Scenario {
@@ -127,6 +156,7 @@ fn from_env() -> Scenario {
         kick_fails = scenario.kick_fails,
         ban_fails = scenario.ban_fails,
         unban_fails = scenario.unban_fails,
+        verify_fails = scenario.verify_fails,
         "demo mode: shaping the user info sheet"
     );
     scenario
@@ -145,6 +175,9 @@ fn apply(scenario: &mut Scenario, flag: &str) {
         "kick-fails" => scenario.kick_fails = true,
         "ban-fails" => scenario.ban_fails = true,
         "unban-fails" => scenario.unban_fails = true,
+        "verify-fails" => scenario.verify_fails = true,
+        "verify-declined" => scenario.verify_answer = VerifyAnswer::Declined,
+        "verify-unanswered" => scenario.verify_answer = VerifyAnswer::Unanswered,
         other => tracing::warn!("unknown {ENV_VAR} flag: {other}"),
     }
 }
@@ -184,9 +217,6 @@ pub fn shape(profile: &mut UserProfile) {
             profile.membership = RoomMembership::Banned;
         }
     }
-    if scenario.verified && !profile.is_self && data::direct_room_with(&profile.user_id).is_some() {
-        profile.trust = IdentityTrust::Verified;
-    }
     if scenario.is_slow {
         profile.pronouns = Pronouns::Unknown;
     }
@@ -222,5 +252,123 @@ fn level(role: MemberRole) -> i64 {
         MemberRole::Admin => ADMIN_LEVEL,
         MemberRole::Moderator => MODERATOR_LEVEL,
         MemberRole::Member => 0,
+    }
+}
+
+const NO_IDENTITY: &str = "@marcus:matrix.org";
+const DEVICE_ID_LEN: usize = 10;
+const DEVICE_ID_FILL: &str = "QWERTYUIOPASDFGHJKLZ";
+
+struct DemoDevice {
+    suffix: &'static str,
+    name: Option<&'static str>,
+    signed: bool,
+}
+
+const fn signed(suffix: &'static str, name: &'static str) -> DemoDevice {
+    DemoDevice {
+        suffix,
+        name: Some(name),
+        signed: true,
+    }
+}
+
+fn demo_devices(user_id: &str) -> Vec<DemoDevice> {
+    match user_id {
+        "@sarah:matrix.org" => vec![
+            signed("A", "Element X on iPhone"),
+            signed("B", "Element Web on Firefox"),
+        ],
+        "@nadia:matrix.org" => vec![
+            signed("A", "Element X on Android"),
+            DemoDevice {
+                suffix: "B",
+                name: Some("Old tablet"),
+                signed: false,
+            },
+        ],
+        "@jordan:matrix.org" => vec![
+            signed("A", "Element Desktop"),
+            signed("B", "Work laptop"),
+            DemoDevice {
+                suffix: "C",
+                name: None,
+                signed: false,
+            },
+        ],
+        NO_IDENTITY => vec![DemoDevice {
+            suffix: "A",
+            name: Some("Fractal"),
+            signed: false,
+        }],
+        _ => vec![signed("A", "Element")],
+    }
+}
+
+fn device_id(user_id: &str, suffix: &str) -> String {
+    let localpart = localpart(user_id).to_uppercase();
+    localpart
+        .chars()
+        .filter(char::is_ascii_alphabetic)
+        .chain(DEVICE_ID_FILL.chars())
+        .take(DEVICE_ID_LEN - suffix.len())
+        .chain(suffix.chars())
+        .collect()
+}
+
+pub fn has_identity(user_id: &str) -> bool {
+    user_id != NO_IDENTITY
+}
+
+pub fn verified_from_the_start(user_id: &str) -> bool {
+    scenario().verified && data::direct_room_with(user_id).is_some()
+}
+
+pub fn devices(user_id: &str, identity: IdentityTrust) -> Vec<UserDevice> {
+    demo_devices(user_id)
+        .into_iter()
+        .map(|device| UserDevice {
+            device_id: device_id(user_id, device.suffix),
+            name: device.name.map(ToOwned::to_owned),
+            trust: match (device.signed, identity) {
+                (true, IdentityTrust::Verified) => DeviceTrust::Verified,
+                (true, _) => DeviceTrust::SignedByOwner,
+                (false, _) => DeviceTrust::NotSignedByOwner,
+            },
+        })
+        .collect()
+}
+
+pub struct VerifiedPeople {
+    people: Mutex<HashSet<String>>,
+    revision: watch::Sender<u64>,
+}
+
+impl Default for VerifiedPeople {
+    fn default() -> Self {
+        Self {
+            people: Mutex::default(),
+            revision: watch::Sender::new(0),
+        }
+    }
+}
+
+impl VerifiedPeople {
+    pub fn subscribe(&self) -> watch::Receiver<u64> {
+        self.revision.subscribe()
+    }
+
+    pub fn contains(&self, user_id: &str) -> bool {
+        self.people
+            .lock()
+            .is_ok_and(|people| people.contains(user_id))
+    }
+
+    pub fn verify(&self, user_id: &str) {
+        if let Ok(mut people) = self.people.lock() {
+            people.insert(user_id.to_owned());
+        }
+        self.revision
+            .send_modify(|revision| *revision = revision.wrapping_add(1));
     }
 }

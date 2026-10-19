@@ -30,13 +30,18 @@ pub const CATALOG: Scenarios = Scenarios {
             note: "",
         },
         Flag {
+            value: "undecryptable",
+            effect: "messages whose room key this session lacks, one per cause the SDK names",
+            note: "sent before you joined, withheld from unverified sessions, withheld by the sender, history with key storage off, history before this session was verified",
+        },
+        Flag {
             value: "own",
             effect: "your message from a device you never verified, warned, and one refused",
             note: "the refused one is what an unverified U2DM shows for its own sends",
         },
         Flag {
             value: "all",
-            effect: "marks, hidden and own",
+            effect: "marks, hidden, undecryptable and own",
             note: "",
         },
     ],
@@ -55,9 +60,11 @@ const STICKER_EXTENT: u32 = 512;
 const MINUTE_MS: u64 = 60_000;
 
 #[derive(Default, Clone, Copy)]
+#[allow(clippy::struct_excessive_bools)]
 pub struct Scenario {
     pub marks: bool,
     pub hidden: bool,
+    pub undecryptable: bool,
     pub own: bool,
 }
 
@@ -77,6 +84,7 @@ fn from_env() -> Scenario {
     tracing::info!(
         marks = scenario.marks,
         hidden = scenario.hidden,
+        undecryptable = scenario.undecryptable,
         own = scenario.own,
         "demo mode: adding messages the encryption cannot vouch for"
     );
@@ -87,10 +95,12 @@ fn apply(scenario: &mut Scenario, flag: &str) {
     match flag {
         "marks" => scenario.marks = true,
         "hidden" => scenario.hidden = true,
+        "undecryptable" => scenario.undecryptable = true,
         "own" => scenario.own = true,
         "all" => {
             scenario.marks = true;
             scenario.hidden = true;
+            scenario.undecryptable = true;
             scenario.own = true;
         }
         other => tracing::warn!("unknown {ENV_VAR} flag: {other}"),
@@ -144,56 +154,56 @@ fn marked_posts() -> Vec<Post<'static>> {
         Post {
             id: "demo-shields-unsigned",
             sender: NADIA,
-            minutes_ago: 15,
+            minutes_ago: 20,
             body: text("posting from the old tablet, the one I never set up properly"),
             shield: Shield::Warning(ShieldCode::UnsignedDevice),
         },
         Post {
             id: "demo-shields-unknown",
             sender: JORDAN,
-            minutes_ago: 14,
+            minutes_ago: 19,
             body: text("is my work laptop still logged in? I wiped it last week"),
             shield: Shield::Warning(ShieldCode::UnknownDevice),
         },
         Post {
             id: "demo-shields-changed",
             sender: PRIYA,
-            minutes_ago: 13,
+            minutes_ago: 18,
             body: text("had to reset everything after my phone died, verify me again pls"),
             shield: Shield::Warning(ShieldCode::VerificationViolation),
         },
         Post {
             id: "demo-shields-mismatched",
             sender: JORDAN,
-            minutes_ago: 12,
+            minutes_ago: 17,
             body: text("standup moves to 10:30, relayed by the bridge"),
             shield: Shield::Warning(ShieldCode::MismatchedSender),
         },
         Post {
             id: "demo-shields-clear",
             sender: NADIA,
-            minutes_ago: 11,
+            minutes_ago: 16,
             body: text("this one went out unencrypted, sorry"),
             shield: Shield::Warning(ShieldCode::SentInClear),
         },
         Post {
             id: "demo-shields-backup",
             sender: PRIYA,
-            minutes_ago: 10,
+            minutes_ago: 15,
             body: text("found this in the history the key backup gave me back"),
             shield: Shield::Notice(ShieldCode::AuthenticityNotGuaranteed),
         },
         Post {
             id: "demo-shields-photo",
             sender: NADIA,
-            minutes_ago: 9,
+            minutes_ago: 14,
             body: photo(),
             shield: Shield::Warning(ShieldCode::UnsignedDevice),
         },
         Post {
             id: "demo-shields-sticker",
             sender: JORDAN,
-            minutes_ago: 8,
+            minutes_ago: 13,
             body: sticker(),
             shield: Shield::Notice(ShieldCode::AuthenticityNotGuaranteed),
         },
@@ -205,29 +215,69 @@ fn hidden_posts() -> Vec<Post<'static>> {
         Post {
             id: "demo-shields-hidden-unsigned",
             sender: JORDAN,
-            minutes_ago: 7,
+            minutes_ago: 12,
             body: hidden(DecryptionFailure::UnsignedDevice),
             shield: Shield::None,
         },
         Post {
             id: "demo-shields-hidden-unknown",
             sender: NADIA,
-            minutes_ago: 6,
+            minutes_ago: 11,
             body: hidden(DecryptionFailure::UnknownDevice),
             shield: Shield::None,
         },
         Post {
             id: "demo-shields-hidden-changed",
             sender: PRIYA,
-            minutes_ago: 5,
+            minutes_ago: 10,
             body: hidden(DecryptionFailure::VerificationViolation),
             shield: Shield::None,
         },
         Post {
             id: "demo-shields-hidden-unexplained",
             sender: NADIA,
-            minutes_ago: 4,
+            minutes_ago: 9,
             body: hidden(DecryptionFailure::Unexplained),
+            shield: Shield::None,
+        },
+    ]
+}
+
+fn undecryptable_posts() -> Vec<Post<'static>> {
+    vec![
+        Post {
+            id: "demo-shields-missing-before-join",
+            sender: JORDAN,
+            minutes_ago: 8,
+            body: hidden(DecryptionFailure::SentBeforeJoining),
+            shield: Shield::None,
+        },
+        Post {
+            id: "demo-shields-missing-withheld-unverified",
+            sender: PRIYA,
+            minutes_ago: 7,
+            body: hidden(DecryptionFailure::WithheldFromUnverified),
+            shield: Shield::None,
+        },
+        Post {
+            id: "demo-shields-missing-withheld",
+            sender: NADIA,
+            minutes_ago: 6,
+            body: hidden(DecryptionFailure::WithheldBySender),
+            shield: Shield::None,
+        },
+        Post {
+            id: "demo-shields-missing-history-no-backup",
+            sender: JORDAN,
+            minutes_ago: 5,
+            body: hidden(DecryptionFailure::HistoryWithoutBackup),
+            shield: Shield::None,
+        },
+        Post {
+            id: "demo-shields-missing-history-unverified",
+            sender: PRIYA,
+            minutes_ago: 4,
+            body: hidden(DecryptionFailure::HistoryNeedsVerification),
             shield: Shield::None,
         },
     ]
@@ -294,6 +344,9 @@ pub fn apply_scenario(room_id: &RoomId, messages: &mut Vec<TimelineMessage>, now
     }
     if scenario.hidden {
         posts.extend(hidden_posts());
+    }
+    if scenario.undecryptable {
+        posts.extend(undecryptable_posts());
     }
     if scenario.own {
         posts.extend(own_posts(own_user));

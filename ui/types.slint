@@ -1,4 +1,4 @@
-import { AudioKind, CallTileState, ChildAccess, DecryptionFailure, Delivery, EmojiArt, InviteeState, InviteKind, LogLevel, MediaFailure, MediaState, MemberRole, MemberRowKind, MessageKind, PackOrigin, PollPhase, PreviewKind, ReactionSend, RoomAccess, RoomCallMark, RoomKind, RoomRowKind, SendState, ServiceKind, Shield, ShieldReason, SpoilerState, UserMessageKind } from "./enums.slint";
+import { AudioKind, CallTileState, ChildAccess, DecryptionFailure, Delivery, DeviceTrust, EmojiArt, InviteeState, InviteKind, LogLevel, MediaFailure, MediaState, MemberRole, MemberRowKind, MessageKind, PackOrigin, PollPhase, PreviewKind, ReactionSend, RoomAccess, RoomCallMark, RoomKind, RoomRowKind, SendState, ServiceKind, Shield, ShieldReason, SpoilerState, UserMessageKind } from "./enums.slint";
 
 export struct RoomEntry {
     id: string,
@@ -99,6 +99,12 @@ export struct CallTileEntry {
     frame: image,
     mirrored: bool,
     screen: bool,
+}
+
+export struct UserDeviceEntry {
+    device-id: string,
+    name: string,
+    trust: DeviceTrust,
 }
 
 export struct StartCallRequest {

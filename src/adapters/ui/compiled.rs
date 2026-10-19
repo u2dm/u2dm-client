@@ -17,13 +17,14 @@ use u2dm_ui::{
     CallScreenRefusal as UiCallScreenRefusal, CallTileEntry, CallTileState as UiCallTileState,
     CallView, ChildAccess as UiChildAccess, ConnectionState,
     CreateRoomStatus as UiCreateRoomStatus, CreateRoomView,
-    DecryptionFailure as UiDecryptionFailure, Delivery as UiDelivery, DirectChat as UiDirectChat,
-    DirectoryView, DraftVerdict as UiDraftVerdict, EmojiArt as UiEmojiArt, EmojiEntry, EmojiRow,
-    EmojiStore, EncryptionActivity as UiEncryptionActivity,
-    EncryptionStanding as UiEncryptionStanding, EncryptionStep as UiEncryptionStep, EncryptionView,
-    IdentityAlertKind as UiIdentityAlertKind, IdentityAlertView, IdentityTrust as UiIdentityTrust,
-    InviteAnswer as UiInviteAnswer, InviteKind as UiInviteKind, InvitePeopleView, InviteView,
-    InviteeEntry, InviteeState as UiInviteeState, LogLevel as UiLogLevel, LogLineEntry,
+    DecryptionFailure as UiDecryptionFailure, Delivery as UiDelivery, DeviceTrust as UiDeviceTrust,
+    DirectChat as UiDirectChat, DirectoryView, DraftVerdict as UiDraftVerdict,
+    EmojiArt as UiEmojiArt, EmojiEntry, EmojiRow, EmojiStore,
+    EncryptionActivity as UiEncryptionActivity, EncryptionStanding as UiEncryptionStanding,
+    EncryptionStep as UiEncryptionStep, EncryptionView, IdentityAlertKind as UiIdentityAlertKind,
+    IdentityAlertView, IdentityTrust as UiIdentityTrust, InviteAnswer as UiInviteAnswer,
+    InviteKind as UiInviteKind, InvitePeopleView, InviteView, InviteeEntry,
+    InviteeState as UiInviteeState, LogLevel as UiLogLevel, LogLineEntry,
     LoginActivity as UiLoginActivity, LoginMethodKind as UiLoginMethodKind, LoginPhase, LoginView,
     MediaFailure as UiMediaFailure, MediaState as UiMediaState, MemberEntry,
     MemberRole as UiMemberRole, MemberRowKind as UiMemberRowKind, MentionWord, MentionsView,
@@ -43,10 +44,10 @@ use u2dm_ui::{
     SourceEncryption as UiSourceEncryption, SourceStatus as UiSourceStatus, SourceView,
     SpaceChildEntry, SpaceEntry, SpaceIndexStatus as UiSpaceIndexStatus, SpaceIndexView,
     SpoilerCover, SpoilerState as UiSpoilerState, TextSplice, TimelineState, TypingView,
-    UnsentView, UpgradeLink as UiUpgradeLink, UpgradeView, UserInfoView,
+    UnsentView, UpgradeLink as UiUpgradeLink, UpgradeView, UserDeviceEntry, UserInfoView,
     UserMessage as UiUserMessage, UserMessageKind as UiUserMessageKind,
     VerificationActivity as UiVerificationActivity, VerificationEmoji, VerificationPhase,
-    VerificationView, VideoView, WindowView,
+    VerificationView, VerifyOffer as UiVerifyOffer, VideoView, WindowView,
 };
 #[cfg(feature = "demo")]
 use u2dm_ui::{Probe, RoomMenu, WindowTitle};
@@ -63,14 +64,15 @@ use super::dto::{
     BodyLineDto, BodyPieceDto, CallOfferMark, CallScreenMark, CallTileDto, CallTileMark, EmojiArt,
     InviteeDto, LogLineDto, MediaFailureKind, MediaState, MemberRowDto, MemberRowKind, MessageDto,
     PackCellDto, PackRowDto, PackSurface, PackTabDto, PollAnswerDto, ReactionDto, ReactorAvatarDto,
-    RoomCallMark, RoomDto, RoomRowKind, SpaceChildDto, SpaceDto, SpoilerState, pack_surface_named,
+    RoomCallMark, RoomDto, RoomRowKind, SpaceChildDto, SpaceDto, SpoilerState, UserDeviceDto,
+    pack_surface_named,
 };
 #[cfg(feature = "demo")]
 use super::dump;
 use super::fields::{
     BodyLineFields, BodyPieceFields, CallTileFields, InviteeFields, LogLineFields, MemberRowFields,
     MessageFields, PackCellFields, PackRowFields, PackTabFields, PollAnswerFields, ReactionFields,
-    ReactorFields, RoomFields, SpaceChildFields, SpaceFields,
+    ReactorFields, RoomFields, SpaceChildFields, SpaceFields, UserDeviceFields,
 };
 use super::notices::NoticeWords;
 use super::present::{
@@ -84,20 +86,21 @@ use super::schema::{
     attachment_kinds, audio_kinds, body_line_fields, body_piece_fields, bool_props, call_cameras,
     call_mics, call_offers, call_phases, call_refusals, call_screen_refusals, call_screens,
     call_tile_fields, call_tile_marks, child_accesses, connection_states, create_room_statuses,
-    decryption_failures, deliveries, direct_chats, emoji_arts, encryption_activities,
-    encryption_standings, encryption_steps, enum_props, identity_alert_kinds, identity_trusts,
-    int_props, invite_answers, invite_kinds, invitee_fields, invitee_states, log_levels,
-    log_line_fields, login_activities, login_methods, login_phases, media_failures, media_states,
-    member_roles, member_row_fields, member_row_kinds, message_fields, message_kinds, model_props,
-    notify_modes, pack_cell_fields, pack_origins, pack_row_fields, pack_surfaces, pack_tab_fields,
-    pending_moderations, people_search_statuses, poll_answer_fields, poll_phases, presence_lines,
-    preview_kinds, reaction_fields, reaction_sends, reactor_fields, readers_statuses,
-    recovery_statuses, room_accesses, room_call_marks, room_fields, room_info_placements,
-    room_kinds, room_memberships, room_preview_statuses, room_row_kinds, room_scopes,
-    roster_statuses, send_states, service_kinds, shield_reasons, shields, simple_callbacks,
-    source_encryptions, source_statuses, space_child_fields, space_fields, space_index_statuses,
-    spoiler_states, string_props, timeline_states, upgrade_links, user_message_kinds,
-    verification_activities, verification_phases,
+    decryption_failures, deliveries, device_trusts, direct_chats, emoji_arts,
+    encryption_activities, encryption_standings, encryption_steps, enum_props,
+    identity_alert_kinds, identity_trusts, int_props, invite_answers, invite_kinds, invitee_fields,
+    invitee_states, log_levels, log_line_fields, login_activities, login_methods, login_phases,
+    media_failures, media_states, member_roles, member_row_fields, member_row_kinds,
+    message_fields, message_kinds, model_props, notify_modes, pack_cell_fields, pack_origins,
+    pack_row_fields, pack_surfaces, pack_tab_fields, pending_moderations, people_search_statuses,
+    poll_answer_fields, poll_phases, presence_lines, preview_kinds, reaction_fields,
+    reaction_sends, reactor_fields, readers_statuses, recovery_statuses, room_accesses,
+    room_call_marks, room_fields, room_info_placements, room_kinds, room_memberships,
+    room_preview_statuses, room_row_kinds, room_scopes, roster_statuses, send_states,
+    service_kinds, shield_reasons, shields, simple_callbacks, source_encryptions, source_statuses,
+    space_child_fields, space_fields, space_index_statuses, spoiler_states, string_props,
+    timeline_states, upgrade_links, user_device_fields, user_message_kinds,
+    verification_activities, verification_phases, verify_offers,
 };
 use super::session::active_models;
 use super::video::{self, millis_to_duration};
@@ -111,7 +114,7 @@ use crate::commands::view::{
     EncryptionActivity, EncryptionStep, InviteeState, JoinRefusal, LoginActivity, LoginStep,
     MicrophoneView, PendingAnswer, PendingModeration, PeopleSearchStatus, ReadersStatus,
     RoomInfoPlacement, RoomPreviewSheet, RoomScope, RosterStatus, SourceState, SpaceIndexStatus,
-    UpgradeLink,
+    UpgradeLink, VerifyOffer,
 };
 use crate::domain::auth::LoginMethod;
 use crate::domain::call::video::ScreenRefusal;
@@ -129,7 +132,7 @@ use crate::domain::room_info::MemberRole;
 use crate::domain::room_log::LogLevel;
 use crate::domain::sync::ConnectionStatus;
 use crate::domain::timeline::{SourceEncryption, TimelineStatus};
-use crate::domain::user_info::{IdentityTrust, RoomMembership};
+use crate::domain::user_info::{DeviceTrust, IdentityTrust, RoomMembership};
 use crate::domain::verification::VerificationEmoji as DomainVerificationEmoji;
 use crate::error::Result;
 use crate::ports::call::CallVideoPort;
@@ -467,6 +470,8 @@ invite_kinds!(impl_slint_enum InviteKind UiInviteKind;);
 invite_answers!(impl_slint_enum PendingAnswer UiInviteAnswer;);
 pending_moderations!(impl_slint_enum PendingModeration UiModeration;);
 identity_trusts!(impl_slint_enum IdentityTrust UiIdentityTrust;);
+verify_offers!(impl_slint_enum VerifyOffer UiVerifyOffer;);
+device_trusts!(impl_slint_enum DeviceTrust UiDeviceTrust;);
 presence_lines!(impl_slint_enum PresenceLine UiPresenceLine;);
 identity_alert_kinds!(impl_slint_enum IdentityAlertKind UiIdentityAlertKind;);
 encryption_standings!(impl_slint_enum Standing UiEncryptionStanding;);
@@ -589,6 +594,7 @@ member_row_fields!(impl_entry MemberRowDto MemberRowFields MemberEntry;);
 invitee_fields!(impl_entry InviteeDto InviteeFields InviteeEntry;);
 log_line_fields!(impl_entry LogLineDto LogLineFields LogLineEntry;);
 call_tile_fields!(impl_entry CallTileDto CallTileFields CallTileEntry;);
+user_device_fields!(impl_entry UserDeviceDto UserDeviceFields UserDeviceEntry;);
 pack_cell_fields!(impl_entry PackCellDto PackCellFields PackCell;);
 pack_tab_fields!(impl_entry PackTabDto PackTabFields PackTabEntry;);
 pack_row_fields!(impl_entry PackRowDto PackRowFields PackRow;);
@@ -617,6 +623,7 @@ impl UiBackend for CompiledBackend {
     type Invitee = InviteeEntry;
     type LogLine = LogLineEntry;
     type CallTile = CallTileEntry;
+    type UserDevice = UserDeviceEntry;
     type PackRow = PackRow;
     type PackCell = PackCell;
     type PackTab = PackTabEntry;

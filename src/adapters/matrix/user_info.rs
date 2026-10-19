@@ -1,7 +1,11 @@
+use std::pin::Pin;
 use std::sync::Arc;
 
 use async_trait::async_trait;
+use futures_util::stream::{SelectAll, select_all};
+use futures_util::{Stream, StreamExt};
 use matrix_sdk::config::RequestConfig;
+use matrix_sdk::encryption::identities::{Device, UserIdentity};
 use matrix_sdk::room::RoomMember;
 use matrix_sdk::ruma::api::client::config::{get_global_account_data, set_global_account_data};
 use matrix_sdk::ruma::api::client::membership::{ban_user, kick_user, unban_user};
@@ -15,8 +19,9 @@ use matrix_sdk::ruma::events::{GlobalAccountDataEventType, InitialStateEvent};
 use matrix_sdk::ruma::profile::{AvatarUrl, DisplayName};
 use matrix_sdk::ruma::{OwnedRoomId, OwnedUserId};
 use matrix_sdk::{Client, Room};
-use tokio::sync::Semaphore;
+use tokio::sync::{Semaphore, mpsc};
 
+use super::encryption::names;
 use super::media::fetch_avatar_thumbnails;
 use super::member_name::member_name;
 use super::permissions::{member_role, moderation_powers};
@@ -25,8 +30,8 @@ use super::session::ClientHandle;
 use crate::domain::member_name::MemberName;
 use crate::domain::room::RoomId;
 use crate::domain::user_info::{
-    GlobalProfile, IdentityTrust, IgnoreChange, Moderation, Pronouns, RoomMembership, UserId,
-    UserProfile,
+    DeviceTrust, GlobalProfile, IdentityTrust, IgnoreChange, Moderation, Pronouns, RoomMembership,
+    UserDevice, UserId, UserProfile, UserTrust,
 };
 use crate::error::{AppError, Result};
 use crate::ports::matrix::UserInfoPort;
@@ -75,11 +80,7 @@ impl MatrixUserInfo {
             return IdentityTrust::Unverified;
         };
         match client.encryption().get_user_identity(user).await {
-            Ok(Some(identity)) if identity.is_verified() => IdentityTrust::Verified,
-            Ok(Some(identity)) if identity.has_verification_violation() => {
-                IdentityTrust::NoLongerVerified
-            }
-            Ok(_) => IdentityTrust::Unverified,
+            Ok(identity) => identity_trust(identity.as_ref()),
             Err(e) => {
                 tracing::debug!(%user, "could not read the user's identity: {e}");
                 IdentityTrust::Unverified
@@ -244,6 +245,145 @@ impl UserInfoPort for MatrixUserInfo {
         }
         send_moderation(&room, user, action).await
     }
+
+    async fn follow_trust(
+        &self,
+        user_id: &UserId,
+        trust_tx: mpsc::Sender<UserTrust>,
+    ) -> Result<()> {
+        let client = self.matrix.client().await?;
+        let user = parse_user(user_id)?;
+        let own = own_user(&client)?;
+        let mut wakes = trust_wakes(&client, [user.clone(), own]).await?;
+        learn_keys_of(&client, &user).await?;
+        let mut reported = None;
+        loop {
+            match user_trust(&client, &user).await {
+                Ok(trust) if reported.as_ref() != Some(&trust) => {
+                    tracing::debug!(
+                        %user,
+                        identity = ?trust.identity,
+                        devices = trust.devices.len(),
+                        "read the user's identity and sessions"
+                    );
+                    if trust_tx.send(trust.clone()).await.is_err() {
+                        return Ok(());
+                    }
+                    reported = Some(trust);
+                }
+                Ok(_) => {}
+                Err(e) => tracing::debug!(%user, "could not read the user's sessions: {e}"),
+            }
+            if !next_wake(&mut wakes).await {
+                return Ok(());
+            }
+        }
+    }
+}
+
+fn identity_trust(identity: Option<&UserIdentity>) -> IdentityTrust {
+    match identity {
+        None => IdentityTrust::NoIdentity,
+        Some(identity) if identity.is_verified() => IdentityTrust::Verified,
+        Some(identity) if identity.has_verification_violation() => IdentityTrust::NoLongerVerified,
+        Some(_) => IdentityTrust::Unverified,
+    }
+}
+
+fn device_trust(device: &Device) -> DeviceTrust {
+    if device.is_verified() {
+        DeviceTrust::Verified
+    } else if device.is_cross_signed_by_owner() {
+        DeviceTrust::SignedByOwner
+    } else {
+        DeviceTrust::NotSignedByOwner
+    }
+}
+
+async fn user_trust(client: &Client, user: &OwnedUserId) -> Result<UserTrust> {
+    let encryption = client.encryption();
+    let identity = encryption
+        .get_user_identity(user)
+        .await
+        .map_err(|e| AppError::Other(e.to_string()))?;
+    let devices = encryption
+        .get_user_devices(user)
+        .await
+        .map_err(|e| AppError::Other(e.to_string()))?;
+    let devices = devices
+        .devices()
+        .filter(|device| !device.is_deleted() && !device.is_dehydrated())
+        .map(|device| UserDevice {
+            device_id: device.device_id().to_string(),
+            name: device.display_name().map(ToOwned::to_owned),
+            trust: device_trust(&device),
+        })
+        .collect();
+    Ok(UserTrust::new(identity_trust(identity.as_ref()), devices))
+}
+
+async fn keys_kept_for(client: &Client, user: &OwnedUserId) -> bool {
+    match client.encryption().tracked_users().await {
+        Ok(tracked) => tracked.contains(user),
+        Err(e) => {
+            tracing::debug!(%user, "could not list the users whose keys are kept: {e}");
+            true
+        }
+    }
+}
+
+async fn learn_keys_of(client: &Client, user: &OwnedUserId) -> Result<()> {
+    if keys_kept_for(client, user).await {
+        return Ok(());
+    }
+    tracing::debug!(%user, "nobody keeps this user's keys up to date; asking the homeserver");
+    client
+        .encryption()
+        .request_user_identity(user)
+        .await
+        .map(drop)
+        .map_err(|e| AppError::Other(format!("could not ask the homeserver for the keys: {e}")))
+}
+
+type TrustWakes = SelectAll<Pin<Box<dyn Stream<Item = bool> + Send>>>;
+
+async fn trust_wakes(client: &Client, people: [OwnedUserId; 2]) -> Result<TrustWakes> {
+    let encryption = client.encryption();
+    let watched = people.clone();
+    let identities = encryption
+        .user_identities_stream()
+        .await
+        .map_err(|e| AppError::Other(e.to_string()))?
+        .map(move |update| {
+            watched
+                .iter()
+                .any(|user| names(&update.new, &update.changed, user))
+        });
+    let devices = encryption
+        .devices_stream()
+        .await
+        .map_err(|e| AppError::Other(e.to_string()))?
+        .map(move |update| {
+            people
+                .iter()
+                .any(|user| names(&update.new, &update.changed, user))
+        });
+    let own_session = encryption.verification_state().map(|_| true);
+    let streams: Vec<Pin<Box<dyn Stream<Item = bool> + Send>>> = vec![
+        Box::pin(identities),
+        Box::pin(devices),
+        Box::pin(own_session),
+    ];
+    Ok(select_all(streams))
+}
+
+async fn next_wake(wakes: &mut TrustWakes) -> bool {
+    while let Some(concerns) = wakes.next().await {
+        if concerns {
+            return true;
+        }
+    }
+    false
 }
 
 async fn send_moderation(room: &Room, user: OwnedUserId, action: Moderation) -> Result<()> {

@@ -127,6 +127,8 @@ export enum UserMessageKind {
     room-link-failed,
     user-info-failed,
     direct-chat-failed,
+    user-verification-failed,
+    partner-left-chat,
     ignore-failed,
     unignore-failed,
     kick-failed,
@@ -205,6 +207,11 @@ export enum ShieldReason {
 
 export enum DecryptionFailure {
     unexplained,
+    sent-before-joining,
+    withheld-from-unverified,
+    withheld-by-sender,
+    history-without-backup,
+    history-needs-verification,
     unsigned-device,
     unknown-device,
     verification-violation,
@@ -376,6 +383,19 @@ export enum IdentityTrust {
     unverified,
     verified,
     no-longer-verified,
+    no-identity,
+}
+
+export enum VerifyOffer {
+    hidden,
+    offered,
+    requesting,
+}
+
+export enum DeviceTrust {
+    verified,
+    signed-by-owner,
+    not-signed-by-owner,
 }
 
 export enum RoomCallMark {
@@ -667,6 +687,7 @@ export enum ServiceKind {
     call-notification,
     call-video-notification,
     call-declined,
+    verification-requested,
 }
 
 export enum LoginMethodKind {

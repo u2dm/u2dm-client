@@ -46,7 +46,7 @@ use crate::domain::room_log::{LogLevel, LogLine};
 use crate::domain::room_preview::RoomPreview;
 use crate::domain::space_index::{ChildKind, SpaceChild};
 use crate::domain::timeline::EnrichmentDelta;
-use crate::domain::user_info::{Pronouns, UserProfile};
+use crate::domain::user_info::{DeviceTrust, Pronouns, UserDevice, UserProfile};
 use crate::ports::media::MediaCache;
 use crate::util::format_bytes;
 
@@ -613,6 +613,12 @@ pub struct CallTileDto {
     pub frame: Option<Image>,
     pub mirrored: bool,
     pub screen: bool,
+}
+
+pub struct UserDeviceDto {
+    pub device_id: SharedString,
+    pub name: SharedString,
+    pub trust: DeviceTrust,
 }
 
 pub struct LogLineDto {
@@ -1685,6 +1691,17 @@ pub fn request_invitee_avatar(row: &InviteeRow, media: &dyn MediaCache) {
 
 fn invitee_avatar_path(row: &InviteeRow, media: &dyn MediaCache) -> Option<PathBuf> {
     media.user_avatar_path(row.person.avatar_mxc.as_deref()?)
+}
+
+pub fn user_device_to_dto(device: &UserDevice) -> UserDeviceDto {
+    UserDeviceDto {
+        device_id: SharedString::from(device.device_id.as_str()),
+        name: device
+            .name
+            .as_deref()
+            .map_or_else(SharedString::new, SharedString::from),
+        trust: device.trust,
+    }
 }
 
 pub fn call_tile_to_dto(tile: &CallTile) -> CallTileDto {

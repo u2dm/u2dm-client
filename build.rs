@@ -149,6 +149,16 @@ const ENUM_COVERAGE: &[EnumCoverage] = &[
         falls_through: &["unverified"],
     },
     EnumCoverage {
+        slint_enum: "VerifyOffer",
+        branches_in: "ui/screens/chat/components/user-info.slint",
+        falls_through: &["hidden"],
+    },
+    EnumCoverage {
+        slint_enum: "DeviceTrust",
+        branches_in: "ui/screens/chat/components/user-info.slint",
+        falls_through: &[],
+    },
+    EnumCoverage {
         slint_enum: "PresenceLine",
         branches_in: "ui/messages.slint",
         falls_through: &["hidden"],
@@ -245,6 +255,8 @@ const ENUM_TABLES: &[(&str, &str)] = &[
     ("InviteAnswer", "invite_answers"),
     ("Moderation", "pending_moderations"),
     ("IdentityTrust", "identity_trusts"),
+    ("VerifyOffer", "verify_offers"),
+    ("DeviceTrust", "device_trusts"),
     ("PresenceLine", "presence_lines"),
     ("IdentityAlertKind", "identity_alert_kinds"),
     ("EncryptionStanding", "encryption_standings"),

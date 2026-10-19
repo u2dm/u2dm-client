@@ -20,7 +20,7 @@ use crate::domain::media::{
 use crate::domain::member_name::{MemberName, NamedUser};
 use crate::domain::message::{
     MessageBody, MessagePreviewKind, PinnedMessage, Reaction, ReadBy, ReplyInfo, RichText,
-    SendState, Shield, TimelineMessage,
+    SendState, ServiceEvent, Shield, TimelineMessage,
 };
 use crate::domain::poll::{Poll, PollAnswer, PollDraft, PollStatus};
 use crate::domain::room::{NotifyMode, Room, RoomId, Space, SpacePowers};
@@ -1162,6 +1162,32 @@ pub fn own_sticker(sequence: u64, image: &PackImage, reply: Option<ReplyInfo>) -
         timestamp: now_ms(),
         is_own: true,
         reply,
+        edited: false,
+        editable: false,
+        is_first_unread: false,
+        send_state: SendState::default(),
+        shield: Shield::None,
+        reactions: Vec::new(),
+        read_by: ReadBy::default(),
+    }
+}
+
+pub fn own_verification_request(sequence: u64, target: NamedUser) -> TimelineMessage {
+    let id = format!("demo-sent-{sequence}-verification-request");
+    TimelineMessage {
+        unique_id: id.clone(),
+        event_id: Some(id),
+        local_id: None,
+        sender_pronouns: Vec::new(),
+        sender: own_user().to_owned(),
+        sender_name: own_sender_name(),
+        sender_avatar_url: Some(own_user().to_owned()),
+        body: MessageBody::Service(ServiceEvent::VerificationRequested { target }),
+        body_emoji: BTreeMap::new(),
+        mentions_room: false,
+        timestamp: now_ms(),
+        is_own: true,
+        reply: None,
         edited: false,
         editable: false,
         is_first_unread: false,

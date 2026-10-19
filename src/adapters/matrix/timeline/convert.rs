@@ -103,15 +103,19 @@ fn decryption_failure(encrypted: &EncryptedMessage) -> DecryptionFailure {
         return DecryptionFailure::Unexplained;
     };
     match cause {
+        UtdCause::Unknown => DecryptionFailure::Unexplained,
+        UtdCause::SentBeforeWeJoined => DecryptionFailure::SentBeforeJoining,
+        UtdCause::WithheldForUnverifiedOrInsecureDevice => {
+            DecryptionFailure::WithheldFromUnverified
+        }
+        UtdCause::WithheldBySender => DecryptionFailure::WithheldBySender,
+        UtdCause::HistoricalMessageAndBackupIsDisabled => DecryptionFailure::HistoryWithoutBackup,
+        UtdCause::HistoricalMessageAndDeviceIsUnverified => {
+            DecryptionFailure::HistoryNeedsVerification
+        }
         UtdCause::UnsignedDevice => DecryptionFailure::UnsignedDevice,
         UtdCause::UnknownDevice => DecryptionFailure::UnknownDevice,
         UtdCause::VerificationViolation => DecryptionFailure::VerificationViolation,
-        UtdCause::Unknown
-        | UtdCause::SentBeforeWeJoined
-        | UtdCause::HistoricalMessageAndBackupIsDisabled
-        | UtdCause::HistoricalMessageAndDeviceIsUnverified
-        | UtdCause::WithheldForUnverifiedOrInsecureDevice
-        | UtdCause::WithheldBySender => DecryptionFailure::Unexplained,
     }
 }
 
@@ -375,6 +379,11 @@ pub(super) enum Renderable<'a> {
 
 pub(super) fn classify(content: &TimelineItemContent) -> Option<Renderable<'_>> {
     if let Some(message) = content.as_message() {
+        if let MessageType::VerificationRequest(request) = message.msgtype() {
+            return Some(Renderable::Service(ServiceEvent::VerificationRequested {
+                target: NamedUser::unnamed(request.to.as_str()),
+            }));
+        }
         return Some(Renderable::Message(message));
     }
     if let Some(sticker) = content.as_sticker() {

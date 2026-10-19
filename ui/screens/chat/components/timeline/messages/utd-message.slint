@@ -7,8 +7,26 @@ export component UtdMessage inherits Rectangle {
     in property <MessageEntry> msg;
 
     property <DecryptionFailure> failure: root.msg.decryption-failure;
+    property <bool> refused: root.failure == DecryptionFailure.unsigned-device
+        || root.failure == DecryptionFailure.unknown-device
+        || root.failure == DecryptionFailure.verification-violation;
 
     pure function reason() -> string {
+        if root.failure == DecryptionFailure.sent-before-joining {
+            return @tr("Unable to decrypt: you weren't in the room when this was sent");
+        }
+        if root.failure == DecryptionFailure.withheld-from-unverified {
+            return @tr("Unable to decrypt: the sender only shares keys with verified sessions");
+        }
+        if root.failure == DecryptionFailure.withheld-by-sender {
+            return @tr("Unable to decrypt: the sender didn't share the key with this session");
+        }
+        if root.failure == DecryptionFailure.history-without-backup {
+            return @tr("Unable to decrypt: sent before this session signed in, and key storage is off");
+        }
+        if root.failure == DecryptionFailure.history-needs-verification {
+            return @tr("Unable to decrypt: verify this session to read messages from before it signed in");
+        }
         if root.failure == DecryptionFailure.unsigned-device {
             return root.msg.is-own
                 ? @tr("Not shown: sent from one of your devices that isn't verified")
@@ -35,7 +53,7 @@ export component UtdMessage inherits Rectangle {
         alignment: start;
 
         IconDisplay {
-            icon: root.failure == DecryptionFailure.unexplained ? IconSet.LockKeyhole : IconSet.ShieldAlert;
+            icon: root.refused ? IconSet.ShieldAlert : IconSet.LockKeyhole;
             size: IconSize.sm;
             stroke: AppStyle.overlay-foreground-muted;
         }

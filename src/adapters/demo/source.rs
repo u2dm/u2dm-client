@@ -155,7 +155,12 @@ fn is_state_event(body: &MessageBody) -> bool {
     matches!(
         body,
         MessageBody::Service(service)
-            if !matches!(service, ServiceEvent::CallStarted | ServiceEvent::CallNotification { .. })
+            if !matches!(
+                service,
+                ServiceEvent::CallStarted
+                    | ServiceEvent::CallNotification { .. }
+                    | ServiceEvent::VerificationRequested { .. }
+            )
     )
 }
 
@@ -183,6 +188,7 @@ fn service_type(service: &ServiceEvent) -> &'static str {
         }
         ServiceEvent::CallStarted => "m.call.invite",
         ServiceEvent::CallNotification { .. } => "m.rtc.notification",
+        ServiceEvent::VerificationRequested { .. } => "m.room.message",
         ServiceEvent::Joined
         | ServiceEvent::Left
         | ServiceEvent::Invited { .. }
@@ -245,7 +251,8 @@ fn state_key<'a>(service: &ServiceEvent, sender: &'a str) -> Option<&'a str> {
         | ServiceEvent::KnockAccepted { .. }
         | ServiceEvent::KnockDenied { .. }
         | ServiceEvent::CallStarted
-        | ServiceEvent::CallNotification { .. } => None,
+        | ServiceEvent::CallNotification { .. }
+        | ServiceEvent::VerificationRequested { .. } => None,
     }
 }
 
@@ -283,6 +290,17 @@ fn service_content(service: &ServiceEvent) -> Value {
             json!({ "call_id": "demo-call", "version": "1", "lifetime": 60_000 })
         }
         ServiceEvent::CallNotification { .. } => json!({ "notification_type": "ring" }),
+        ServiceEvent::VerificationRequested { target } => json!({
+            "msgtype": "m.key.verification.request",
+            "body": format!(
+                "{} is requesting to verify your key, but your client does not support in-chat \
+                 key verification. You will need to use legacy key verification to verify keys.",
+                data::own_user()
+            ),
+            "from_device": data::session().device_id,
+            "methods": ["m.sas.v1"],
+            "to": target.user_id,
+        }),
         ServiceEvent::JoinRuleChanged(rule) => join_rule_content(rule),
         ServiceEvent::HistoryVisibilityChanged(visibility) => {
             json!({ "history_visibility": history_value(*visibility) })

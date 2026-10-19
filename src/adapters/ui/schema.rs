@@ -232,6 +232,7 @@ macro_rules! simple_callbacks {
         on_close_user_info "close-user-info" close_user_info plain CloseUserInfo;
         on_retry_user_info "retry-user-info" retry_user_info plain RetryUserInfo;
         on_message_user "message-user" message_user user MessageUser;
+        on_verify_user "verify-user" verify_user user VerifyUser;
         on_ignore_user "ignore-user" ignore_user user IgnoreUser;
         on_unignore_user "unignore-user" unignore_user user UnignoreUser;
         on_kick_user "kick-user" kick_user user KickUser;
@@ -382,6 +383,7 @@ macro_rules! bool_props {
         UserInfoMayKick UserInfoView "UserInfoView" "may-kick" set_may_kick get_may_kick;
         UserInfoMayBan UserInfoView "UserInfoView" "may-ban" set_may_ban get_may_ban;
         UserInfoMayUnban UserInfoView "UserInfoView" "may-unban" set_may_unban get_may_unban;
+        UserInfoSessionsKnown UserInfoView "UserInfoView" "sessions-known" set_sessions_known get_sessions_known;
         RoomLogVisible RoomLogView "RoomLogView" "visible" set_visible get_visible;
         ReadersHasMore ReadersView "ReadersView" "has-more" set_has_more get_has_more;
         MentionsOfferRoom MentionsView "MentionsView" "offers-room" set_offers_room get_offers_room;
@@ -507,6 +509,8 @@ macro_rules! enum_props {
             UserInfoView "UserInfoView" "moderating" set_moderating get_moderating;
         UserInfoIdentity set_user_info_identity(IdentityTrust)
             UserInfoView "UserInfoView" "identity" set_identity get_identity;
+        UserInfoVerify set_user_info_verify(VerifyOffer)
+            UserInfoView "UserInfoView" "verify" set_verify get_verify;
         PresencePartner set_presence_partner(PresenceLine)
             PresenceView "PresenceView" "partner" set_partner get_partner;
         PresencePerson set_presence_person(PresenceLine)
@@ -585,6 +589,7 @@ macro_rules! model_props {
         invitee_picks Invitee VecModel InvitePeopleView "InvitePeopleView" "picked" set_picked;
         room_log LogLine SpliceModel RoomLogView "RoomLogView" "lines" set_lines;
         call_tiles CallTile VecModel CallView "CallView" "tiles" set_tiles;
+        user_devices UserDevice VecModel UserInfoView "UserInfoView" "devices" set_devices;
     } };
 }
 pub(crate) use model_props;
@@ -766,6 +771,8 @@ macro_rules! user_message_kinds {
         RoomLinkFailed            RoomLinkFailed          "room-link-failed";
         UserInfoFailed            UserInfoFailed          "user-info-failed";
         DirectChatFailed          DirectChatFailed        "direct-chat-failed";
+        UserVerificationFailed    UserVerificationFailed  "user-verification-failed";
+        PartnerLeftChat           PartnerLeftChat         "partner-left-chat";
         IgnoreFailed              IgnoreFailed            "ignore-failed";
         UnignoreFailed            UnignoreFailed          "unignore-failed";
         KickFailed                KickFailed              "kick-failed";
@@ -886,10 +893,15 @@ pub(crate) use shield_reasons;
 
 macro_rules! decryption_failures {
     ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
-        Unexplained           Unexplained           "unexplained";
-        UnsignedDevice        UnsignedDevice        "unsigned-device";
-        UnknownDevice         UnknownDevice         "unknown-device";
-        VerificationViolation VerificationViolation "verification-violation";
+        Unexplained              Unexplained              "unexplained";
+        SentBeforeJoining        SentBeforeJoining        "sent-before-joining";
+        WithheldFromUnverified   WithheldFromUnverified   "withheld-from-unverified";
+        WithheldBySender         WithheldBySender         "withheld-by-sender";
+        HistoryWithoutBackup     HistoryWithoutBackup     "history-without-backup";
+        HistoryNeedsVerification HistoryNeedsVerification "history-needs-verification";
+        UnsignedDevice           UnsignedDevice           "unsigned-device";
+        UnknownDevice            UnknownDevice            "unknown-device";
+        VerificationViolation    VerificationViolation    "verification-violation";
     } };
 }
 pub(crate) use decryption_failures;
@@ -1068,9 +1080,28 @@ macro_rules! identity_trusts {
         Unverified       Unverified       "unverified";
         Verified         Verified         "verified";
         NoLongerVerified NoLongerVerified "no-longer-verified";
+        NoIdentity       NoIdentity       "no-identity";
     } };
 }
 pub(crate) use identity_trusts;
+
+macro_rules! verify_offers {
+    ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
+        Hidden     Hidden     "hidden";
+        Offered    Offered    "offered";
+        Requesting Requesting "requesting";
+    } };
+}
+pub(crate) use verify_offers;
+
+macro_rules! device_trusts {
+    ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
+        Verified         Verified         "verified";
+        SignedByOwner    SignedByOwner    "signed-by-owner";
+        NotSignedByOwner NotSignedByOwner "not-signed-by-owner";
+    } };
+}
+pub(crate) use device_trusts;
 
 macro_rules! identity_alert_kinds {
     ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
@@ -1492,6 +1523,7 @@ macro_rules! service_kinds {
         CallNotification   CallNotification   "call-notification";
         CallVideoNotification CallVideoNotification "call-video-notification";
         CallDeclined       CallDeclined       "call-declined";
+        VerificationRequested VerificationRequested "verification-requested";
     } };
 }
 pub(crate) use service_kinds;
@@ -1742,6 +1774,15 @@ macro_rules! call_tile_fields {
     } };
 }
 pub(crate) use call_tile_fields;
+
+macro_rules! user_device_fields {
+    ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
+        device_id set_device_id "device-id" text;
+        name set_name "name" text;
+        trust set_trust "trust" enumk(DeviceTrust);
+    } };
+}
+pub(crate) use user_device_fields;
 
 macro_rules! log_line_fields {
     ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*

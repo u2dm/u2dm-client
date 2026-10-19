@@ -5,21 +5,24 @@ use std::time::Duration;
 
 use async_trait::async_trait;
 use futures_util::{Stream, StreamExt, stream};
-use matrix_sdk::Client;
 use matrix_sdk::encryption::verification::{
     CancelInfo, Emoji, EmojiShortAuthString, SasState, SasVerification, Verification,
     VerificationRequest, VerificationRequestState,
 };
 use matrix_sdk::event_handler::EventHandlerDropGuard;
+use matrix_sdk::ruma::OwnedUserId;
 use matrix_sdk::ruma::events::key::verification::VerificationMethod;
 use matrix_sdk::ruma::events::key::verification::cancel::CancelCode;
 use matrix_sdk::ruma::events::key::verification::request::ToDeviceKeyVerificationRequestEvent;
+use matrix_sdk::ruma::events::room::member::MembershipState;
 use matrix_sdk::ruma::events::room::message::{MessageType, OriginalSyncRoomMessageEvent};
+use matrix_sdk::{Client, Room};
 use tokio::sync::{Mutex, mpsc};
 use tokio::time::timeout;
 
 use super::session::{ClientHandle, SessionResource};
-use super::user_info::own_user;
+use super::user_info::{own_user, parse_user};
+use crate::domain::user_info::UserId;
 use crate::domain::verification::{VerificationCancellation, VerificationEmoji, VerificationEvent};
 use crate::error::{AppError, Result};
 use crate::ports::matrix::VerificationPort;
@@ -135,11 +138,18 @@ async fn listen_for_verification(
 
 fn announcement(request: &VerificationRequest, sender: String) -> VerificationEvent {
     let flow_id = request.flow_id();
-    if request.we_started() {
-        tracing::info!(%flow_id, "asked the account's other sessions to verify this one");
-        return VerificationEvent::RequestSent { own_user: sender };
-    }
     let is_self = request.is_self_verification();
+    if request.we_started() {
+        if is_self {
+            tracing::info!(%flow_id, "asked the account's other sessions to verify this one");
+        } else {
+            tracing::info!(%flow_id, user = %sender, "asked the user to verify in your direct chat");
+        }
+        return VerificationEvent::RequestSent {
+            to: sender,
+            is_self,
+        };
+    }
     tracing::info!(%sender, is_self, %flow_id, "verification request received");
     VerificationEvent::Requested { sender, is_self }
 }
@@ -568,6 +578,75 @@ async fn verify_this_session(
     Ok(())
 }
 
+async fn verify_user(
+    client: &Client,
+    user_id: &UserId,
+    verification_request: &Mutex<Option<VerificationRequest>>,
+    outgoing: &Mutex<Option<mpsc::Sender<VerificationRequest>>>,
+) -> Result<()> {
+    if verification_request.lock().await.is_some() {
+        return Err(AppError::Other("a verification is already running".into()));
+    }
+    let queue = outgoing
+        .lock()
+        .await
+        .clone()
+        .ok_or_else(|| AppError::Other("verification requests are not followed".into()))?;
+    let user = parse_user(user_id)?;
+    let encryption = client.encryption();
+    let can_sign = encryption
+        .cross_signing_status()
+        .await
+        .is_some_and(|status| status.has_user_signing);
+    if !can_sign {
+        return Err(AppError::Other(
+            "this session holds no user-signing key, so it cannot verify anyone".into(),
+        ));
+    }
+    let room = client.get_dm_room(&user).ok_or_else(|| {
+        AppError::Other("there is no direct chat with this person to send the request in".into())
+    })?;
+    ensure_partner_in(&room, &user).await?;
+    let identity = match encryption.get_user_identity(&user).await {
+        Ok(Some(identity)) => identity,
+        Ok(None) => encryption
+            .request_user_identity(&user)
+            .await?
+            .ok_or_else(|| AppError::Other("this person has no cross-signing identity".into()))?,
+        Err(e) => return Err(AppError::Other(e.to_string())),
+    };
+    if identity.is_verified() {
+        return Err(AppError::Other("this person is already verified".into()));
+    }
+    let request = identity
+        .request_verification_with_methods(vec![VerificationMethod::SasV1])
+        .await
+        .map_err(|e| AppError::Other(format!("could not send the verification request: {e}")))?;
+    tracing::info!(room_id = %room.room_id(), %user, "sent a verification request to the direct chat");
+    if let Err(refused) = queue.try_send(request) {
+        refused.into_inner().cancel().await.ok();
+        return Err(AppError::Other(
+            "the verification request could not be followed".into(),
+        ));
+    }
+    Ok(())
+}
+
+async fn ensure_partner_in(room: &Room, user: &OwnedUserId) -> Result<()> {
+    match room.get_member(user).await {
+        Ok(Some(member))
+            if !matches!(
+                member.membership(),
+                MembershipState::Join | MembershipState::Invite
+            ) =>
+        {
+            Err(AppError::PartnerLeftChat)
+        }
+        Ok(_) => Ok(()),
+        Err(e) => Err(AppError::Other(e.to_string())),
+    }
+}
+
 async fn accept_verification(
     verification_request: &Mutex<Option<VerificationRequest>>,
 ) -> Result<()> {
@@ -665,6 +744,16 @@ impl VerificationPort for MatrixVerification {
 
     async fn verify_this_session(&self) -> Result<()> {
         verify_this_session(&self.matrix.client().await?, &self.request, &self.outgoing).await
+    }
+
+    async fn verify_user(&self, user_id: &UserId) -> Result<()> {
+        verify_user(
+            &self.matrix.client().await?,
+            user_id,
+            &self.request,
+            &self.outgoing,
+        )
+        .await
     }
 
     async fn accept_verification(&self) -> Result<()> {

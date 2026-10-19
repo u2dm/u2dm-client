@@ -1,20 +1,21 @@
 use crate::adapters::ui::IdentityAlertKind;
 use crate::adapters::ui::schema::{
     attachment_kinds, audio_kinds, child_accesses, connection_states, create_room_statuses,
-    direct_chats, encryption_activities, encryption_standings, encryption_steps, enum_names,
-    identity_alert_kinds, identity_trusts, invite_answers, invite_kinds, invitee_states,
-    log_levels, login_activities, login_methods, login_phases, member_roles, notify_modes,
-    pending_moderations, people_search_statuses, presence_lines, preview_kinds, readers_statuses,
-    recovery_statuses, room_accesses, room_info_placements, room_kinds, room_memberships,
-    room_preview_statuses, room_scopes, roster_statuses, source_encryptions, source_statuses,
-    space_index_statuses, upgrade_links, user_message_kinds, variant_named,
+    device_trusts, direct_chats, encryption_activities, encryption_standings, encryption_steps,
+    enum_names, identity_alert_kinds, identity_trusts, invite_answers, invite_kinds,
+    invitee_states, log_levels, login_activities, login_methods, login_phases, member_roles,
+    notify_modes, pending_moderations, people_search_statuses, presence_lines, preview_kinds,
+    readers_statuses, recovery_statuses, room_accesses, room_info_placements, room_kinds,
+    room_memberships, room_preview_statuses, room_scopes, roster_statuses, source_encryptions,
+    source_statuses, space_index_statuses, upgrade_links, user_message_kinds, variant_named,
+    verify_offers,
 };
 use crate::commands::messages::UserMessageKind;
 use crate::commands::view::{
     AttachmentKind, ChildAccess, CreateRoomStatus, DirectChat, EncryptionActivity, EncryptionStep,
     InviteeState, LoginActivity, LoginStep, PendingAnswer, PendingModeration, PeopleSearchStatus,
     ReadersStatus, RoomInfoPlacement, RoomPreviewSheet, RoomScope, RosterStatus, SourceState,
-    SpaceIndexStatus, UpgradeLink,
+    SpaceIndexStatus, UpgradeLink, VerifyOffer,
 };
 use crate::domain::auth::LoginMethod;
 use crate::domain::encryption::{Recovery, Standing};
@@ -28,7 +29,7 @@ use crate::domain::room_info::MemberRole;
 use crate::domain::room_log::LogLevel;
 use crate::domain::sync::ConnectionStatus;
 use crate::domain::timeline::SourceEncryption;
-use crate::domain::user_info::{IdentityTrust, RoomMembership};
+use crate::domain::user_info::{DeviceTrust, IdentityTrust, RoomMembership};
 
 login_phases!(enum_names val login_step LoginStep;);
 login_activities!(enum_names val login_activity LoginActivity;);
@@ -54,6 +55,8 @@ invite_kinds!(enum_names val invite_kind InviteKind;);
 invite_answers!(enum_names val pending_answer PendingAnswer;);
 pending_moderations!(enum_names val pending_moderation PendingModeration;);
 identity_trusts!(enum_names val identity_trust IdentityTrust;);
+verify_offers!(enum_names val verify_offer VerifyOffer;);
+device_trusts!(enum_names val device_trust DeviceTrust;);
 presence_lines!(enum_names val presence_line PresenceLine;);
 identity_alert_kinds!(enum_names val identity_alert_kind IdentityAlertKind;);
 encryption_standings!(enum_names val encryption_standing Standing;);

@@ -1,5 +1,7 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
+
+use tokio::sync::mpsc;
 
 use super::event::{AppEvent, UserInfoEvent};
 use super::input::EventSender;
@@ -8,14 +10,18 @@ use super::show_toast;
 use super::task_group::TaskGroup;
 use crate::commands::messages::{UserMessage, UserMessageKind};
 use crate::commands::view::{
-    CardStatus, DirectChat, PendingModeration, Toast, UserCard, UserInfoView,
+    CardStatus, DirectChat, PendingModeration, Toast, UserCard, UserInfoView, VerifyOffer,
 };
 use crate::domain::room::{Room, RoomId};
 use crate::domain::user_info::{
-    GlobalProfile, IgnoreChange, Moderation, Pronouns, RoomMembership, UserId, UserProfile,
+    GlobalProfile, IdentityTrust, IgnoreChange, Moderation, Pronouns, RoomMembership, UserId,
+    UserProfile, UserTrust,
 };
-use crate::ports::matrix::UserInfoPort;
+use crate::error::AppError;
+use crate::ports::matrix::{UserInfoPort, VerificationPort};
 use crate::ports::output::AppOutputPort;
+
+const TRUST_CHANNEL_CAP: usize = 8;
 
 pub(super) enum ReadOutcome {
     Loaded(Box<UserProfile>),
@@ -27,6 +33,18 @@ pub(super) enum DmOutcome {
     Failed,
 }
 
+#[derive(Clone, Copy)]
+pub(super) enum VerifyOutcome {
+    Sent,
+    PartnerLeft,
+    Failed,
+}
+
+pub(super) enum ChatReady {
+    Open(RoomId),
+    Verify(UserId),
+}
+
 enum Card {
     Reading,
     Loaded(UserProfile),
@@ -34,9 +52,23 @@ enum Card {
     Retrying,
 }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum AfterStart {
+    Open,
+    Verify,
+}
+
 enum DmStart {
-    Requested,
-    AwaitingSync(RoomId),
+    Requested(AfterStart),
+    AwaitingSync(RoomId, AfterStart),
+}
+
+impl DmStart {
+    fn then(&self) -> AfterStart {
+        match self {
+            Self::Requested(then) | Self::AwaitingSync(_, then) => *then,
+        }
+    }
 }
 
 type Seat = (RoomId, UserId);
@@ -44,6 +76,7 @@ type Seat = (RoomId, UserId);
 #[derive(Clone, Copy)]
 struct SheetActions {
     direct: DirectChat,
+    verify: VerifyOffer,
     ignore_busy: bool,
     moderating: PendingModeration,
 }
@@ -54,6 +87,8 @@ struct OpenSheet {
     generation: u64,
     card: Card,
     direct_listed: bool,
+    trust: Option<UserTrust>,
+    following_trust: bool,
     avatars_ready: usize,
     error: UserMessage,
 }
@@ -98,6 +133,11 @@ impl OpenSheet {
                 status,
             }),
             direct: actions.direct,
+            verify: actions.verify,
+            sessions: self
+                .trust
+                .as_ref()
+                .map(|trust| Arc::from(trust.devices.as_slice())),
             ignore_busy: actions.ignore_busy,
             moderating: actions.moderating,
             avatars_ready: self.avatars_ready,
@@ -108,6 +148,21 @@ impl OpenSheet {
     fn placeholder(&self) -> UserProfile {
         UserProfile::placeholder(self.user_id.clone())
     }
+
+    fn identity(&self) -> Option<IdentityTrust> {
+        self.trust.as_ref().map(|trust| trust.identity)
+    }
+
+    fn chat_holds_requests(&self, rooms: &[Arc<Room>]) -> bool {
+        self.direct_room().is_some() || direct_with(rooms, &self.user_id).is_some()
+    }
+}
+
+fn direct_with<'a>(rooms: &'a [Arc<Room>], user_id: &UserId) -> Option<&'a RoomId> {
+    rooms
+        .iter()
+        .find(|room| room.direct_partner.as_ref() == Some(user_id))
+        .map(|room| &room.id)
 }
 
 enum Lookup {
@@ -123,6 +178,8 @@ pub(super) struct UserInfo {
     generation: u64,
     open: Option<OpenSheet>,
     starting: HashMap<UserId, DmStart>,
+    verifying: HashSet<UserId>,
+    session_verified: bool,
     ignoring: HashMap<UserId, IgnoreChange>,
     accepted_ignores: HashMap<UserId, bool>,
     moderating: HashMap<Seat, Moderation>,
@@ -139,6 +196,8 @@ impl UserInfo {
             generation: 0,
             open: None,
             starting: HashMap::new(),
+            verifying: HashSet::new(),
+            session_verified: false,
             ignoring: HashMap::new(),
             accepted_ignores: HashMap::new(),
             moderating: HashMap::new(),
@@ -174,6 +233,8 @@ impl UserInfo {
             generation,
             card: Card::Reading,
             direct_listed: false,
+            trust: None,
+            following_trust: false,
             avatars_ready: 0,
             error: UserMessage::default(),
         });
@@ -246,9 +307,17 @@ impl UserInfo {
             .direct_room
             .as_ref()
             .is_some_and(|room_id| listed(rooms, room_id));
+        if let Some(identity) = open.identity() {
+            profile.trust = identity;
+        }
+        let follows_trust = !profile.is_self && !open.following_trust;
+        open.following_trust |= follows_trust;
         open.card = Card::Loaded(profile);
         open.error = UserMessage::default();
         self.publish();
+        if follows_trust {
+            self.spawn_trust_follow(Arc::clone(&port), user_id.clone(), generation);
+        }
         match lookup {
             Some(Lookup::Global) => {
                 self.spawn_global_profile(Arc::clone(&port), user_id, generation);
@@ -292,6 +361,30 @@ impl UserInfo {
         }
     }
 
+    pub(super) fn trust_changed(&mut self, generation: u64, trust: UserTrust) {
+        let Some(open) = self
+            .open
+            .as_mut()
+            .filter(|open| open.generation == generation)
+        else {
+            tracing::debug!(generation, "dropping a superseded identity read");
+            return;
+        };
+        if let Some(profile) = open.loaded_mut() {
+            profile.trust = trust.identity;
+        }
+        open.trust = Some(trust);
+        self.publish();
+    }
+
+    pub(super) fn session_trust_changed(&mut self, verified: bool) {
+        if self.session_verified == verified {
+            return;
+        }
+        self.session_verified = verified;
+        self.publish();
+    }
+
     pub(super) fn avatar_ready(&mut self, generation: u64) {
         let Some(open) = self
             .open
@@ -316,7 +409,7 @@ impl UserInfo {
             DirectChat::Open => profile.direct_room.clone(),
             DirectChat::Start => {
                 let name = profile.shown();
-                self.start_dm(port, user_id.clone(), name);
+                self.start_dm(port, user_id.clone(), name, AfterStart::Open);
                 None
             }
             DirectChat::Hidden | DirectChat::Starting => {
@@ -326,17 +419,105 @@ impl UserInfo {
         }
     }
 
+    pub(super) fn verify(
+        &mut self,
+        users: Arc<dyn UserInfoPort>,
+        verification: Arc<dyn VerificationPort>,
+        user_id: &UserId,
+        rooms: &[Arc<Room>],
+    ) {
+        let Some(open) = self.open.as_ref().filter(|open| open.user_id == *user_id) else {
+            return;
+        };
+        if self.verify_offer(open) != VerifyOffer::Offered {
+            tracing::debug!(%user_id, "ignoring a verification the sheet does not offer");
+            return;
+        }
+        if open.chat_holds_requests(rooms) {
+            self.request_verification(verification, user_id.clone());
+            return;
+        }
+        let Some(name) = open.profile().map(UserProfile::shown) else {
+            return;
+        };
+        tracing::debug!(%user_id, "no direct chat to send the verification request in; starting one");
+        self.start_dm(users, user_id.clone(), name, AfterStart::Verify);
+    }
+
+    pub(super) fn request_verification(
+        &mut self,
+        port: Arc<dyn VerificationPort>,
+        user_id: UserId,
+    ) {
+        if !self.verifying.insert(user_id.clone()) {
+            tracing::debug!(%user_id, "a verification request is already on its way");
+            return;
+        }
+        let name = self.shown_name(&user_id);
+        self.clear_error(&user_id);
+        self.publish();
+
+        let events = self.events.clone();
+        let cancel = self.actions.token();
+        self.actions.spawn(async move {
+            let outcome = tokio::select! {
+                () = cancel.cancelled() => return,
+                sent = port.verify_user(&user_id) => match sent {
+                    Ok(()) => VerifyOutcome::Sent,
+                    Err(AppError::PartnerLeftChat) => {
+                        tracing::warn!(%user_id, "the person left the direct chat; not asking them to verify");
+                        VerifyOutcome::PartnerLeft
+                    }
+                    Err(e) => {
+                        tracing::warn!(%user_id, "failed to ask the person to verify: {e}");
+                        VerifyOutcome::Failed
+                    }
+                },
+            };
+            let settled = UserInfoEvent::VerifySettled {
+                user_id,
+                name,
+                outcome,
+            };
+            drop(events.send(AppEvent::UserInfo(settled)));
+        });
+    }
+
+    pub(super) fn verify_settled(&mut self, user_id: &UserId, name: &str, outcome: VerifyOutcome) {
+        if !self.verifying.remove(user_id) {
+            tracing::debug!(%user_id, "dropping a verification request nobody is waiting for");
+            return;
+        }
+        match outcome {
+            VerifyOutcome::Sent => {}
+            VerifyOutcome::PartnerLeft => {
+                self.report(
+                    user_id,
+                    UserMessage::about(UserMessageKind::PartnerLeftChat, &name),
+                );
+            }
+            VerifyOutcome::Failed => {
+                self.report(
+                    user_id,
+                    UserMessage::about(UserMessageKind::UserVerificationFailed, &name),
+                );
+            }
+        }
+        self.publish();
+    }
+
     pub(super) fn dm_started(
         &mut self,
         user_id: UserId,
         name: &str,
         outcome: DmOutcome,
         rooms: &[Arc<Room>],
-    ) -> Option<RoomId> {
-        if self.starting.remove(&user_id).is_none() {
+    ) -> Option<ChatReady> {
+        let Some(start) = self.starting.remove(&user_id) else {
             tracing::debug!(%user_id, "dropping a started chat nobody is waiting for");
             return None;
-        }
+        };
+        let then = start.then();
         let room_id = match outcome {
             DmOutcome::Started(room_id) => room_id,
             DmOutcome::Failed => {
@@ -357,17 +538,17 @@ impl UserInfo {
             self.publish();
             return None;
         }
-        if listed(rooms, &room_id) {
-            return Some(room_id);
+        if let Some(ready) = chat_ready(rooms, &room_id, &user_id, then) {
+            return Some(ready);
         }
         tracing::debug!(%user_id, %room_id, "started a chat, waiting for the room list to show it");
         self.starting
-            .insert(user_id, DmStart::AwaitingSync(room_id));
+            .insert(user_id, DmStart::AwaitingSync(room_id, then));
         self.publish();
         None
     }
 
-    pub(super) fn follow(&mut self, rooms: &[Arc<Room>]) -> Option<RoomId> {
+    pub(super) fn follow(&mut self, rooms: &[Arc<Room>]) -> Option<ChatReady> {
         let open = self.open.as_mut()?;
         let direct_listed = open
             .direct_room()
@@ -375,8 +556,10 @@ impl UserInfo {
         let moved = open.direct_listed != direct_listed;
         open.direct_listed = direct_listed;
         let arrived = match self.starting.get(&open.user_id) {
-            Some(DmStart::AwaitingSync(room_id)) if listed(rooms, room_id) => Some(room_id.clone()),
-            Some(DmStart::Requested | DmStart::AwaitingSync(_)) | None => None,
+            Some(DmStart::AwaitingSync(room_id, then)) => {
+                chat_ready(rooms, room_id, &open.user_id, *then)
+            }
+            Some(DmStart::Requested(_)) | None => None,
         };
         if arrived.is_some() {
             let user_id = open.user_id.clone();
@@ -561,6 +744,8 @@ impl UserInfo {
         tokio::join!(self.tasks.restart(), self.actions.restart());
         self.open = None;
         self.starting.clear();
+        self.verifying.clear();
+        self.session_verified = false;
         self.ignoring.clear();
         self.accepted_ignores.clear();
         self.moderating.clear();
@@ -588,9 +773,42 @@ impl UserInfo {
         }
     }
 
+    fn verify_offer(&self, open: &OpenSheet) -> VerifyOffer {
+        let Some(profile) = open.profile() else {
+            return VerifyOffer::Hidden;
+        };
+        if profile.is_self || !self.session_verified {
+            return VerifyOffer::Hidden;
+        }
+        let start = self.starting.get(&open.user_id).map(DmStart::then);
+        if self.verifying.contains(&open.user_id) || start == Some(AfterStart::Verify) {
+            return VerifyOffer::Requesting;
+        }
+        if start.is_some() {
+            return VerifyOffer::Hidden;
+        }
+        match open.identity() {
+            Some(IdentityTrust::Unverified) => VerifyOffer::Offered,
+            Some(
+                IdentityTrust::Verified
+                | IdentityTrust::NoLongerVerified
+                | IdentityTrust::NoIdentity,
+            )
+            | None => VerifyOffer::Hidden,
+        }
+    }
+
+    fn shown_name(&self, user_id: &UserId) -> String {
+        self.open
+            .as_ref()
+            .filter(|open| open.user_id == *user_id)
+            .and_then(OpenSheet::profile)
+            .map_or_else(|| user_id.to_string(), UserProfile::shown)
+    }
+
     fn forget_awaited_chats(&mut self) {
         self.starting
-            .retain(|_, start| matches!(start, DmStart::Requested));
+            .retain(|_, start| matches!(start, DmStart::Requested(_)));
     }
 
     fn clear_error(&mut self, user_id: &UserId) {
@@ -613,8 +831,15 @@ impl UserInfo {
             .and_then(OpenSheet::loaded_mut)
     }
 
-    fn start_dm(&mut self, port: Arc<dyn UserInfoPort>, user_id: UserId, name: String) {
-        self.starting.insert(user_id.clone(), DmStart::Requested);
+    fn start_dm(
+        &mut self,
+        port: Arc<dyn UserInfoPort>,
+        user_id: UserId,
+        name: String,
+        then: AfterStart,
+    ) {
+        self.starting
+            .insert(user_id.clone(), DmStart::Requested(then));
         self.clear_error(&user_id);
         self.publish();
         let events = self.events.clone();
@@ -705,6 +930,35 @@ impl UserInfo {
         });
     }
 
+    fn spawn_trust_follow(
+        &mut self,
+        port: Arc<dyn UserInfoPort>,
+        user_id: UserId,
+        generation: u64,
+    ) {
+        let events = self.events.clone();
+        let cancel = self.tasks.token();
+        self.tasks.spawn(async move {
+            let (trust_tx, mut trust_rx) = mpsc::channel(TRUST_CHANNEL_CAP);
+            let follow = async {
+                if let Err(e) = port.follow_trust(&user_id, trust_tx).await {
+                    tracing::debug!(%user_id, "stopped following the user's sessions: {e}");
+                }
+            };
+            let forward = async {
+                while let Some(trust) = trust_rx.recv().await {
+                    let changed = UserInfoEvent::TrustChanged { generation, trust };
+                    if events.send(AppEvent::UserInfo(changed)).is_err() {
+                        break;
+                    }
+                }
+            };
+            cancel
+                .run_until_cancelled(async { tokio::join!(follow, forward) })
+                .await;
+        });
+    }
+
     fn spawn_avatar(&mut self, port: Arc<dyn UserInfoPort>, mxc: String, generation: u64) {
         let events = self.events.clone();
         let cancel = self.tasks.token();
@@ -729,6 +983,7 @@ impl UserInfo {
             .map_or_else(UserInfoView::default, |open| {
                 open.view(SheetActions {
                     direct: self.direct_chat(open),
+                    verify: self.verify_offer(open),
                     ignore_busy: self.ignoring.contains_key(&open.user_id),
                     moderating: pending_moderation(
                         self.moderating
@@ -743,6 +998,21 @@ impl UserInfo {
 
 fn listed(rooms: &[Arc<Room>], room_id: &RoomId) -> bool {
     rooms.iter().any(|room| room.id == *room_id)
+}
+
+fn chat_ready(
+    rooms: &[Arc<Room>],
+    room_id: &RoomId,
+    user_id: &UserId,
+    then: AfterStart,
+) -> Option<ChatReady> {
+    match then {
+        AfterStart::Open => listed(rooms, room_id).then(|| ChatReady::Open(room_id.clone())),
+        AfterStart::Verify => rooms
+            .iter()
+            .any(|room| room.id == *room_id && room.direct_partner.as_ref() == Some(user_id))
+            .then(|| ChatReady::Verify(user_id.clone())),
+    }
 }
 
 fn settle_accepted_membership(

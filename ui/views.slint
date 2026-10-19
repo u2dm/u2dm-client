@@ -11,8 +11,9 @@ import {
     VerificationEmoji,
     UserMessage,
     CallTileEntry,
+    UserDeviceEntry,
 } from "./types.slint";
-import { AttachmentKind, AudioKind, CallCamera, CallMic, CallOffer, CallPhase, CallRefusal, CallScreen, CallScreenRefusal, ChildAccess, ConnectionState, CreateRoomStatus, DirectChat, EncryptionActivity, EncryptionStanding, EncryptionStep, IdentityAlertKind, IdentityTrust, InviteAnswer, InviteKind, LoginActivity, LoginMethodKind, LoginPhase, MemberRole, Moderation, NotifyMode, PackSurface, PeopleSearchStatus, PresenceLine, PreviewKind, ReadersStatus, RecoveryStatus, RoomInfoPlacement, RoomKind, RoomMembership, RoomPreviewStatus, RoomScope, RosterStatus, ServiceKind, SourceEncryption, SourceStatus, SpaceIndexStatus, TimelineState, UpgradeLink, UserMessageKind, VerificationActivity, VerificationPhase } from "./enums.slint";
+import { AttachmentKind, AudioKind, CallCamera, CallMic, CallOffer, CallPhase, CallRefusal, CallScreen, CallScreenRefusal, ChildAccess, ConnectionState, CreateRoomStatus, DirectChat, EncryptionActivity, EncryptionStanding, EncryptionStep, IdentityAlertKind, IdentityTrust, InviteAnswer, InviteKind, LoginActivity, LoginMethodKind, LoginPhase, MemberRole, Moderation, NotifyMode, PackSurface, PeopleSearchStatus, PresenceLine, PreviewKind, ReadersStatus, RecoveryStatus, RoomInfoPlacement, RoomKind, RoomMembership, RoomPreviewStatus, RoomScope, RosterStatus, ServiceKind, SourceEncryption, SourceStatus, SpaceIndexStatus, TimelineState, UpgradeLink, UserMessageKind, VerificationActivity, VerificationPhase, VerifyOffer } from "./enums.slint";
 
 export global LoginView {
     in property <LoginPhase> step: LoginPhase.loading;
@@ -235,6 +236,9 @@ export global UserInfoView {
     in property <bool> read-failed;
     in property <bool> retrying;
     in property <DirectChat> direct: DirectChat.hidden;
+    in property <VerifyOffer> verify: VerifyOffer.hidden;
+    in property <bool> sessions-known;
+    in property <[UserDeviceEntry]> devices;
     in property <bool> ignored;
     in property <bool> ignore-busy;
     in property <bool> may-kick;

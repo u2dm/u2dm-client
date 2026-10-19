@@ -506,6 +506,7 @@ pub fn service_kind(event: &ServiceEvent) -> ServiceKind {
         } => ServiceKind::CallDeclined,
         ServiceEvent::CallNotification { video: true, .. } => ServiceKind::CallVideoNotification,
         ServiceEvent::CallNotification { video: false, .. } => ServiceKind::CallNotification,
+        ServiceEvent::VerificationRequested { .. } => ServiceKind::VerificationRequested,
     }
 }
 

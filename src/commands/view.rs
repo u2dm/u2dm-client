@@ -28,7 +28,7 @@ use crate::domain::space_index::SpaceChild;
 use crate::domain::sync::{ConnectionStatus, ReauthReason};
 use crate::domain::timeline::{EventSource, OlderHistory};
 use crate::domain::typing::Typists;
-use crate::domain::user_info::{UserId, UserProfile};
+use crate::domain::user_info::{UserDevice, UserId, UserProfile};
 
 #[derive(Clone, Default)]
 pub struct AppViewState {
@@ -886,10 +886,20 @@ pub enum PendingModeration {
     Unban,
 }
 
+#[derive(Clone, Copy, Default, PartialEq, Eq, Debug)]
+pub enum VerifyOffer {
+    #[default]
+    Hidden,
+    Offered,
+    Requesting,
+}
+
 #[derive(Clone, Default, PartialEq, Eq)]
 pub struct UserInfoView {
     pub card: Option<UserCard>,
     pub direct: DirectChat,
+    pub verify: VerifyOffer,
+    pub sessions: Option<Arc<[UserDevice]>>,
     pub ignore_busy: bool,
     pub moderating: PendingModeration,
     pub avatars_ready: usize,

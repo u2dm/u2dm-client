@@ -272,7 +272,7 @@ export component VerificationDialog inherits ModalHost {
                 spacing: Space.xl;
 
                 VerificationHeader {
-                    title: @tr("Device verification");
+                    title: VerificationView.is-self ? @tr("Device verification") : @tr("User verification");
                     subtitle: VerificationView.is-self
                         ? @tr("One of your own sessions")
                         : VerificationView.sender;
@@ -323,7 +323,9 @@ export component VerificationDialog inherits ModalHost {
                     }
 
                     DialogNote {
-                        text: @tr("Open one of your other sessions and accept the request there. Then compare the emoji it shows with the ones that appear here.");
+                        text: VerificationView.is-self
+                            ? @tr("Open one of your other sessions and accept the request there. Then compare the emoji it shows with the ones that appear here.")
+                            : @tr("Waiting for {} to accept the request in your chat. Then compare the emoji their app shows with the ones that appear here.", VerificationView.sender);
                     }
 
                     AppButton {
@@ -388,11 +390,13 @@ export component VerificationDialog inherits ModalHost {
                         icon: IconSet.ShieldCheck;
                         tint: AppStyle.success;
                         surface: AppStyle.success-background;
-                        title: @tr("Session verified");
+                        title: VerificationView.is-self ? @tr("Session verified") : @tr("User verified");
                     }
 
                     DialogNote {
-                        text: @tr("This session is trusted now, so encrypted messages can be read here.");
+                        text: VerificationView.is-self
+                            ? @tr("This session is trusted now, so encrypted messages can be read here.")
+                            : @tr("You verified {}. The sessions they verified themselves now show as verified, and you'll be warned if their identity changes.", VerificationView.sender);
                     }
 
                     AppButton {

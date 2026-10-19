@@ -12,7 +12,8 @@ import { MemberRoles } from "./member-roles.slint";
 import { PresenceLabel } from "./presence-label.slint";
 import { CopyLinkTile, SheetCloseChip, SheetCover, TilePrompt, TileRow } from "./sheet.slint";
 import { AppStyle, Fonts, IconSize, Metrics, Space, Weight } from "../../../theme.slint";
-import { DirectChat, IdentityTrust, Moderation, PresenceLine, RoomMembership, UserMessageKind } from "../../../enums.slint";
+import { DeviceTrust, DirectChat, IdentityTrust, Moderation, PresenceLine, RoomMembership, UserMessageKind, VerifyOffer } from "../../../enums.slint";
+import { UserDeviceEntry } from "../../../types.slint";
 import { PresenceView, UserInfoView } from "../../../views.slint";
 import { PresenceWords } from "../../../messages.slint";
 import { Actions } from "../../../actions.slint";
@@ -172,6 +173,107 @@ component ProfileCover inherits SheetCover {
     }
 }
 
+component SessionRow inherits Rectangle {
+    in property <UserDeviceEntry> device;
+
+    property <string> shown-name: root.device.name != "" ? root.device.name : root.device.device-id;
+    property <string> trust-text: root.trust-label(root.device.trust);
+
+    pure function trust-label(trust: DeviceTrust) -> string {
+        if trust == DeviceTrust.verified {
+            return @tr("Verified");
+        }
+        if trust == DeviceTrust.signed-by-owner {
+            return @tr("Not verified");
+        }
+        return @tr("Not verified by its owner");
+    }
+
+    pure function trust-icon(trust: DeviceTrust) -> Icon {
+        if trust == DeviceTrust.verified {
+            return IconSet.ShieldCheck;
+        }
+        if trust == DeviceTrust.not-signed-by-owner {
+            return IconSet.ShieldAlert;
+        }
+        return IconSet.Shield;
+    }
+
+    pure function trust-tint(trust: DeviceTrust) -> color {
+        if trust == DeviceTrust.verified {
+            return AppStyle.accent-on-surface;
+        }
+        if trust == DeviceTrust.not-signed-by-owner {
+            return AppStyle.danger-muted;
+        }
+        return AppStyle.foreground-muted;
+    }
+
+    height: row.preferred-height;
+    accessible-role: text;
+    accessible-label: @tr("Session {}, {}: {}", root.shown-name, root.device.device-id, root.trust-text);
+
+    row := HorizontalLayout {
+        padding-top: Space.sm;
+        padding-bottom: Space.sm;
+        spacing: Space.lg;
+
+        IconDisplay {
+            cross-axis-self-alignment: center;
+            icon: root.trust-icon(root.device.trust);
+            size: IconSize.md;
+            stroke: root.trust-tint(root.device.trust);
+        }
+
+        VerticalLayout {
+            alignment: center;
+            spacing: Space.xs;
+            horizontal-stretch: 1;
+
+            Text {
+                text: root.shown-name;
+                font-size: Fonts.body;
+                overflow: elide;
+                accessible-role: none;
+            }
+
+            Text {
+                text: root.device.name != ""
+                    ? @tr("{} · {}", root.device.device-id, root.trust-text)
+                    : root.trust-text;
+                font-size: Fonts.caption;
+                color: AppStyle.foreground-muted;
+                overflow: elide;
+                accessible-role: none;
+            }
+        }
+    }
+}
+
+component SessionsSection inherits VerticalLayout {
+    padding-left: Space.xl;
+    padding-right: Space.xl;
+    spacing: Space.xs;
+
+    Text {
+        text: @tr("Sessions");
+        font-size: Fonts.caption;
+        font-weight: Weight.semibold;
+        color: AppStyle.foreground-muted;
+    }
+
+    if UserInfoView.identity == IdentityTrust.no-identity: Text {
+        text: @tr("{} hasn't set up cross-signing, so these sessions can't be verified.", UserInfoView.name);
+        font-size: Fonts.body-small;
+        color: AppStyle.foreground-muted;
+        wrap: word-wrap;
+    }
+
+    for device in UserInfoView.devices: SessionRow {
+        device: device;
+    }
+}
+
 component ModerationRows inherits VerticalLayout {
     in property <Asking> asking;
 
@@ -232,6 +334,9 @@ export component UserInfoDialog inherits ModalHost {
     property <bool> offers-actions: !UserInfoView.is-self
         && !UserInfoView.read-failed
         && !UserInfoView.retrying;
+    property <bool> shows-sessions: root.offers-actions
+        && UserInfoView.sessions-known
+        && (UserInfoView.devices.length > 0 || UserInfoView.identity == IdentityTrust.no-identity);
 
     property <string> shown-user: UserInfoView.user-id;
     property <Asking> asking: Asking.none;
@@ -388,6 +493,20 @@ export component UserInfoDialog inherits ModalHost {
                         }
                     }
 
+                    if root.asking == Asking.none && UserInfoView.verify != VerifyOffer.hidden: ActionTile {
+                        width: tiles.slot-width;
+                        enabled: UserInfoView.verify == VerifyOffer.offered;
+                        busy: UserInfoView.verify == VerifyOffer.requesting;
+                        icon: IconSet.ShieldCheck;
+                        text: UserInfoView.verify == VerifyOffer.requesting ? @tr("Asking…") : @tr("Verify");
+                        label: UserInfoView.verify == VerifyOffer.requesting
+                            ? @tr("Asking {} to verify", UserInfoView.name)
+                            : @tr("Verify {}", UserInfoView.name);
+                        clicked => {
+                            Actions.verify-user(UserInfoView.user-id);
+                        }
+                    }
+
                     if root.asking == Asking.none: CopyLinkTile {
                         width: tiles.slot-width;
                         enabled: UserInfoView.link != "";
@@ -449,6 +568,8 @@ export component UserInfoDialog inherits ModalHost {
                         caption: @tr("Matrix ID");
                     }
                 }
+
+                if root.shows-sessions: SessionsSection { }
 
                 if root.offers-actions: ModerationRows {
                     asking: root.asking;

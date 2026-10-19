@@ -570,6 +570,8 @@ struct UserInfoDto {
     link: Option<String>,
     direct_room: Option<String>,
     direct: &'static str,
+    verify: &'static str,
+    sessions: Option<Vec<UserDeviceDto>>,
     ignored: bool,
     ignore_busy: bool,
     may_kick: bool,
@@ -578,6 +580,13 @@ struct UserInfoDto {
     moderating: &'static str,
     avatars_ready: usize,
     error: MessageDto,
+}
+
+#[derive(Serialize)]
+struct UserDeviceDto {
+    device_id: String,
+    name: Option<String>,
+    trust: &'static str,
 }
 
 #[derive(Serialize)]
@@ -1400,6 +1409,17 @@ fn user_info(source: &UserInfoView) -> UserInfoDto {
         direct_room: profile
             .and_then(|profile| profile.direct_room.as_ref().map(ToString::to_string)),
         direct: names::direct_chat(source.direct),
+        verify: names::verify_offer(source.verify),
+        sessions: source.sessions.as_ref().map(|devices| {
+            devices
+                .iter()
+                .map(|device| UserDeviceDto {
+                    device_id: device.device_id.clone(),
+                    name: device.name.clone(),
+                    trust: names::device_trust(device.trust),
+                })
+                .collect()
+        }),
         ignored: profile.is_some_and(|profile| profile.ignored),
         ignore_busy: source.ignore_busy,
         may_kick: profile.is_some_and(|profile| profile.offers(Moderation::Kick)),

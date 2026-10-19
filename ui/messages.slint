@@ -206,6 +206,12 @@ export global UserMessages {
         if kind == UserMessageKind.direct-chat-failed {
             return @tr("Could not start a chat with {}", detail);
         }
+        if kind == UserMessageKind.user-verification-failed {
+            return @tr("Could not ask {} to verify. Please try again.", detail);
+        }
+        if kind == UserMessageKind.partner-left-chat {
+            return @tr("{} is no longer in your chat, so the request cannot reach them. Invite them back first.", detail);
+        }
         if kind == UserMessageKind.ignore-failed {
             return @tr("Could not ignore {}", detail);
         }
@@ -697,6 +703,9 @@ export global ServiceLabel {
         }
         if kind == ServiceKind.call-declined {
             return @tr("{} called, {} declined", actor, target);
+        }
+        if kind == ServiceKind.verification-requested {
+            return @tr("{} sent {} a verification request", actor, target);
         }
         if target != "" {
             return target;

@@ -10,7 +10,7 @@ use super::schema::{
     body_line_fields, body_piece_fields, call_tile_fields, invitee_fields, log_line_fields,
     member_row_fields, message_fields, pack_cell_fields, pack_row_fields, pack_tab_fields,
     poll_answer_fields, reaction_fields, reactor_fields, room_fields, space_child_fields,
-    space_fields,
+    space_fields, user_device_fields,
 };
 use crate::commands::messages::UserMessageKind;
 use crate::commands::view::{ChildAccess, InviteeState};
@@ -22,6 +22,7 @@ use crate::domain::message::{
 };
 use crate::domain::room_info::MemberRole;
 use crate::domain::room_log::LogLevel;
+use crate::domain::user_info::DeviceTrust;
 
 macro_rules! declare_accessors {
     ($f:ident $set:ident text) => {
@@ -70,6 +71,7 @@ member_row_fields!(declare_fields MemberRowFields;);
 invitee_fields!(declare_fields InviteeFields;);
 log_line_fields!(declare_fields LogLineFields;);
 call_tile_fields!(declare_fields CallTileFields;);
+user_device_fields!(declare_fields UserDeviceFields;);
 pack_cell_fields!(declare_fields PackCellFields;);
 pack_tab_fields!(declare_fields PackTabFields;);
 pack_row_fields!(declare_fields PackRowFields;);

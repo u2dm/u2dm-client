@@ -8,7 +8,7 @@ use super::room_info::{ActionOutcome, RosterOutcome};
 use super::room_preview::JoinedRoom;
 use super::space_index::{JoinOutcome, PageOutcome};
 use super::upgrades::UpgradeJoined;
-use super::user_info::{DmOutcome, ReadOutcome};
+use super::user_info::{DmOutcome, ReadOutcome, VerifyOutcome};
 use crate::commands::messages::{UserMessage, UserMessageKind};
 use crate::commands::view::LoginActivity;
 use crate::domain::auth::ServerInfo;
@@ -36,7 +36,7 @@ use crate::domain::timeline::{
     AudioTrack, EventSource, MessageReaders, PaginationDirection, PaginationOutcome,
     TimelineAdvance, TimelineFocus,
 };
-use crate::domain::user_info::{GlobalProfile, IgnoreChange, Moderation, UserId};
+use crate::domain::user_info::{GlobalProfile, IgnoreChange, Moderation, UserId, UserTrust};
 use crate::domain::verification::VerificationEvent;
 use crate::error::AppError;
 use crate::ports::matrix::{AuthenticatedSession, CleanupReport, PackCatalog};
@@ -455,6 +455,15 @@ pub(super) enum UserInfoEvent {
         name: String,
         outcome: DmOutcome,
     },
+    TrustChanged {
+        generation: u64,
+        trust: UserTrust,
+    },
+    VerifySettled {
+        user_id: UserId,
+        name: String,
+        outcome: VerifyOutcome,
+    },
     IgnoreSettled {
         user_id: UserId,
         name: String,
@@ -478,6 +487,8 @@ impl UserInfoEvent {
             Self::ProfileFetched { .. } => "UserProfileFetched",
             Self::AvatarReady { .. } => "UserInfoAvatarReady",
             Self::DmStarted { .. } => "DmStarted",
+            Self::TrustChanged { .. } => "UserTrustChanged",
+            Self::VerifySettled { .. } => "UserVerifySettled",
             Self::IgnoreSettled { .. } => "IgnoreSettled",
             Self::ModerationSettled { .. } => "ModerationSettled",
         }

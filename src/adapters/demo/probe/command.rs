@@ -216,6 +216,9 @@ pub enum ProbeCommand {
     MessageUser {
         user_id: String,
     },
+    VerifyUser {
+        user_id: String,
+    },
     IgnoreUser {
         user_id: String,
     },
@@ -822,6 +825,7 @@ pub fn to_driven(command: ProbeCommand, selected: Selection<'_>) -> Result<Drive
         ProbeCommand::CloseUserInfo => UiCommand::CloseUserInfo,
         ProbeCommand::RetryUserInfo => UiCommand::RetryUserInfo,
         ProbeCommand::MessageUser { user_id } => return person(user_id, UiCommand::MessageUser),
+        ProbeCommand::VerifyUser { user_id } => return person(user_id, UiCommand::VerifyUser),
         ProbeCommand::IgnoreUser { user_id } => return person(user_id, UiCommand::IgnoreUser),
         ProbeCommand::UnignoreUser { user_id } => return person(user_id, UiCommand::UnignoreUser),
         ProbeCommand::KickUser { user_id } => return person(user_id, UiCommand::KickUser),

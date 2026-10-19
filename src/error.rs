@@ -47,6 +47,9 @@ pub enum AppError {
     #[error("the room's power levels do not let you send it")]
     SendNotAllowed,
 
+    #[error("the person is no longer in your direct chat with them")]
+    PartnerLeftChat,
+
     #[error("{0}")]
     Other(String),
 }

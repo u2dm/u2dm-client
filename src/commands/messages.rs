@@ -93,6 +93,8 @@ pub enum UserMessageKind {
     RoomLinkFailed,
     UserInfoFailed,
     DirectChatFailed,
+    UserVerificationFailed,
+    PartnerLeftChat,
     IgnoreFailed,
     UnignoreFailed,
     KickFailed,

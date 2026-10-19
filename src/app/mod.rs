@@ -85,7 +85,7 @@ use task_group::TaskGroup;
 use tokio::sync::{mpsc, watch};
 use typing::Typing;
 use upgrades::{RoomUpgrades, Toward, UpgradeJoined};
-use user_info::UserInfo;
+use user_info::{ChatReady, UserInfo};
 use verification::VerificationController;
 use video::VideoController;
 
@@ -621,6 +621,9 @@ impl AppService {
             UiCommand::MessageUser(user_id) => {
                 self.message_user(&user_id).await;
             }
+            UiCommand::VerifyUser(user_id) => {
+                self.verify_user(&user_id);
+            }
             UiCommand::IgnoreUser(user_id) => {
                 self.set_ignored(&user_id, IgnoreChange::Ignore);
             }
@@ -986,8 +989,8 @@ impl AppService {
             self.refresh_space_index();
             self.follow_room_info();
             self.follow_presence();
-            if let Some(room_id) = self.user_info.follow(self.room_directory.rooms()) {
-                self.select_room(room_id).await;
+            if let Some(ready) = self.user_info.follow(self.room_directory.rooms()) {
+                self.direct_chat_ready(ready).await;
             }
             self.follow_invites().await;
             self.follow_upgrades().await;
@@ -1683,6 +1686,8 @@ impl AppService {
         self.raise_session_alert();
         self.calls
             .trust_changed(self.encryption.is_verified(), &self.room_directory);
+        self.user_info
+            .session_trust_changed(self.encryption.is_verified());
     }
 
     fn use_recovery_key(&mut self, key: RecoveryKey) {
@@ -1778,6 +1783,27 @@ impl AppService {
         };
         if let Some(room_id) = self.user_info.message(port, user_id) {
             self.select_room(room_id).await;
+        }
+    }
+
+    fn verify_user(&mut self, user_id: &UserId) {
+        let (Some(users), Some(verification)) =
+            (self.port(|a| &a.user_info), self.port(|a| &a.verification))
+        else {
+            return;
+        };
+        self.user_info
+            .verify(users, verification, user_id, self.room_directory.rooms());
+    }
+
+    async fn direct_chat_ready(&mut self, ready: ChatReady) {
+        match ready {
+            ChatReady::Open(room_id) => self.select_room(room_id).await,
+            ChatReady::Verify(user_id) => {
+                if let Some(port) = self.port(|a| &a.verification) {
+                    self.user_info.request_verification(port, user_id);
+                }
+            }
         }
     }
 
@@ -1926,12 +1952,22 @@ impl AppService {
                 name,
                 outcome,
             } => {
-                let opened =
+                let ready =
                     self.user_info
                         .dm_started(user_id, &name, outcome, self.room_directory.rooms());
-                if let Some(room_id) = opened {
-                    self.select_room(room_id).await;
+                if let Some(ready) = ready {
+                    self.direct_chat_ready(ready).await;
                 }
+            }
+            UserInfoEvent::TrustChanged { generation, trust } => {
+                self.user_info.trust_changed(generation, trust);
+            }
+            UserInfoEvent::VerifySettled {
+                user_id,
+                name,
+                outcome,
+            } => {
+                self.user_info.verify_settled(&user_id, &name, outcome);
             }
             UserInfoEvent::IgnoreSettled {
                 user_id,
