@@ -25,7 +25,7 @@ use u2dm_ui::{
     EncryptionStep as UiEncryptionStep, EncryptionView, IdentityAlertKind as UiIdentityAlertKind,
     IdentityAlertView, IdentityTrust as UiIdentityTrust, InviteAnswer as UiInviteAnswer,
     InviteKind as UiInviteKind, InvitePeopleView, InviteView, InviteeEntry,
-    InviteeState as UiInviteeState, LogLevel as UiLogLevel, LogLineEntry,
+    InviteeState as UiInviteeState, LeaveSpaceView, LogLevel as UiLogLevel, LogLineEntry,
     LoginActivity as UiLoginActivity, LoginMethodKind as UiLoginMethodKind, LoginPhase, LoginView,
     LogoutView, MediaFailure as UiMediaFailure, MediaState as UiMediaState, MemberEntry,
     MemberRole as UiMemberRole, MemberRowKind as UiMemberRowKind, MentionWord, MentionsView,
@@ -35,11 +35,11 @@ use u2dm_ui::{
     PeopleSearchStatus as UiPeopleSearchStatus, PollAnswerEntry, PollPhase as UiPollPhase,
     PresenceLine as UiPresenceLine, PresenceView, PreviewKind as UiPreviewKind, ReactionEntry,
     ReactionSend as UiReactionSend, ReactorAvatar, ReadersStatus as UiReadersStatus, ReadersView,
-    RecoveryStatus as UiRecoveryStatus, ReplySwipe, RoomAccess as UiRoomAccess,
-    RoomCallMark as UiRoomCallMark, RoomEntry, RoomInfoPlacement as UiRoomInfoPlacement,
-    RoomInfoView, RoomKind as UiRoomKind, RoomLogView, RoomMembership as UiRoomMembership,
-    RoomMenuView, RoomPreviewStatus as UiRoomPreviewStatus, RoomPreviewView,
-    RoomRowKind as UiRoomRowKind, RoomScope as UiRoomScope, RoomView,
+    RecoveryStatus as UiRecoveryStatus, RemovalKind as UiRemovalKind, RemovalView, ReplySwipe,
+    RoomAccess as UiRoomAccess, RoomCallMark as UiRoomCallMark, RoomEntry,
+    RoomInfoPlacement as UiRoomInfoPlacement, RoomInfoView, RoomKind as UiRoomKind, RoomLogView,
+    RoomMembership as UiRoomMembership, RoomMenuView, RoomPreviewStatus as UiRoomPreviewStatus,
+    RoomPreviewView, RoomRowKind as UiRoomRowKind, RoomScope as UiRoomScope, RoomView,
     RosterStatus as UiRosterStatus, SendState as UiSendState, ServiceKind as UiServiceKind,
     SessionView, Shield as UiShield, ShieldReason as UiShieldReason,
     SourceEncryption as UiSourceEncryption, SourceStatus as UiSourceStatus, SourceView,
@@ -96,12 +96,13 @@ use super::schema::{
     notify_modes, pack_cell_fields, pack_origins, pack_row_fields, pack_surfaces, pack_tab_fields,
     pending_moderations, people_search_statuses, poll_answer_fields, poll_phases, presence_lines,
     preview_kinds, reaction_fields, reaction_sends, reactor_fields, readers_statuses,
-    recovery_statuses, room_accesses, room_call_marks, room_fields, room_info_placements,
-    room_kinds, room_memberships, room_preview_statuses, room_row_kinds, room_scopes,
-    roster_statuses, send_states, service_kinds, shield_reasons, shields, simple_callbacks,
-    source_encryptions, source_statuses, space_child_fields, space_fields, space_index_statuses,
-    spoiler_states, string_props, timeline_states, upgrade_links, user_device_fields,
-    user_message_kinds, verification_activities, verification_phases, verify_offers,
+    recovery_statuses, removal_kinds, room_accesses, room_call_marks, room_fields,
+    room_info_placements, room_kinds, room_memberships, room_preview_statuses, room_row_kinds,
+    room_scopes, roster_statuses, send_states, service_kinds, shield_reasons, shields,
+    simple_callbacks, source_encryptions, source_statuses, space_child_fields, space_fields,
+    space_index_statuses, spoiler_states, string_props, timeline_states, upgrade_links,
+    user_device_fields, user_message_kinds, verification_activities, verification_phases,
+    verify_offers,
 };
 use super::session::active_models;
 use super::video::{self, millis_to_duration};
@@ -119,6 +120,7 @@ use crate::commands::view::{
 };
 use crate::domain::auth::LoginMethod;
 use crate::domain::call::video::ScreenRefusal;
+use crate::domain::departure::RemovalKind;
 use crate::domain::encryption::{Recovery, Standing};
 use crate::domain::image_pack::PackOrigin;
 use crate::domain::invite::InviteKind;
@@ -351,6 +353,17 @@ impl UiProps for AppWindow {
         }
     }
 
+    fn apply_removal_avatar(&self, avatar: Option<Image>) {
+        let removal = self.global::<RemovalView>();
+        match avatar {
+            Some(img) => {
+                removal.set_avatar(img);
+                removal.set_has_avatar(true);
+            }
+            None => removal.set_has_avatar(false),
+        }
+    }
+
     fn apply_room_preview_avatar(&self, avatar: Option<Image>) {
         let preview = self.global::<RoomPreviewView>();
         match avatar {
@@ -471,6 +484,7 @@ room_memberships!(impl_slint_enum RoomMembership UiRoomMembership;);
 direct_chats!(impl_slint_enum DirectChat UiDirectChat;);
 upgrade_links!(impl_slint_enum UpgradeLink UiUpgradeLink;);
 invite_kinds!(impl_slint_enum InviteKind UiInviteKind;);
+removal_kinds!(impl_slint_enum RemovalKind UiRemovalKind;);
 invite_answers!(impl_slint_enum PendingAnswer UiInviteAnswer;);
 pending_moderations!(impl_slint_enum PendingModeration UiModeration;);
 identity_trusts!(impl_slint_enum IdentityTrust UiIdentityTrust;);

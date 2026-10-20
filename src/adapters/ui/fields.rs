@@ -14,6 +14,7 @@ use super::schema::{
 };
 use crate::commands::messages::UserMessageKind;
 use crate::commands::view::{ChildAccess, InviteeState};
+use crate::domain::departure::RemovalKind;
 use crate::domain::image_pack::PackOrigin;
 use crate::domain::invite::InviteKind;
 use crate::domain::media::AudioKind;

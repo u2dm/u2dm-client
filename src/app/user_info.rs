@@ -662,6 +662,7 @@ impl UserInfo {
         port: Arc<dyn UserInfoPort>,
         user_id: &UserId,
         action: Moderation,
+        reason: Option<String>,
     ) {
         let Some(open) = self.open.as_ref().filter(|open| open.user_id == *user_id) else {
             return;
@@ -685,7 +686,7 @@ impl UserInfo {
             let (room_id, user_id) = seat;
             let outcome = tokio::select! {
                 () = cancel.cancelled() => return,
-                done = port.moderate(&room_id, &user_id, action) => match done {
+                done = port.moderate(&room_id, &user_id, action, reason.as_deref()) => match done {
                     Ok(()) => ActionOutcome::Done,
                     Err(e) => {
                         tracing::warn!(%user_id, room = %room_id, ?action, "failed to moderate: {e}");

@@ -10,6 +10,7 @@ use super::timeline::{self, scenario};
 use super::{calls, invite_people, media, powers};
 use crate::adapters::markdown::{self, Composed, RoomMentions};
 use crate::domain::auth::Session;
+use crate::domain::departure::{Removal, RemovalKind};
 use crate::domain::emote::Emote;
 use crate::domain::event_size::EventIds;
 use crate::domain::image_pack::{ImagePack, PackImage, PackOrigin};
@@ -40,6 +41,7 @@ const STICKER_ASSET_MARKER: char = '#';
 const DEMO_VIA: &str = "demo.local";
 const COPY_SUFFIX: &str = "-copy";
 const OWN_NAME_IN_TIMELINES: &str = "You";
+const MINUTE_MS: u64 = 60_000;
 const MATRIX_TO: &str = "https://matrix.to/#/";
 
 static DATA: OnceLock<DemoData> = OnceLock::new();
@@ -102,6 +104,31 @@ pub struct RoomOverrides {
     pub arrivals: HashMap<String, Arrived>,
     pub created: Vec<Created>,
     pub created_children: HashMap<String, Vec<String>>,
+    pub removed: HashMap<String, Removed>,
+    pub forgotten: HashSet<String>,
+}
+
+#[derive(Clone)]
+pub struct Removed {
+    pub kind: RemovalKind,
+    pub by: String,
+    pub reason: Option<String>,
+    pub at_ms: u64,
+}
+
+impl Removed {
+    pub fn now(kind: RemovalKind, by: &str, reason: Option<&str>) -> Self {
+        Self::ago(kind, by, reason, 0)
+    }
+
+    pub fn ago(kind: RemovalKind, by: &str, reason: Option<&str>, minutes: u64) -> Self {
+        Self {
+            kind,
+            by: by.to_owned(),
+            reason: reason.map(ToOwned::to_owned),
+            at_ms: now_ms().saturating_sub(minutes.saturating_mul(MINUTE_MS)),
+        }
+    }
 }
 
 #[derive(Clone)]
@@ -297,6 +324,39 @@ pub fn alias_localparts() -> impl Iterator<Item = &'static str> {
         })
 }
 
+pub fn removals_with(overrides: &RoomOverrides) -> Vec<Arc<Removal>> {
+    let data = data();
+    let mut removals: Vec<Arc<Removal>> = overrides
+        .removed
+        .iter()
+        .filter(|(room_id, _)| !overrides.forgotten.contains(*room_id))
+        .filter_map(|(room_id, removed)| {
+            let room = data.rooms.iter().find(|room| room.id == *room_id)?;
+            let shown = room.to_room(now_ms(), None);
+            Some(Arc::new(Removal {
+                id: shown.id,
+                name: shown.display_name,
+                avatar_mxc: shown.avatar_mxc,
+                kind: removed.kind,
+                is_space: false,
+                is_direct: shown.is_direct,
+                by: NamedUser::new(
+                    removed.by.as_str(),
+                    MemberName::new(person_name(&removed.by).as_deref(), false),
+                ),
+                reason: removed.reason.clone(),
+                removed_ts: removed.at_ms,
+            }))
+        })
+        .collect();
+    removals.sort_by(|a, b| {
+        b.removed_ts
+            .cmp(&a.removed_ts)
+            .then_with(|| a.id.as_ref().cmp(b.id.as_ref()))
+    });
+    removals
+}
+
 pub fn invites_with(joined: &[RoomId], overrides: &RoomOverrides) -> Vec<Arc<Invite>> {
     let now = now_ms();
     data()
@@ -392,7 +452,13 @@ pub fn event_link(room_id: &RoomId, event_id: &str) -> String {
 }
 
 pub fn room_link_of(room_id: &RoomId) -> Option<String> {
-    room_about(room_id).map(|about| about.link)
+    room_about(room_id).map(|about| about.link).or_else(|| {
+        data()
+            .spaces
+            .iter()
+            .any(|space| space.id() == room_id.as_ref())
+            .then(|| room_link(room_id, None))
+    })
 }
 
 fn room_link(room_id: &RoomId, alias: Option<&str>) -> String {
@@ -690,6 +756,7 @@ pub fn spaces_with(joined: &[RoomId], overrides: &RoomOverrides) -> Vec<Space> {
                 .filter(|created| created.space)
                 .map(created_space),
         )
+        .filter(|space| !overrides.left.contains(&space.id))
         .collect();
     for space in &mut spaces {
         if let Some(children) = overrides.created_children.get(&space.id) {
@@ -884,6 +951,7 @@ pub fn messages(room_id: &RoomId) -> Vec<TimelineMessage> {
     super::msgtypes::apply_scenario(&mut messages);
     super::reactions::apply_scenario(&mut messages);
     super::polls::apply_scenario(&mut messages);
+    super::departures::apply_scenario(room_id, &mut messages);
     names::apply_scenario(room_id, &mut messages, now);
     super::shields::apply_scenario(room_id, &mut messages, now);
     name_messages(room_id, &mut messages);

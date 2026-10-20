@@ -7,6 +7,7 @@ mod calls;
 pub mod catalog;
 mod create_room;
 mod data;
+mod departures;
 mod dto;
 mod encryption;
 mod files;

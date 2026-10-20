@@ -14,6 +14,7 @@ use crate::commands::ui::{
 };
 use crate::domain::auth::LoginCredentials;
 use crate::domain::capabilities::AccountPage;
+use crate::domain::departure::membership_reason;
 use crate::domain::emote::ComposerText;
 use crate::domain::encryption::{KeyPassphrase, RecoveryKey};
 use crate::domain::event_size::{EventSize, Oversize};
@@ -171,6 +172,45 @@ pub fn import_room_keys(tx: &Tx, passphrase: String) {
     send_command(
         tx,
         UiCommand::ImportRoomKeys(KeyPassphrase::new(passphrase)),
+    );
+}
+
+pub fn kick_user(tx: &Tx, user_id: String, reason: String) {
+    if user_id.is_empty() {
+        return;
+    }
+    send_command(
+        tx,
+        UiCommand::KickUser {
+            user_id: UserId::new(user_id),
+            reason: membership_reason(reason),
+        },
+    );
+}
+
+pub fn ban_user(tx: &Tx, user_id: String, reason: String) {
+    if user_id.is_empty() {
+        return;
+    }
+    send_command(
+        tx,
+        UiCommand::BanUser {
+            user_id: UserId::new(user_id),
+            reason: membership_reason(reason),
+        },
+    );
+}
+
+pub fn leave_space(tx: &Tx, space_id: String, with_rooms: bool) {
+    if space_id.is_empty() {
+        return;
+    }
+    send_command(
+        tx,
+        UiCommand::LeaveSpace {
+            space_id: RoomId::new(space_id),
+            with_rooms,
+        },
     );
 }
 

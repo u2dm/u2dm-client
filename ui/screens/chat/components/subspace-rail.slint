@@ -2,10 +2,12 @@ import { Palette } from "std-widgets.slint";
 import { Icon, IconSet } from "@lucide";
 
 import { RailTileFace } from "./rail-tile.slint";
+import { ContextPress } from "./context-press.slint";
 import { AppStyle, Metrics, Radius, Size, Space, Stroke, Weight } from "../../../theme.slint";
-import { ListItemArea } from "../../../components/a11y.slint";
+import { Interaction, ListItemArea } from "../../../components/a11y.slint";
 import { DirectoryView } from "../../../views.slint";
 import { Actions } from "../../../actions.slint";
+import { RoomMenu, RoomMenuOrigin, RoomMenuReturn } from "../../../local.slint";
 
 component SubspaceTile inherits ListItemArea {
     in property <string> initial;
@@ -16,10 +18,44 @@ component SubspaceTile inherits ListItemArea {
     in property <bool> alert;
     in property <bool> mention;
     in property <bool> hint;
+    in property <string> menu-id;
+
+    property <int> menu-returns: RoomMenu.focus-returns;
 
     height: Metrics.rail-row;
     ring-radius: Radius.md;
     ring-inset: Metrics.rail-tile-inset;
+
+    changed menu-returns => {
+        if root.menu-id != "" && RoomMenu.returns-to(RoomMenuReturn.tile, root.menu-id) {
+            root.take-focus();
+        }
+    }
+
+    context-menu-requested => {
+        if root.menu-id == "" {
+            return EventResult.reject;
+        }
+        RoomMenu.open(
+            root.menu-id,
+            RoomMenuOrigin.rail,
+            root.absolute-position.x + root.width,
+            root.absolute-position.y + Space.sm,
+            true);
+        return EventResult.accept;
+    }
+
+    if root.menu-id != "": ContextPress {
+        hovered: root.has-hover && Interaction.actionable(root.enabled, root.above-modal);
+        pressed => {
+            RoomMenu.open(
+                root.menu-id,
+                RoomMenuOrigin.rail,
+                root.absolute-position.x + root.mouse-x,
+                root.absolute-position.y + root.mouse-y,
+                false);
+        }
+    }
 
     Rectangle {
         x: Metrics.rail-tile-inset;
@@ -100,6 +136,7 @@ export component SubspaceRail inherits Rectangle {
                 above-modal: root.above-modal;
                 index: idx + 1;
                 label: subspace.name;
+                menu-id: subspace.id;
                 initial: subspace.initial;
                 has-avatar: subspace.has-avatar;
                 avatar: subspace.avatar;

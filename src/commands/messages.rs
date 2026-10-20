@@ -76,6 +76,8 @@ pub enum UserMessageKind {
     RoomPreviewFailed,
     RoomAddressInvalid,
     LeaveRoomFailed,
+    SpaceRoomsKept,
+    ForgetRoomFailed,
     RoomNameMissing,
     RoomAddressMissing,
     RoomAddressUnusable,

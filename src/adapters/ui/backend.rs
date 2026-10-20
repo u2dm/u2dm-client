@@ -19,8 +19,8 @@ use super::dto::{
     RoomRowKind, RowBody, SpaceChildDto, SpaceDto, ThumbUpdate, UserDeviceDto, call_tile_to_dto,
     cell_pack, decode_failure_kind, enrich_to_update, heading_to_dto, invite_to_dto,
     invitee_to_dto, log_line_to_dto, member_row_to_dto, mention_to_dto, message_to_dto,
-    own_session_to_dto, reader_to_dto, room_to_dto, space_child_to_dto, space_match_to_dto,
-    space_to_dto, user_device_to_dto,
+    own_session_to_dto, reader_to_dto, removal_to_dto, room_to_dto, space_child_to_dto,
+    space_match_to_dto, space_to_dto, user_device_to_dto,
 };
 use super::fields::{
     BodyLineFields, BodyPieceFields, CallTileFields, InviteeFields, LogLineFields, MemberRowFields,
@@ -49,6 +49,7 @@ use crate::commands::view::{
     AppViewState, CallTile, InviteeRow, RosterRow, SpaceIndexRow, SpaceMatch,
 };
 use crate::config::APP_ID;
+use crate::domain::departure::Removal;
 use crate::domain::invite::Invite;
 use crate::domain::message::TimelineMessage;
 use crate::domain::room::{Room, RoomId, Space};
@@ -107,6 +108,10 @@ pub trait UiBackend: Sized + 'static {
 
     fn convert_invite(invite: &Invite, media: &dyn MediaCache) -> Self::Room {
         invite_to_dto(invite, media).into()
+    }
+
+    fn convert_removal(removal: &Removal, media: &dyn MediaCache) -> Self::Room {
+        removal_to_dto(removal, media).into()
     }
 
     fn heading(id: &str, kind: RoomRowKind) -> Self::Room {
@@ -678,6 +683,7 @@ enum SingleAvatar {
     RoomInfo,
     UserInfo,
     Invite,
+    Removal,
     RoomPreview,
     Ring,
     User,
@@ -744,6 +750,9 @@ fn group_slots(slots: &[AvatarSlot]) -> AvatarTargets<'_> {
             }
             AvatarSlot::Invite => {
                 targets.singles.insert(SingleAvatar::Invite);
+            }
+            AvatarSlot::Removal => {
+                targets.singles.insert(SingleAvatar::Removal);
             }
             AvatarSlot::RoomPreview => {
                 targets.singles.insert(SingleAvatar::RoomPreview);
@@ -855,6 +864,7 @@ fn apply_avatar_ready<B: UiBackend>(
                 SingleAvatar::RoomInfo => w.apply_room_info_avatar(avatar),
                 SingleAvatar::UserInfo => w.apply_user_info_avatar(avatar),
                 SingleAvatar::Invite => w.apply_invite_avatar(avatar),
+                SingleAvatar::Removal => w.apply_removal_avatar(avatar),
                 SingleAvatar::RoomPreview => w.apply_room_preview_avatar(avatar),
                 SingleAvatar::Ring => w.apply_ring_avatar(avatar),
             }

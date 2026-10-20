@@ -59,7 +59,7 @@ use super::schema::{
     pack_origins, pack_row_fields, pack_surfaces, pack_tab_fields, pending_moderations,
     people_search_statuses, poll_answer_fields, poll_phases, presence_lines, preview_kinds,
     reaction_fields, reaction_sends, reactor_fields, readers_statuses, recovery_statuses,
-    room_accesses, room_call_marks, room_fields, room_info_placements, room_kinds,
+    removal_kinds, room_accesses, room_call_marks, room_fields, room_info_placements, room_kinds,
     room_memberships, room_preview_statuses, room_row_kinds, room_scopes, roster_statuses,
     send_states, service_kinds, shield_reasons, shields, simple_callbacks, source_encryptions,
     source_statuses, space_child_fields, space_fields, space_index_statuses, spoiler_states,
@@ -82,6 +82,7 @@ use crate::commands::view::{
 };
 use crate::domain::auth::LoginMethod;
 use crate::domain::call::video::ScreenRefusal;
+use crate::domain::departure::RemovalKind;
 use crate::domain::encryption::{Recovery, Standing};
 use crate::domain::image_pack::PackOrigin;
 use crate::domain::invite::InviteKind;
@@ -281,6 +282,7 @@ room_memberships!(impl_slint_enum RoomMembership "RoomMembership";);
 direct_chats!(impl_slint_enum DirectChat "DirectChat";);
 upgrade_links!(impl_slint_enum UpgradeLink "UpgradeLink";);
 invite_kinds!(impl_slint_enum InviteKind "InviteKind";);
+removal_kinds!(impl_slint_enum RemovalKind "RemovalKind";);
 invite_answers!(impl_slint_enum PendingAnswer "InviteAnswer";);
 pending_moderations!(impl_slint_enum PendingModeration "Moderation";);
 identity_trusts!(impl_slint_enum IdentityTrust "IdentityTrust";);
@@ -624,6 +626,16 @@ impl UiProps for ComponentInstance {
                 set_global(self, "InviteView", "has-avatar", Value::Bool(true));
             }
             None => set_global(self, "InviteView", "has-avatar", Value::Bool(false)),
+        }
+    }
+
+    fn apply_removal_avatar(&self, avatar: Option<slint::Image>) {
+        match avatar {
+            Some(img) => {
+                set_global(self, "RemovalView", "avatar", Value::Image(img));
+                set_global(self, "RemovalView", "has-avatar", Value::Bool(true));
+            }
+            None => set_global(self, "RemovalView", "has-avatar", Value::Bool(false)),
         }
     }
 

@@ -6,6 +6,7 @@ import { CopyFeedback } from "../../../components/copier.slint";
 import { DialogCard, ModalHost } from "../../../components/overlay.slint";
 import { ErrorBanner } from "../../../components/banner.slint";
 import { MenuRow } from "../../../components/menu-row.slint";
+import { TextField } from "../../../components/text-field.slint";
 import { ActionTile } from "./action-tile.slint";
 import { DetailLine } from "./detail-line.slint";
 import { MemberRoles } from "./member-roles.slint";
@@ -341,6 +342,8 @@ export component UserInfoDialog inherits ModalHost {
     property <string> shown-user: UserInfoView.user-id;
     property <Asking> asking: Asking.none;
     property <AskingCopy> asking-copy: root.copy-for(root.asking);
+    property <bool> asks-reason: root.asking == Asking.remove || root.asking == Asking.ban;
+    property <string> reason;
 
     dim-opacity: AppStyle.dialog-scrim;
     label: @tr("Profile of {}", UserInfoView.name);
@@ -359,6 +362,10 @@ export component UserInfoDialog inherits ModalHost {
     changed shown-user => {
         link-copy.reset();
         root.asking = Asking.none;
+    }
+
+    changed asking => {
+        root.reason = "";
     }
 
     pure function direct-text(direct: DirectChat) -> string {
@@ -444,14 +451,15 @@ export component UserInfoDialog inherits ModalHost {
 
     function confirm() {
         let asking = root.asking;
+        let reason = root.reason;
         root.focus();
         root.asking = Asking.none;
         if asking == Asking.ignore {
             Actions.ignore-user(UserInfoView.user-id);
         } else if asking == Asking.remove {
-            Actions.kick-user(UserInfoView.user-id);
+            Actions.kick-user({ user-id: UserInfoView.user-id, reason: reason });
         } else if asking == Asking.ban {
-            Actions.ban-user(UserInfoView.user-id);
+            Actions.ban-user({ user-id: UserInfoView.user-id, reason: reason });
         }
     }
 
@@ -530,6 +538,24 @@ export component UserInfoDialog inherits ModalHost {
                         text: root.asking-copy.confirm-text;
                         label: root.asking-copy.confirm-label;
                         clicked => {
+                            root.confirm();
+                        }
+                    }
+                }
+
+                if root.asks-reason: HorizontalLayout {
+                    padding-left: Space.xl;
+                    padding-right: Space.xl;
+
+                    TextField {
+                        text <=> root.reason;
+                        icon: IconSet.MessageSquareText;
+                        placeholder: @tr("Reason (optional)");
+                        label: root.asking == Asking.ban
+                            ? @tr("Reason for banning {}", UserInfoView.name)
+                            : @tr("Reason for removing {}", UserInfoView.name);
+                        above-modal: true;
+                        accepted => {
                             root.confirm();
                         }
                     }

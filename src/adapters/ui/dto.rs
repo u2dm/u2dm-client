@@ -29,6 +29,7 @@ use crate::commands::view::{
     CallTile, CantDecrypt, ChildAccess, InviteeRow, InviteeState, JoinOffer, RoomCard, RosterRow,
     ScreenView, SpaceIndexRow, SpaceMatch, TileKind, TileState,
 };
+use crate::domain::departure::{Removal, RemovalKind};
 use crate::domain::image_pack::{ImagePack, ImageUsage, PackId, PackImage, PackOrigin, PackTitle};
 use crate::domain::invite::{Invite, InviteKind};
 use crate::domain::media::{
@@ -37,7 +38,7 @@ use crate::domain::media::{
 use crate::domain::member_name::{MemberName, isolated};
 use crate::domain::message::{
     CustomEmoji, DecryptionFailure, MessageBody, MessagePreviewKind, Reaction, ReactionSend,
-    Reactor, RichText, SendState, Shield, TimelineMessage,
+    Reactor, RichText, SendState, ServiceEvent, Shield, TimelineMessage,
 };
 use crate::domain::poll::{Poll, PollAnswer};
 use crate::domain::room::{Room, Space};
@@ -495,6 +496,7 @@ pub struct MessageDto {
     pub reply_body: SharedString,
     pub service_kind: ServiceKind,
     pub service_target: SharedString,
+    pub service_reason: SharedString,
     pub image_width: i32,
     pub image_height: i32,
     pub duration: SharedString,
@@ -545,6 +547,8 @@ pub struct RoomDto {
     pub invite_kind: InviteKind,
     pub inviter: SharedString,
     pub inviter_id: SharedString,
+    pub removal: RemovalKind,
+    pub removed_by: SharedString,
     pub call: RoomCallMark,
     pub avatar: Option<Image>,
     pub has_avatar: bool,
@@ -1262,6 +1266,13 @@ pub fn message_to_dto(m: &TimelineMessage, pinned: bool, media: &dyn MediaCache)
         service_target: SharedString::from(
             m.body.service().map(service_target).unwrap_or_default(),
         ),
+        service_reason: SharedString::from(
+            m.body
+                .service()
+                .and_then(ServiceEvent::reason)
+                .map(isolated)
+                .unwrap_or_default(),
+        ),
         image_width: 0,
         image_height: 0,
         duration: SharedString::new(),
@@ -1394,6 +1405,8 @@ pub fn room_to_dto(r: &Room, media: &dyn MediaCache) -> RoomDto {
         invite_kind: InviteKind::Room,
         inviter: SharedString::new(),
         inviter_id: SharedString::new(),
+        removal: RemovalKind::Kicked,
+        removed_by: SharedString::new(),
         call: call_mark(r),
         avatar: None,
         has_avatar: false,
@@ -1464,6 +1477,43 @@ pub fn invite_avatar_path(invite: &Invite, media: &dyn MediaCache) -> Option<Pat
     }
 }
 
+pub fn removal_to_dto(removal: &Removal, media: &dyn MediaCache) -> RoomDto {
+    let avatar = removal_avatar_path(removal, media).and_then(|path| peek_avatar(&path));
+    RoomDto {
+        name: SharedString::from(&removal.name),
+        initial: SharedString::from(avatar_initials(&removal.name)),
+        color_index: avatar_color_index(removal.id.as_ref()),
+        last_message_time: SharedString::from(&room_activity_label(removal.removed_ts)),
+        invite_kind: removal_shape(removal),
+        removal: removal.kind,
+        removed_by: SharedString::from(removal.by.shown()),
+        has_avatar: avatar.is_some(),
+        avatar,
+        ..bare_row_dto(removal.id.as_ref(), RoomRowKind::Removal)
+    }
+}
+
+pub fn removal_shape(removal: &Removal) -> InviteKind {
+    InviteKind::of(removal.is_space, removal.is_direct)
+}
+
+pub fn removal_avatar_path(removal: &Removal, media: &dyn MediaCache) -> Option<PathBuf> {
+    let mxc = removal.avatar_mxc.as_deref()?;
+    if removal.is_space {
+        media.space_avatar_path(mxc)
+    } else {
+        media.room_avatar_path(mxc)
+    }
+}
+
+pub fn record_removal_avatar_need(removal: &Removal, media: &dyn MediaCache) -> ShownAvatar {
+    let avatar_path = removal_avatar_path(removal, media);
+    record_avatar_need(
+        &AvatarSlot::Room(removal.id.as_ref().to_owned()),
+        avatar_path.as_deref(),
+    )
+}
+
 pub fn room_preview_avatar_path(room: &RoomPreview, media: &dyn MediaCache) -> Option<PathBuf> {
     let mxc = room.avatar_mxc.as_deref()?;
     if room.is_space {
@@ -1523,6 +1573,8 @@ fn bare_row_dto(id: &str, kind: RoomRowKind) -> RoomDto {
         invite_kind: InviteKind::Room,
         inviter: SharedString::new(),
         inviter_id: SharedString::new(),
+        removal: RemovalKind::Kicked,
+        removed_by: SharedString::new(),
         call: RoomCallMark::None,
         avatar: None,
         has_avatar: false,

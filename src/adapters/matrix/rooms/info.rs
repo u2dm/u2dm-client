@@ -90,13 +90,6 @@ impl RoomInfoPort for MatrixRoomInfo {
         written.map_err(|e| AppError::Other(e.to_string()))
     }
 
-    async fn leave(&self, room_id: &RoomId) -> Result<()> {
-        let room = self.matrix.room(room_id).await?;
-        room.leave()
-            .await
-            .map_err(|e| AppError::Other(e.to_string()))
-    }
-
     async fn mark_read(&self, room_id: &RoomId) -> Result<()> {
         let room = self.matrix.room(room_id).await?;
         let event_id = newest_event_id(&room)

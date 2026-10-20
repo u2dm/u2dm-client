@@ -228,7 +228,13 @@ impl UserInfoPort for MatrixUserInfo {
         Ok(())
     }
 
-    async fn moderate(&self, room_id: &RoomId, user_id: &UserId, action: Moderation) -> Result<()> {
+    async fn moderate(
+        &self,
+        room_id: &RoomId,
+        user_id: &UserId,
+        action: Moderation,
+        reason: Option<&str>,
+    ) -> Result<()> {
         let room = self.matrix.room(room_id).await?;
         let user = parse_user(user_id)?;
         let levels = room.power_levels_or_default().await;
@@ -243,7 +249,7 @@ impl UserInfoPort for MatrixUserInfo {
                 "the room's power levels do not allow that".to_owned(),
             ));
         }
-        send_moderation(&room, user, action).await
+        send_moderation(&room, user, action, reason).await
     }
 
     async fn follow_trust(
@@ -386,26 +392,44 @@ pub(super) async fn next_wake(wakes: &mut TrustWakes) -> bool {
     false
 }
 
-async fn send_moderation(room: &Room, user: OwnedUserId, action: Moderation) -> Result<()> {
+async fn send_moderation(
+    room: &Room,
+    user: OwnedUserId,
+    action: Moderation,
+    reason: Option<&str>,
+) -> Result<()> {
     let client = room.client();
     let room_id = room.room_id().to_owned();
     let config = RequestConfig::short_retry();
+    let reason = reason.map(ToOwned::to_owned);
     let sent = match action {
-        Moderation::Kick => client
-            .send(kick_user::v3::Request::new(room_id, user))
-            .with_request_config(config)
-            .await
-            .map(drop),
-        Moderation::Ban => client
-            .send(ban_user::v3::Request::new(room_id, user))
-            .with_request_config(config)
-            .await
-            .map(drop),
-        Moderation::Unban => client
-            .send(unban_user::v3::Request::new(room_id, user))
-            .with_request_config(config)
-            .await
-            .map(drop),
+        Moderation::Kick => {
+            let mut request = kick_user::v3::Request::new(room_id, user);
+            request.reason = reason;
+            client
+                .send(request)
+                .with_request_config(config)
+                .await
+                .map(drop)
+        }
+        Moderation::Ban => {
+            let mut request = ban_user::v3::Request::new(room_id, user);
+            request.reason = reason;
+            client
+                .send(request)
+                .with_request_config(config)
+                .await
+                .map(drop)
+        }
+        Moderation::Unban => {
+            let mut request = unban_user::v3::Request::new(room_id, user);
+            request.reason = reason;
+            client
+                .send(request)
+                .with_request_config(config)
+                .await
+                .map(drop)
+        }
     };
     sent.map_err(|e| AppError::Other(e.to_string()))
 }

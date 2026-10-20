@@ -3,11 +3,12 @@ import { Icon, IconDisplay, IconSet } from "@lucide";
 
 import { SpaceEntry } from "../../../types.slint";
 import { RailTileFace } from "./rail-tile.slint";
-import { ClickArea, ListItemArea } from "../../../components/a11y.slint";
+import { ContextPress } from "./context-press.slint";
+import { ClickArea, Interaction, ListItemArea } from "../../../components/a11y.slint";
 import { DirectoryView } from "../../../views.slint";
 import { RoomScope } from "../../../enums.slint";
 import { Actions } from "../../../actions.slint";
-import { Shell } from "../../../local.slint";
+import { RoomMenu, RoomMenuOrigin, RoomMenuReturn, Shell } from "../../../local.slint";
 import { AppStyle, Glyph, IconSize, Metrics, Motion, Radius, Size, Space, Stroke } from "../../../theme.slint";
 
 enum SpaceDrag {
@@ -22,14 +23,47 @@ component SpaceTile inherits ListItemArea {
     in property <Icon> icon;
     in property <bool> elevated;
     in property <bool> hidden;
+    in property <bool> offers-menu;
 
     property <length> glyph-size: Size.xxl;
     property <length> marker-height: Size.lg;
+    property <int> menu-returns: RoomMenu.focus-returns;
 
     height: Metrics.rail-row;
     label: root.entry.name;
     ring-radius: Radius.md;
     ring-inset: Metrics.rail-tile-inset;
+
+    changed menu-returns => {
+        if root.offers-menu && RoomMenu.returns-to(RoomMenuReturn.tile, root.entry.id) {
+            root.take-focus();
+        }
+    }
+
+    context-menu-requested => {
+        if !root.offers-menu {
+            return EventResult.reject;
+        }
+        RoomMenu.open(
+            root.entry.id,
+            RoomMenuOrigin.rail,
+            root.absolute-position.x + root.width,
+            root.absolute-position.y + Space.sm,
+            true);
+        return EventResult.accept;
+    }
+
+    if root.offers-menu: ContextPress {
+        hovered: root.has-hover && Interaction.actionable(root.enabled, root.above-modal);
+        pressed => {
+            RoomMenu.open(
+                root.entry.id,
+                RoomMenuOrigin.rail,
+                root.absolute-position.x + root.mouse-x,
+                root.absolute-position.y + root.mouse-y,
+                false);
+        }
+    }
 
     Rectangle {
         width: 100%;
@@ -227,6 +261,7 @@ export component SpaceRail inherits Rectangle {
             above-modal: root.above-modal;
             index: idx + root.fixed-tiles;
             hidden: root.dragging && idx == root.drag-from;
+            offers-menu: true;
             entry: space;
             selected: DirectoryView.selected-space-id == space.id;
             animate y {

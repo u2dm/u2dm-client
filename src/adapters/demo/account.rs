@@ -144,7 +144,7 @@ pub struct Scenario {
     unsupported: bool,
     no_password_change: bool,
     profile_managed: bool,
-    forgets_rooms: bool,
+    pub forgets_rooms: bool,
     last_session: bool,
     unsent: bool,
     pub weak_password: bool,

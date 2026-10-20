@@ -1,7 +1,6 @@
 use std::collections::{BTreeMap, HashSet};
 
 use matrix_sdk::ruma::UInt;
-use matrix_sdk::ruma::events::Mentions;
 use matrix_sdk::ruma::events::poll::start::PollKind;
 use matrix_sdk::ruma::events::room::ImageInfo;
 use matrix_sdk::ruma::events::room::message::{
@@ -10,6 +9,7 @@ use matrix_sdk::ruma::events::room::message::{
 };
 use matrix_sdk::ruma::events::rtc::notification::CallIntent;
 use matrix_sdk::ruma::events::sticker::StickerEventContent;
+use matrix_sdk::ruma::events::{Mentions, StateEventContentChange};
 use matrix_sdk::ruma::html::{HtmlSanitizerMode, RemoveReplyFallback, sanitize_html};
 use matrix_sdk_base::crypto::types::events::UtdCause;
 use matrix_sdk_ui::timeline::{
@@ -25,6 +25,7 @@ use super::state_rows::{other_state_to_service, unparsed_state};
 use crate::adapters::matrix::media::{EventMedia, file_content, thumbnail_content};
 use crate::adapters::matrix::preview;
 use crate::adapters::{body_emoji, markdown};
+use crate::domain::departure::membership_reason;
 use crate::domain::location::Location;
 use crate::domain::media::{
     AudioKind, AudioMeta, FileMeta, ImageMeta, MediaKind, VideoMeta, Waveform,
@@ -317,10 +318,14 @@ fn membership_to_service(change: &RoomMembershipChange) -> Option<ServiceEvent> 
         MembershipChange::InvitationAccepted => ServiceEvent::InvitationAccepted,
         MembershipChange::InvitationRejected => ServiceEvent::InvitationRejected,
         MembershipChange::InvitationRevoked => ServiceEvent::InvitationRevoked { target },
-        MembershipChange::Kicked => ServiceEvent::Kicked { target },
-        MembershipChange::Banned | MembershipChange::KickedAndBanned => {
-            ServiceEvent::Banned { target }
-        }
+        MembershipChange::Kicked => ServiceEvent::Kicked {
+            target,
+            reason: reason_given(change),
+        },
+        MembershipChange::Banned | MembershipChange::KickedAndBanned => ServiceEvent::Banned {
+            target,
+            reason: reason_given(change),
+        },
         MembershipChange::Unbanned => ServiceEvent::Unbanned { target },
         MembershipChange::Knocked => ServiceEvent::Knocked,
         MembershipChange::KnockAccepted => ServiceEvent::KnockAccepted { target },
@@ -330,6 +335,13 @@ fn membership_to_service(change: &RoomMembershipChange) -> Option<ServiceEvent> 
             return None;
         }
     })
+}
+
+fn reason_given(change: &RoomMembershipChange) -> Option<String> {
+    let StateEventContentChange::Original { content, .. } = change.content() else {
+        return None;
+    };
+    content.reason.clone().and_then(membership_reason)
 }
 
 fn profile_to_service(change: &MemberProfileChange) -> Option<ServiceEvent> {

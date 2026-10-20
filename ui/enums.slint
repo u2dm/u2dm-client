@@ -110,6 +110,8 @@ export enum UserMessageKind {
     room-preview-failed,
     room-address-invalid,
     leave-room-failed,
+    space-rooms-kept,
+    forget-room-failed,
     room-name-missing,
     room-address-missing,
     room-address-unusable,
@@ -574,9 +576,15 @@ export enum RoomRowKind {
     room,
     invites-heading,
     invite,
+    removal,
     rooms-heading,
     spaces-heading,
     space,
+}
+
+export enum RemovalKind {
+    kicked,
+    banned,
 }
 
 export enum InviteKind {

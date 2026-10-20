@@ -91,6 +91,11 @@ scenario_env() {
     logout-warning)  echo 'U2DM_DEMO_ACCOUNT=last-session,unsent U2DM_DEMO_ENCRYPTION=no-recovery U2DM_DEMO_WINDOW=900x760' ;;
     invites)         echo 'U2DM_DEMO_INVITES=slow,late U2DM_DEMO_WINDOW=900x760' ;;
     invite-failures) echo 'U2DM_DEMO_INVITES=accept-fails,decline-fails,revoked U2DM_DEMO_WINDOW=900x760' ;;
+    removals)        echo 'U2DM_DEMO_DEPARTURES=removed,kicked,slow U2DM_DEMO_WINDOW=900x760' ;;
+    removal-failures) echo 'U2DM_DEMO_DEPARTURES=removed,forget-fails U2DM_DEMO_WINDOW=900x760' ;;
+    leave-space)     echo 'U2DM_DEMO_DEPARTURES=slow,sole-admin U2DM_DEMO_WINDOW=900x760' ;;
+    leave-space-failures) echo 'U2DM_DEMO_DEPARTURES=room-stays U2DM_DEMO_WINDOW=900x760' ;;
+    moderation-reasons) echo 'U2DM_DEMO_DEPARTURES=reasons U2DM_DEMO_USER_INFO=admin U2DM_DEMO_WINDOW=900x760' ;;
     room-upgrades)   echo 'U2DM_DEMO_UPGRADES=slow U2DM_DEMO_WINDOW=900x760' ;;
     room-state)      echo 'U2DM_DEMO_WINDOW=900x760' ;;
     room-upgrade-failures) echo 'U2DM_DEMO_UPGRADES=join-fails U2DM_DEMO_WINDOW=900x760' ;;
@@ -478,6 +483,36 @@ scenario_steps() {
       echo '{"op":"open_invite","room_id":"!invite-hiking:demo.local"}'
       echo '{"op":"accept_invite","room_id":"!invite-hiking:demo.local"}'
       echo 'sleep 3' ;;
+    removals)
+      echo '{"op":"open_removal","room_id":"!jobs:demo.local"}'
+      echo '{"op":"forget_room","room_id":"!jobs:demo.local"}'
+      echo 'sleep 2'
+      echo '{"op":"select_room","room_id":"!design:demo.local"}'
+      echo 'sleep 5' ;;
+    removal-failures)
+      echo '{"op":"open_removal","room_id":"!jobs:demo.local"}'
+      echo '{"op":"forget_room","room_id":"!jobs:demo.local"}'
+      echo 'sleep 1'
+      echo '{"op":"close_removal"}'
+      echo '{"op":"forget_room","room_id":"!cats:demo.local"}'
+      echo 'sleep 1' ;;
+    leave-space)
+      echo '{"op":"select_space","space_id":"!space-design:demo.local"}'
+      echo '{"op":"open_leave_space","space_id":"!space-design:demo.local"}'
+      echo 'sleep 2'
+      echo '{"op":"leave_space","space_id":"!space-design:demo.local","with_rooms":true}'
+      echo 'sleep 4' ;;
+    leave-space-failures)
+      echo '{"op":"open_leave_space","space_id":"!space-rust:demo.local"}'
+      echo 'sleep 1'
+      echo '{"op":"leave_space","space_id":"!space-rust:demo.local","with_rooms":true}'
+      echo 'sleep 3' ;;
+    moderation-reasons)
+      echo '{"op":"select_room","room_id":"!square:demo.local"}'
+      echo 'sleep 1'
+      echo '{"op":"open_user_info","user_id":"@marcus:matrix.org"}'
+      echo '{"op":"kick_user","user_id":"@marcus:matrix.org","reason":"Take the flame war elsewhere"}'
+      echo 'sleep 2' ;;
     invite-failures)
       echo '{"op":"open_invite","room_id":"!invite-hiking:demo.local"}'
       echo '{"op":"accept_invite","room_id":"!invite-hiking:demo.local"}'
@@ -966,6 +1001,11 @@ scenario_note() {
     logout-warning)  echo 'the last session without key backup and two unsent messages: Log Out shows the warning instead of logging out (logout.keys_at_risk, logout.unsent)' ;;
     invites)         echo 'Leo'"'"'s chat invite arrives late and is accepted, opening the chat under DMs; Async Rust is declined; Hiking Club is accepted and opens in the rail (directory.invites, invite)' ;;
     invite-failures) echo 'an accept fails inline on its sheet, a decline with the sheet closed fails as a toast, then the open Climbing Crew sheet closes when its invite is withdrawn (invite.error, toast)' ;;
+    removals)        echo 'job hunt crashout and cat tax list as removals from the start; forgetting job hunt crashout, slowly, takes it off the list; then Jordan removes you from the open Design Team 5 s in, which closes it and opens its removal sheet (directory.removals, removal)' ;;
+    removal-failures) echo 'Forget fails inline on the open removal sheet, then as a toast with the sheet closed (removal.error, toast)' ;;
+    leave-space)     echo 'leaving the Design space with its rooms leaves Book Club but keeps Design Team, which Rust'"'"'s Web subspace also lists; the dialog warns you are its only admin (leave_space, directory.spaces)' ;;
+    leave-space-failures) echo 'leaving Rust with its rooms leaves the space and its subspaces but linux ricing refuses, so the toast says some rooms stayed (toast space-rooms-kept)' ;;
+    moderation-reasons) echo 'Town Square shows Kai removing Leo and Sarah banning him with their reasons; removing Marcus sends a reason too (timeline service_reason, user_info)' ;;
     room-upgrades)   echo 'Retro Gaming'"'"'s banner joins the room that replaced it, slowly: the new room opens and the old one leaves the list but still opens, with Open the new room; Frontend Guild'"'"'s creation row joins the room it continues, which opens unlisted (upgrade, directory.rooms)' ;;
     room-state)      echo 'Town Square shows a service row for every room-state change (join rules, history visibility, guests, server ACL, addresses, pins, power levels, knocks, third-party invites, a removed name); being world_readable and unencrypted, its header has the globe and its room info says anyone can read it (timeline service_kind, selected_room_readable_by_anyone, room_info.readable_by_anyone)' ;;
     room-upgrade-failures) echo 'joining the room that replaced Retro Gaming fails as a toast, then so does joining the room Frontend Guild continues (upgrade, toast)' ;;
@@ -1037,6 +1077,7 @@ names() {
     message-delete-failures read-only-room announcement-room powers-revoked \
     readers room-search room-search-open mentions room-mention display-names \
     message-shields identity-alerts identity-held-sends invites invite-failures room-upgrades room-upgrade-failures room-state \
+    removals removal-failures leave-space leave-space-failures moderation-reasons \
     room-links room-finder room-link-failures \
     create-room create-space create-in-space create-room-failures invite-people invite-people-failures \
     typing typing-names presence presence-idle presence-off presence-refused \
@@ -1110,7 +1151,10 @@ cmd_run() {
   jq -r '.rows[]? | select(.message_type == "poll") | "  poll \(.event_id) \(.poll_phase)\(if .poll_editable then " editable" else "" end) voters=\(.poll_voters) [\([.poll_answers[] | "\(.id)=\(.count)\(if .mine then "*" else "" end)"] | join(" "))]"' "$out/timeline.json"
   jq -r 'if .message_permissions then "  messages delete_own=\(.message_permissions.delete_own) delete_others=\(.message_permissions.delete_others) pin=\(.message_permissions.pin) pinned_rows=\([.rows[]? | select(.pinned) | .event_id])" else empty end' "$out/timeline.json"
   jq -r 'if .view.message_link.serial > 0 then "  message link #\(.view.message_link.serial) \(.view.message_link.url)" else empty end' "$out/state.json"
-  jq -r 'if .view.room_menu then "  room menu \(.view.room_menu.room_id) unread=\(.view.room_menu.unread) notify=\(.view.room_menu.notify) busy=\(.view.room_menu.notify_busy) leaving=\(.view.room_menu.leaving)" else empty end' "$out/state.json"
+  jq -r 'if .view.room_menu then "  room menu \(.view.room_menu.room_id) space=\(.view.room_menu.is_space) unread=\(.view.room_menu.unread) notify=\(.view.room_menu.notify) busy=\(.view.room_menu.notify_busy) leaving=\(.view.room_menu.leaving)" else empty end' "$out/state.json"
+  jq -r 'if (.view.directory.removals|length) > 0 then "  removals \([.view.directory.removals[] | "\(.name) \(.kind) by \(.by_name)\(if .reason then " (\(.reason))" else "" end)"] | join(", "))" else empty end' "$out/state.json"
+  jq -r 'if .view.removal.open then "  removal sheet \(.view.removal.removal.id) forgetting=\(.view.removal.forgetting) error=\(.view.removal.error.kind)" else empty end' "$out/state.json"
+  jq -r 'if .view.leave_space.open then "  leave space \(.view.leave_space.space_id) rooms=\(.view.leave_space.rooms) spaces=\(.view.leave_space.spaces) standing=\(.view.leave_space.standing) leaving=\(.view.leave_space.leaving) error=\(.view.leave_space.error.kind)" else empty end' "$out/state.json"
   jq -r 'if .view.user_info.open then "  user info \(.view.user_info.user_id) in \(.view.user_info.room_id) \(.view.user_info.status) membership=\(.view.user_info.membership) role=\(.view.user_info.role) identity=\(.view.user_info.identity) verify=\(.view.user_info.verify) sessions=\([(.view.user_info.sessions // [])[] | "\(.device_id):\(.trust)"] | join(","))\(if .view.user_info.error.kind != "none" then " error=\(.view.user_info.error.kind)" else "" end) pronouns=\(.view.user_info.pronouns) direct=\(.view.user_info.direct) ignored=\(.view.user_info.ignored) kick=\(.view.user_info.may_kick) ban=\(.view.user_info.may_ban) unban=\(.view.user_info.may_unban)" else empty end' "$out/state.json"
   jq -r 'if .view.identity_alert.kind != "none" then "  identity alert \(.view.identity_alert.kind) \(.view.identity_alert.user_id // "") busy=\(.view.identity_alert.busy)" else empty end' "$out/state.json"
   jq -r '.view.encryption | "  encryption \(.standing) recovery=\(.recovery) sessions=\(.verified_sessions) key_storage=\(.key_storage)\(if .open then " dialog=\(.step) activity=\(.activity) error=\(.error.kind)\(if .recovery_key then " key shown" else "" end)\(if .auth then " auth=\(.auth.stage) auth_error=\(.auth.error.kind)" else "" end)\(if .key_file then " key_file=\(.key_file)" else "" end)\(if .keys_exported then " exported=\(.keys_exported)" else "" end)\(if .keys_imported then " imported=\(.keys_imported[0])/\(.keys_imported[1])" else "" end)" else "" end)"' "$out/state.json"

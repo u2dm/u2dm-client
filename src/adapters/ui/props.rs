@@ -16,6 +16,7 @@ use crate::commands::view::{
 };
 use crate::domain::auth::LoginMethod;
 use crate::domain::call::video::ScreenRefusal;
+use crate::domain::departure::RemovalKind;
 use crate::domain::encryption::{Recovery, Standing};
 use crate::domain::invite::InviteKind;
 use crate::domain::media::AudioKind;
@@ -91,6 +92,7 @@ pub trait UiProps {
     fn apply_room_info_topic(&self, topic: StyledText);
     fn apply_user_info_avatar(&self, avatar: Option<Image>);
     fn apply_invite_avatar(&self, avatar: Option<Image>);
+    fn apply_removal_avatar(&self, avatar: Option<Image>);
     fn apply_room_preview_avatar(&self, avatar: Option<Image>);
     fn apply_ring_avatar(&self, avatar: Option<Image>);
     fn apply_login_messages(&self, messages: &[UserMessage]);

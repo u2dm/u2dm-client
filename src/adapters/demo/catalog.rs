@@ -3,10 +3,10 @@ use std::io::{self, Write};
 use std::process::ExitCode;
 
 use super::{
-    account, attachments, audio, calls, create_room, encryption, identity, invite_people, invites,
-    links, login, logout, message_menu, msgtypes, names, notifications, pinned, polls, powers,
-    presence, reactions, receipts, richtext, room_info, shields, space_index, stickers, sync,
-    timeline, typing, upgrades, user_info, verification, videos,
+    account, attachments, audio, calls, create_room, departures, encryption, identity,
+    invite_people, invites, links, login, logout, message_menu, msgtypes, names, notifications,
+    pinned, polls, powers, presence, reactions, receipts, richtext, room_info, shields,
+    space_index, stickers, sync, timeline, typing, upgrades, user_info, verification, videos,
 };
 
 pub struct Flag {
@@ -40,6 +40,7 @@ pub fn all() -> &'static [&'static Scenarios] {
         &videos::CATALOG,
         &space_index::CATALOG,
         &invites::CATALOG,
+        &departures::CATALOG,
         &upgrades::CATALOG,
         &links::CATALOG,
         &create_room::CATALOG,

@@ -222,6 +222,9 @@ pub(super) fn command_allowed(phase: AppPhase, cmd: &UiCommand) -> bool {
         | UiCommand::CloseInvite
         | UiCommand::AcceptInvite(_)
         | UiCommand::DeclineInvite(_)
+        | UiCommand::OpenRemoval(_)
+        | UiCommand::CloseRemoval
+        | UiCommand::ForgetRoom(_)
         | UiCommand::JoinSuccessor(_)
         | UiCommand::JoinPredecessor(_)
         | UiCommand::OpenRoomLink(_)
@@ -250,6 +253,9 @@ pub(super) fn command_allowed(phase: AppPhase, cmd: &UiCommand) -> bool {
         | UiCommand::FilterRoomMembers(_)
         | UiCommand::SetRoomNotify { .. }
         | UiCommand::LeaveRoom(_)
+        | UiCommand::OpenLeaveSpace(_)
+        | UiCommand::CloseLeaveSpace
+        | UiCommand::LeaveSpace { .. }
         | UiCommand::OpenRoomMenu(_)
         | UiCommand::CloseRoomMenu
         | UiCommand::MarkRoomRead(_)
@@ -263,8 +269,8 @@ pub(super) fn command_allowed(phase: AppPhase, cmd: &UiCommand) -> bool {
         | UiCommand::VerifyUser(_)
         | UiCommand::IgnoreUser(_)
         | UiCommand::UnignoreUser(_)
-        | UiCommand::KickUser(_)
-        | UiCommand::BanUser(_)
+        | UiCommand::KickUser { .. }
+        | UiCommand::BanUser { .. }
         | UiCommand::UnbanUser(_)
         | UiCommand::AcceptIdentity(_)
         | UiCommand::WithdrawVerification(_)

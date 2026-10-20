@@ -261,6 +261,10 @@ fn service_content(service: &ServiceEvent) -> Value {
         ServiceEvent::Joined
         | ServiceEvent::InvitationAccepted
         | ServiceEvent::DisplayNameRemoved => json!({ "membership": "join" }),
+        ServiceEvent::Kicked {
+            reason: Some(reason),
+            ..
+        } => json!({ "membership": "leave", "reason": reason }),
         ServiceEvent::Left
         | ServiceEvent::InvitationRejected
         | ServiceEvent::InvitationRevoked { .. }
@@ -271,6 +275,10 @@ fn service_content(service: &ServiceEvent) -> Value {
         ServiceEvent::Invited { target } | ServiceEvent::KnockAccepted { target } => {
             json!({ "membership": "invite", "displayname": target.name.set() })
         }
+        ServiceEvent::Banned {
+            reason: Some(reason),
+            ..
+        } => json!({ "membership": "ban", "reason": reason }),
         ServiceEvent::Banned { .. } => json!({ "membership": "ban" }),
         ServiceEvent::Knocked => json!({ "membership": "knock" }),
         ServiceEvent::DisplayNameSet { name } | ServiceEvent::DisplayNameChanged { name } => {

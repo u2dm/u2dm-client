@@ -39,7 +39,7 @@ fn now_ms() -> u64 {
     MilliSecondsSinceUnixEpoch::now().0.into()
 }
 
-async fn room_avatar_mxc(room: &Room, is_direct: bool) -> Option<String> {
+pub(super) async fn room_avatar_mxc(room: &Room, is_direct: bool) -> Option<String> {
     if let Some(mxc) = room.avatar_url() {
         return Some(mxc.to_string());
     }

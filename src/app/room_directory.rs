@@ -18,6 +18,7 @@ use crate::commands::sync::DirectoryUpdate;
 use crate::commands::view::{
     AppViewState, ChildAccess, InviteTarget, SpaceHeading, SpaceMatch, Toast,
 };
+use crate::domain::departure::{Removal, RemovalList, SpaceDeparture};
 use crate::domain::event_size::EventIds;
 use crate::domain::invite::{Invite, InviteList};
 use crate::domain::message::MessagePermissions;
@@ -275,6 +276,9 @@ pub(super) struct RoomDirectory {
     listable: RoomList,
     received_invites: InviteList,
     invites: InviteList,
+    received_removals: RemovalList,
+    removals: RemovalList,
+    forgotten: HashSet<RoomId>,
     spaces: Arc<[Space]>,
     graph: SpaceGraph,
     flags: Vec<UnreadFlags>,
@@ -297,6 +301,9 @@ impl RoomDirectory {
             listable: Arc::from(Vec::new()),
             received_invites: Arc::from(Vec::new()),
             invites: Arc::from(Vec::new()),
+            received_removals: Arc::from(Vec::new()),
+            removals: Arc::from(Vec::new()),
+            forgotten: HashSet::new(),
             spaces: Arc::from(Vec::new()),
             graph: SpaceGraph::default(),
             flags: Vec::new(),
@@ -323,6 +330,7 @@ impl RoomDirectory {
         self.listable = without_replaced(&rooms);
         self.all_rooms = rooms;
         self.rooms_landed = true;
+        self.settle_removals();
         let pending_changed = self.settle_invites();
         self.rail_dirty |= self.recompute_flags() || pending_changed;
         true
@@ -334,8 +342,53 @@ impl RoomDirectory {
         }
         self.received_invites = invites;
         let pending_changed = self.settle_invites();
+        self.settle_removals();
         self.rail_dirty |= self.recompute_flags() || pending_changed;
         true
+    }
+
+    pub(super) fn store_removals(&mut self, removals: RemovalList) -> bool {
+        if !self.connected {
+            return false;
+        }
+        self.forgotten
+            .retain(|id| removals.iter().any(|removal| removal.id == *id));
+        self.received_removals = removals;
+        self.settle_removals();
+        true
+    }
+
+    pub(super) fn forgot(&mut self, room_id: &RoomId) {
+        if self
+            .received_removals
+            .iter()
+            .any(|removal| removal.id == *room_id)
+        {
+            self.forgotten.insert(room_id.clone());
+        }
+        self.settle_removals();
+    }
+
+    fn settle_removals(&mut self) {
+        let listed: HashSet<&str> = self
+            .all_rooms
+            .iter()
+            .map(|room| room.id.as_ref())
+            .chain(self.spaces.iter().map(|space| space.id.as_str()))
+            .chain(
+                self.received_invites
+                    .iter()
+                    .map(|invite| invite.id.as_ref()),
+            )
+            .chain(self.forgotten.iter().map(AsRef::as_ref))
+            .collect();
+        self.removals = self
+            .received_removals
+            .iter()
+            .filter(|removal| !listed.contains(removal.id.as_ref()))
+            .map(Arc::clone)
+            .collect::<Vec<Arc<Removal>>>()
+            .into();
     }
 
     fn settle_invites(&mut self) -> bool {
@@ -371,6 +424,7 @@ impl RoomDirectory {
         self.reconcile_orders();
         self.graph = SpaceGraph::build(&self.spaces);
         self.settle_invites();
+        self.settle_removals();
         self.recompute_flags();
         self.rail_dirty = true;
         true
@@ -522,6 +576,9 @@ impl RoomDirectory {
         self.listable = Arc::from(Vec::new());
         self.received_invites = Arc::from(Vec::new());
         self.invites = Arc::from(Vec::new());
+        self.received_removals = Arc::from(Vec::new());
+        self.removals = Arc::from(Vec::new());
+        self.forgotten.clear();
         self.spaces = Arc::from(Vec::new());
         self.graph = SpaceGraph::default();
         self.flags.clear();
@@ -612,6 +669,9 @@ impl RoomDirectory {
             SyncEvent::Invites(invites) => {
                 drop(dir_in_tx.send(DirectoryUpdate::Invites(invites)));
             }
+            SyncEvent::Removals(removals) => {
+                drop(dir_in_tx.send(DirectoryUpdate::Removals(removals)));
+            }
             SyncEvent::Spaces(spaces) => {
                 drop(dir_in_tx.send(DirectoryUpdate::Spaces(spaces)));
             }
@@ -700,12 +760,41 @@ impl RoomDirectory {
     pub(super) fn emit_rooms(&self, sel: &Selection) {
         let rooms = self.listed_rooms(sel);
         let invites = self.listed_invites(sel);
+        let removals = self.listed_removals(sel);
         let space_matches = self.space_matches(sel);
         self.output.publish(Box::new(move |view| {
             view.directory.rooms = rooms;
             view.directory.invites = invites;
+            view.directory.removals = removals;
             view.directory.space_matches = space_matches;
         }));
+    }
+
+    fn listed_removals(&self, sel: &Selection) -> RemovalList {
+        match &sel.filter {
+            RoomFilter::All if self.query.is_empty() => Arc::clone(&self.removals),
+            RoomFilter::All => self.removals_where(|removal| self.query.matches(&removal.name)),
+            RoomFilter::Direct => self
+                .removals_where(|removal| removal.is_direct && self.query.matches(&removal.name)),
+            RoomFilter::Space { space, subspace } => {
+                let space_id = subspace.as_ref().unwrap_or(space);
+                match self.graph.index.get(space_id.as_ref()).copied() {
+                    Some(space_index) => self.removals_where(|removal| {
+                        self.graph.contains_room(space_index, removal.id.as_ref())
+                    }),
+                    None => Arc::from(Vec::new()),
+                }
+            }
+        }
+    }
+
+    fn removals_where(&self, keep: impl Fn(&Removal) -> bool) -> RemovalList {
+        self.removals
+            .iter()
+            .filter(|removal| keep(removal))
+            .map(Arc::clone)
+            .collect::<Vec<Arc<Removal>>>()
+            .into()
     }
 
     fn listed_invites(&self, sel: &Selection) -> InviteList {
@@ -933,6 +1022,20 @@ impl RoomDirectory {
         self.invites.iter().find(|invite| invite.id.as_ref() == id)
     }
 
+    pub(super) fn spaces(&self) -> &[Space] {
+        &self.spaces
+    }
+
+    pub(super) fn removals(&self) -> &[Arc<Removal>] {
+        &self.removals
+    }
+
+    pub(super) fn removal(&self, id: &str) -> Option<&Arc<Removal>> {
+        self.removals
+            .iter()
+            .find(|removal| removal.id.as_ref() == id)
+    }
+
     pub(super) fn rooms_landed(&self) -> bool {
         self.rooms_landed
     }
@@ -951,8 +1054,60 @@ impl RoomDirectory {
             .map(|room| &**room)
     }
 
-    fn space(&self, id: &str) -> Option<&Space> {
+    pub(super) fn space(&self, id: &str) -> Option<&Space> {
         self.graph.index.get(id).and_then(|&i| self.spaces.get(i))
+    }
+
+    pub(super) fn space_departure(&self, space_id: &str) -> SpaceDeparture {
+        let Some(&root) = self.graph.index.get(space_id) else {
+            return SpaceDeparture::default();
+        };
+        let mut subtree = HashSet::new();
+        mark_reachable(&self.spaces, &self.graph.index, [root], &mut subtree);
+        let kept = self.kept_without(root, &subtree);
+        let mut departing: Vec<usize> = subtree
+            .iter()
+            .copied()
+            .filter(|i| !kept.contains(i))
+            .collect();
+        departing.sort_unstable();
+        let departing: Vec<&Space> = departing
+            .into_iter()
+            .filter_map(|i| self.spaces.get(i))
+            .collect();
+        let kept_rooms: HashSet<&str> = kept
+            .iter()
+            .filter_map(|&i| self.spaces.get(i))
+            .flat_map(|space| space.child_room_ids.iter().map(String::as_str))
+            .collect();
+        let departing_rooms: HashSet<&str> = departing
+            .iter()
+            .flat_map(|space| space.child_room_ids.iter().map(String::as_str))
+            .filter(|id| !kept_rooms.contains(id))
+            .collect();
+        SpaceDeparture {
+            rooms: self
+                .listable
+                .iter()
+                .filter(|room| departing_rooms.contains(room.id.as_ref()))
+                .map(|room| room.id.clone())
+                .collect(),
+            spaces: departing
+                .iter()
+                .filter(|space| space.id != space_id)
+                .map(|space| RoomId::new(space.id.clone()))
+                .collect(),
+        }
+    }
+
+    fn kept_without(&self, root: usize, subtree: &HashSet<usize>) -> HashSet<usize> {
+        let outside: Vec<usize> = (0..self.spaces.len())
+            .filter(|i| !subtree.contains(i))
+            .collect();
+        let mut kept = HashSet::from([root]);
+        mark_reachable(&self.spaces, &self.graph.index, outside, &mut kept);
+        kept.remove(&root);
+        kept
     }
 
     pub(super) fn space_powers(&self, id: &str) -> SpacePowers {

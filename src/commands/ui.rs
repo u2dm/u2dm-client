@@ -61,6 +61,11 @@ pub enum UiCommand {
     AcceptInvite(RoomId),
     #[strum(to_string = "DeclineInvite({0})")]
     DeclineInvite(RoomId),
+    #[strum(to_string = "OpenRemoval({0})")]
+    OpenRemoval(RoomId),
+    CloseRemoval,
+    #[strum(to_string = "ForgetRoom({0})")]
+    ForgetRoom(RoomId),
     #[strum(to_string = "JoinSuccessor({0})")]
     JoinSuccessor(RoomId),
     #[strum(to_string = "JoinPredecessor({0})")]
@@ -109,6 +114,14 @@ pub enum UiCommand {
     },
     #[strum(to_string = "LeaveRoom({0})")]
     LeaveRoom(RoomId),
+    #[strum(to_string = "OpenLeaveSpace({0})")]
+    OpenLeaveSpace(RoomId),
+    CloseLeaveSpace,
+    #[strum(to_string = "LeaveSpace({space_id}, {with_rooms})")]
+    LeaveSpace {
+        space_id: RoomId,
+        with_rooms: bool,
+    },
     #[strum(to_string = "OpenRoomMenu({0})")]
     OpenRoomMenu(RoomId),
     CloseRoomMenu,
@@ -131,10 +144,16 @@ pub enum UiCommand {
     IgnoreUser(UserId),
     #[strum(to_string = "UnignoreUser({0})")]
     UnignoreUser(UserId),
-    #[strum(to_string = "KickUser({0})")]
-    KickUser(UserId),
-    #[strum(to_string = "BanUser({0})")]
-    BanUser(UserId),
+    #[strum(to_string = "KickUser({user_id})")]
+    KickUser {
+        user_id: UserId,
+        reason: Option<String>,
+    },
+    #[strum(to_string = "BanUser({user_id})")]
+    BanUser {
+        user_id: UserId,
+        reason: Option<String>,
+    },
     #[strum(to_string = "UnbanUser({0})")]
     UnbanUser(UserId),
     #[strum(to_string = "AcceptIdentity({0})")]
@@ -398,6 +417,8 @@ impl UiCommand {
             | Self::OpenInvite(room_id)
             | Self::AcceptInvite(room_id)
             | Self::DeclineInvite(room_id)
+            | Self::OpenRemoval(room_id)
+            | Self::ForgetRoom(room_id)
             | Self::JoinSuccessor(room_id)
             | Self::JoinPredecessor(room_id)
             | Self::OpenRoomLink(RoomLink {
@@ -407,6 +428,10 @@ impl UiCommand {
             | Self::OpenRoomInfo(room_id)
             | Self::OpenInvitePeople(room_id)
             | Self::LeaveRoom(room_id)
+            | Self::OpenLeaveSpace(room_id)
+            | Self::LeaveSpace {
+                space_id: room_id, ..
+            }
             | Self::OpenRoomMenu(room_id)
             | Self::MarkRoomRead(room_id)
             | Self::CopyRoomLink(room_id)
@@ -443,6 +468,8 @@ impl UiCommand {
             | Self::PageSpaceIndex
             | Self::RetrySpaceIndex
             | Self::CloseInvite
+            | Self::CloseRemoval
+            | Self::CloseLeaveSpace
             | Self::OpenRoomLink(_)
             | Self::OpenExternalLink(_)
             | Self::OpenRoomFinder
@@ -475,8 +502,8 @@ impl UiCommand {
             | Self::VerifyUser(_)
             | Self::IgnoreUser(_)
             | Self::UnignoreUser(_)
-            | Self::KickUser(_)
-            | Self::BanUser(_)
+            | Self::KickUser { .. }
+            | Self::BanUser { .. }
             | Self::UnbanUser(_)
             | Self::AcceptIdentity(_)
             | Self::WithdrawVerification(_)

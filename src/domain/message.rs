@@ -36,8 +36,14 @@ pub enum ServiceEvent {
     InvitationAccepted,
     InvitationRejected,
     InvitationRevoked { target: NamedUser },
-    Kicked { target: NamedUser },
-    Banned { target: NamedUser },
+    Kicked {
+        target: NamedUser,
+        reason: Option<String>,
+    },
+    Banned {
+        target: NamedUser,
+        reason: Option<String>,
+    },
     Unbanned { target: NamedUser },
     Knocked,
     KnockAccepted { target: NamedUser },
@@ -206,8 +212,8 @@ impl ServiceEvent {
         match self {
             Self::Invited { target }
             | Self::InvitationRevoked { target }
-            | Self::Kicked { target }
-            | Self::Banned { target }
+            | Self::Kicked { target, .. }
+            | Self::Banned { target, .. }
             | Self::Unbanned { target }
             | Self::KnockAccepted { target }
             | Self::KnockDenied { target }
@@ -225,8 +231,8 @@ impl ServiceEvent {
         match self {
             Self::Invited { target }
             | Self::InvitationRevoked { target }
-            | Self::Kicked { target }
-            | Self::Banned { target }
+            | Self::Kicked { target, .. }
+            | Self::Banned { target, .. }
             | Self::Unbanned { target }
             | Self::KnockAccepted { target }
             | Self::KnockDenied { target }
@@ -236,6 +242,13 @@ impl ServiceEvent {
                 ..
             } => Some(target),
             Self::PowerLevelsChanged(change) => change.target_mut(),
+            _ => None,
+        }
+    }
+
+    pub fn reason(&self) -> Option<&str> {
+        match self {
+            Self::Kicked { reason, .. } | Self::Banned { reason, .. } => reason.as_deref(),
             _ => None,
         }
     }

@@ -9,6 +9,7 @@ use crate::domain::auth::{LoginMethod, Session};
 use crate::domain::call::MemberKey;
 use crate::domain::call::video::{FeedId, ScreenRefusal};
 use crate::domain::capabilities::AccountFacts;
+use crate::domain::departure::{AdminStanding, Removal, RemovalList};
 use crate::domain::encryption::{KeyStorage, Recovery, RecoveryKey, Standing};
 use crate::domain::event_size::Oversize;
 use crate::domain::identity::IdentityAlert;
@@ -39,6 +40,8 @@ pub struct AppViewState {
     pub directory: DirectoryView,
     pub space_index: SpaceIndexView,
     pub invite: InviteView,
+    pub removal: RemovalView,
+    pub leave_space: LeaveSpaceView,
     pub room_preview: RoomPreviewView,
     pub create_room: CreateRoomView,
     pub invite_people: InvitePeopleView,
@@ -688,6 +691,7 @@ pub struct SpaceMatch {
 pub struct DirectoryView {
     pub rooms: RoomList,
     pub invites: InviteList,
+    pub removals: RemovalList,
     pub space_matches: Arc<[SpaceMatch]>,
     pub spaces: Arc<[Space]>,
     pub subspaces: Arc<[Space]>,
@@ -705,6 +709,7 @@ impl Default for DirectoryView {
         Self {
             rooms: Arc::from(Vec::new()),
             invites: Arc::from(Vec::new()),
+            removals: Arc::from(Vec::new()),
             space_matches: Arc::from(Vec::new()),
             spaces: Arc::from(Vec::new()),
             subspaces: Arc::from(Vec::new()),
@@ -794,6 +799,29 @@ pub enum PendingAnswer {
 pub struct InviteView {
     pub invite: Option<Arc<Invite>>,
     pub answer: PendingAnswer,
+    pub error: UserMessage,
+}
+
+#[derive(Clone, Default, PartialEq, Eq)]
+pub struct RemovalView {
+    pub removal: Option<Arc<Removal>>,
+    pub forgetting: bool,
+    pub error: UserMessage,
+}
+
+#[derive(Clone, PartialEq, Eq)]
+pub struct SpaceToLeave {
+    pub id: RoomId,
+    pub name: String,
+    pub rooms: usize,
+    pub spaces: usize,
+}
+
+#[derive(Clone, Default, PartialEq, Eq)]
+pub struct LeaveSpaceView {
+    pub space: Option<SpaceToLeave>,
+    pub standing: Option<AdminStanding>,
+    pub leaving: bool,
     pub error: UserMessage,
 }
 
@@ -931,11 +959,13 @@ pub enum RosterRow {
 pub struct RoomMenuTarget {
     pub room_id: RoomId,
     pub name: String,
+    pub is_space: bool,
     pub unread: bool,
     pub notify: NotifyMode,
     pub notify_busy: bool,
     pub leaving: bool,
     pub may_invite: bool,
+    pub may_add_children: bool,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]

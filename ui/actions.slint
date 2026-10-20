@@ -13,6 +13,8 @@ import {
     PollAnswerEntry,
     MentionWord,
     TextSplice,
+    ModerationRequest,
+    LeaveSpaceRequest,
     StartCallRequest,
     MicrophoneRequest,
     CameraRequest,
@@ -72,6 +74,9 @@ export global Actions {
     callback close-invite();
     callback accept-invite(string);
     callback decline-invite(string);
+    callback open-removal(string);
+    callback close-removal();
+    callback forget-room(string);
     callback join-successor(string);
     callback join-predecessor(string);
     callback open-room-finder();
@@ -99,6 +104,9 @@ export global Actions {
     callback filter-room-members(string);
     callback set-room-notify(string, NotifyMode);
     callback leave-room(string);
+    callback open-leave-space(string);
+    callback close-leave-space();
+    callback leave-space(LeaveSpaceRequest);
     callback open-room-menu(string);
     callback close-room-menu();
     callback mark-room-read(string);
@@ -113,8 +121,8 @@ export global Actions {
     callback verify-user(string);
     callback ignore-user(string);
     callback unignore-user(string);
-    callback kick-user(string);
-    callback ban-user(string);
+    callback kick-user(ModerationRequest);
+    callback ban-user(ModerationRequest);
     callback unban-user(string);
     callback accept-identity(string);
     callback withdraw-verification(string);

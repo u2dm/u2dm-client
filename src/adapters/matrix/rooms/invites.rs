@@ -1,6 +1,5 @@
 use std::collections::HashMap;
 use std::sync::Arc;
-use std::time::Duration;
 
 use async_trait::async_trait;
 use futures_util::{StreamExt, stream};
@@ -11,6 +10,7 @@ use matrix_sdk::{Client, Room, RoomState};
 use matrix_sdk_base::{RoomDisplayName, RoomInfoNotableUpdateReasons};
 use tokio::time::timeout;
 
+use super::leave::FORGET_WAIT;
 use crate::adapters::matrix::member_name::member_name;
 use crate::adapters::matrix::session::ClientHandle;
 use crate::domain::invite::{Invite, InviteKind};
@@ -20,7 +20,6 @@ use crate::error::{AppError, Result};
 use crate::ports::matrix::InvitePort;
 
 const SEED_INFLIGHT: usize = 16;
-const FORGET_WAIT: Duration = Duration::from_secs(5);
 
 pub(in crate::adapters::matrix) struct MatrixInvites {
     matrix: Arc<ClientHandle>,

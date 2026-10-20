@@ -1,4 +1,4 @@
-import { AudioKind, CallTileState, ChildAccess, DecryptionFailure, Delivery, DeviceTrust, EmojiArt, InviteeState, InviteKind, LogLevel, MediaFailure, MediaState, MemberRole, MemberRowKind, MessageKind, PackOrigin, PollPhase, PreviewKind, ReactionSend, RoomAccess, RoomCallMark, RoomKind, RoomRowKind, SendState, ServiceKind, Shield, ShieldReason, SpoilerState, UserMessageKind } from "./enums.slint";
+import { AudioKind, CallTileState, ChildAccess, DecryptionFailure, Delivery, DeviceTrust, EmojiArt, InviteeState, InviteKind, LogLevel, MediaFailure, MediaState, MemberRole, MemberRowKind, MessageKind, PackOrigin, PollPhase, PreviewKind, ReactionSend, RemovalKind, RoomAccess, RoomCallMark, RoomKind, RoomRowKind, SendState, ServiceKind, Shield, ShieldReason, SpoilerState, UserMessageKind } from "./enums.slint";
 
 export struct RoomEntry {
     id: string,
@@ -26,6 +26,8 @@ export struct RoomEntry {
     invite-kind: InviteKind,
     inviter: string,
     inviter-id: string,
+    removal: RemovalKind,
+    removed-by: string,
     call: RoomCallMark,
 }
 
@@ -107,6 +109,16 @@ export struct UserDeviceEntry {
     trust: DeviceTrust,
     last-seen: string,
     ip: string,
+}
+
+export struct ModerationRequest {
+    user-id: string,
+    reason: string,
+}
+
+export struct LeaveSpaceRequest {
+    space-id: string,
+    with-rooms: bool,
 }
 
 export struct RenameSessionRequest {
@@ -249,6 +261,7 @@ export struct MessageEntry {
     reply-body: string,
     service-kind: ServiceKind,
     service-target: string,
+    service-reason: string,
     reactions: [ReactionEntry],
     all-reactions: [ReactionEntry],
     poll-phase: PollPhase,

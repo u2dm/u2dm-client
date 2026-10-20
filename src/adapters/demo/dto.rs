@@ -576,10 +576,14 @@ enum ServiceDto {
     Kicked {
         #[serde(default)]
         target: String,
+        #[serde(default)]
+        reason: Option<String>,
     },
     Banned {
         #[serde(default)]
         target: String,
+        #[serde(default)]
+        reason: Option<String>,
     },
     Knocked,
     KnockRetracted,
@@ -656,11 +660,13 @@ impl ServiceDto {
             Self::Invited { target } => ServiceEvent::Invited {
                 target: named_only(target),
             },
-            Self::Kicked { target } => ServiceEvent::Kicked {
+            Self::Kicked { target, reason } => ServiceEvent::Kicked {
                 target: named_only(target),
+                reason: reason.clone(),
             },
-            Self::Banned { target } => ServiceEvent::Banned {
+            Self::Banned { target, reason } => ServiceEvent::Banned {
                 target: named_only(target),
+                reason: reason.clone(),
             },
             Self::Knocked => ServiceEvent::Knocked,
             Self::KnockRetracted => ServiceEvent::KnockRetracted,

@@ -9,7 +9,7 @@ import { SubspaceRail } from "./subspace-rail.slint";
 import { CallWords, MessagePreview, ServiceLabel } from "../../../messages.slint";
 import { HeaderTitle } from "./header-title.slint";
 import { Avatar } from "../../../components/avatar.slint";
-import { Interaction, ListItemArea } from "../../../components/a11y.slint";
+import { ClickArea, Interaction, ListItemArea } from "../../../components/a11y.slint";
 import { UnreadDot } from "./unread-dot.slint";
 import { SpaceBadge } from "./space-badge.slint";
 import { RoomEntry } from "../../../types.slint";
@@ -17,8 +17,8 @@ import { HeaderIconButton } from "../../../components/button.slint";
 import { RetryNotice } from "../../../components/retry-notice.slint";
 import { PillSearchField } from "../../../components/search-field.slint";
 import { ContextPress } from "./context-press.slint";
-import { AppStyle, Fonts, IconSize, Metrics, Motion, Size, Space, Stroke, Weight } from "../../../theme.slint";
-import { InviteKind, RoomCallMark, RoomRowKind, RoomScope, ServiceKind } from "../../../enums.slint";
+import { AppStyle, Fonts, IconSize, Metrics, Motion, Opacity, Size, Space, Stroke, Weight } from "../../../theme.slint";
+import { InviteKind, RemovalKind, RoomCallMark, RoomRowKind, RoomScope, ServiceKind } from "../../../enums.slint";
 import { DirectoryView, SpaceIndexView } from "../../../views.slint";
 import { Actions } from "../../../actions.slint";
 import { RoomMenu, RoomMenuOrigin, RoomMenuReturn, RoomSearch } from "../../../local.slint";
@@ -184,6 +184,22 @@ global InviteLine {
     }
 }
 
+global RemovalLine {
+    public pure function from(entry: RoomEntry) -> string {
+        if entry.removal == RemovalKind.banned {
+            return @tr("Banned by {}", entry.removed-by);
+        }
+        return @tr("Removed by {}", entry.removed-by);
+    }
+
+    public pure function describe(entry: RoomEntry) -> string {
+        if entry.removal == RemovalKind.banned {
+            return @tr("{}, {} banned you", entry.name, entry.removed-by);
+        }
+        return @tr("{}, {} removed you", entry.name, entry.removed-by);
+    }
+}
+
 global RowHeadings {
     public pure function is-heading(kind: RoomRowKind) -> bool {
         return kind == RoomRowKind.invites-heading
@@ -235,6 +251,55 @@ component InviteSummary inherits VerticalLayout {
         UnreadDot {
             cross-axis-self-alignment: center;
             alert: true;
+        }
+    }
+}
+
+component RemovalSummary inherits VerticalLayout {
+    in property <RoomEntry> entry;
+
+    alignment: center;
+    spacing: Space.sm;
+
+    HorizontalLayout {
+        spacing: Space.md;
+
+        Text {
+            horizontal-stretch: 1;
+            text: root.entry.name;
+            font-family: Fonts.emoji;
+            font-size: Fonts.body;
+            vertical-alignment: center;
+            overflow: elide;
+            color: AppStyle.foreground-muted;
+        }
+
+        if root.entry.last-message-time != "": Text {
+            text: root.entry.last-message-time;
+            font-size: Fonts.caption;
+            vertical-alignment: center;
+            color: AppStyle.foreground-muted;
+        }
+    }
+
+    HorizontalLayout {
+        spacing: Space.xs;
+
+        IconDisplay {
+            cross-axis-self-alignment: center;
+            icon: root.entry.removal == RemovalKind.banned ? IconSet.Ban : IconSet.UserMinus;
+            size: IconSize.xs;
+            stroke: AppStyle.foreground-muted;
+        }
+
+        Text {
+            horizontal-stretch: 1;
+            text: RemovalLine.from(root.entry);
+            font-family: Fonts.emoji;
+            font-size: Fonts.body-small;
+            vertical-alignment: center;
+            overflow: elide;
+            color: AppStyle.foreground-muted;
         }
     }
 }
@@ -303,6 +368,7 @@ component RoomRow inherits ListItemArea {
 
     property <bool> is-room: root.entry.kind == RoomRowKind.room;
     property <bool> is-invite: root.entry.kind == RoomRowKind.invite;
+    property <bool> is-removal: root.entry.kind == RoomRowKind.removal;
     property <bool> is-space: root.entry.kind == RoomRowKind.space;
     property <bool> is-heading: RowHeadings.is-heading(root.entry.kind);
     property <bool> has-unread: root.entry.alert || root.entry.mention || root.entry.hint;
@@ -328,6 +394,9 @@ component RoomRow inherits ListItemArea {
         }
         if entry.kind == RoomRowKind.invite {
             return InviteLine.describe(entry);
+        }
+        if entry.kind == RoomRowKind.removal {
+            return RemovalLine.describe(entry);
         }
         if entry.kind == RoomRowKind.space && entry.space-parent != "" {
             return @tr("{}, space in {}", entry.name, entry.space-parent);
@@ -381,7 +450,7 @@ component RoomRow inherits ListItemArea {
     }
 
     init => {
-        if (root.is-room || root.is-invite) && !root.entry.has-avatar {
+        if (root.is-room || root.is-invite || root.is-removal) && !root.entry.has-avatar {
             Actions.request-room-avatar(root.entry.id);
         }
     }
@@ -426,6 +495,7 @@ component RoomRow inherits ListItemArea {
             y: (parent.height - self.height) / 2;
             width: root.avatar-size;
             height: root.avatar-size;
+            opacity: root.is-removal ? Opacity.pending : 1;
             color-index: root.entry.color-index;
             has-image: root.entry.has-avatar;
             image: root.entry.avatar;
@@ -489,6 +559,38 @@ component RoomRow inherits ListItemArea {
         }
 
         InviteSummary {
+            entry: root.entry;
+        }
+    }
+
+    if !root.collapsed && root.is-removal: HorizontalLayout {
+        padding-left: Space.lg;
+        padding-right: Space.lg;
+        spacing: Space.lg;
+
+        Rectangle {
+            cross-axis-self-alignment: center;
+            width: root.avatar-size;
+            height: root.avatar-size;
+
+            Avatar {
+                width: 100%;
+                height: 100%;
+                opacity: Opacity.pending;
+                color-index: root.entry.color-index;
+                has-image: root.entry.has-avatar;
+                image: root.entry.avatar;
+                initial: root.entry.initial;
+            }
+
+            if root.entry.invite-kind == InviteKind.space: SpaceBadge {
+                x: parent.width - self.width + Space.xs;
+                y: parent.height - self.height + Space.xs;
+                cutout: Palette.alternate-background;
+            }
+        }
+
+        RemovalSummary {
             entry: root.entry;
         }
     }
@@ -570,12 +672,46 @@ component RoomColumnHeader inherits Rectangle {
         }
     }
 
-    if !root.collapsed && root.in-space: HeaderTitle {
-        x: Space.lg;
+    if !root.collapsed && root.in-space: ClickArea {
+        property <int> menu-returns: RoomMenu.focus-returns;
+
+        x: Space.sm;
+        y: Space.sm;
         width: parent.width - self.x - Size.lg - 2 * root.index-button-inset
             - root.space-actions * root.button-pitch;
-        title: DirectoryView.listed-space-name;
-        members: DirectoryView.listed-space-members;
+        height: parent.height - 2 * Space.sm;
+        above-modal: root.above-modal;
+        ring-radius: Metrics.sidebar-tab-radius;
+        label: @tr("Actions for the space {}", DirectoryView.listed-space-name);
+        changed menu-returns => {
+            if RoomMenu.returns-to(RoomMenuReturn.space-header, DirectoryView.listed-space-id) {
+                self.take-focus();
+            }
+        }
+        clicked => {
+            RoomMenu.open(
+                DirectoryView.listed-space-id,
+                RoomMenuOrigin.space-header,
+                self.absolute-position.x,
+                self.absolute-position.y + self.height + Space.xs,
+                self.has-focus);
+        }
+
+        Rectangle {
+            border-radius: Metrics.sidebar-tab-radius;
+            background: parent.has-hover || RoomMenu.shows(DirectoryView.listed-space-id)
+                ? AppStyle.overlay-hover
+                : transparent;
+        }
+
+        HeaderTitle {
+            x: Space.lg - Space.sm;
+            width: parent.width - self.x - Space.sm;
+            height: parent.height;
+            title: DirectoryView.listed-space-name;
+            members: DirectoryView.listed-space-members;
+            opens-menu: true;
+        }
     }
 
     if root.offers-new-room: HeaderIconButton {
@@ -650,6 +786,10 @@ export component Sidebar inherits Rectangle {
         }
         if row.kind == RoomRowKind.invite {
             Actions.open-invite(row.id);
+            RoomSearch.clear();
+        }
+        if row.kind == RoomRowKind.removal {
+            Actions.open-removal(row.id);
             RoomSearch.clear();
         }
         if row.kind == RoomRowKind.space {

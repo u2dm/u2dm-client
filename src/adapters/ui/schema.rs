@@ -117,6 +117,15 @@ macro_rules! string_props {
         InviteTopic InviteView "InviteView" "topic" set_topic get_topic;
         InviteInviter InviteView "InviteView" "inviter" set_inviter get_inviter;
         InviteErrorDetail InviteView "InviteView" "error-detail" set_error_detail get_error_detail;
+        RemovalRoomId RemovalView "RemovalView" "room-id" set_room_id get_room_id;
+        RemovalName RemovalView "RemovalView" "name" set_name get_name;
+        RemovalInitial RemovalView "RemovalView" "initial" set_initial get_initial;
+        RemovalBy RemovalView "RemovalView" "by" set_by get_by;
+        RemovalReason RemovalView "RemovalView" "reason" set_reason get_reason;
+        RemovalErrorDetail RemovalView "RemovalView" "error-detail" set_error_detail get_error_detail;
+        LeaveSpaceId LeaveSpaceView "LeaveSpaceView" "space-id" set_space_id get_space_id;
+        LeaveSpaceName LeaveSpaceView "LeaveSpaceView" "name" set_name get_name;
+        LeaveSpaceErrorDetail LeaveSpaceView "LeaveSpaceView" "error-detail" set_error_detail get_error_detail;
         RoomPreviewAddress RoomPreviewView "RoomPreviewView" "address" set_address get_address;
         RoomPreviewRoomId RoomPreviewView "RoomPreviewView" "room-id" set_room_id get_room_id;
         RoomPreviewName RoomPreviewView "RoomPreviewView" "name" set_name get_name;
@@ -234,6 +243,9 @@ macro_rules! simple_callbacks {
         on_close_invite "close-invite" close_invite plain CloseInvite;
         on_accept_invite "accept-invite" accept_invite room AcceptInvite;
         on_decline_invite "decline-invite" decline_invite room DeclineInvite;
+        on_open_removal "open-removal" open_removal room OpenRemoval;
+        on_close_removal "close-removal" close_removal plain CloseRemoval;
+        on_forget_room "forget-room" forget_room room ForgetRoom;
         on_join_successor "join-successor" join_successor room JoinSuccessor;
         on_join_predecessor "join-predecessor" join_predecessor room JoinPredecessor;
         on_open_room_finder "open-room-finder" open_room_finder plain OpenRoomFinder;
@@ -263,6 +275,10 @@ macro_rules! simple_callbacks {
         on_retry_room_members "retry-room-members" retry_room_members plain RetryRoomMembers;
         on_filter_room_members "filter-room-members" filter_room_members pass FilterRoomMembers;
         on_leave_room "leave-room" leave_room room LeaveRoom;
+        on_open_leave_space "open-leave-space" open_leave_space room OpenLeaveSpace;
+        on_close_leave_space "close-leave-space" close_leave_space plain CloseLeaveSpace;
+        on_leave_space "leave-space" leave_space
+            request(space_id "space-id" text, with_rooms "with-rooms" flag) LeaveSpace;
         on_open_room_menu "open-room-menu" open_room_menu room OpenRoomMenu;
         on_close_room_menu "close-room-menu" close_room_menu plain CloseRoomMenu;
         on_mark_room_read "mark-room-read" mark_room_read room MarkRoomRead;
@@ -276,8 +292,10 @@ macro_rules! simple_callbacks {
         on_verify_user "verify-user" verify_user user VerifyUser;
         on_ignore_user "ignore-user" ignore_user user IgnoreUser;
         on_unignore_user "unignore-user" unignore_user user UnignoreUser;
-        on_kick_user "kick-user" kick_user user KickUser;
-        on_ban_user "ban-user" ban_user user BanUser;
+        on_kick_user "kick-user" kick_user
+            request(user_id "user-id" text, reason "reason" text) KickUser;
+        on_ban_user "ban-user" ban_user
+            request(user_id "user-id" text, reason "reason" text) BanUser;
         on_unban_user "unban-user" unban_user user UnbanUser;
         on_accept_identity "accept-identity" accept_identity user AcceptIdentity;
         on_withdraw_verification "withdraw-verification" withdraw_verification user WithdrawVerification;
@@ -370,6 +388,11 @@ macro_rules! bool_props {
         ListedSpaceMayInvite DirectoryView "DirectoryView" "listed-space-may-invite" set_listed_space_may_invite get_listed_space_may_invite;
         ListedSpaceMayAddChildren DirectoryView "DirectoryView" "listed-space-may-add-children" set_listed_space_may_add_children get_listed_space_may_add_children;
         InviteVisible InviteView "InviteView" "visible" set_visible get_visible;
+        RemovalVisible RemovalView "RemovalView" "visible" set_visible get_visible;
+        RemovalForgetting RemovalView "RemovalView" "forgetting" set_forgetting get_forgetting;
+        LeaveSpaceVisible LeaveSpaceView "LeaveSpaceView" "visible" set_visible get_visible;
+        LeaveSpaceOnlyAdmin LeaveSpaceView "LeaveSpaceView" "only-admin" set_only_admin get_only_admin;
+        LeaveSpaceLeaving LeaveSpaceView "LeaveSpaceView" "leaving" set_leaving get_leaving;
         RoomPreviewEntry RoomPreviewView "RoomPreviewView" "entry" set_entry get_entry;
         RoomPreviewIsSpace RoomPreviewView "RoomPreviewView" "is-space" set_is_space get_is_space;
         RoomPreviewOpensEvent RoomPreviewView "RoomPreviewView" "opens-event" set_opens_event get_opens_event;
@@ -426,6 +449,8 @@ macro_rules! bool_props {
         RoomMenuNotifyBusy RoomMenuView "RoomMenuView" "notify-busy" set_notify_busy get_notify_busy;
         RoomMenuLeaving RoomMenuView "RoomMenuView" "leaving" set_leaving get_leaving;
         RoomMenuMayInvite RoomMenuView "RoomMenuView" "may-invite" set_may_invite get_may_invite;
+        RoomMenuIsSpace RoomMenuView "RoomMenuView" "is-space" set_is_space get_is_space;
+        RoomMenuMayAddChildren RoomMenuView "RoomMenuView" "may-add-children" set_may_add_children get_may_add_children;
         UserInfoVisible UserInfoView "UserInfoView" "visible" set_visible get_visible;
         UserInfoIsSelf UserInfoView "UserInfoView" "is-self" set_is_self get_is_self;
         UserInfoReadFailed UserInfoView "UserInfoView" "read-failed" set_read_failed get_read_failed;
@@ -457,6 +482,9 @@ macro_rules! int_props {
         SelectedRoomRow DirectoryView "DirectoryView" "selected-room-row" set_selected_room_row get_selected_room_row;
         SelectedRoomHeadings DirectoryView "DirectoryView" "selected-room-headings" set_selected_room_headings get_selected_room_headings;
         InviteColorIndex InviteView "InviteView" "color-index" set_color_index get_color_index;
+        RemovalColorIndex RemovalView "RemovalView" "color-index" set_color_index get_color_index;
+        LeaveSpaceRooms LeaveSpaceView "LeaveSpaceView" "rooms" set_rooms get_rooms;
+        LeaveSpaceSpaces LeaveSpaceView "LeaveSpaceView" "spaces" set_spaces get_spaces;
         RoomPreviewColorIndex RoomPreviewView "RoomPreviewView" "color-index" set_color_index get_color_index;
         RoomPreviewMembers RoomPreviewView "RoomPreviewView" "members" set_members get_members;
         ListedSpaceMembers DirectoryView "DirectoryView" "listed-space-members" set_listed_space_members get_listed_space_members;
@@ -594,6 +622,14 @@ macro_rules! enum_props {
             InviteView "InviteView" "answer" set_answer get_answer;
         InviteError set_invite_error(UserMessageKind)
             InviteView "InviteView" "error" set_error get_error;
+        RemovalKind set_removal_kind(RemovalKind)
+            RemovalView "RemovalView" "kind" set_kind get_kind;
+        RemovalShape set_removal_shape(InviteKind)
+            RemovalView "RemovalView" "shape" set_shape get_shape;
+        RemovalError set_removal_error(UserMessageKind)
+            RemovalView "RemovalView" "error" set_error get_error;
+        LeaveSpaceError set_leave_space_error(UserMessageKind)
+            LeaveSpaceView "LeaveSpaceView" "error" set_error get_error;
         RoomPreviewStatus set_room_preview_status(&RoomPreviewSheet)
             RoomPreviewView "RoomPreviewView" "status" set_status get_status;
         RoomPreviewAccess set_room_preview_access(ChildAccess)
@@ -828,6 +864,8 @@ macro_rules! user_message_kinds {
         RoomPreviewFailed         RoomPreviewFailed       "room-preview-failed";
         RoomAddressInvalid        RoomAddressInvalid      "room-address-invalid";
         LeaveRoomFailed           LeaveRoomFailed         "leave-room-failed";
+        SpaceRoomsKept            SpaceRoomsKept          "space-rooms-kept";
+        ForgetRoomFailed          ForgetRoomFailed        "forget-room-failed";
         RoomNameMissing           RoomNameMissing         "room-name-missing";
         RoomAddressMissing        RoomAddressMissing      "room-address-missing";
         RoomAddressUnusable       RoomAddressUnusable     "room-address-unusable";
@@ -1150,6 +1188,14 @@ macro_rules! invite_kinds {
 }
 pub(crate) use invite_kinds;
 
+macro_rules! removal_kinds {
+    ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
+        Kicked Kicked "kicked";
+        Banned Banned "banned";
+    } };
+}
+pub(crate) use removal_kinds;
+
 macro_rules! invite_answers {
     ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
         None    None    "none";
@@ -1319,6 +1365,7 @@ macro_rules! room_row_kinds {
         Room           Room           "room";
         InvitesHeading InvitesHeading "invites-heading";
         Invite         Invite         "invite";
+        Removal        Removal        "removal";
         RoomsHeading   RoomsHeading   "rooms-heading";
         SpacesHeading  SpacesHeading  "spaces-heading";
         Space          Space          "space";
@@ -1711,6 +1758,7 @@ macro_rules! message_fields {
         reply_body set_reply_body "reply-body" text;
         service_kind set_service_kind "service-kind" enumk(ServiceKind);
         service_target set_service_target "service-target" text;
+        service_reason set_service_reason "service-reason" text;
         media_state set_media_state "media-state" enumk(MediaState);
         media_failure set_media_failure "media-failure" enumk(MediaFailureKind);
         image_mimetype set_image_mimetype "image-mimetype" text;
@@ -1826,6 +1874,8 @@ macro_rules! room_fields {
         invite_kind set_invite_kind "invite-kind" enumk(InviteKind);
         inviter set_inviter "inviter" text;
         inviter_id set_inviter_id "inviter-id" text;
+        removal set_removal "removal" enumk(RemovalKind);
+        removed_by set_removed_by "removed-by" text;
         call set_call "call" enumk(RoomCallMark);
         has_avatar set_has_avatar "has-avatar" flag;
         avatar set_avatar "avatar" image;

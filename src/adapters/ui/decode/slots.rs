@@ -63,6 +63,7 @@ pub enum AvatarSlot {
     RoomInfo,
     UserInfo,
     Invite,
+    Removal,
     RoomPreview,
     Ring,
     User,

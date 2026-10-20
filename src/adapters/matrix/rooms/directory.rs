@@ -14,6 +14,8 @@ use tracing::Instrument;
 use super::avatars::{AvatarFetcher, AvatarKind};
 use super::build::{build_rooms, build_single_room, build_spaces_meta, unread_flags};
 use super::invites::{build_invite, build_invites};
+use super::removals::{build_removal, build_removals};
+use crate::domain::departure::Removal;
 use crate::domain::invite::Invite;
 use crate::domain::room::{Room as DomainRoom, Space as DomainSpace};
 use crate::domain::sync::SyncEvent;
@@ -157,12 +159,14 @@ pub(super) struct Directory {
     rooms: HashMap<String, Arc<DomainRoom>>,
     order: Vec<String>,
     invites: HashMap<String, Arc<Invite>>,
+    removals: HashMap<String, Arc<Removal>>,
     spaces: Vec<DomainSpace>,
     pending: HashMap<OwnedRoomId, RoomRefresh>,
     notifications: NotificationSettings,
     rooms_dirty: bool,
     order_dirty: bool,
     invites_dirty: bool,
+    removals_dirty: bool,
     spaces_dirty: bool,
     spaces_structural_dirty: bool,
     flush_at: Option<Instant>,
@@ -174,12 +178,14 @@ impl Directory {
             rooms: HashMap::new(),
             order: Vec::new(),
             invites: HashMap::new(),
+            removals: HashMap::new(),
             spaces: Vec::new(),
             pending: HashMap::new(),
             notifications,
             rooms_dirty: false,
             order_dirty: false,
             invites_dirty: false,
+            removals_dirty: false,
             spaces_dirty: false,
             spaces_structural_dirty: false,
             flush_at: None,
@@ -238,6 +244,11 @@ impl Directory {
         self.arm();
     }
 
+    pub(super) fn mark_removals(&mut self) {
+        self.removals_dirty = true;
+        self.arm();
+    }
+
     pub(super) fn mark_spaces(&mut self) {
         self.spaces_dirty = true;
         self.arm();
@@ -252,6 +263,7 @@ impl Directory {
         match kind {
             AvatarKind::Room => self.mark_rooms(),
             AvatarKind::Invite => self.mark_invites(),
+            AvatarKind::Removal => self.mark_removals(),
             AvatarKind::Space => self.mark_spaces(),
         }
     }
@@ -277,6 +289,7 @@ impl Directory {
         let rooms = build_rooms(client, &self.notifications).await;
         self.rooms = rooms;
         self.invites = build_invites(client).await;
+        self.removals = build_removals(client).await;
         self.spaces = build_spaces_meta(client).await;
         self.pending.clear();
         self.order_dirty = true;
@@ -323,10 +336,26 @@ impl Directory {
         self.mark_invites();
     }
 
+    fn upsert_removal(&mut self, removal: Removal) {
+        let key = removal.id.to_string();
+        if self
+            .removals
+            .get(&key)
+            .is_some_and(|current| **current == removal)
+        {
+            tracing::debug!(room_id = %removal.id, "the rebuilt removal shows nothing new");
+            return;
+        }
+        tracing::info!(room_id = %removal.id, kind = ?removal.kind, "listing the room you were removed from");
+        self.removals.insert(key, Arc::new(removal));
+        self.mark_removals();
+    }
+
     fn remove_room(&mut self, room_id: &MatrixRoomId) {
         self.pending.remove(room_id);
         self.unlist_room(room_id);
         self.unlist_invite(room_id);
+        self.unlist_removal(room_id);
     }
 
     fn unlist_room(&mut self, room_id: &MatrixRoomId) {
@@ -346,8 +375,18 @@ impl Directory {
         self.mark_invites();
     }
 
+    fn unlist_removal(&mut self, room_id: &MatrixRoomId) {
+        if self.removals.remove(room_id.as_str()).is_none() {
+            return;
+        }
+        tracing::debug!(%room_id, "dropped the removal from the list");
+        self.mark_removals();
+    }
+
     fn lists(&self, room_id: &MatrixRoomId) -> bool {
-        self.rooms.contains_key(room_id.as_str()) || self.invites.contains_key(room_id.as_str())
+        self.rooms.contains_key(room_id.as_str())
+            || self.invites.contains_key(room_id.as_str())
+            || self.removals.contains_key(room_id.as_str())
     }
 
     pub(super) fn note_room_updates(&mut self, client: &Client, updates: &RoomUpdates) {
@@ -363,9 +402,9 @@ impl Directory {
         }
     }
 
-    fn note_left(&mut self, room_id: &MatrixRoomId) {
+    fn note_left(&mut self, room_id: &OwnedRoomId) {
         tracing::debug!(%room_id, "sync reported the room as left");
-        self.remove_room(room_id);
+        self.mark_room(room_id.clone(), RoomRefresh::Full);
         if self.spaces.iter().any(|space| space.id == room_id.as_str()) {
             self.mark_spaces_structural();
         }
@@ -374,7 +413,8 @@ impl Directory {
     fn note_joined(&mut self, client: &Client, room_id: &OwnedRoomId, update: &JoinedRoomUpdate) {
         let refresh = refresh_for_joined(update);
         log_joined_update(room_id, update, refresh);
-        let was_invited = self.invites.contains_key(room_id.as_str());
+        let was_invited = self.invites.contains_key(room_id.as_str())
+            || self.removals.contains_key(room_id.as_str());
         let Some(refresh) = refresh.or(was_invited.then_some(RoomRefresh::Full)) else {
             return;
         };
@@ -402,7 +442,8 @@ impl Directory {
             return;
         };
         let room_id = &update.room_id;
-        let invited = self.invites.contains_key(room_id.as_str());
+        let invited = self.invites.contains_key(room_id.as_str())
+            || self.removals.contains_key(room_id.as_str());
         let Some(room) = client.get_room(room_id) else {
             if self.lists(room_id) {
                 self.mark_room(room_id.clone(), RoomRefresh::Full);
@@ -446,6 +487,7 @@ impl Directory {
         match room.state() {
             RoomState::Invited => {
                 self.unlist_room(room_id);
+                self.unlist_removal(room_id);
                 let invite = build_invite(&room)
                     .instrument(tracing::debug_span!("invite_build", %room_id))
                     .await;
@@ -453,15 +495,32 @@ impl Directory {
             }
             RoomState::Joined => {
                 self.unlist_invite(room_id);
+                self.unlist_removal(room_id);
                 if !room.is_space() {
                     self.refresh_joined(&room, refresh).await;
                 }
             }
-            state => {
-                tracing::debug!(%room_id, ?state, "the room is no longer joined or invited");
+            RoomState::Left | RoomState::Banned => self.refresh_departed(&room).await,
+            RoomState::Knocked => {
+                tracing::debug!(%room_id, "the room is only knocked on");
                 self.remove_room(room_id);
             }
         }
+    }
+
+    async fn refresh_departed(&mut self, room: &Room) {
+        let room_id = room.room_id();
+        let removal = build_removal(room)
+            .instrument(tracing::debug_span!("removal_build", %room_id))
+            .await;
+        let Some(removal) = removal else {
+            tracing::debug!(%room_id, state = ?room.state(), "the room is no longer joined or invited");
+            self.remove_room(room_id);
+            return;
+        };
+        self.unlist_room(room_id);
+        self.unlist_invite(room_id);
+        self.upsert_removal(removal);
     }
 
     async fn refresh_joined(&mut self, room: &Room, refresh: RoomRefresh) {
@@ -538,6 +597,10 @@ impl Directory {
             self.spaces_structural_dirty = false;
             self.spaces_dirty = true;
         }
+        if self.removals_dirty {
+            self.emit_removals(client, on_sync, avatars);
+            self.removals_dirty = false;
+        }
         if self.rooms_dirty {
             self.emit_rooms(client, on_sync, avatars);
             self.rooms_dirty = false;
@@ -583,6 +646,33 @@ impl Directory {
                 .filter_map(|invite| invite.avatar_mxc.as_deref()),
         );
         on_sync(SyncEvent::Invites(invites.into()));
+    }
+
+    fn emit_removals(&mut self, client: &Client, on_sync: &OnSync, avatars: &mut AvatarFetcher) {
+        self.removals.retain(|room_id, _| {
+            let known = MatrixRoomId::parse(room_id)
+                .ok()
+                .and_then(|id| client.get_room(&id))
+                .is_some();
+            if !known {
+                tracing::debug!(room_id, "the client forgot the room you were removed from");
+            }
+            known
+        });
+        let mut removals: Vec<Arc<Removal>> = self.removals.values().map(Arc::clone).collect();
+        removals.sort_by(|a, b| {
+            b.removed_ts
+                .cmp(&a.removed_ts)
+                .then_with(|| a.id.as_ref().cmp(b.id.as_ref()))
+        });
+        avatars.request(
+            client,
+            AvatarKind::Removal,
+            removals
+                .iter()
+                .filter_map(|removal| removal.avatar_mxc.as_deref()),
+        );
+        on_sync(SyncEvent::Removals(removals.into()));
     }
 
     fn emit_spaces(&self, client: &Client, on_sync: &OnSync, avatars: &mut AvatarFetcher) {

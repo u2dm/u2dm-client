@@ -155,6 +155,12 @@ export global UserMessages {
         if kind == UserMessageKind.leave-room-failed {
             return @tr("Could not leave {}", detail);
         }
+        if kind == UserMessageKind.space-rooms-kept {
+            return @tr("Left {}, but could not leave some of its rooms", detail);
+        }
+        if kind == UserMessageKind.forget-room-failed {
+            return @tr("Could not forget {}", detail);
+        }
         if kind == UserMessageKind.room-name-missing {
             return @tr("Give it a name");
         }
@@ -595,6 +601,13 @@ export global ReactionKeys {
 }
 
 export global ServiceLabel {
+    public pure function explained(kind: ServiceKind, actor: string, target: string, reason: string) -> string {
+        if reason == "" {
+            return root.label(kind, actor, target);
+        }
+        return @tr("{}: {}", root.label(kind, actor, target), reason);
+    }
+
     public pure function label(kind: ServiceKind, actor: string, target: string) -> string {
         if kind == ServiceKind.joined {
             return @tr("{} joined the room", actor);

@@ -7,9 +7,11 @@ mod hierarchy;
 mod info;
 mod invite_people;
 mod invites;
+mod leave;
 mod presence;
 mod preview;
 mod push;
+mod removals;
 mod send_queue;
 mod typing;
 mod upgrades;
@@ -42,6 +44,7 @@ pub(super) use self::hierarchy::MatrixSpaceIndex;
 pub(super) use self::info::MatrixRoomInfo;
 pub(super) use self::invite_people::MatrixInvitePeople;
 pub(super) use self::invites::MatrixInvites;
+pub(super) use self::leave::MatrixLeaves;
 pub(super) use self::presence::MatrixPresence;
 pub(super) use self::preview::MatrixRoomPreviews;
 pub(super) use self::push::MatrixPush;
@@ -111,6 +114,7 @@ async fn resync(client: &Client, dir: &mut Directory) {
     dir.seed(client).await;
     dir.mark_rooms();
     dir.mark_invites();
+    dir.mark_removals();
     dir.mark_spaces();
 }
 

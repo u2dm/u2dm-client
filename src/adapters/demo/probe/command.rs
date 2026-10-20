@@ -10,6 +10,7 @@ use crate::adapters::ui::dump::Poke;
 use crate::adapters::ui::{link_command, matrix_link, room_address_entry};
 use crate::commands::ui::{MessageDraft, ReplyDraft, UiCommand};
 use crate::domain::capabilities::AccountPage;
+use crate::domain::departure::membership_reason;
 use crate::domain::emote::{ComposerText, Emote};
 use crate::domain::encryption::{KeyPassphrase, RecoveryKey};
 use crate::domain::image_pack::PackId;
@@ -83,6 +84,22 @@ pub enum ProbeCommand {
     },
     DeclineInvite {
         room_id: String,
+    },
+    OpenRemoval {
+        room_id: String,
+    },
+    CloseRemoval,
+    ForgetRoom {
+        room_id: String,
+    },
+    OpenLeaveSpace {
+        space_id: String,
+    },
+    CloseLeaveSpace,
+    LeaveSpace {
+        space_id: String,
+        #[serde(default)]
+        with_rooms: bool,
     },
     DeclineCall {
         room_id: String,
@@ -233,9 +250,13 @@ pub enum ProbeCommand {
     },
     KickUser {
         user_id: String,
+        #[serde(default)]
+        reason: String,
     },
     BanUser {
         user_id: String,
+        #[serde(default)]
+        reason: String,
     },
     UnbanUser {
         user_id: String,
@@ -593,6 +614,41 @@ fn in_room(
     Ok(Driven::Command(command(room(explicit, selected)?)))
 }
 
+fn in_space(
+    space_id: String,
+    command: impl FnOnce(RoomId) -> UiCommand,
+) -> Result<Driven, Rejected> {
+    if space_id.is_empty() {
+        return Err(Rejected("an empty space_id names no space".to_owned()));
+    }
+    Ok(Driven::Command(command(RoomId::new(space_id))))
+}
+
+fn leave_space(with_rooms: bool) -> impl FnOnce(RoomId) -> UiCommand {
+    move |space_id| UiCommand::LeaveSpace {
+        space_id,
+        with_rooms,
+    }
+}
+
+fn moderation(
+    user_id: String,
+    reason: String,
+    command: fn(UserId, Option<String>) -> UiCommand,
+) -> Result<Driven, Rejected> {
+    person(user_id, |user_id| {
+        command(user_id, membership_reason(reason))
+    })
+}
+
+fn kick(user_id: UserId, reason: Option<String>) -> UiCommand {
+    UiCommand::KickUser { user_id, reason }
+}
+
+fn ban(user_id: UserId, reason: Option<String>) -> UiCommand {
+    UiCommand::BanUser { user_id, reason }
+}
+
 fn person(user_id: String, command: impl FnOnce(UserId) -> UiCommand) -> Result<Driven, Rejected> {
     if user_id.is_empty() {
         return Err(Rejected("an empty user_id names nobody".to_owned()));
@@ -762,6 +818,17 @@ pub fn to_driven(command: ProbeCommand, selected: Selection<'_>) -> Result<Drive
         ProbeCommand::CloseInvite => UiCommand::CloseInvite,
         ProbeCommand::AcceptInvite { room_id } => UiCommand::AcceptInvite(RoomId::new(room_id)),
         ProbeCommand::DeclineInvite { room_id } => UiCommand::DeclineInvite(RoomId::new(room_id)),
+        ProbeCommand::OpenRemoval { room_id } => UiCommand::OpenRemoval(RoomId::new(room_id)),
+        ProbeCommand::CloseRemoval => UiCommand::CloseRemoval,
+        ProbeCommand::ForgetRoom { room_id } => UiCommand::ForgetRoom(RoomId::new(room_id)),
+        ProbeCommand::OpenLeaveSpace { space_id } => {
+            return in_space(space_id, UiCommand::OpenLeaveSpace);
+        }
+        ProbeCommand::CloseLeaveSpace => UiCommand::CloseLeaveSpace,
+        ProbeCommand::LeaveSpace {
+            space_id,
+            with_rooms,
+        } => return in_space(space_id, leave_space(with_rooms)),
         ProbeCommand::DeclineCall { room_id } => UiCommand::DeclineCall(RoomId::new(room_id)),
         ProbeCommand::SilenceRing => UiCommand::SilenceRing,
         ProbeCommand::StartCall { room_id, video } => {
@@ -875,8 +942,8 @@ pub fn to_driven(command: ProbeCommand, selected: Selection<'_>) -> Result<Drive
         ProbeCommand::VerifyUser { user_id } => return person(user_id, UiCommand::VerifyUser),
         ProbeCommand::IgnoreUser { user_id } => return person(user_id, UiCommand::IgnoreUser),
         ProbeCommand::UnignoreUser { user_id } => return person(user_id, UiCommand::UnignoreUser),
-        ProbeCommand::KickUser { user_id } => return person(user_id, UiCommand::KickUser),
-        ProbeCommand::BanUser { user_id } => return person(user_id, UiCommand::BanUser),
+        ProbeCommand::KickUser { user_id, reason } => return moderation(user_id, reason, kick),
+        ProbeCommand::BanUser { user_id, reason } => return moderation(user_id, reason, ban),
         ProbeCommand::UnbanUser { user_id } => return person(user_id, UiCommand::UnbanUser),
         ProbeCommand::AcceptIdentity { user_id } => {
             return person(user_id, UiCommand::AcceptIdentity);

@@ -12,6 +12,7 @@ export component HeaderTitle inherits VerticalLayout {
     in property <string> typing;
     in property <string> presence;
     in property <PresenceLine> presence-line: PresenceLine.hidden;
+    in property <bool> opens-menu;
 
     alignment: center;
     spacing: Space.xs;
@@ -44,6 +45,13 @@ export component HeaderTitle inherits VerticalLayout {
             stroke: AppStyle.foreground-muted;
             accessible-role: image;
             accessible-label: @tr("Anyone can read this room");
+        }
+
+        if root.opens-menu: IconDisplay {
+            cross-axis-self-alignment: center;
+            icon: IconSet.ChevronDown;
+            size: IconSize.sm;
+            stroke: AppStyle.foreground-muted;
         }
     }
 

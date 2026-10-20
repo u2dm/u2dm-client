@@ -2,6 +2,7 @@ pub mod account;
 pub mod auth;
 pub mod call;
 pub mod capabilities;
+pub mod departure;
 pub mod emote;
 pub mod encryption;
 pub mod event_size;

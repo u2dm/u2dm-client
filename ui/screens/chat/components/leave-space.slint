@@ -1,0 +1,151 @@
+import { IconSet } from "@lucide";
+
+import { LeaveSpaceView } from "../../../views.slint";
+import { Actions } from "../../../actions.slint";
+import { MetaTip, Reactions } from "../../../local.slint";
+import { AppStyle, Fonts, Space, Weight } from "../../../theme.slint";
+import { UserMessageKind } from "../../../enums.slint";
+import { AppButton } from "../../../components/button.slint";
+import { ChoiceRow } from "../../../components/choice-row.slint";
+import { ErrorBanner } from "../../../components/banner.slint";
+import { DialogCard, ModalHost } from "../../../components/overlay.slint";
+import { DialogNote, Verdict } from "./verification.slint";
+
+global LeaveSpaceWords {
+    pure function rooms(count: int) -> string {
+        return @tr("{n} room" | "{n} rooms" % count);
+    }
+
+    pure function spaces(count: int) -> string {
+        return @tr("{n} space" | "{n} spaces" % count);
+    }
+
+    public pure function children(rooms: int, spaces: int) -> string {
+        if spaces == 0 {
+            return root.rooms(rooms);
+        }
+        if rooms == 0 {
+            return root.spaces(spaces);
+        }
+        return @tr("{} and {}", root.rooms(rooms), root.spaces(spaces));
+    }
+}
+
+export component LeaveSpaceDialog inherits ModalHost {
+    property <length> card-width: min(AppStyle.card-width-wide, root.width - AppStyle.card-inset);
+    property <bool> has-children: LeaveSpaceView.rooms + LeaveSpaceView.spaces > 0;
+    property <bool> with-rooms: false;
+    property <string> shown-space: LeaveSpaceView.space-id;
+
+    dim-opacity: AppStyle.dialog-scrim;
+    label: @tr("Leave {}", LeaveSpaceView.name);
+    dismissed => {
+        Actions.close-leave-space();
+    }
+    opened => {
+        Reactions.close();
+        MetaTip.clear();
+    }
+
+    changed shown-space => {
+        root.with-rooms = false;
+    }
+
+    DialogCard {
+        x: (root.width - self.width) / 2;
+        y: (root.height - self.height) / 2;
+        width: root.card-width;
+        height: card-body.preferred-height;
+
+        card-body := VerticalLayout {
+            padding: Space.xxl;
+            spacing: Space.xl;
+
+            Verdict {
+                icon: IconSet.LogOut;
+                tint: AppStyle.danger-muted;
+                surface: AppStyle.overlay-subtle;
+                title: @tr("Leave {}?", LeaveSpaceView.name);
+            }
+
+            if root.has-children: DialogNote {
+                text: @tr("You're in {} in it.", LeaveSpaceWords.children(LeaveSpaceView.rooms, LeaveSpaceView.spaces));
+            }
+
+            if root.has-children: VerticalLayout {
+                spacing: Space.xs;
+
+                ChoiceRow {
+                    above-modal: true;
+                    enabled: !LeaveSpaceView.leaving;
+                    icon: IconSet.LogOut;
+                    text: @tr("Leave only the space");
+                    detail: @tr("You stay in its rooms");
+                    checked: !root.with-rooms;
+                    clicked => {
+                        root.with-rooms = false;
+                    }
+                }
+
+                ChoiceRow {
+                    above-modal: true;
+                    enabled: !LeaveSpaceView.leaving;
+                    icon: IconSet.LayoutList;
+                    text: @tr("Also leave its {}", LeaveSpaceWords.children(LeaveSpaceView.rooms, LeaveSpaceView.spaces));
+                    detail: @tr("Rooms you're in through another space stay");
+                    checked: root.with-rooms;
+                    clicked => {
+                        root.with-rooms = true;
+                    }
+                }
+            }
+
+            DialogNote {
+                text: @tr("Leaving takes its history from your account.");
+            }
+
+            if LeaveSpaceView.only-admin: Text {
+                text: @tr("You're its only admin. Once you leave, nobody can manage it.");
+                font-size: Fonts.body-small;
+                font-weight: Weight.semibold;
+                horizontal-alignment: center;
+                wrap: word-wrap;
+                color: AppStyle.danger-muted;
+            }
+
+            if LeaveSpaceView.error != UserMessageKind.none: ErrorBanner {
+                messages: [{ kind: LeaveSpaceView.error, detail: LeaveSpaceView.error-detail }];
+            }
+
+            HorizontalLayout {
+                spacing: Space.lg;
+
+                AppButton {
+                    horizontal-stretch: 1;
+                    above-modal: true;
+                    text: @tr("Cancel");
+                    filled: false;
+                    enabled: !LeaveSpaceView.leaving;
+                    clicked => {
+                        Actions.close-leave-space();
+                    }
+                }
+
+                AppButton {
+                    horizontal-stretch: 1;
+                    above-modal: true;
+                    text: @tr("Leave space");
+                    icon: IconSet.LogOut;
+                    tint: AppStyle.call-decline;
+                    busy: LeaveSpaceView.leaving;
+                    clicked => {
+                        Actions.leave-space({
+                            space-id: LeaveSpaceView.space-id,
+                            with-rooms: root.has-children && root.with-rooms,
+                        });
+                    }
+                }
+            }
+        }
+    }
+}

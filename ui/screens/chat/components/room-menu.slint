@@ -17,7 +17,9 @@ enum RoomMenuAction {
     info,
     mark-read,
     notifications,
+    browse,
     invite,
+    new-room,
     copy-link,
     logs,
     leave,
@@ -47,14 +49,23 @@ global RoomMenuActions {
         if action == RoomMenuAction.notifications {
             return @tr("Notifications");
         }
+        if action == RoomMenuAction.browse {
+            return @tr("Browse rooms");
+        }
         if action == RoomMenuAction.invite {
             return @tr("Invite people");
+        }
+        if action == RoomMenuAction.new-room {
+            return @tr("New room");
         }
         if action == RoomMenuAction.copy-link {
             return @tr("Copy link");
         }
         if action == RoomMenuAction.logs {
             return @tr("Room logs");
+        }
+        if RoomMenuView.is-space {
+            return @tr("Leave space");
         }
         return @tr("Leave");
     }
@@ -76,8 +87,14 @@ global RoomMenuActions {
         if action == RoomMenuAction.notifications {
             return NotifyModes.icon(RoomMenuView.notify);
         }
+        if action == RoomMenuAction.browse {
+            return IconSet.Compass;
+        }
         if action == RoomMenuAction.invite {
             return IconSet.UserRoundPlus;
+        }
+        if action == RoomMenuAction.new-room {
+            return IconSet.MessageSquarePlus;
         }
         if action == RoomMenuAction.copy-link {
             return IconSet.Link;
@@ -152,6 +169,32 @@ component RoomMenuCard inherits MenuCard {
     }
 
     public function open(keyboard: bool) {
+        if RoomMenuView.is-space {
+            root.offer-space-actions();
+        } else {
+            root.offer-room-actions();
+        }
+        root.cursor = keyboard ? 0 : -1;
+        root.in-flyout = false;
+        root.flyout-cursor = -1;
+        keys.focus();
+    }
+
+    function offer-space-actions() {
+        root.offered = [];
+        root.notify-index = -1;
+        root.offered.push(RoomMenuAction.browse);
+        if RoomMenuView.may-invite {
+            root.offered.push(RoomMenuAction.invite);
+        }
+        if RoomMenuView.may-add-children {
+            root.offered.push(RoomMenuAction.new-room);
+        }
+        root.offered.push(RoomMenuAction.copy-link);
+        root.offered.push(RoomMenuAction.leave);
+    }
+
+    function offer-room-actions() {
         root.offered = [];
         root.offered.push(RoomMenuAction.info);
         if RoomMenuView.unread {
@@ -167,10 +210,6 @@ component RoomMenuCard inherits MenuCard {
         if !RoomMenuView.leaving {
             root.offered.push(RoomMenuAction.leave);
         }
-        root.cursor = keyboard ? 0 : -1;
-        root.in-flyout = false;
-        root.flyout-cursor = -1;
-        keys.focus();
     }
 
     public function open-flyout(by-keys: bool) {
@@ -207,6 +246,9 @@ component RoomMenuCard inherits MenuCard {
         }
         if root.cursor >= 0 && root.cursor < root.offered.length {
             return RoomMenuActions.spoken-label(root.offered[root.cursor]);
+        }
+        if RoomMenuView.is-space {
+            return @tr("Space actions");
         }
         return @tr("Room actions");
     }
@@ -395,7 +437,7 @@ component RoomMenuCard inherits MenuCard {
 
     if root.asking: MenuConfirmation {
         padding: root.pad;
-        prompt: @tr("Leave {}?", RoomMenuView.name);
+        prompt: @tr("Leave {}? Its history goes from your account.", RoomMenuView.name);
         confirm-icon: IconSet.LogOut;
         confirm-label: @tr("Leave");
         row-height: root.row-height;
@@ -491,6 +533,23 @@ export component RoomMenuOverlay inherits Rectangle {
             Actions.open-invite-people(id);
             return;
         }
+        if action == RoomMenuAction.browse {
+            RoomMenu.close();
+            Actions.open-space(id);
+            Actions.open-space-index();
+            return;
+        }
+        if action == RoomMenuAction.new-room {
+            RoomMenu.close();
+            Actions.open-space(id);
+            Actions.open-create-room();
+            return;
+        }
+        if action == RoomMenuAction.leave && RoomMenuView.is-space {
+            RoomMenu.close();
+            Actions.open-leave-space(id);
+            return;
+        }
         if action == RoomMenuAction.leave {
             RoomMenu.asking-leave = true;
             return;
@@ -525,7 +584,9 @@ export component RoomMenuOverlay inherits Rectangle {
         height: 100%;
         dim: false;
         any-button-dismisses: true;
-        label: @tr("Actions for {}", RoomMenuView.name);
+        label: RoomMenuView.is-space
+            ? @tr("Actions for the space {}", RoomMenuView.name)
+            : @tr("Actions for {}", RoomMenuView.name);
         opened => {
             MessageMenu.close();
             LocalState.close-popovers();

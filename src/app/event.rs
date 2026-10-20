@@ -8,6 +8,7 @@ use super::invites::Answer;
 use super::room_info::{ActionOutcome, RosterOutcome};
 use super::room_preview::JoinedRoom;
 use super::space_index::{JoinOutcome, PageOutcome};
+use super::space_leave::SpaceLeaveOutcome;
 use super::upgrades::UpgradeJoined;
 use super::user_info::{DmOutcome, ReadOutcome, VerifyOutcome};
 use crate::commands::messages::{UserMessage, UserMessageKind};
@@ -18,6 +19,7 @@ use crate::domain::call::ring::{CallSignal, RingId};
 use crate::domain::call::sfu::{GrantResult, SfuId};
 use crate::domain::call::{DeviceStanding, KeySendReport, MemberKey, Transport};
 use crate::domain::capabilities::AccountFacts;
+use crate::domain::departure::AdminStanding;
 use crate::domain::encryption::{AccountEncryption, IdentityOutcome};
 use crate::domain::event_size::Oversize;
 use crate::domain::identity::{OwnIdentity, RoomAlert};
@@ -127,6 +129,7 @@ pub(super) enum AppEvent {
         answer: Answer,
         outcome: ActionOutcome,
     },
+    Departure(DepartureEvent),
     UpgradeJoinSettled(UpgradeJoined),
     Preview(PreviewEvent),
     RoomCreation(CreationSettled),
@@ -530,6 +533,33 @@ impl UserInfoEvent {
     }
 }
 
+pub(super) enum DepartureEvent {
+    RemovalForgotten {
+        room_id: RoomId,
+        name: String,
+        outcome: ActionOutcome,
+    },
+    StandingRead {
+        generation: u64,
+        standing: Option<AdminStanding>,
+    },
+    SpaceLeft {
+        space_id: RoomId,
+        name: String,
+        outcome: SpaceLeaveOutcome,
+    },
+}
+
+impl DepartureEvent {
+    fn label(&self) -> &'static str {
+        match self {
+            Self::RemovalForgotten { .. } => "RemovalForgotten",
+            Self::StandingRead { .. } => "SpaceAdminStandingRead",
+            Self::SpaceLeft { .. } => "SpaceLeft",
+        }
+    }
+}
+
 pub(super) enum RoomActionEvent {
     NotifySettled {
         request: u64,
@@ -621,6 +651,7 @@ impl AppEvent {
             Self::SpaceIndexAvatarsReady { .. } => "SpaceIndexAvatarsReady",
             Self::SpaceChildJoinSettled { .. } => "SpaceChildJoinSettled",
             Self::InviteAnswered { .. } => "InviteAnswered",
+            Self::Departure(event) => event.label(),
             Self::UpgradeJoinSettled(_) => "UpgradeJoinSettled",
             Self::Preview(event) => event.label(),
             Self::RoomCreation(_) => "RoomCreationSettled",

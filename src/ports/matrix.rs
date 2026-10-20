@@ -15,6 +15,7 @@ use crate::domain::call::{
     RestartResult, ScheduleResult, SentMembership, Transport,
 };
 use crate::domain::capabilities::{AccountFacts, AccountPage};
+use crate::domain::departure::AdminStanding;
 use crate::domain::emote::Emote;
 use crate::domain::encryption::{
     AccountEncryption, IdentityOutcome, KeyImport, KeyPassphrase, RecoveryAttempt, RecoveryKey,
@@ -165,6 +166,7 @@ pub struct AuthenticatedSession {
     pub space_order: Arc<dyn SpaceOrderPort>,
     pub space_index: Arc<dyn SpaceIndexPort>,
     pub invites: Arc<dyn InvitePort>,
+    pub leaves: Arc<dyn LeavePort>,
     pub upgrades: Arc<dyn UpgradePort>,
     pub room_previews: Arc<dyn RoomPreviewPort>,
     pub room_creation: Arc<dyn RoomCreationPort>,
@@ -249,6 +251,13 @@ pub trait SpaceIndexPort: Send + Sync {
 pub trait InvitePort: Send + Sync {
     async fn accept(&self, room_id: &RoomId) -> Result<()>;
     async fn decline(&self, room_id: &RoomId) -> Result<()>;
+}
+
+#[async_trait]
+pub trait LeavePort: Send + Sync {
+    async fn leave(&self, room_id: &RoomId) -> Result<()>;
+    async fn forget(&self, room_id: &RoomId) -> Result<()>;
+    async fn admin_standing(&self, room_id: &RoomId) -> Result<AdminStanding>;
 }
 
 #[async_trait]
@@ -342,7 +351,6 @@ pub trait RoomInfoPort: Send + Sync {
     async fn roster(&self, room_id: &RoomId) -> Result<Vec<RosterMember>>;
     async fn readers(&self, room_id: &RoomId, user_ids: &[String]) -> Result<Vec<Reader>>;
     async fn set_notify(&self, room_id: &RoomId, mode: NotifyMode) -> Result<()>;
-    async fn leave(&self, room_id: &RoomId) -> Result<()>;
     async fn mark_read(&self, room_id: &RoomId) -> Result<()>;
     async fn fetch_avatars(&self, mxcs: &[String]) -> usize;
     async fn room_link(&self, room_id: &RoomId) -> Result<String>;
@@ -357,7 +365,13 @@ pub trait UserInfoPort: Send + Sync {
     async fn fetch_avatars(&self, mxcs: &[String]) -> usize;
     async fn start_dm(&self, user_id: &UserId) -> Result<RoomId>;
     async fn set_ignored(&self, user_id: &UserId, change: IgnoreChange) -> Result<()>;
-    async fn moderate(&self, room_id: &RoomId, user_id: &UserId, action: Moderation) -> Result<()>;
+    async fn moderate(
+        &self,
+        room_id: &RoomId,
+        user_id: &UserId,
+        action: Moderation,
+        reason: Option<&str>,
+    ) -> Result<()>;
     async fn follow_trust(&self, user_id: &UserId, trust_tx: mpsc::Sender<UserTrust>)
     -> Result<()>;
 }

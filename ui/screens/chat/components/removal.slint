@@ -1,0 +1,161 @@
+import { ScrollView } from "std-widgets.slint";
+import { IconSet } from "@lucide";
+
+import { AppButton } from "../../../components/button.slint";
+import { DialogCard, ModalHost } from "../../../components/overlay.slint";
+import { ErrorBanner } from "../../../components/banner.slint";
+import { DetailLine } from "./detail-line.slint";
+import { SheetCloseChip, SheetCover } from "./sheet.slint";
+import { AppStyle, Fonts, Metrics, Space } from "../../../theme.slint";
+import { InviteKind, RemovalKind, UserMessageKind } from "../../../enums.slint";
+import { RemovalView } from "../../../views.slint";
+import { Actions } from "../../../actions.slint";
+import { MetaTip, Reactions } from "../../../local.slint";
+
+global RemovalWords {
+    public pure function sentence(kind: RemovalKind, shape: InviteKind, by: string) -> string {
+        if kind == RemovalKind.banned && shape == InviteKind.space {
+            return @tr("{} banned you from this space.", by);
+        }
+        if kind == RemovalKind.banned && shape == InviteKind.direct {
+            return @tr("{} banned you from this chat.", by);
+        }
+        if kind == RemovalKind.banned {
+            return @tr("{} banned you from this room.", by);
+        }
+        if shape == InviteKind.space {
+            return @tr("{} removed you from this space.", by);
+        }
+        if shape == InviteKind.direct {
+            return @tr("{} removed you from this chat.", by);
+        }
+        return @tr("{} removed you from this room.", by);
+    }
+
+    public pure function forget-note(shape: InviteKind) -> string {
+        if shape == InviteKind.space {
+            return @tr("Forgetting takes the space off your list, and its history from your account.");
+        }
+        return @tr("Forgetting takes the room off your list, and its history from your account.");
+    }
+}
+
+component RemovalCover inherits SheetCover {
+    avatar-size: Metrics.removal-avatar;
+    color-index: RemovalView.color-index;
+    has-avatar: RemovalView.has-avatar;
+    avatar: RemovalView.avatar;
+    initial: RemovalView.initial;
+    name: RemovalView.name;
+
+    Text {
+        text: RemovalWords.sentence(RemovalView.kind, RemovalView.shape, RemovalView.by);
+        font-size: Fonts.body;
+        horizontal-alignment: center;
+        wrap: word-wrap;
+    }
+}
+
+export component RemovalDialog inherits ModalHost {
+    property <length> card-width: min(AppStyle.card-width-wide, root.width - AppStyle.card-inset);
+    property <length> card-height: min(
+        body.preferred-height,
+        root.height - AppStyle.card-inset,
+        Metrics.removal-max-height);
+
+    dim-opacity: AppStyle.dialog-scrim;
+    label: RemovalView.kind == RemovalKind.banned
+        ? @tr("Banned from {}", RemovalView.name)
+        : @tr("Removed from {}", RemovalView.name);
+    dismissed => {
+        Actions.close-removal();
+    }
+    opened => {
+        Reactions.close();
+        MetaTip.clear();
+    }
+
+    DialogCard {
+        x: (root.width - self.width) / 2;
+        y: (root.height - self.height) / 2;
+        width: root.card-width;
+        height: root.card-height;
+        clip: true;
+
+        ScrollView {
+            width: 100%;
+            height: 100%;
+            content-width: root.card-width;
+            content-height: body.preferred-height;
+
+            body := VerticalLayout {
+                width: root.card-width;
+                padding-top: Space.xl;
+                padding-bottom: Space.xl;
+                spacing: Space.lg;
+
+                RemovalCover { }
+
+                if RemovalView.reason != "": VerticalLayout {
+                    padding-left: Space.xl;
+                    padding-right: Space.xl;
+
+                    DetailLine {
+                        value: RemovalView.reason;
+                        caption: @tr("Reason");
+                    }
+                }
+
+                HorizontalLayout {
+                    padding-left: Space.xl;
+                    padding-right: Space.xl;
+
+                    Text {
+                        text: RemovalWords.forget-note(RemovalView.shape);
+                        font-size: Fonts.body-small;
+                        color: AppStyle.foreground-muted;
+                        horizontal-alignment: center;
+                        wrap: word-wrap;
+                    }
+                }
+
+                HorizontalLayout {
+                    padding-left: Space.xl;
+                    padding-right: Space.xl;
+
+                    AppButton {
+                        horizontal-stretch: 1;
+                        above-modal: true;
+                        text: @tr("Forget");
+                        icon: IconSet.Trash2;
+                        tint: AppStyle.call-decline;
+                        busy: RemovalView.forgetting;
+                        clicked => {
+                            Actions.forget-room(RemovalView.room-id);
+                        }
+                    }
+                }
+
+                if RemovalView.error != UserMessageKind.none: HorizontalLayout {
+                    padding-left: Space.xl;
+                    padding-right: Space.xl;
+
+                    ErrorBanner {
+                        messages: [{ kind: RemovalView.error, detail: RemovalView.error-detail }];
+                    }
+                }
+            }
+        }
+
+        SheetCloseChip {
+            x: parent.width - self.width - Space.md;
+            y: Space.md;
+            surface: AppStyle.card;
+            label: @tr("Close");
+            above-modal: true;
+            clicked => {
+                Actions.close-removal();
+            }
+        }
+    }
+}

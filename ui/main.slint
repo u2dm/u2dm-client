@@ -40,6 +40,8 @@ import {
     RoomLogView,
     UserInfoView,
     InviteView,
+    RemovalView,
+    LeaveSpaceView,
     RoomPreviewView,
     CreateRoomView,
     InvitePeopleView,
@@ -68,6 +70,8 @@ import { RoomInfoDialog } from "./screens/chat/components/room-info.slint";
 import { EventSourceDialog } from "./screens/chat/components/event-source.slint";
 import { UserInfoDialog } from "./screens/chat/components/user-info.slint";
 import { InviteDialog } from "./screens/chat/components/invite.slint";
+import { RemovalDialog } from "./screens/chat/components/removal.slint";
+import { LeaveSpaceDialog } from "./screens/chat/components/leave-space.slint";
 import { RoomPreviewDialog } from "./screens/chat/components/room-preview.slint";
 import { CreateRoomDialog } from "./screens/chat/components/create-room.slint";
 import { InvitePeopleDialog } from "./screens/chat/components/invite-people.slint";
@@ -79,7 +83,7 @@ export { EmojiStore }
 export { LoginPhase, ConnectionState, TimelineState, VerificationPhase, MediaState, MediaFailure }
 export { MessageKind, PreviewKind, ServiceKind, LoginMethodKind, AudioKind }
 export { LoginView, SessionView, DirectoryView, SpaceIndexView, RoomView, PackView, VerificationView }
-export { AttachmentView, VideoView, AudioView, UnsentView, IdentityAlertView, UpgradeView, TypingView, PresenceView, CallView, EncryptionView, AccountView, LogoutView, WindowView, RoomInfoView, SourceView, RoomMenuView, RoomLogView, UserInfoView, InviteView, RoomPreviewView, CreateRoomView, InvitePeopleView, ReadersView, MentionsView }
+export { AttachmentView, VideoView, AudioView, UnsentView, IdentityAlertView, UpgradeView, TypingView, PresenceView, CallView, EncryptionView, AccountView, LogoutView, WindowView, RoomInfoView, SourceView, RoomMenuView, RoomLogView, UserInfoView, InviteView, RemovalView, LeaveSpaceView, RoomPreviewView, CreateRoomView, InvitePeopleView, ReadersView, MentionsView }
 export { Actions }
 export { Probe, ReplySwipe, RoomMenu }
 export { NotificationText, SpoilerCover }
@@ -174,6 +178,8 @@ export component AppWindow inherits Window {
     if Shell.readers-open: ReadersDialog { }
     if Shell.user-info-open: UserInfoDialog { }
     if Shell.invite-open: InviteDialog { }
+    if Shell.removal-open: RemovalDialog { }
+    if Shell.leave-space-open: LeaveSpaceDialog { }
     if Shell.invite-people-open: InvitePeopleDialog { }
     if Shell.room-preview-open: RoomPreviewDialog { }
     if Shell.source-open: EventSourceDialog { }

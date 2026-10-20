@@ -37,7 +37,11 @@ export component ServiceMessage inherits VerticalLayout {
                 spacing: Space.md;
 
                 Text {
-                    text: ServiceLabel.label(root.msg.service-kind, root.msg.sender, root.msg.service-target);
+                    text: ServiceLabel.explained(
+                        root.msg.service-kind,
+                        root.msg.sender,
+                        root.msg.service-target,
+                        root.msg.service-reason);
                     font-family: Fonts.emoji;
                     font-size: Fonts.body-small;
                     color: AppStyle.foreground-strong;

@@ -25,6 +25,7 @@ mod polls;
 mod presence;
 mod readers;
 mod recover;
+mod removals;
 mod room_creation;
 mod room_directory;
 mod room_info;
@@ -34,6 +35,7 @@ mod selection;
 mod send_lanes;
 mod session;
 mod space_index;
+mod space_leave;
 mod space_order;
 mod submissions;
 mod task_group;
@@ -55,9 +57,9 @@ use calls::Calls;
 use encryption::Encryption;
 use establish::{EstablishedSession, Rollback};
 use event::{
-    AccountEvent, AppEvent, CallEvent, CreationSettled, EncryptionEvent, EndReason, IdentityEvent,
-    InvitePeopleEvent, MentionsEvent, MessageActionEvent, PacksEvent, PresenceEvent, PreviewEvent,
-    ReadersEvent, RoomActionEvent, SessionEvent, TimelineEvent, UserInfoEvent,
+    AccountEvent, AppEvent, CallEvent, CreationSettled, DepartureEvent, EncryptionEvent, EndReason,
+    IdentityEvent, InvitePeopleEvent, MentionsEvent, MessageActionEvent, PacksEvent, PresenceEvent,
+    PreviewEvent, ReadersEvent, RoomActionEvent, SessionEvent, TimelineEvent, UserInfoEvent,
 };
 use event_source::EventSourceViewer;
 use identity_alerts::{IdentityAlerts, Resolution};
@@ -74,6 +76,7 @@ use pinned::{PinDirection, PinnedMessages};
 use presence::Presence;
 use readers::ReaderList;
 use recover::Recovery;
+use removals::Removals;
 use room_creation::{Created, RoomCreation};
 use room_directory::{RoomDirectory, RoomMeta};
 use room_info::{ActionOutcome, RoomInfo, RosterOutcome};
@@ -83,6 +86,7 @@ use selection::Selection;
 use send_lanes::SendLanes;
 use session::{EndingSession, SessionController, SuspendedSession};
 use space_index::{ChildTarget, JoinOutcome, ListedSpace, PageOutcome, SpaceIndex};
+use space_leave::SpaceLeave;
 use submissions::Submissions;
 use task_group::TaskGroup;
 use tokio::sync::{mpsc, watch};
@@ -103,6 +107,7 @@ use crate::commands::view::{AppViewState, LoginActivity, LoginStep, Toast};
 use crate::domain::account::AccountScope;
 use crate::domain::auth::ServerInfo;
 use crate::domain::call::DeviceId;
+use crate::domain::departure::RemovalList;
 use crate::domain::emote::ComposerText;
 use crate::domain::encryption::RecoveryKey;
 use crate::domain::image_pack::PackId;
@@ -246,6 +251,8 @@ pub struct AppService {
     packs: Packs,
     space_index: SpaceIndex,
     invites: Invites,
+    removals: Removals,
+    space_leave: SpaceLeave,
     upgrades: RoomUpgrades,
     room_previews: RoomPreviews,
     room_creation: RoomCreation,
@@ -310,6 +317,8 @@ impl AppService {
             packs: Packs::new(Arc::clone(&output), events.clone()),
             space_index: SpaceIndex::new(Arc::clone(&output), events.clone()),
             invites: Invites::new(Arc::clone(&output), events.clone()),
+            removals: Removals::new(Arc::clone(&output), events.clone()),
+            space_leave: SpaceLeave::new(Arc::clone(&output), events.clone()),
             upgrades: RoomUpgrades::new(Arc::clone(&output), events.clone()),
             room_previews: RoomPreviews::new(Arc::clone(&output), events.clone()),
             room_creation: RoomCreation::new(Arc::clone(&output), events.clone()),
@@ -373,6 +382,9 @@ impl AppService {
                         }
                         Some(DirectoryUpdate::Invites(invites)) => {
                             self.handle_invites_updated(invites).await;
+                        }
+                        Some(DirectoryUpdate::Removals(removals)) => {
+                            self.handle_removals_updated(removals);
                         }
                         Some(DirectoryUpdate::Spaces(spaces)) => {
                             self.handle_spaces_updated(spaces).await;
@@ -553,6 +565,12 @@ impl AppService {
             UiCommand::DeclineInvite(room_id) => {
                 self.answer_invite(&room_id, Answer::Decline);
             }
+            cmd @ (UiCommand::OpenRemoval(_)
+            | UiCommand::CloseRemoval
+            | UiCommand::ForgetRoom(_)
+            | UiCommand::OpenLeaveSpace(_)
+            | UiCommand::CloseLeaveSpace
+            | UiCommand::LeaveSpace { .. }) => self.handle_departure_command(cmd),
             UiCommand::JoinSuccessor(room_id) => {
                 self.join_upgrade_link(&room_id, Toward::Successor);
             }
@@ -603,7 +621,10 @@ impl AppService {
                 self.leave_room(&room_id);
             }
             UiCommand::OpenRoomMenu(room_id) => {
-                self.room_info.open_menu(self.room_directory.room(&room_id));
+                self.room_info.open_menu(
+                    self.room_directory.room(&room_id),
+                    self.room_directory.space(&room_id),
+                );
             }
             UiCommand::CloseRoomMenu => {
                 self.room_info.close_menu();
@@ -641,14 +662,14 @@ impl AppService {
             UiCommand::UnignoreUser(user_id) => {
                 self.set_ignored(&user_id, IgnoreChange::Unignore);
             }
-            UiCommand::KickUser(user_id) => {
-                self.moderate(&user_id, Moderation::Kick);
+            UiCommand::KickUser { user_id, reason } => {
+                self.moderate(&user_id, Moderation::Kick, reason);
             }
-            UiCommand::BanUser(user_id) => {
-                self.moderate(&user_id, Moderation::Ban);
+            UiCommand::BanUser { user_id, reason } => {
+                self.moderate(&user_id, Moderation::Ban, reason);
             }
             UiCommand::UnbanUser(user_id) => {
-                self.moderate(&user_id, Moderation::Unban);
+                self.moderate(&user_id, Moderation::Unban, None);
             }
             UiCommand::AcceptIdentity(user_id) => {
                 self.resolve_identity_alert(Resolution::Accept(user_id));
@@ -1018,6 +1039,8 @@ impl AppService {
         if self.room_directory.store_rooms(rooms) {
             self.refresh_selected_room().await;
             self.room_directory.emit_directory(&self.selection);
+            self.follow_removals();
+            self.follow_space_leave();
             self.notifications.directory_changed(&self.room_directory);
             self.calls.directory_changed(&self.room_directory);
             self.refresh_space_index();
@@ -1042,6 +1065,7 @@ impl AppService {
         if self.room_directory.store_invites(invites) {
             self.room_directory.emit_directory(&self.selection);
             self.notifications.directory_changed(&self.room_directory);
+            self.follow_removals();
             self.follow_invites().await;
             self.follow_previews().await;
         }
@@ -1059,6 +1083,9 @@ impl AppService {
             self.room_directory.emit_directory(&self.selection);
             self.notifications.directory_changed(&self.room_directory);
             self.follow_space_index();
+            self.room_info.follow_spaces(self.room_directory.spaces());
+            self.follow_removals();
+            self.follow_space_leave();
             self.follow_invites().await;
             self.follow_previews().await;
             self.follow_creations().await;
@@ -1564,7 +1591,7 @@ impl AppService {
     }
 
     fn leave_room(&mut self, room_id: &RoomId) {
-        if let Some(port) = self.port(|a| &a.room_info) {
+        if let Some(port) = self.port(|a| &a.leaves) {
             self.room_info
                 .leave(port, self.room_directory.room(room_id));
         }
@@ -1578,10 +1605,102 @@ impl AppService {
     }
 
     fn copy_room_link(&mut self, room_id: &RoomId) {
+        let name = self
+            .room_directory
+            .room(room_id)
+            .map(|room| room.display_name.clone())
+            .or_else(|| {
+                self.room_directory
+                    .space_name(room_id)
+                    .map(ToOwned::to_owned)
+            });
         if let Some(port) = self.port(|a| &a.room_info) {
-            self.room_info
-                .copy_link(port, self.room_directory.room(room_id));
+            self.room_info.copy_link(port, room_id, name);
         }
+    }
+
+    fn handle_departure_command(&mut self, cmd: UiCommand) {
+        match cmd {
+            UiCommand::OpenRemoval(room_id) => {
+                self.removals.open(self.room_directory.removal(&room_id));
+            }
+            UiCommand::CloseRemoval => self.removals.close(),
+            UiCommand::ForgetRoom(room_id) => {
+                if let Some(port) = self.port(|a| &a.leaves) {
+                    self.removals
+                        .forget(port, self.room_directory.removal(&room_id));
+                }
+            }
+            UiCommand::OpenLeaveSpace(space_id) => {
+                if let Some(port) = self.port(|a| &a.leaves) {
+                    let departure = self.room_directory.space_departure(&space_id);
+                    self.space_leave
+                        .open(port, self.room_directory.space(&space_id), departure);
+                }
+            }
+            UiCommand::CloseLeaveSpace => self.space_leave.close(),
+            UiCommand::LeaveSpace {
+                space_id,
+                with_rooms,
+            } => {
+                if let Some(port) = self.port(|a| &a.leaves) {
+                    if with_rooms {
+                        for room_id in self.space_leave.departing_rooms(&space_id) {
+                            self.calls.left_room(&room_id, &self.room_directory);
+                        }
+                    }
+                    self.space_leave.leave(port, &space_id, with_rooms);
+                }
+            }
+            other => tracing::debug!(command = %other, "not a departure command"),
+        }
+    }
+
+    fn handle_departure_event(&mut self, event: DepartureEvent) {
+        match event {
+            DepartureEvent::RemovalForgotten {
+                room_id,
+                name,
+                outcome,
+            } => {
+                if self.removals.forgotten(&room_id, &name, outcome) {
+                    self.room_directory.forgot(&room_id);
+                    self.room_directory.emit_directory(&self.selection);
+                }
+            }
+            DepartureEvent::StandingRead {
+                generation,
+                standing,
+            } => self.space_leave.standing_read(generation, standing),
+            DepartureEvent::SpaceLeft {
+                space_id,
+                name,
+                outcome,
+            } => self.space_leave.left(&space_id, &name, outcome),
+        }
+    }
+
+    fn handle_removals_updated(&mut self, removals: RemovalList) {
+        if self.held_session.running().is_none() {
+            return;
+        }
+        if self.room_directory.store_removals(removals) {
+            self.room_directory.emit_directory(&self.selection);
+            self.follow_removals();
+        }
+    }
+
+    fn follow_removals(&mut self) {
+        self.removals.follow(self.room_directory.removals());
+    }
+
+    fn follow_space_leave(&mut self) {
+        let Some(space_id) = self.space_leave.shown_space() else {
+            return;
+        };
+        let departure = self.room_directory.space_departure(&space_id);
+        self.space_leave
+            .follow(self.room_directory.space(&space_id), departure);
     }
 
     fn open_room_log(&mut self, room_id: RoomId) {
@@ -1929,9 +2048,9 @@ impl AppService {
         }
     }
 
-    fn moderate(&mut self, user_id: &UserId, action: Moderation) {
+    fn moderate(&mut self, user_id: &UserId, action: Moderation, reason: Option<String>) {
         if let Some(port) = self.port(|a| &a.user_info) {
-            self.user_info.moderate(port, user_id, action);
+            self.user_info.moderate(port, user_id, action, reason);
         }
     }
 
@@ -2045,6 +2164,7 @@ impl AppService {
                 self.settle_invite_answer(&room_id, &name, answer, outcome)
                     .await;
             }
+            AppEvent::Departure(event) => self.handle_departure_event(event),
             AppEvent::UpgradeJoinSettled(joined) => {
                 self.settle_upgrade_join(joined).await;
             }
@@ -2707,6 +2827,11 @@ impl AppService {
     }
 
     async fn select_room_at(&mut self, room_id: RoomId, focus: TimelineFocus) {
+        if let Some(removal) = self.room_directory.removal(&room_id) {
+            tracing::debug!(%room_id, "you were removed from the room; explaining that instead of opening it");
+            self.removals.open(Some(removal));
+            return;
+        }
         self.space_index.close();
         self.invites.close();
         self.room_previews.close();
@@ -2959,6 +3084,7 @@ impl AppService {
         };
         let Some(meta) = self.room_directory.selected_room_meta(&self.selection) else {
             self.drop_selected_room().await;
+            self.removals.open(self.room_directory.removal(&room_id));
             return;
         };
         let next = EmittedRoom {
@@ -3103,6 +3229,8 @@ impl AppService {
             self.packs.restart(),
             self.space_index.restart(),
             self.invites.restart(),
+            self.removals.restart(),
+            self.space_leave.restart(),
             self.upgrades.restart(),
             self.room_previews.restart(),
             self.room_creation.restart(),
@@ -3236,6 +3364,8 @@ impl AppService {
             self.packs.shutdown(),
             self.space_index.shutdown(),
             self.invites.shutdown(),
+            self.removals.shutdown(),
+            self.space_leave.shutdown(),
             self.upgrades.shutdown(),
             self.room_previews.shutdown(),
             self.room_creation.shutdown(),

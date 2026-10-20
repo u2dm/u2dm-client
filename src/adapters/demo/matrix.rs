@@ -20,10 +20,10 @@ use super::calls::{self, Step};
 use super::encryption::{self, EncryptionBook};
 use super::identity::{self, IdentityBook, SendHold};
 use super::{
-    attachments, audio, create_room, data, invite_people, invites, links, login, logout, media,
-    message_menu, notifications, pinned, polls, powers, presence, reactions, receipts, room_info,
-    source, space_index, stickers, sync, timeline, typing, upgrades, user_info, verification,
-    videos,
+    attachments, audio, create_room, data, departures, invite_people, invites, links, login,
+    logout, media, message_menu, notifications, pinned, polls, powers, presence, reactions,
+    receipts, room_info, source, space_index, stickers, sync, timeline, typing, upgrades,
+    user_info, verification, videos,
 };
 use crate::adapters::draft_size::{self, MediaDraft, RoomFacts};
 use crate::adapters::markdown::RoomMentions;
@@ -37,6 +37,7 @@ use crate::domain::call::{
     RestartResult, ScheduleFailure, ScheduleResult, Secret, SentMembership, Transport,
 };
 use crate::domain::capabilities::{AccountFacts, AccountPage};
+use crate::domain::departure::{AdminStanding, Removal};
 use crate::domain::emote::Emote;
 use crate::domain::encryption::{
     AccountEncryption, IdentityOutcome, KeyImport, KeyPassphrase, Recovery, RecoveryAttempt,
@@ -88,10 +89,10 @@ use crate::error::{AppError, Result};
 use crate::ports::matrix::{
     AccountPort, AttachmentHandoff, AuthPort, AuthenticatedSession, CallSignalPort, CleanupReport,
     DeviceRemoval, EncryptionPort, IdentityPort, ImagePackPort, InterruptedLogin, InvitePeoplePort,
-    InvitePort, LocalDataOwnership, MediaPort, PackCatalog, PinnedPort, PresencePort, ProgressSink,
-    PushPort, RestoreOutcome, RestoreStep, RoomCreationPort, RoomInfoPort, RoomPreviewPort,
-    RtcMembershipPort, SessionPort, SpaceIndexPort, SpaceOrderPort, StoreAdoption, SyncPort,
-    SyncSink, TimelinePort, TypingPort, UpgradePort, UserInfoPort, VerificationPort,
+    InvitePort, LeavePort, LocalDataOwnership, MediaPort, PackCatalog, PinnedPort, PresencePort,
+    ProgressSink, PushPort, RestoreOutcome, RestoreStep, RoomCreationPort, RoomInfoPort,
+    RoomPreviewPort, RtcMembershipPort, SessionPort, SpaceIndexPort, SpaceOrderPort, StoreAdoption,
+    SyncPort, SyncSink, TimelinePort, TypingPort, UpgradePort, UserInfoPort, VerificationPort,
 };
 use crate::ports::media::MediaCache;
 use crate::util::unix_now_ms;
@@ -272,6 +273,7 @@ fn authenticated(session: Session) -> AuthenticatedSession {
     let space_order = Arc::clone(&authed);
     let space_index = Arc::clone(&authed);
     let invites = Arc::clone(&authed);
+    let leaves = Arc::clone(&authed);
     let upgrades = Arc::clone(&authed);
     let room_previews = Arc::clone(&authed);
     let room_creation = Arc::clone(&authed);
@@ -297,6 +299,7 @@ fn authenticated(session: Session) -> AuthenticatedSession {
         space_order,
         space_index,
         invites,
+        leaves,
         upgrades,
         room_previews,
         room_creation,
@@ -342,6 +345,10 @@ impl RoomLists {
 
     fn invites(&self) -> Vec<Arc<Invite>> {
         data::invites_with(&self.joined, &self.overrides)
+    }
+
+    fn removals(&self) -> Vec<Arc<Removal>> {
+        data::removals_with(&self.overrides)
     }
 }
 
@@ -1590,8 +1597,10 @@ impl SyncPort for DemoAuthed {
             *sink = Some(Arc::clone(&on_sync));
         }
         self.hold_back_late_invites();
+        self.keep_stored_removals();
         calls::book().begin();
         let lists = current_lists(&self.lists);
+        on_sync(SyncEvent::Removals(lists.removals().into()));
         on_sync(SyncEvent::Rooms(lists.rooms().into()));
         on_sync(SyncEvent::Invites(lists.invites().into()));
         on_sync(SyncEvent::Spaces(lists.spaces().into()));
@@ -1600,6 +1609,7 @@ impl SyncPort for DemoAuthed {
         }
         on_sync(SyncEvent::Connected);
         self.spawn_invite_changes();
+        self.spawn_live_removal();
         self.spawn_call_script();
         if !timeline::scenario().room_list_keeps_updating {
             cancel.cancelled().await;
@@ -1610,6 +1620,7 @@ impl SyncPort for DemoAuthed {
                 () = cancel.cancelled() => return SyncOutcome::Cancelled,
                 () = sleep(timeline::ROOM_LIST_INTERVAL) => {
                     let lists = current_lists(&self.lists);
+                    on_sync(SyncEvent::Removals(lists.removals().into()));
                     on_sync(SyncEvent::Rooms(lists.rooms().into()));
                     on_sync(SyncEvent::Invites(lists.invites().into()));
                 }
@@ -1679,9 +1690,78 @@ impl DemoAuthed {
         tokio::spawn(async move {
             sleep(space_index::JOIN_ECHO_LAG).await;
             let lists = current_lists(&lists);
+            sink(SyncEvent::Removals(lists.removals().into()));
             sink(SyncEvent::Rooms(lists.rooms().into()));
             sink(SyncEvent::Invites(lists.invites().into()));
             sink(SyncEvent::Spaces(lists.spaces().into()));
+        });
+    }
+
+    fn echo_departure(&self) {
+        let Some(sink) = self.sync_sink() else {
+            return;
+        };
+        let lists = Arc::clone(&self.lists);
+        tokio::spawn(async move {
+            sleep(room_info::ECHO_LAG).await;
+            let lists = current_lists(&lists);
+            sink(SyncEvent::Removals(lists.removals().into()));
+            sink(SyncEvent::Rooms(lists.rooms().into()));
+            sink(SyncEvent::Invites(lists.invites().into()));
+            sink(SyncEvent::Spaces(lists.spaces().into()));
+        });
+    }
+
+    fn keep_stored_removals(&self) {
+        if !departures::scenario().stored {
+            return;
+        }
+        self.change_lists(|lists| {
+            for stored in departures::STORED_REMOVALS {
+                lists
+                    .joined
+                    .retain(|joined| joined.as_ref() != stored.room_id);
+                lists.overrides.left.insert(stored.room_id.to_owned());
+                lists.overrides.removed.insert(
+                    stored.room_id.to_owned(),
+                    data::Removed::ago(stored.kind, stored.by, stored.reason, stored.minutes_ago),
+                );
+            }
+        });
+    }
+
+    fn spawn_live_removal(&self) {
+        let Some(kind) = departures::scenario().live_removal() else {
+            return;
+        };
+        let Some(sink) = self.sync_sink() else {
+            return;
+        };
+        let lists = Arc::clone(&self.lists);
+        tokio::spawn(async move {
+            sleep(departures::KICK_AFTER).await;
+            if let Ok(mut lists) = lists.lock() {
+                let room_id = departures::KICKED_ROOM;
+                lists.joined.retain(|joined| joined.as_ref() != room_id);
+                lists.overrides.left.insert(room_id.to_owned());
+                lists.overrides.forgotten.remove(room_id);
+                lists.overrides.removed.insert(
+                    room_id.to_owned(),
+                    data::Removed::now(
+                        kind,
+                        departures::KICKED_BY,
+                        Some(departures::KICKED_REASON),
+                    ),
+                );
+            }
+            tracing::info!(
+                room_id = departures::KICKED_ROOM,
+                ?kind,
+                "demo: you were removed from a room"
+            );
+            let lists = current_lists(&lists);
+            sink(SyncEvent::Removals(lists.removals().into()));
+            sink(SyncEvent::Rooms(lists.rooms().into()));
         });
     }
 
@@ -2597,20 +2677,6 @@ impl RoomInfoPort for DemoAuthed {
         Ok(())
     }
 
-    async fn leave(&self, room_id: &RoomId) -> Result<()> {
-        room_info::pause().await;
-        if room_info::scenario().leave_fails {
-            return Err(unavailable("leaving rooms"));
-        }
-        tracing::debug!(%room_id, "demo: leaving a room");
-        self.change_lists(|lists| {
-            lists.joined.retain(|joined| joined != room_id);
-            lists.overrides.left.insert(room_id.to_string());
-        });
-        self.echo_rooms();
-        Ok(())
-    }
-
     async fn mark_read(&self, room_id: &RoomId) -> Result<()> {
         room_info::pause().await;
         if room_info::scenario().read_fails {
@@ -2643,6 +2709,53 @@ impl RoomInfoPort for DemoAuthed {
             return Err(unavailable("message links"));
         }
         Ok(data::event_link(room_id, event_id))
+    }
+}
+
+#[async_trait]
+impl LeavePort for DemoAuthed {
+    async fn leave(&self, room_id: &RoomId) -> Result<()> {
+        room_info::pause().await;
+        departures::pause().await;
+        if room_info::scenario().leave_fails {
+            return Err(unavailable("leaving rooms"));
+        }
+        if departures::scenario().room_stays && room_id.as_ref() == departures::STAYING_ROOM {
+            return Err(unavailable("leaving this room"));
+        }
+        if account::scenario().forgets_rooms {
+            tracing::info!(%room_id, "demo: leaving a room; the homeserver forgets it by itself");
+        } else {
+            tracing::info!(%room_id, "demo: leaving and forgetting a room");
+        }
+        self.change_lists(|lists| {
+            lists.joined.retain(|joined| joined != room_id);
+            lists.overrides.left.insert(room_id.to_string());
+        });
+        self.echo_departure();
+        Ok(())
+    }
+
+    async fn forget(&self, room_id: &RoomId) -> Result<()> {
+        departures::pause().await;
+        if departures::scenario().forget_fails {
+            return Err(unavailable("forgetting rooms"));
+        }
+        tracing::info!(%room_id, "demo: forgetting the room you were removed from");
+        self.change_lists(|lists| {
+            lists.overrides.forgotten.insert(room_id.to_string());
+        });
+        self.echo_departure();
+        Ok(())
+    }
+
+    async fn admin_standing(&self, room_id: &RoomId) -> Result<AdminStanding> {
+        departures::pause().await;
+        tracing::debug!(%room_id, "demo: reading who else manages the room");
+        if departures::scenario().sole_admin {
+            return Ok(AdminStanding::OnlyAdmin);
+        }
+        Ok(AdminStanding::NotOnlyAdmin)
     }
 }
 
@@ -2697,7 +2810,13 @@ impl UserInfoPort for DemoAuthed {
         Ok(room_id)
     }
 
-    async fn moderate(&self, room_id: &RoomId, user_id: &UserId, action: Moderation) -> Result<()> {
+    async fn moderate(
+        &self,
+        room_id: &RoomId,
+        user_id: &UserId,
+        action: Moderation,
+        reason: Option<&str>,
+    ) -> Result<()> {
         user_info::pause().await;
         if user_info::moderation_fails(action) {
             return Err(unavailable("moderating this room"));
@@ -2705,7 +2824,7 @@ impl UserInfoPort for DemoAuthed {
         if !self.person(room_id, user_id).offers(action) {
             return Err(unavailable("that moderation"));
         }
-        tracing::debug!(%room_id, %user_id, ?action, "demo: moderating");
+        tracing::info!(%room_id, %user_id, ?action, reason, "demo: moderating");
         if let Ok(mut memberships) = self.memberships.lock() {
             memberships.insert((room_id.clone(), user_id.to_string()), action.leaves());
         }

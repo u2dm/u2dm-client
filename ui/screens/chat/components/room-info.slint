@@ -293,7 +293,7 @@ component RoomActionTiles inherits TileRow {
         if root.asking-leave: TilePrompt {
             width: 100%;
             height: 100%;
-            text: @tr("Leave this room?");
+            text: @tr("Leave this room and its history?");
             horizontal-alignment: center;
         }
     }
@@ -340,7 +340,7 @@ component RoomActionTiles inherits TileRow {
             busy: RoomInfoView.leaving;
             icon: IconSet.LogOut;
             text: @tr("Leave");
-            label: @tr("Confirm leaving the room");
+            label: @tr("Confirm leaving the room and its history");
             clicked => {
                 root.leave-confirmed();
             }

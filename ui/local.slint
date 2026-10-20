@@ -1,5 +1,5 @@
 import { Delivery, LoginPhase, MessageKind, PollPhase, ReactionSend, RoomInfoPlacement, Shield } from "./enums.slint";
-import { AccountView, AttachmentView, CreateRoomView, EncryptionView, InvitePeopleView, InviteView, LoginView, LogoutView, ReadersView, RoomInfoView, RoomLogView, RoomMenuView, RoomPreviewView, RoomView, SourceView, UserInfoView, VerificationView, VideoView, WindowView } from "./views.slint";
+import { AccountView, AttachmentView, CreateRoomView, EncryptionView, InvitePeopleView, InviteView, LeaveSpaceView, LoginView, LogoutView, ReadersView, RemovalView, RoomInfoView, RoomLogView, RoomMenuView, RoomPreviewView, RoomView, SourceView, UserInfoView, VerificationView, VideoView, WindowView } from "./views.slint";
 import { Actions } from "./actions.slint";
 import { MessageEntry, ReactionEntry } from "./types.slint";
 import { MessagePreview } from "./messages.slint";
@@ -169,6 +169,10 @@ export global Shell {
         && LoginView.step == LoginPhase.logged-in;
     out property <bool> invite-open: InviteView.visible
         && LoginView.step == LoginPhase.logged-in;
+    out property <bool> removal-open: RemovalView.visible
+        && LoginView.step == LoginPhase.logged-in;
+    out property <bool> leave-space-open: LeaveSpaceView.visible
+        && LoginView.step == LoginPhase.logged-in;
     out property <bool> room-preview-open: RoomPreviewView.visible
         && LoginView.step == LoginPhase.logged-in;
     out property <bool> create-room-open: CreateRoomView.visible
@@ -190,6 +194,8 @@ export global Shell {
         || root.room-info-open
         || root.user-info-open
         || root.invite-open
+        || root.removal-open
+        || root.leave-space-open
         || root.room-preview-open
         || root.create-room-open
         || root.invite-people-open
@@ -374,9 +380,9 @@ export global MessageMenu {
     }
 }
 
-export enum RoomMenuOrigin { list, header }
+export enum RoomMenuOrigin { list, header, rail, space-header }
 
-export enum RoomMenuReturn { composer, row, header }
+export enum RoomMenuReturn { composer, row, header, tile, space-header }
 
 export global RoomMenu {
     in-out property <string> key;
@@ -426,6 +432,10 @@ export global RoomMenu {
             root.return-to = RoomMenuReturn.composer;
         } else if root.origin == RoomMenuOrigin.list {
             root.return-to = RoomMenuReturn.row;
+        } else if root.origin == RoomMenuOrigin.rail {
+            root.return-to = RoomMenuReturn.tile;
+        } else if root.origin == RoomMenuOrigin.space-header {
+            root.return-to = RoomMenuReturn.space-header;
         } else {
             root.return-to = RoomMenuReturn.header;
         }

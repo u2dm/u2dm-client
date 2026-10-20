@@ -15,7 +15,8 @@ use super::decode::{AvatarSlot, load_attachment_preview, load_avatar_async, requ
 use super::dto::{
     PackArt, PackBrowse, PackRowDto, PackTabDto, QuotedMessage, audio_row_update,
     invite_avatar_path, load_room_info_avatar, load_user_info_avatar, pack_art, pack_grid,
-    preview_line, quoted_message, rich_body, room_preview_avatar_path, user_info_pronouns,
+    preview_line, quoted_message, removal_avatar_path, removal_shape, rich_body,
+    room_preview_avatar_path, user_info_pronouns,
 };
 use super::emote;
 use super::fields::{InviteeFields, MemberRowFields, MessageFields, SpaceChildFields, SpaceFields};
@@ -42,13 +43,15 @@ use crate::commands::ui::Draft;
 use crate::commands::view::{
     AccountAuth, AccountDialog, AccountStep, AccountView, AppViewState, AttachmentView, AudioView,
     AuthPrompt, CallView, CardStatus, CopiedLink, CreateRoomView, DirectoryView, EncryptionDialog,
-    EncryptionStep, EncryptionView, IdentityAlertView, InvitePeopleView, InviteView, LifecycleView,
-    LoginStep, LogoutView, MentionsView, NotificationsView, NowPlaying, PackView, PaginationView,
-    PinnedView, PresenceView, ReadersView, RoomCard, RoomInfoView, RoomLogView, RoomMenuTarget,
-    RoomPreviewSheet, RoomPreviewView, ShownPreview, SourceState, SpaceIndexView, Toast, TrackFile,
-    TypingView, UnsentMessage, UpgradeView, UserCard, UserInfoView, VideoView,
+    EncryptionStep, EncryptionView, IdentityAlertView, InvitePeopleView, InviteView,
+    LeaveSpaceView, LifecycleView, LoginStep, LogoutView, MentionsView, NotificationsView,
+    NowPlaying, PackView, PaginationView, PinnedView, PresenceView, ReadersView, RemovalView,
+    RoomCard, RoomInfoView, RoomLogView, RoomMenuTarget, RoomPreviewSheet, RoomPreviewView,
+    ShownPreview, SourceState, SpaceIndexView, Toast, TrackFile, TypingView, UnsentMessage,
+    UpgradeView, UserCard, UserInfoView, VideoView,
 };
 use crate::domain::capabilities::{AVATAR_FIELD, AccountApi, AccountFacts, DISPLAY_NAME_FIELD};
+use crate::domain::departure::{AdminStanding, Removal, RemovalList};
 use crate::domain::encryption::KeyStorage;
 use crate::domain::invite::{Invite, InviteList};
 use crate::domain::message::{
@@ -376,6 +379,8 @@ fn apply_snapshot<B: UiBackend>(
         directory,
         space_index,
         invite,
+        removal,
+        leave_space,
         room_preview,
         create_room,
         invite_people,
@@ -414,6 +419,8 @@ fn apply_snapshot<B: UiBackend>(
     apply_directory::<B>(w, last.map(|l| &l.directory), directory, ctx);
     apply_space_index::<B>(w, last.map(|l| &l.space_index), space_index, ctx);
     apply_invite(w, last, invite, &directory.invites, ctx.media);
+    apply_removal(w, last, removal, &directory.removals, ctx.media);
+    apply_leave_space(w, last.map(|l| &l.leave_space), leave_space);
     apply_room_preview(w, last.map(|l| &l.room_preview), room_preview, ctx.media);
     apply_create_room(w, last.map(|l| &l.create_room), create_room);
     apply_invite_people::<B>(w, last.map(|l| &l.invite_people), invite_people, ctx);
@@ -758,6 +765,8 @@ fn apply_room_menu(w: &(impl UiProps + ComponentHandle), menu: Option<&RoomMenuT
     w.set_bool(BoolProp::RoomMenuNotifyBusy, menu.notify_busy);
     w.set_bool(BoolProp::RoomMenuLeaving, menu.leaving);
     w.set_bool(BoolProp::RoomMenuMayInvite, menu.may_invite);
+    w.set_bool(BoolProp::RoomMenuIsSpace, menu.is_space);
+    w.set_bool(BoolProp::RoomMenuMayAddChildren, menu.may_add_children);
     w.set_string(
         StringProp::RoomMenuRoomId,
         SharedString::from(menu.room_id.as_ref()),
@@ -774,6 +783,7 @@ fn apply_directory<B: UiBackend>(
     let DirectoryView {
         rooms,
         invites,
+        removals,
         space_matches,
         spaces,
         subspaces,
@@ -789,6 +799,7 @@ fn apply_directory<B: UiBackend>(
     if last.is_none_or(|l| {
         !Arc::ptr_eq(&l.rooms, rooms)
             || !Arc::ptr_eq(&l.invites, invites)
+            || !Arc::ptr_eq(&l.removals, removals)
             || l.space_matches != *space_matches
     }) {
         apply_rooms::<B>(
@@ -948,6 +959,126 @@ fn show_invite_avatar(w: &impl UiProps, invite: Option<&Invite>, media: &dyn Med
     if image.is_some() || previous.room_id != next.room_id {
         w.apply_invite_avatar(image);
     }
+}
+
+fn apply_removal(
+    w: &impl UiProps,
+    last_view: Option<&AppViewState>,
+    view: &RemovalView,
+    listed: &RemovalList,
+    media: &dyn MediaCache,
+) {
+    let RemovalView {
+        removal,
+        forgetting,
+        error,
+    } = view;
+    let last = last_view.map(|l| &l.removal);
+
+    if last.is_none_or(|l| l.forgetting != *forgetting) {
+        w.set_bool(BoolProp::RemovalForgetting, *forgetting);
+    }
+    if last.is_none_or(|l| l.error != *error) {
+        w.set_removal_error(error.kind);
+        w.set_string(
+            StringProp::RemovalErrorDetail,
+            SharedString::from(&error.detail),
+        );
+    }
+    if last.is_none_or(|l| l.removal != *removal) {
+        apply_removal_card(w, removal.as_deref());
+    }
+    if last_view.is_none_or(|l| l.removal != *view || !Arc::ptr_eq(&l.directory.removals, listed)) {
+        show_removal_avatar(w, removal.as_deref(), media);
+    }
+}
+
+fn apply_removal_card(w: &impl UiProps, removal: Option<&Removal>) {
+    let Some(removal) = removal else {
+        w.set_bool(BoolProp::RemovalVisible, false);
+        return;
+    };
+    w.set_string(
+        StringProp::RemovalRoomId,
+        SharedString::from(removal.id.as_ref()),
+    );
+    w.set_string(StringProp::RemovalName, SharedString::from(&removal.name));
+    w.set_string(
+        StringProp::RemovalInitial,
+        SharedString::from(avatar_initials(&removal.name)),
+    );
+    w.set_int(
+        IntProp::RemovalColorIndex,
+        avatar_color_index(removal.id.as_ref()),
+    );
+    w.set_removal_kind(removal.kind);
+    w.set_removal_shape(removal_shape(removal));
+    w.set_string(
+        StringProp::RemovalBy,
+        SharedString::from(removal.by.identified()),
+    );
+    w.set_string(
+        StringProp::RemovalReason,
+        SharedString::from(removal.reason.as_deref().unwrap_or_default()),
+    );
+    w.set_bool(BoolProp::RemovalVisible, true);
+}
+
+fn show_removal_avatar(w: &impl UiProps, removal: Option<&Removal>, media: &dyn MediaCache) {
+    let next = SheetAvatar {
+        room_id: removal
+            .map(|removal| removal.id.to_string())
+            .unwrap_or_default(),
+        path: removal.and_then(|removal| removal_avatar_path(removal, media)),
+    };
+    let previous = with_session(|session| mem::replace(&mut session.removal_avatar, next.clone()));
+    if previous == next {
+        return;
+    }
+    let image = load_avatar_async(next.path.as_deref(), AvatarSlot::Removal);
+    if image.is_some() || previous.room_id != next.room_id {
+        w.apply_removal_avatar(image);
+    }
+}
+
+fn apply_leave_space(w: &impl UiProps, last: Option<&LeaveSpaceView>, view: &LeaveSpaceView) {
+    if last == Some(view) {
+        return;
+    }
+    let LeaveSpaceView {
+        space,
+        standing,
+        leaving,
+        error,
+    } = view;
+    w.set_bool(BoolProp::LeaveSpaceLeaving, *leaving);
+    w.set_bool(
+        BoolProp::LeaveSpaceOnlyAdmin,
+        *standing == Some(AdminStanding::OnlyAdmin),
+    );
+    w.set_leave_space_error(error.kind);
+    w.set_string(
+        StringProp::LeaveSpaceErrorDetail,
+        SharedString::from(&error.detail),
+    );
+    let Some(space) = space else {
+        w.set_bool(BoolProp::LeaveSpaceVisible, false);
+        return;
+    };
+    w.set_string(
+        StringProp::LeaveSpaceId,
+        SharedString::from(space.id.as_ref()),
+    );
+    w.set_string(StringProp::LeaveSpaceName, SharedString::from(&space.name));
+    w.set_int(
+        IntProp::LeaveSpaceRooms,
+        i32::try_from(space.rooms).unwrap_or(i32::MAX),
+    );
+    w.set_int(
+        IntProp::LeaveSpaceSpaces,
+        i32::try_from(space.spaces).unwrap_or(i32::MAX),
+    );
+    w.set_bool(BoolProp::LeaveSpaceVisible, true);
 }
 
 fn apply_create_room(w: &impl UiProps, last: Option<&CreateRoomView>, view: &CreateRoomView) {

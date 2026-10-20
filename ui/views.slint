@@ -13,7 +13,7 @@ import {
     CallTileEntry,
     UserDeviceEntry,
 } from "./types.slint";
-import { AccountActivity, AccountStep, AttachmentKind, AudioKind, AuthStage, CallCamera, CallMic, CallOffer, CallPhase, CallRefusal, CallScreen, CallScreenRefusal, ChildAccess, ConnectionState, CreateRoomStatus, DirectChat, EncryptionActivity, EncryptionStanding, EncryptionStep, IdentityAlertKind, IdentityTrust, InviteAnswer, InviteKind, LoginActivity, LoginMethodKind, LoginPhase, MemberRole, Moderation, NotifyMode, PackSurface, PeopleSearchStatus, PresenceLine, PreviewKind, ReadersStatus, RecoveryStatus, RoomInfoPlacement, RoomKind, RoomMembership, RoomPreviewStatus, RoomScope, RosterStatus, ServiceKind, SourceEncryption, SourceStatus, SpaceIndexStatus, TimelineState, UpgradeLink, UserMessageKind, VerificationActivity, VerificationPhase, VerifyOffer } from "./enums.slint";
+import { AccountActivity, AccountStep, AttachmentKind, AudioKind, AuthStage, CallCamera, CallMic, CallOffer, CallPhase, CallRefusal, CallScreen, CallScreenRefusal, ChildAccess, ConnectionState, CreateRoomStatus, DirectChat, EncryptionActivity, EncryptionStanding, EncryptionStep, IdentityAlertKind, IdentityTrust, InviteAnswer, InviteKind, LoginActivity, LoginMethodKind, LoginPhase, MemberRole, Moderation, NotifyMode, PackSurface, PeopleSearchStatus, PresenceLine, PreviewKind, ReadersStatus, RecoveryStatus, RemovalKind, RoomInfoPlacement, RoomKind, RoomMembership, RoomPreviewStatus, RoomScope, RosterStatus, ServiceKind, SourceEncryption, SourceStatus, SpaceIndexStatus, TimelineState, UpgradeLink, UserMessageKind, VerificationActivity, VerificationPhase, VerifyOffer } from "./enums.slint";
 
 export global LoginView {
     in property <LoginPhase> step: LoginPhase.loading;
@@ -154,6 +154,8 @@ export global RoomMenuView {
     in property <bool> notify-busy;
     in property <bool> leaving;
     in property <bool> may-invite;
+    in property <bool> is-space;
+    in property <bool> may-add-children;
     in property <string> link;
     in property <int> link-serial;
 }
@@ -170,6 +172,35 @@ export global InviteView {
     in property <string> topic;
     in property <string> inviter;
     in property <InviteAnswer> answer: InviteAnswer.none;
+    in property <UserMessageKind> error: UserMessageKind.none;
+    in property <string> error-detail;
+}
+
+export global RemovalView {
+    in property <bool> visible;
+    in property <string> room-id;
+    in property <string> name;
+    in property <string> initial;
+    in property <int> color-index;
+    in property <image> avatar;
+    in property <bool> has-avatar;
+    in property <RemovalKind> kind: RemovalKind.kicked;
+    in property <InviteKind> shape: InviteKind.room;
+    in property <string> by;
+    in property <string> reason;
+    in property <bool> forgetting;
+    in property <UserMessageKind> error: UserMessageKind.none;
+    in property <string> error-detail;
+}
+
+export global LeaveSpaceView {
+    in property <bool> visible;
+    in property <string> space-id;
+    in property <string> name;
+    in property <int> rooms;
+    in property <int> spaces;
+    in property <bool> only-admin;
+    in property <bool> leaving;
     in property <UserMessageKind> error: UserMessageKind.none;
     in property <string> error-detail;
 }

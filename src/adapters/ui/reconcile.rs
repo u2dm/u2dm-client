@@ -8,8 +8,9 @@ use super::backend::UiBackend;
 use super::decode::{ShownAvatar, forget_all_media_needs};
 use super::dto::{
     INVITED_HEADING_ROW, INVITES_HEADING_ROW, PackGrid, PackRowDto, ROOMS_HEADING_ROW, RoomRowKind,
-    SPACES_HEADING_ROW, prefetch_space_avatar, record_invite_avatar_need, record_room_avatar_need,
-    request_invitee_avatar, request_member_avatar, request_mention_avatar, request_reader_avatar,
+    SPACES_HEADING_ROW, prefetch_space_avatar, record_invite_avatar_need,
+    record_removal_avatar_need, record_room_avatar_need, request_invitee_avatar,
+    request_member_avatar, request_mention_avatar, request_reader_avatar,
     request_space_child_avatar, request_space_match_avatar,
 };
 use super::fields::RoomFields;
@@ -18,6 +19,7 @@ use super::session::with_session;
 use super::splice_model::SpliceModel;
 use super::spoilers::forget_spoiler_rows;
 use crate::commands::view::{DirectoryView, InviteeRow, RosterRow, SpaceIndexRow, SpaceMatch};
+use crate::domain::departure::Removal;
 use crate::domain::image_pack::PackOrigin;
 use crate::domain::invite::Invite;
 use crate::domain::message::TimelineMessage;
@@ -502,6 +504,7 @@ pub fn reorder_rows<T: Clone + 'static>(model: &VecModel<T>, from: usize, to: us
 pub struct RoomListing<'a> {
     pub invites: &'a [Arc<Invite>],
     pub rooms: &'a [Arc<Room>],
+    pub removals: &'a [Arc<Removal>],
     pub spaces: &'a [SpaceMatch],
 }
 
@@ -515,25 +518,48 @@ impl<'a> RoomListing<'a> {
         Self {
             invites: &directory.invites,
             rooms: &directory.rooms,
+            removals: &directory.removals,
             spaces: &directory.space_matches,
         }
     }
 
     fn rows(self) -> Vec<ListedRow<'a>> {
         let has_invites = !self.invites.is_empty();
+        let has_rooms = !self.rooms.is_empty() || !self.removals.is_empty();
         let invites_heading = has_invites.then_some(ListedRow::Heading(Heading::Invites));
         let rooms_heading =
-            (has_invites && !self.rooms.is_empty()).then_some(ListedRow::Heading(Heading::Rooms));
+            (has_invites && has_rooms).then_some(ListedRow::Heading(Heading::Rooms));
         let spaces_heading =
             (!self.spaces.is_empty()).then_some(ListedRow::Heading(Heading::Spaces));
         invites_heading
             .into_iter()
             .chain(self.invites.iter().map(ListedRow::Invite))
             .chain(rooms_heading)
-            .chain(self.rooms.iter().map(ListedRow::Room))
+            .chain(self.rooms_by_activity())
             .chain(spaces_heading)
             .chain(self.spaces.iter().map(ListedRow::Space))
             .collect()
+    }
+
+    fn rooms_by_activity(self) -> Vec<ListedRow<'a>> {
+        let mut rows = Vec::with_capacity(self.rooms.len() + self.removals.len());
+        let mut rooms = self.rooms.iter().peekable();
+        let mut removals = self.removals.iter().peekable();
+        loop {
+            let removal_first = match (rooms.peek(), removals.peek()) {
+                (Some(room), Some(removal)) => removal.removed_ts > room.last_activity_ts,
+                (None, Some(_)) => true,
+                (Some(_), None) => false,
+                (None, None) => break,
+            };
+            let row = if removal_first {
+                removals.next().map(ListedRow::Removal)
+            } else {
+                rooms.next().map(ListedRow::Room)
+            };
+            rows.extend(row);
+        }
+        rows
     }
 
     pub fn place_of(self, room_id: &str) -> Option<ListedPlace> {
@@ -582,6 +608,7 @@ impl Heading {
 enum ListedRow<'a> {
     Invite(&'a Arc<Invite>),
     Room(&'a Arc<Room>),
+    Removal(&'a Arc<Removal>),
     Heading(Heading),
     Space(&'a SpaceMatch),
 }
@@ -591,6 +618,7 @@ impl ListedRow<'_> {
         match self {
             Self::Invite(invite) => invite.id.as_ref(),
             Self::Room(room) => room.id.as_ref(),
+            Self::Removal(removal) => removal.id.as_ref(),
             Self::Heading(heading) => heading.id(),
             Self::Space(space) => &space.id,
         }
@@ -600,6 +628,7 @@ impl ListedRow<'_> {
         match self {
             Self::Invite(invite) => B::convert_invite(invite, media),
             Self::Room(room) => B::convert_room(room, media),
+            Self::Removal(removal) => B::convert_removal(removal, media),
             Self::Heading(heading) => B::heading(heading.id(), heading.kind()),
             Self::Space(space) => B::convert_space_match(space, media),
         }
@@ -611,6 +640,9 @@ impl SameItem for ListedRow<'_> {
         match (self, other) {
             (Self::Invite(invite), Self::Invite(other)) => {
                 Arc::ptr_eq(invite, other) || invite == other
+            }
+            (Self::Removal(removal), Self::Removal(other)) => {
+                Arc::ptr_eq(removal, other) || removal == other
             }
             (Self::Room(room), Self::Room(other)) => room.same_item(other),
             (Self::Heading(heading), Self::Heading(other)) => heading == other,
@@ -635,6 +667,11 @@ pub fn apply_rooms<B: UiBackend>(
     for room in listing.rooms {
         if record_room_avatar_need(room, media) == ShownAvatar::StillExpected {
             still_expected.insert(room.id.as_ref());
+        }
+    }
+    for removal in listing.removals {
+        if record_removal_avatar_need(removal, media) == ShownAvatar::StillExpected {
+            still_expected.insert(removal.id.as_ref());
         }
     }
     for space in listing.spaces {

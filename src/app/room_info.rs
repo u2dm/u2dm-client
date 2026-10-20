@@ -12,9 +12,9 @@ use crate::commands::view::{
     CopiedLink, RoomCard, RoomInfoPlacement, RoomInfoView, RoomMenuTarget, RosterRow, RosterStatus,
     Toast,
 };
-use crate::domain::room::{NotifyMode, Room, RoomId};
+use crate::domain::room::{NotifyMode, Room, RoomId, Space};
 use crate::domain::room_info::{MemberQuery, RoomAbout, RosterMember, RosterSection};
-use crate::ports::matrix::RoomInfoPort;
+use crate::ports::matrix::{LeavePort, RoomInfoPort};
 use crate::ports::output::AppOutputPort;
 
 const MEMBER_PAGE: usize = 50;
@@ -69,13 +69,18 @@ enum Fetch {
     InFlightThenAgain,
 }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum MenuKind {
+    Room { unread: bool, notify: NotifyMode },
+    Space { may_add_children: bool },
+}
+
 #[derive(Clone, PartialEq, Eq)]
 struct MenuCard {
     id: RoomId,
     name: String,
-    unread: bool,
-    notify: NotifyMode,
     may_invite: bool,
+    kind: MenuKind,
 }
 
 struct OpenSheet {
@@ -206,10 +211,10 @@ impl RoomInfo {
         }
     }
 
-    pub(super) fn open_menu(&mut self, room: Option<&Room>) {
-        let menu = room.map(menu_card_of);
+    pub(super) fn open_menu(&mut self, room: Option<&Room>, space: Option<&Space>) {
+        let menu = room.map(menu_card_of).or_else(|| space.map(space_card_of));
         if menu.is_none() {
-            tracing::debug!("the room is not listed, not opening its menu");
+            tracing::debug!("neither a listed room nor a joined space, not opening its menu");
         }
         if self.menu != menu {
             self.menu = menu;
@@ -219,6 +224,23 @@ impl RoomInfo {
 
     pub(super) fn close_menu(&mut self) {
         if self.menu.take().is_some() {
+            self.publish();
+        }
+    }
+
+    pub(super) fn follow_spaces(&mut self, spaces: &[Space]) {
+        let Some(menu) = self.menu.as_ref() else {
+            return;
+        };
+        if !matches!(menu.kind, MenuKind::Space { .. }) {
+            return;
+        }
+        let next = spaces
+            .iter()
+            .find(|space| space.id == menu.id.as_ref())
+            .map(space_card_of);
+        if self.menu != next {
+            self.menu = next;
             self.publish();
         }
     }
@@ -412,7 +434,7 @@ impl RoomInfo {
         self.publish();
     }
 
-    pub(super) fn leave(&mut self, port: Arc<dyn RoomInfoPort>, room: Option<&Room>) {
+    pub(super) fn leave(&mut self, port: Arc<dyn LeavePort>, room: Option<&Room>) {
         let Some(room) = room else {
             tracing::debug!("the room is not listed, not leaving it");
             return;
@@ -519,13 +541,17 @@ impl RoomInfo {
         }
     }
 
-    pub(super) fn copy_link(&mut self, port: Arc<dyn RoomInfoPort>, room: Option<&Room>) {
-        let Some(room) = room else {
-            tracing::debug!("the room is not listed, not linking it");
+    pub(super) fn copy_link(
+        &mut self,
+        port: Arc<dyn RoomInfoPort>,
+        room_id: &RoomId,
+        name: Option<String>,
+    ) {
+        let Some(name) = name else {
+            tracing::debug!(%room_id, "neither a listed room nor a joined space, not linking it");
             return;
         };
-        let room_id = room.id.clone();
-        let name = room.display_name.clone();
+        let room_id = room_id.clone();
         let request = self.links.issue();
         let events = self.events.clone();
         let cancel = self.actions.token();
@@ -608,6 +634,9 @@ impl RoomInfo {
         let Some(menu) = self.menu.as_ref() else {
             return false;
         };
+        if matches!(menu.kind, MenuKind::Space { .. }) {
+            return false;
+        }
         let next = rooms
             .iter()
             .find(|room| room.id == menu.id)
@@ -782,6 +811,36 @@ impl RoomInfo {
         )
     }
 
+    fn menu_target(&self, menu: &MenuCard) -> RoomMenuTarget {
+        match menu.kind {
+            MenuKind::Room { unread, notify } => {
+                let (notify, notify_busy) = self.pending_notify(&menu.id, notify);
+                RoomMenuTarget {
+                    room_id: menu.id.clone(),
+                    name: menu.name.clone(),
+                    is_space: false,
+                    unread,
+                    notify,
+                    notify_busy,
+                    leaving: self.leaving.contains(&menu.id),
+                    may_invite: menu.may_invite,
+                    may_add_children: false,
+                }
+            }
+            MenuKind::Space { may_add_children } => RoomMenuTarget {
+                room_id: menu.id.clone(),
+                name: menu.name.clone(),
+                is_space: true,
+                unread: false,
+                notify: NotifyMode::default(),
+                notify_busy: false,
+                leaving: false,
+                may_invite: menu.may_invite,
+                may_add_children,
+            },
+        }
+    }
+
     fn publish(&self) {
         let sheet = self
             .open
@@ -807,18 +866,7 @@ impl RoomInfo {
                     error: open.error.clone(),
                 }
             });
-        let menu = self.menu.as_ref().map(|menu| {
-            let (notify, notify_busy) = self.pending_notify(&menu.id, menu.notify);
-            RoomMenuTarget {
-                room_id: menu.id.clone(),
-                name: menu.name.clone(),
-                unread: menu.unread,
-                notify,
-                notify_busy,
-                leaving: self.leaving.contains(&menu.id),
-                may_invite: menu.may_invite,
-            }
-        });
+        let menu = self.menu.as_ref().map(|menu| self.menu_target(menu));
         self.output.publish(Box::new(move |state| {
             state.room_info = sheet;
             state.room_menu = menu;
@@ -830,9 +878,22 @@ fn menu_card_of(room: &Room) -> MenuCard {
     MenuCard {
         id: room.id.clone(),
         name: room.display_name.clone(),
-        unread: room.shows_unread(),
-        notify: room.notify,
         may_invite: room.may_invite,
+        kind: MenuKind::Room {
+            unread: room.shows_unread(),
+            notify: room.notify,
+        },
+    }
+}
+
+fn space_card_of(space: &Space) -> MenuCard {
+    MenuCard {
+        id: RoomId::new(space.id.clone()),
+        name: space.name.clone(),
+        may_invite: space.powers.invite,
+        kind: MenuKind::Space {
+            may_add_children: space.powers.add_children,
+        },
     }
 }
 

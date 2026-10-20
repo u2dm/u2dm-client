@@ -8,15 +8,17 @@ use crate::commands::view::{
     AccountStep, AccountView, ActiveCall, AppViewState, AttachmentView, AudioView, AuthPrompt,
     CallPhase, CallTile, CallView, CameraView, CantDecrypt, CardStatus, CopiedLink, CreateRoomView,
     DirectoryView, EncryptionStep, EncryptionView, IdentityAlertView, InvitePeopleView, InviteView,
-    InviteeRow, JoinOffer, JoinRefusal, LifecycleView, LoginStep, LogoutView, MentionsView,
-    MicrophoneView, NotificationsView, PackView, PaginationView, PinnedView, PresenceView,
-    ReadersView, RoomInfoView, RoomLogView, RoomMenuTarget, RoomPreviewSheet, RoomPreviewView,
-    RosterRow, ScreenView, SourceState, SpaceIndexRow, SpaceIndexView, SpaceMatch, TileKind,
-    TileState, Toast, TrackFile, TypingView, UnsentMessage, UpgradeView, UserInfoView, VideoView,
+    InviteeRow, JoinOffer, JoinRefusal, LeaveSpaceView, LifecycleView, LoginStep, LogoutView,
+    MentionsView, MicrophoneView, NotificationsView, PackView, PaginationView, PinnedView,
+    PresenceView, ReadersView, RemovalView, RoomInfoView, RoomLogView, RoomMenuTarget,
+    RoomPreviewSheet, RoomPreviewView, RosterRow, ScreenView, SourceState, SpaceIndexRow,
+    SpaceIndexView, SpaceMatch, TileKind, TileState, Toast, TrackFile, TypingView, UnsentMessage,
+    UpgradeView, UserInfoView, VideoView,
 };
 use crate::domain::call::video::ScreenRefusal;
 use crate::domain::call::{CallIntent, RoomCall};
 use crate::domain::capabilities::{AVATAR_FIELD, AccountApi, AccountFacts, DISPLAY_NAME_FIELD};
+use crate::domain::departure::{AdminStanding, Removal};
 use crate::domain::encryption::KeyStorage;
 use crate::domain::event_size::Oversize;
 use crate::domain::image_pack::{ImagePack, ImageUsage, PackOrigin, PackTitle};
@@ -43,6 +45,8 @@ pub struct ViewDto {
     directory: DirectoryDto,
     space_index: SpaceIndexDto,
     invite: InviteSheetDto,
+    removal: RemovalSheetDto,
+    leave_space: LeaveSpaceDto,
     room_preview: RoomPreviewDto,
     create_room: CreateRoomDto,
     invite_people: InvitePeopleDto,
@@ -386,11 +390,13 @@ struct LinkDto {
 struct RoomMenuDto {
     room_id: String,
     name: String,
+    is_space: bool,
     unread: bool,
     notify: &'static str,
     notify_busy: bool,
     leaving: bool,
     may_invite: bool,
+    may_add_children: bool,
 }
 
 #[derive(Serialize)]
@@ -548,6 +554,40 @@ struct InviteSheetDto {
 }
 
 #[derive(Serialize)]
+struct RemovalDto {
+    id: String,
+    name: String,
+    kind: &'static str,
+    is_space: bool,
+    is_direct: bool,
+    by: String,
+    by_name: String,
+    reason: Option<String>,
+    has_avatar_mxc: bool,
+    removed_ts: u64,
+}
+
+#[derive(Serialize)]
+struct RemovalSheetDto {
+    open: bool,
+    removal: Option<RemovalDto>,
+    forgetting: bool,
+    error: MessageDto,
+}
+
+#[derive(Serialize)]
+struct LeaveSpaceDto {
+    open: bool,
+    space_id: Option<String>,
+    name: Option<String>,
+    rooms: usize,
+    spaces: usize,
+    standing: Option<&'static str>,
+    leaving: bool,
+    error: MessageDto,
+}
+
+#[derive(Serialize)]
 #[allow(clippy::struct_excessive_bools)]
 struct DirectoryDto {
     scope: &'static str,
@@ -560,6 +600,7 @@ struct DirectoryDto {
     invites_pending: bool,
     attention: usize,
     invites: Vec<InviteDto>,
+    removals: Vec<RemovalDto>,
     rooms: Vec<RoomDto>,
     space_matches: Vec<SpaceMatchDto>,
     spaces: Vec<SpaceDto>,
@@ -766,6 +807,8 @@ pub fn view(source: &AppViewState) -> ViewDto {
         directory: directory(&source.directory),
         space_index: space_index(&source.space_index),
         invite: invite_sheet(&source.invite),
+        removal: removal_sheet(&source.removal),
+        leave_space: leave_space(&source.leave_space),
         room_preview: room_preview(&source.room_preview),
         create_room: create_room(&source.create_room),
         invite_people: invite_people(&source.invite_people),
@@ -1255,11 +1298,13 @@ fn room_menu(source: &RoomMenuTarget) -> RoomMenuDto {
     RoomMenuDto {
         room_id: source.room_id.to_string(),
         name: source.name.clone(),
+        is_space: source.is_space,
         unread: source.unread,
         notify: names::notify_mode(source.notify),
         notify_busy: source.notify_busy,
         leaving: source.leaving,
         may_invite: source.may_invite,
+        may_add_children: source.may_add_children,
     }
 }
 
@@ -1424,6 +1469,7 @@ fn directory(source: &DirectoryView) -> DirectoryDto {
         invites_pending: source.invites_pending,
         attention: source.attention,
         invites: source.invites.iter().map(|entry| invite(entry)).collect(),
+        removals: source.removals.iter().map(|entry| removal(entry)).collect(),
         rooms: source.rooms.iter().map(|entry| room(entry)).collect(),
         space_matches: source.space_matches.iter().map(space_match).collect(),
         spaces: source.spaces.iter().map(space).collect(),
@@ -1444,6 +1490,47 @@ fn invite(source: &Invite) -> InviteDto {
         topic: source.topic.clone(),
         has_avatar_mxc: source.avatar_mxc.is_some(),
         received_ts: source.received_ts,
+    }
+}
+
+fn removal(source: &Removal) -> RemovalDto {
+    RemovalDto {
+        id: source.id.to_string(),
+        name: source.name.clone(),
+        kind: names::removal_kind(source.kind),
+        is_space: source.is_space,
+        is_direct: source.is_direct,
+        by: source.by.user_id.clone(),
+        by_name: source.by.shown(),
+        reason: source.reason.clone(),
+        has_avatar_mxc: source.avatar_mxc.is_some(),
+        removed_ts: source.removed_ts,
+    }
+}
+
+fn removal_sheet(source: &RemovalView) -> RemovalSheetDto {
+    RemovalSheetDto {
+        open: source.removal.is_some(),
+        removal: source.removal.as_deref().map(removal),
+        forgetting: source.forgetting,
+        error: message(&source.error),
+    }
+}
+
+fn leave_space(source: &LeaveSpaceView) -> LeaveSpaceDto {
+    let space = source.space.as_ref();
+    LeaveSpaceDto {
+        open: space.is_some(),
+        space_id: space.map(|space| space.id.to_string()),
+        name: space.map(|space| space.name.clone()),
+        rooms: space.map_or(0, |space| space.rooms),
+        spaces: space.map_or(0, |space| space.spaces),
+        standing: source.standing.map(|standing| match standing {
+            AdminStanding::OnlyAdmin => "only-admin",
+            AdminStanding::NotOnlyAdmin => "not-only-admin",
+        }),
+        leaving: source.leaving,
+        error: message(&source.error),
     }
 }
 
