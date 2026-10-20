@@ -554,6 +554,14 @@ pub enum RoomScope {
 }
 
 #[derive(Clone, Copy, Default, PartialEq, Eq)]
+pub enum InvitesSection {
+    #[default]
+    Folded,
+    Unfolded,
+    Matches,
+}
+
+#[derive(Clone, Copy, Default, PartialEq, Eq)]
 pub enum AttachmentKind {
     #[default]
     File,
@@ -691,12 +699,14 @@ pub struct SpaceMatch {
 pub struct DirectoryView {
     pub rooms: RoomList,
     pub invites: InviteList,
+    pub invites_section: InvitesSection,
     pub removals: RemovalList,
     pub space_matches: Arc<[SpaceMatch]>,
     pub spaces: Arc<[Space]>,
     pub subspaces: Arc<[Space]>,
     pub scope: RoomScope,
     pub space_id: String,
+    pub space_name: String,
     pub subspace_id: String,
     pub listed_space: SpaceHeading,
     pub direct_flags: UnreadFlags,
@@ -709,12 +719,14 @@ impl Default for DirectoryView {
         Self {
             rooms: Arc::from(Vec::new()),
             invites: Arc::from(Vec::new()),
+            invites_section: InvitesSection::default(),
             removals: Arc::from(Vec::new()),
             space_matches: Arc::from(Vec::new()),
             spaces: Arc::from(Vec::new()),
             subspaces: Arc::from(Vec::new()),
             scope: RoomScope::default(),
             space_id: String::new(),
+            space_name: String::new(),
             subspace_id: String::new(),
             listed_space: SpaceHeading::default(),
             direct_flags: UnreadFlags::default(),

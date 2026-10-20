@@ -62,6 +62,8 @@ pub enum ProbeCommand {
     FilterRooms {
         query: String,
     },
+    FoldInvites,
+    UnfoldInvites,
     OpenSpace {
         space_id: String,
     },
@@ -807,6 +809,8 @@ pub fn to_driven(command: ProbeCommand, selected: Selection<'_>) -> Result<Drive
         ProbeCommand::MoveSpace { from, to } => UiCommand::MoveSpace { from, to },
         ProbeCommand::SelectRoom { room_id } => UiCommand::SelectRoom(RoomId::new(room_id)),
         ProbeCommand::FilterRooms { query } => UiCommand::FilterRooms(query),
+        ProbeCommand::FoldInvites => UiCommand::FoldInvites,
+        ProbeCommand::UnfoldInvites => UiCommand::UnfoldInvites,
         ProbeCommand::OpenSpace { space_id } => UiCommand::OpenSpace(RoomId::new(space_id)),
         ProbeCommand::OpenSpaceIndex => UiCommand::OpenSpaceIndex,
         ProbeCommand::CloseSpaceIndex => UiCommand::CloseSpaceIndex,

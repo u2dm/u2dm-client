@@ -12,7 +12,7 @@ import { AppStyle, IconSize, Metrics, Radius, Size, Space } from "../../theme.sl
 import { IconButton } from "../../components/button.slint";
 import { CallView, DirectoryView, RoomInfoView, RoomView, SpaceIndexView, WindowView } from "../../views.slint";
 import { Actions } from "../../actions.slint";
-import { LocalState, RoomSearch, Shell } from "../../local.slint";
+import { LocalState, RoomSearch, Shell, Subspaces } from "../../local.slint";
 
 component Toast inherits Rectangle {
     property <bool> is-file-saved: RoomView.toast-message == UserMessageKind.file-saved;
@@ -73,9 +73,8 @@ export component ChatScreen inherits Rectangle {
     property <length> divider-width: Space.sm;
     property <length> resize-step: Space.xl;
 
-    property <bool> has-subspaces: DirectoryView.subspaces.length > 0;
     property <length> subrail-width: Metrics.subspace-rail;
-    property <length> subrail-inset: root.has-subspaces ? root.subrail-width : 0;
+    property <length> subrail-inset: Subspaces.in-column(root.nav-collapsed) ? root.subrail-width : 0;
 
     property <bool> room-info-pane-fits: root.width >= Metrics.room-info-pane-breakpoint;
     property <bool> room-info-pane-up: Shell.room-info-pane-open && root.room-info-pane-fits;

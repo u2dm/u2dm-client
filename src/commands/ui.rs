@@ -44,6 +44,8 @@ pub enum UiCommand {
     OpenNotification(RoomId),
     #[strum(to_string = "FilterRooms")]
     FilterRooms(String),
+    FoldInvites,
+    UnfoldInvites,
     #[strum(to_string = "OpenSpace({0})")]
     OpenSpace(RoomId),
     OpenSpaceIndex,
@@ -463,6 +465,8 @@ impl UiCommand {
             | Self::SelectSubspace(_)
             | Self::MoveSpace { .. }
             | Self::FilterRooms(_)
+            | Self::FoldInvites
+            | Self::UnfoldInvites
             | Self::OpenSpaceIndex
             | Self::CloseSpaceIndex
             | Self::PageSpaceIndex

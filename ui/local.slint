@@ -1,5 +1,5 @@
 import { Delivery, LoginPhase, MessageKind, PollPhase, ReactionSend, RoomInfoPlacement, Shield } from "./enums.slint";
-import { AccountView, AttachmentView, CreateRoomView, EncryptionView, InvitePeopleView, InviteView, LeaveSpaceView, LoginView, LogoutView, ReadersView, RemovalView, RoomInfoView, RoomLogView, RoomMenuView, RoomPreviewView, RoomView, SourceView, UserInfoView, VerificationView, VideoView, WindowView } from "./views.slint";
+import { AccountView, AttachmentView, CreateRoomView, DirectoryView, EncryptionView, InvitePeopleView, InviteView, LeaveSpaceView, LoginView, LogoutView, ReadersView, RemovalView, RoomInfoView, RoomLogView, RoomMenuView, RoomPreviewView, RoomView, SourceView, UserInfoView, VerificationView, VideoView, WindowView } from "./views.slint";
 import { Actions } from "./actions.slint";
 import { MessageEntry, ReactionEntry } from "./types.slint";
 import { MessagePreview } from "./messages.slint";
@@ -519,6 +519,40 @@ export global Polls {
     }
 }
 
+export enum SubspacePlacement { tabs, column }
+
+export global Subspaces {
+    in-out property <SubspacePlacement> placement: SubspacePlacement.tabs;
+    property <bool> refocus-switch;
+
+    public pure function in-column(collapsed: bool) -> bool {
+        return DirectoryView.subspaces.length > 0
+            && (root.placement == SubspacePlacement.column || collapsed);
+    }
+
+    public pure function in-tabs(collapsed: bool) -> bool {
+        return DirectoryView.subspaces.length > 0
+            && root.placement == SubspacePlacement.tabs
+            && !collapsed;
+    }
+
+    public function place(placement: SubspacePlacement, keyboard: bool) {
+        root.placement = placement;
+        root.refocus-switch = keyboard;
+    }
+
+    public function take-refocus() -> bool {
+        let refocus = root.refocus-switch;
+        root.refocus-switch = false;
+        return refocus;
+    }
+
+    public function forget() {
+        root.placement = SubspacePlacement.tabs;
+        root.refocus-switch = false;
+    }
+}
+
 export global RoomSearch {
     in-out property <string> query;
     in-out property <string> opened-room;
@@ -544,6 +578,7 @@ export global LocalState {
         Shell.call-maximized = false;
         RoomSearch.query = "";
         RoomSearch.opened-room = "";
+        Subspaces.forget();
         TextSelection.clear();
         Reactions.close();
         MessageMenu.close();

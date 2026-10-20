@@ -69,6 +69,7 @@ scenario_env() {
     readers)         echo 'U2DM_DEMO_RECEIPTS=late,throng U2DM_DEMO_ROOM_INFO=slow' ;;
     room-search)     echo 'U2DM_DEMO_WINDOW=900x760' ;;
     room-search-open) echo 'U2DM_DEMO_WINDOW=900x760' ;;
+    subspace-tabs)   echo 'U2DM_DEMO_WINDOW=900x760' ;;
     mentions)        echo 'U2DM_DEMO_ROOM_INFO=slow' ;;
     room-mention)    echo 'U2DM_DEMO_WINDOW=900x760' ;;
     display-names)   echo 'U2DM_DEMO_NAMES=all' ;;
@@ -90,6 +91,7 @@ scenario_env() {
     account-deactivate) echo 'U2DM_DEMO_ACCOUNT=dummy U2DM_DEMO_WINDOW=900x760' ;;
     logout-warning)  echo 'U2DM_DEMO_ACCOUNT=last-session,unsent U2DM_DEMO_ENCRYPTION=no-recovery U2DM_DEMO_WINDOW=900x760' ;;
     invites)         echo 'U2DM_DEMO_INVITES=slow,late U2DM_DEMO_WINDOW=900x760' ;;
+    invites-folded)  echo 'U2DM_DEMO_WINDOW=900x760' ;;
     invite-failures) echo 'U2DM_DEMO_INVITES=accept-fails,decline-fails,revoked U2DM_DEMO_WINDOW=900x760' ;;
     removals)        echo 'U2DM_DEMO_DEPARTURES=removed,kicked,slow U2DM_DEMO_WINDOW=900x760' ;;
     removal-failures) echo 'U2DM_DEMO_DEPARTURES=removed,forget-fails U2DM_DEMO_WINDOW=900x760' ;;
@@ -472,6 +474,17 @@ scenario_steps() {
       echo 'sleep 1'
       echo '{"op":"accept_identity","user_id":"@jordan:matrix.org"}'
       echo 'sleep 1' ;;
+    invites-folded)
+      echo 'sleep 2'
+      echo '{"op":"unfold_invites"}'
+      echo 'sleep 1'
+      echo '{"op":"select_direct"}'
+      echo 'sleep 1'
+      echo '{"op":"filter_rooms","query":"leo"}'
+      echo 'sleep 1'
+      echo '{"op":"filter_rooms","query":""}'
+      echo '{"op":"select_space"}'
+      echo 'sleep 2' ;;
     invites)
       echo 'sleep 3'
       echo '{"op":"select_direct"}'
@@ -891,6 +904,11 @@ scenario_steps() {
       echo 'sleep 1'
       echo '{"op":"open_space","space_id":"!space-rust-web:demo.local"}'
       echo 'sleep 2' ;;
+    subspace-tabs)
+      echo '{"op":"select_space","space_id":"!space-rust:demo.local"}'
+      echo 'sleep 1'
+      echo '{"op":"select_subspace","subspace_id":"!space-rust-web:demo.local"}'
+      echo 'sleep 2' ;;
     mentions)
       echo '{"op":"select_room","room_id":"!design:demo.local"}'
       echo 'sleep 1'
@@ -979,6 +997,7 @@ scenario_note() {
     readers)         echo 'in !rust, the 123 readers of an older message load slowly, then the 121 readers of your newest message page in fifty at a time' ;;
     room-search)     echo 'in All Rooms, "design" lists the Design Team room, then the Design space' ;;
     room-search-open) echo '"web" matches only the Web space under Rust (Web Accessibility is too deep to open); opening it selects Rust and its Web subspace' ;;
+    subspace-tabs)   echo 'Rust lists its sub-spaces as tabs above its rooms (All in Rust, Web, Infra) instead of a second rail; picking Web lists its rooms and names it in the header (directory.space_name, subspace_id, listed_space)' ;;
     mentions)        echo 'in !design the roster loads slowly, then "pr" suggests Priya, "" puts the recent speakers first, and "ro" offers @room' ;;
     room-mention)    echo 'in !matrixhq, Vera'"'"'s announcement mentions the room: its @room is bold and its bubble tinted (mentions_you)' ;;
     display-names)   echo 'in !linux, a second Kai, a right-to-left name, a Kai whose name ends in bidi controls and a nameless member post: every Kai, the sidebar preview and the "ka" suggestions carry user IDs' ;;
@@ -999,6 +1018,7 @@ scenario_note() {
     account-limits)  echo 'm.change_password and m.profile_fields off: the dialog says so; signing out asks for a stage U2DM cannot complete (account.error auth-unsupported)' ;;
     account-deactivate) echo 'deactivation with an m.login.dummy confirmation answered silently: the session ends on the login screen with account-deactivated' ;;
     logout-warning)  echo 'the last session without key backup and two unsent messages: Log Out shows the warning instead of logging out (logout.keys_at_risk, logout.unsent)' ;;
+    invites-folded)  echo 'the Invites row starts folded with its count; unfolded, it stays so through DMs, lists matches under a plain heading during a search, and is still unfolded back in All (directory.invites_section)' ;;
     invites)         echo 'Leo'"'"'s chat invite arrives late and is accepted, opening the chat under DMs; Async Rust is declined; Hiking Club is accepted and opens in the rail (directory.invites, invite)' ;;
     invite-failures) echo 'an accept fails inline on its sheet, a decline with the sheet closed fails as a toast, then the open Climbing Crew sheet closes when its invite is withdrawn (invite.error, toast)' ;;
     removals)        echo 'job hunt crashout and cat tax list as removals from the start; forgetting job hunt crashout, slowly, takes it off the list; then Jordan removes you from the open Design Team 5 s in, which closes it and opens its removal sheet (directory.removals, removal)' ;;
@@ -1075,8 +1095,8 @@ names() {
     user-ignore user-moderation \
     user-moderation-failures user-tags custom-emoji spoilers message-types message-link message-source message-pins message-pin-failures message-delete \
     message-delete-failures read-only-room announcement-room powers-revoked \
-    readers room-search room-search-open mentions room-mention display-names \
-    message-shields identity-alerts identity-held-sends invites invite-failures room-upgrades room-upgrade-failures room-state \
+    readers room-search room-search-open subspace-tabs mentions room-mention display-names \
+    message-shields identity-alerts identity-held-sends invites-folded invites invite-failures room-upgrades room-upgrade-failures room-state \
     removals removal-failures leave-space leave-space-failures moderation-reasons \
     room-links room-finder room-link-failures \
     create-room create-space create-in-space create-room-failures invite-people invite-people-failures \

@@ -78,7 +78,7 @@ use readers::ReaderList;
 use recover::Recovery;
 use removals::Removals;
 use room_creation::{Created, RoomCreation};
-use room_directory::{RoomDirectory, RoomMeta};
+use room_directory::{InvitesFold, RoomDirectory, RoomMeta};
 use room_info::{ActionOutcome, RoomInfo, RosterOutcome};
 use room_log::RoomLogViewer;
 use room_preview::RoomPreviews;
@@ -531,6 +531,12 @@ impl AppService {
             }
             UiCommand::FilterRooms(query) => {
                 self.filter_rooms(&query);
+            }
+            UiCommand::FoldInvites => {
+                self.fold_invites(InvitesFold::Folded);
+            }
+            UiCommand::UnfoldInvites => {
+                self.fold_invites(InvitesFold::Unfolded);
             }
             UiCommand::OpenSpace(space) => {
                 self.open_space(&space);
@@ -1438,6 +1444,12 @@ impl AppService {
 
     fn filter_rooms(&mut self, query: &str) {
         if self.room_directory.search(TitleQuery::new(query)) {
+            self.room_directory.emit_rooms(&self.selection);
+        }
+    }
+
+    fn fold_invites(&mut self, fold: InvitesFold) {
+        if self.room_directory.fold_invites(fold) {
             self.room_directory.emit_rooms(&self.selection);
         }
     }

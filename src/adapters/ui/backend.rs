@@ -114,8 +114,8 @@ pub trait UiBackend: Sized + 'static {
         removal_to_dto(removal, media).into()
     }
 
-    fn heading(id: &str, kind: RoomRowKind) -> Self::Room {
-        heading_to_dto(id, kind).into()
+    fn heading(id: &str, kind: RoomRowKind, invites: usize) -> Self::Room {
+        heading_to_dto(id, kind, invites).into()
     }
 
     fn convert_space(space: &Space, media: &dyn MediaCache) -> Self::Space {

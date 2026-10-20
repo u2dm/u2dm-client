@@ -42,6 +42,7 @@ macro_rules! string_props {
         PinnedBody RoomView "RoomView" "pinned-body" set_pinned_body get_pinned_body;
         SelectedRoomId DirectoryView "DirectoryView" "selected-room-id" set_selected_room_id get_selected_room_id;
         SelectedSpaceId DirectoryView "DirectoryView" "selected-space-id" set_selected_space_id get_selected_space_id;
+        SelectedSpaceName DirectoryView "DirectoryView" "selected-space-name" set_selected_space_name get_selected_space_name;
         SelectedSubspaceId DirectoryView "DirectoryView" "selected-subspace-id" set_selected_subspace_id get_selected_subspace_id;
         ListedSpaceName DirectoryView "DirectoryView" "listed-space-name" set_listed_space_name get_listed_space_name;
         ListedSpaceId DirectoryView "DirectoryView" "listed-space-id" set_listed_space_id get_listed_space_id;
@@ -232,6 +233,8 @@ macro_rules! simple_callbacks {
         on_select_direct "select-direct" select_direct plain SelectDirect;
         on_select_subspace "select-subspace" select_subspace opt_room SelectSubspace;
         on_filter_rooms "filter-rooms" filter_rooms pass FilterRooms;
+        on_fold_invites "fold-invites" fold_invites plain FoldInvites;
+        on_unfold_invites "unfold-invites" unfold_invites plain UnfoldInvites;
         on_open_space "open-space" open_space room OpenSpace;
         on_open_space_index "open-space-index" open_space_index plain OpenSpaceIndex;
         on_close_space_index "close-space-index" close_space_index plain CloseSpaceIndex;
@@ -1362,13 +1365,15 @@ pub(crate) use member_row_kinds;
 
 macro_rules! room_row_kinds {
     ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
-        Room           Room           "room";
-        InvitesHeading InvitesHeading "invites-heading";
-        Invite         Invite         "invite";
-        Removal        Removal        "removal";
-        RoomsHeading   RoomsHeading   "rooms-heading";
-        SpacesHeading  SpacesHeading  "spaces-heading";
-        Space          Space          "space";
+        Room            Room            "room";
+        InvitesHeading  InvitesHeading  "invites-heading";
+        InvitesFolded   InvitesFolded   "invites-folded";
+        InvitesUnfolded InvitesUnfolded "invites-unfolded";
+        Invite          Invite          "invite";
+        Removal         Removal         "removal";
+        RoomsHeading    RoomsHeading    "rooms-heading";
+        SpacesHeading   SpacesHeading   "spaces-heading";
+        Space           Space           "space";
     } };
 }
 pub(crate) use room_row_kinds;
@@ -1871,6 +1876,7 @@ macro_rules! room_fields {
         last_message_time set_last_message_time "last-message-time" text;
         space_rooms set_space_rooms "space-rooms" int;
         space_parent set_space_parent "space-parent" text;
+        invite_count set_invite_count "invite-count" int;
         invite_kind set_invite_kind "invite-kind" enumk(InviteKind);
         inviter set_inviter "inviter" text;
         inviter_id set_inviter_id "inviter-id" text;

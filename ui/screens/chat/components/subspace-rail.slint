@@ -5,9 +5,10 @@ import { RailTileFace } from "./rail-tile.slint";
 import { ContextPress } from "./context-press.slint";
 import { AppStyle, Metrics, Radius, Size, Space, Stroke, Weight } from "../../../theme.slint";
 import { Interaction, ListItemArea } from "../../../components/a11y.slint";
+import { IconButton } from "../../../components/button.slint";
 import { DirectoryView } from "../../../views.slint";
 import { Actions } from "../../../actions.slint";
-import { RoomMenu, RoomMenuOrigin, RoomMenuReturn } from "../../../local.slint";
+import { RoomMenu, RoomMenuOrigin, RoomMenuReturn, SubspacePlacement, Subspaces } from "../../../local.slint";
 
 component SubspaceTile inherits ListItemArea {
     in property <string> initial;
@@ -93,9 +94,10 @@ component SubspaceTile inherits ListItemArea {
 
 export component SubspaceRail inherits Rectangle {
     in property <bool> above-modal: false;
+    in property <bool> offers-tabs: false;
 
     property <length> row-height: Metrics.rail-row;
-    property <length> top-padding: Space.md;
+    property <length> switch-band: Metrics.header-row;
 
     background: Palette.alternate-background;
 
@@ -105,15 +107,31 @@ export component SubspaceRail inherits Rectangle {
         background: AppStyle.overlay-hover;
     }
 
+    if root.offers-tabs: IconButton {
+        x: (root.width - self.width) / 2;
+        y: (root.switch-band - self.height) / 2;
+        icon: IconSet.PanelTopOpen;
+        label: @tr("Show topics as tabs");
+        above-modal: root.above-modal;
+        init => {
+            if Subspaces.take-refocus() {
+                self.take-focus();
+            }
+        }
+        clicked => {
+            Subspaces.place(SubspacePlacement.tabs, self.has-focus);
+        }
+    }
+
     Flickable {
+        y: root.switch-band;
         width: root.width;
-        height: root.height;
+        height: root.height - root.switch-band;
         content-width: root.width;
-        content-height: (DirectoryView.subspaces.length + 1) * root.row-height + root.top-padding;
+        content-height: (DirectoryView.subspaces.length + 1) * root.row-height;
 
         VerticalLayout {
             alignment: start;
-            padding-top: root.top-padding;
             accessible-role: list;
             accessible-label: @tr("Topics");
             accessible-item-count: DirectoryView.subspaces.length + 1;

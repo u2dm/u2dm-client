@@ -16,7 +16,7 @@ use super::task_group::TaskGroup;
 use crate::commands::messages::{UserMessage, UserMessageKind};
 use crate::commands::sync::DirectoryUpdate;
 use crate::commands::view::{
-    AppViewState, ChildAccess, InviteTarget, SpaceHeading, SpaceMatch, Toast,
+    AppViewState, ChildAccess, InviteTarget, InvitesSection, SpaceHeading, SpaceMatch, Toast,
 };
 use crate::domain::departure::{Removal, RemovalList, SpaceDeparture};
 use crate::domain::event_size::EventIds;
@@ -59,6 +59,13 @@ pub(super) struct ReconcileOutcome {
 pub(super) struct RailRoute {
     pub(super) space: RoomId,
     pub(super) subspace: Option<RoomId>,
+}
+
+#[derive(Clone, Copy, Default, PartialEq, Eq)]
+pub(super) enum InvitesFold {
+    #[default]
+    Folded,
+    Unfolded,
 }
 
 #[derive(Clone, Copy)]
@@ -291,6 +298,7 @@ pub(super) struct RoomDirectory {
     connected: bool,
     rooms_landed: bool,
     query: TitleQuery,
+    invites_fold: InvitesFold,
 }
 
 impl RoomDirectory {
@@ -316,6 +324,7 @@ impl RoomDirectory {
             connected: false,
             rooms_landed: false,
             query: TitleQuery::default(),
+            invites_fold: InvitesFold::default(),
         }
     }
 
@@ -589,6 +598,7 @@ impl RoomDirectory {
         self.pending_orders.clear();
         self.order_writes.latest_op.fetch_add(1, Ordering::Relaxed);
         self.query = TitleQuery::default();
+        self.invites_fold = InvitesFold::default();
     }
 
     pub(super) fn search(&mut self, query: TitleQuery) -> bool {
@@ -597,6 +607,23 @@ impl RoomDirectory {
         }
         self.query = query;
         true
+    }
+
+    pub(super) fn fold_invites(&mut self, fold: InvitesFold) -> bool {
+        if self.invites_fold == fold {
+            return false;
+        }
+        self.invites_fold = fold;
+        true
+    }
+
+    fn invites_section(&self, sel: &Selection) -> InvitesSection {
+        let searching = !self.query.is_empty() && !matches!(sel.filter, RoomFilter::Space { .. });
+        match (searching, self.invites_fold) {
+            (true, _) => InvitesSection::Matches,
+            (false, InvitesFold::Folded) => InvitesSection::Folded,
+            (false, InvitesFold::Unfolded) => InvitesSection::Unfolded,
+        }
     }
 
     pub(super) fn spawn_order_write(
@@ -760,11 +787,13 @@ impl RoomDirectory {
     pub(super) fn emit_rooms(&self, sel: &Selection) {
         let rooms = self.listed_rooms(sel);
         let invites = self.listed_invites(sel);
+        let invites_section = self.invites_section(sel);
         let removals = self.listed_removals(sel);
         let space_matches = self.space_matches(sel);
         self.output.publish(Box::new(move |view| {
             view.directory.rooms = rooms;
             view.directory.invites = invites;
+            view.directory.invites_section = invites_section;
             view.directory.removals = removals;
             view.directory.space_matches = space_matches;
         }));
@@ -984,8 +1013,15 @@ impl RoomDirectory {
                 may_add_children: space.powers.add_children,
             })
             .unwrap_or_default();
-        self.output
-            .publish(Box::new(move |view| view.directory.listed_space = heading));
+        let space_name = sel
+            .space()
+            .and_then(|id| self.space_name(id))
+            .unwrap_or_default()
+            .to_owned();
+        self.output.publish(Box::new(move |view| {
+            view.directory.listed_space = heading;
+            view.directory.space_name = space_name;
+        }));
     }
 
     fn emit_rail_flags(&self) {

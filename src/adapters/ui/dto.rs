@@ -544,6 +544,7 @@ pub struct RoomDto {
     pub last_message_time: SharedString,
     pub space_rooms: i32,
     pub space_parent: SharedString,
+    pub invite_count: i32,
     pub invite_kind: InviteKind,
     pub inviter: SharedString,
     pub inviter_id: SharedString,
@@ -1402,6 +1403,7 @@ pub fn room_to_dto(r: &Room, media: &dyn MediaCache) -> RoomDto {
         last_message_time: SharedString::from(&room_activity_label(r.last_activity_ts)),
         space_rooms: 0,
         space_parent: SharedString::new(),
+        invite_count: 0,
         invite_kind: InviteKind::Room,
         inviter: SharedString::new(),
         inviter_id: SharedString::new(),
@@ -1442,8 +1444,11 @@ pub fn record_room_avatar_need(r: &Room, media: &dyn MediaCache) -> ShownAvatar 
     )
 }
 
-pub fn heading_to_dto(id: &str, kind: RoomRowKind) -> RoomDto {
-    bare_row_dto(id, kind)
+pub fn heading_to_dto(id: &str, kind: RoomRowKind, invites: usize) -> RoomDto {
+    RoomDto {
+        invite_count: count(invites),
+        ..bare_row_dto(id, kind)
+    }
 }
 
 pub fn invite_to_dto(invite: &Invite, media: &dyn MediaCache) -> RoomDto {
@@ -1570,6 +1575,7 @@ fn bare_row_dto(id: &str, kind: RoomRowKind) -> RoomDto {
         last_message_time: SharedString::new(),
         space_rooms: 0,
         space_parent: SharedString::new(),
+        invite_count: 0,
         invite_kind: InviteKind::Room,
         inviter: SharedString::new(),
         inviter_id: SharedString::new(),

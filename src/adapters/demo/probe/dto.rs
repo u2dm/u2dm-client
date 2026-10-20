@@ -8,9 +8,9 @@ use crate::commands::view::{
     AccountStep, AccountView, ActiveCall, AppViewState, AttachmentView, AudioView, AuthPrompt,
     CallPhase, CallTile, CallView, CameraView, CantDecrypt, CardStatus, CopiedLink, CreateRoomView,
     DirectoryView, EncryptionStep, EncryptionView, IdentityAlertView, InvitePeopleView, InviteView,
-    InviteeRow, JoinOffer, JoinRefusal, LeaveSpaceView, LifecycleView, LoginStep, LogoutView,
-    MentionsView, MicrophoneView, NotificationsView, PackView, PaginationView, PinnedView,
-    PresenceView, ReadersView, RemovalView, RoomInfoView, RoomLogView, RoomMenuTarget,
+    InviteeRow, InvitesSection, JoinOffer, JoinRefusal, LeaveSpaceView, LifecycleView, LoginStep,
+    LogoutView, MentionsView, MicrophoneView, NotificationsView, PackView, PaginationView,
+    PinnedView, PresenceView, ReadersView, RemovalView, RoomInfoView, RoomLogView, RoomMenuTarget,
     RoomPreviewSheet, RoomPreviewView, RosterRow, ScreenView, SourceState, SpaceIndexRow,
     SpaceIndexView, SpaceMatch, TileKind, TileState, Toast, TrackFile, TypingView, UnsentMessage,
     UpgradeView, UserInfoView, VideoView,
@@ -592,6 +592,7 @@ struct LeaveSpaceDto {
 struct DirectoryDto {
     scope: &'static str,
     space_id: String,
+    space_name: String,
     subspace_id: String,
     listed_space: SpaceHeadingDto,
     direct_alert: bool,
@@ -600,6 +601,7 @@ struct DirectoryDto {
     invites_pending: bool,
     attention: usize,
     invites: Vec<InviteDto>,
+    invites_section: &'static str,
     removals: Vec<RemovalDto>,
     rooms: Vec<RoomDto>,
     space_matches: Vec<SpaceMatchDto>,
@@ -1455,6 +1457,7 @@ fn directory(source: &DirectoryView) -> DirectoryDto {
     DirectoryDto {
         scope: names::room_scope(source.scope),
         space_id: source.space_id.clone(),
+        space_name: source.space_name.clone(),
         subspace_id: source.subspace_id.clone(),
         listed_space: SpaceHeadingDto {
             id: source.listed_space.id.clone(),
@@ -1469,11 +1472,20 @@ fn directory(source: &DirectoryView) -> DirectoryDto {
         invites_pending: source.invites_pending,
         attention: source.attention,
         invites: source.invites.iter().map(|entry| invite(entry)).collect(),
+        invites_section: invites_section_word(source.invites_section),
         removals: source.removals.iter().map(|entry| removal(entry)).collect(),
         rooms: source.rooms.iter().map(|entry| room(entry)).collect(),
         space_matches: source.space_matches.iter().map(space_match).collect(),
         spaces: source.spaces.iter().map(space).collect(),
         subspaces: source.subspaces.iter().map(space).collect(),
+    }
+}
+
+const fn invites_section_word(section: InvitesSection) -> &'static str {
+    match section {
+        InvitesSection::Folded => "folded",
+        InvitesSection::Unfolded => "unfolded",
+        InvitesSection::Matches => "matches",
     }
 }
 

@@ -6,6 +6,7 @@ import { IconDisplay, IconSet } from "@lucide";
 
 import { SpaceRail } from "./space-rail.slint";
 import { SubspaceRail } from "./subspace-rail.slint";
+import { SubspaceTabs } from "./subspace-tabs.slint";
 import { CallWords, MessagePreview, ServiceLabel } from "../../../messages.slint";
 import { HeaderTitle } from "./header-title.slint";
 import { Avatar } from "../../../components/avatar.slint";
@@ -21,7 +22,7 @@ import { AppStyle, Fonts, IconSize, Metrics, Motion, Opacity, Size, Space, Strok
 import { InviteKind, RemovalKind, RoomCallMark, RoomRowKind, RoomScope, ServiceKind } from "../../../enums.slint";
 import { DirectoryView, SpaceIndexView } from "../../../views.slint";
 import { Actions } from "../../../actions.slint";
-import { RoomMenu, RoomMenuOrigin, RoomMenuReturn, RoomSearch } from "../../../local.slint";
+import { RoomMenu, RoomMenuOrigin, RoomMenuReturn, RoomSearch, Subspaces } from "../../../local.slint";
 
 component SidebarSearch inherits FocusScope {
     in property <bool> above-modal: false;
@@ -206,6 +207,34 @@ global RowHeadings {
             || kind == RoomRowKind.rooms-heading
             || kind == RoomRowKind.spaces-heading;
     }
+
+    public pure function folds-invites(kind: RoomRowKind) -> bool {
+        return kind == RoomRowKind.invites-folded || kind == RoomRowKind.invites-unfolded;
+    }
+
+    public pure function is-short(kind: RoomRowKind) -> bool {
+        return root.is-heading(kind) || root.folds-invites(kind);
+    }
+}
+
+component InviteCount inherits Rectangle {
+    in property <int> count;
+    in property <bool> alert;
+
+    height: Size.xs;
+    width: max(self.height, digits.preferred-width + 2 * Space.sm);
+    border-radius: self.height / 2;
+    background: root.alert ? Palette.accent-background : AppStyle.overlay-hover;
+
+    digits := Text {
+        text: root.count;
+        font-size: Fonts.caption;
+        font-weight: Weight.semibold;
+        color: root.alert ? Palette.accent-foreground : Palette.foreground;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+        accessible-role: none;
+    }
 }
 
 component InviteSummary inherits VerticalLayout {
@@ -371,12 +400,15 @@ component RoomRow inherits ListItemArea {
     property <bool> is-removal: root.entry.kind == RoomRowKind.removal;
     property <bool> is-space: root.entry.kind == RoomRowKind.space;
     property <bool> is-heading: RowHeadings.is-heading(root.entry.kind);
+    property <bool> folds-invites: RowHeadings.folds-invites(root.entry.kind);
+    property <bool> unfolded: root.entry.kind == RoomRowKind.invites-unfolded;
+    property <bool> has-face: !root.is-heading && !root.folds-invites;
     property <bool> has-unread: root.entry.alert || root.entry.mention || root.entry.hint;
     property <bool> joined: root.selected && root.joins-timeline;
     property <int> menu-returns: RoomMenu.focus-returns;
 
     pure function heading-text(kind: RoomRowKind) -> string {
-        if kind == RoomRowKind.invites-heading {
+        if kind == RoomRowKind.invites-heading || RowHeadings.folds-invites(kind) {
             return @tr("Invites");
         }
         if kind == RoomRowKind.rooms-heading && DirectoryView.room-scope == RoomScope.direct {
@@ -389,6 +421,9 @@ component RoomRow inherits ListItemArea {
     }
 
     pure function describe(entry: RoomEntry) -> string {
+        if RowHeadings.folds-invites(entry.kind) {
+            return @tr("{n} invite" | "{n} invites" % entry.invite-count);
+        }
         if RowHeadings.is-heading(entry.kind) {
             return root.heading-text(entry.kind);
         }
@@ -437,6 +472,14 @@ component RoomRow inherits ListItemArea {
     ring-inset: Space.sm;
     ring-radius: Metrics.sidebar-tab-radius;
     label: root.describe(root.entry);
+    accessible-expandable: root.folds-invites;
+    accessible-expanded: root.unfolded;
+    accessible-action-expand => {
+        if root.folds-invites && !root.unfolded
+            && Interaction.actionable(root.enabled, root.above-modal) {
+            root.clicked();
+        }
+    }
 
     Rectangle {
         x: Space.sm;
@@ -486,7 +529,7 @@ component RoomRow inherits ListItemArea {
         }
     }
 
-    if root.collapsed && !root.is-heading: Rectangle {
+    if root.collapsed && root.has-face: Rectangle {
         width: 100%;
         height: 100%;
 
@@ -624,6 +667,53 @@ component RoomRow inherits ListItemArea {
         SpaceSummary {
             entry: root.entry;
             has-unread: root.has-unread;
+        }
+    }
+
+    if root.collapsed && root.folds-invites: HorizontalLayout {
+        alignment: center;
+        spacing: Space.xs;
+
+        IconDisplay {
+            cross-axis-self-alignment: center;
+            icon: root.unfolded ? IconSet.ChevronDown : IconSet.ChevronRight;
+            size: IconSize.xs;
+            stroke: AppStyle.foreground-muted;
+        }
+
+        InviteCount {
+            cross-axis-self-alignment: center;
+            count: root.entry.invite-count;
+            alert: !root.unfolded;
+        }
+    }
+
+    if !root.collapsed && root.folds-invites: HorizontalLayout {
+        padding-left: Space.lg;
+        padding-right: Space.lg;
+        spacing: Space.sm;
+
+        IconDisplay {
+            cross-axis-self-alignment: center;
+            icon: root.unfolded ? IconSet.ChevronDown : IconSet.ChevronRight;
+            size: IconSize.sm;
+            stroke: AppStyle.foreground-muted;
+        }
+
+        Text {
+            horizontal-stretch: 1;
+            text: root.heading-text(root.entry.kind);
+            font-size: Fonts.label;
+            font-weight: Weight.semibold;
+            vertical-alignment: center;
+            overflow: elide;
+            accessible-role: none;
+        }
+
+        InviteCount {
+            cross-axis-self-alignment: center;
+            count: root.entry.invite-count;
+            alert: !root.unfolded;
         }
     }
 
@@ -779,6 +869,12 @@ export component Sidebar inherits Rectangle {
     background: Palette.alternate-background;
 
     function open-row(row: RoomEntry) {
+        if row.kind == RoomRowKind.invites-folded {
+            Actions.unfold-invites();
+        }
+        if row.kind == RoomRowKind.invites-unfolded {
+            Actions.fold-invites();
+        }
         if row.kind == RoomRowKind.room {
             Actions.select-room(row.id);
             RoomSearch.clear();
@@ -815,9 +911,10 @@ export component Sidebar inherits Rectangle {
             above-modal: root.above-modal;
         }
 
-        if DirectoryView.subspaces.length > 0: SubspaceRail {
+        if Subspaces.in-column(root.collapsed): SubspaceRail {
             width: root.subrail-width;
             above-modal: root.above-modal;
+            offers-tabs: !root.collapsed;
         }
 
         room-column := Rectangle {
@@ -864,6 +961,10 @@ export component Sidebar inherits Rectangle {
                     }
                 }
 
+                if Subspaces.in-tabs(root.collapsed): SubspaceTabs {
+                    above-modal: root.above-modal;
+                }
+
                 if root.finds-nothing: RetryNotice {
                     text: DirectoryView.room-scope == RoomScope.direct
                         ? @tr("No direct messages match your search.")
@@ -891,7 +992,7 @@ export component Sidebar inherits Rectangle {
                         }
 
                         for room[idx] in DirectoryView.rooms: RoomRow {
-                            height: RowHeadings.is-heading(room.kind) ? root.heading-height : root.row-height;
+                            height: RowHeadings.is-short(room.kind) ? root.heading-height : root.row-height;
                             index: idx;
                             above-modal: root.above-modal;
                             collapsed: root.collapsed;

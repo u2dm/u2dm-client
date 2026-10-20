@@ -211,6 +211,8 @@ pub(super) fn command_allowed(phase: AppPhase, cmd: &UiCommand) -> bool {
         | UiCommand::SelectRoom(_)
         | UiCommand::OpenNotification(_)
         | UiCommand::FilterRooms(_)
+        | UiCommand::FoldInvites
+        | UiCommand::UnfoldInvites
         | UiCommand::OpenSpace(_)
         | UiCommand::OpenSpaceIndex
         | UiCommand::CloseSpaceIndex

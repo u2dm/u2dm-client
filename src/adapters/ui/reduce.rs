@@ -47,8 +47,8 @@ use crate::commands::view::{
     LeaveSpaceView, LifecycleView, LoginStep, LogoutView, MentionsView, NotificationsView,
     NowPlaying, PackView, PaginationView, PinnedView, PresenceView, ReadersView, RemovalView,
     RoomCard, RoomInfoView, RoomLogView, RoomMenuTarget, RoomPreviewSheet, RoomPreviewView,
-    ShownPreview, SourceState, SpaceIndexView, Toast, TrackFile, TypingView, UnsentMessage,
-    UpgradeView, UserCard, UserInfoView, VideoView,
+    ShownPreview, SourceState, SpaceHeading, SpaceIndexView, Toast, TrackFile, TypingView,
+    UnsentMessage, UpgradeView, UserCard, UserInfoView, VideoView,
 };
 use crate::domain::capabilities::{AVATAR_FIELD, AccountApi, AccountFacts, DISPLAY_NAME_FIELD};
 use crate::domain::departure::{AdminStanding, Removal, RemovalList};
@@ -783,12 +783,14 @@ fn apply_directory<B: UiBackend>(
     let DirectoryView {
         rooms,
         invites,
+        invites_section,
         removals,
         space_matches,
         spaces,
         subspaces,
         scope,
         space_id,
+        space_name,
         subspace_id,
         listed_space,
         direct_flags,
@@ -799,6 +801,7 @@ fn apply_directory<B: UiBackend>(
     if last.is_none_or(|l| {
         !Arc::ptr_eq(&l.rooms, rooms)
             || !Arc::ptr_eq(&l.invites, invites)
+            || l.invites_section != *invites_section
             || !Arc::ptr_eq(&l.removals, removals)
             || l.space_matches != *space_matches
     }) {
@@ -835,6 +838,12 @@ fn apply_directory<B: UiBackend>(
     if last.is_none_or(|l| l.space_id != *space_id) {
         w.set_string(StringProp::SelectedSpaceId, SharedString::from(space_id));
     }
+    if last.is_none_or(|l| l.space_name != *space_name) {
+        w.set_string(
+            StringProp::SelectedSpaceName,
+            SharedString::from(space_name),
+        );
+    }
     if last.is_none_or(|l| l.subspace_id != *subspace_id) {
         w.set_string(
             StringProp::SelectedSubspaceId,
@@ -842,23 +851,7 @@ fn apply_directory<B: UiBackend>(
         );
     }
     if last.is_none_or(|l| l.listed_space != *listed_space) {
-        w.set_string(
-            StringProp::ListedSpaceName,
-            SharedString::from(&listed_space.name),
-        );
-        w.set_int(
-            IntProp::ListedSpaceMembers,
-            i32::try_from(listed_space.member_count).unwrap_or(i32::MAX),
-        );
-        w.set_string(
-            StringProp::ListedSpaceId,
-            SharedString::from(&listed_space.id),
-        );
-        w.set_bool(BoolProp::ListedSpaceMayInvite, listed_space.may_invite);
-        w.set_bool(
-            BoolProp::ListedSpaceMayAddChildren,
-            listed_space.may_add_children,
-        );
+        apply_listed_space(w, listed_space);
     }
     if last.is_none_or(|l| l.direct_flags != *direct_flags) {
         w.set_bool(BoolProp::DirectAlert, direct_flags.alert);
@@ -874,6 +867,26 @@ fn apply_directory<B: UiBackend>(
             i32::try_from(*attention).unwrap_or(i32::MAX),
         );
     }
+}
+
+fn apply_listed_space(w: &impl UiProps, listed_space: &SpaceHeading) {
+    w.set_string(
+        StringProp::ListedSpaceName,
+        SharedString::from(&listed_space.name),
+    );
+    w.set_int(
+        IntProp::ListedSpaceMembers,
+        i32::try_from(listed_space.member_count).unwrap_or(i32::MAX),
+    );
+    w.set_string(
+        StringProp::ListedSpaceId,
+        SharedString::from(&listed_space.id),
+    );
+    w.set_bool(BoolProp::ListedSpaceMayInvite, listed_space.may_invite);
+    w.set_bool(
+        BoolProp::ListedSpaceMayAddChildren,
+        listed_space.may_add_children,
+    );
 }
 
 fn apply_invite(

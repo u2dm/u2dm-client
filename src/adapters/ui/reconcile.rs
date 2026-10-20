@@ -18,7 +18,9 @@ use super::richtext::forget_styled_bodies;
 use super::session::with_session;
 use super::splice_model::SpliceModel;
 use super::spoilers::forget_spoiler_rows;
-use crate::commands::view::{DirectoryView, InviteeRow, RosterRow, SpaceIndexRow, SpaceMatch};
+use crate::commands::view::{
+    DirectoryView, InviteeRow, InvitesSection, RosterRow, SpaceIndexRow, SpaceMatch,
+};
 use crate::domain::departure::Removal;
 use crate::domain::image_pack::PackOrigin;
 use crate::domain::invite::Invite;
@@ -503,6 +505,7 @@ pub fn reorder_rows<T: Clone + 'static>(model: &VecModel<T>, from: usize, to: us
 #[derive(Clone, Copy, Default)]
 pub struct RoomListing<'a> {
     pub invites: &'a [Arc<Invite>],
+    pub invites_section: InvitesSection,
     pub rooms: &'a [Arc<Room>],
     pub removals: &'a [Arc<Removal>],
     pub spaces: &'a [SpaceMatch],
@@ -517,23 +520,35 @@ impl<'a> RoomListing<'a> {
     pub fn of(directory: &'a DirectoryView) -> Self {
         Self {
             invites: &directory.invites,
+            invites_section: directory.invites_section,
             rooms: &directory.rooms,
             removals: &directory.removals,
             spaces: &directory.space_matches,
         }
     }
 
+    fn shown_invites(self) -> &'a [Arc<Invite>] {
+        match self.invites_section {
+            InvitesSection::Folded => &[],
+            InvitesSection::Unfolded | InvitesSection::Matches => self.invites,
+        }
+    }
+
     fn rows(self) -> Vec<ListedRow<'a>> {
-        let has_invites = !self.invites.is_empty();
+        let invites = self.shown_invites();
         let has_rooms = !self.rooms.is_empty() || !self.removals.is_empty();
-        let invites_heading = has_invites.then_some(ListedRow::Heading(Heading::Invites));
+        let invites_heading =
+            (!self.invites.is_empty()).then_some(ListedRow::Heading(Heading::Invites {
+                section: self.invites_section,
+                count: self.invites.len(),
+            }));
         let rooms_heading =
-            (has_invites && has_rooms).then_some(ListedRow::Heading(Heading::Rooms));
+            (!invites.is_empty() && has_rooms).then_some(ListedRow::Heading(Heading::Rooms));
         let spaces_heading =
             (!self.spaces.is_empty()).then_some(ListedRow::Heading(Heading::Spaces));
         invites_heading
             .into_iter()
-            .chain(self.invites.iter().map(ListedRow::Invite))
+            .chain(invites.iter().map(ListedRow::Invite))
             .chain(rooms_heading)
             .chain(self.rooms_by_activity())
             .chain(spaces_heading)
@@ -581,7 +596,10 @@ impl<'a> RoomListing<'a> {
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Heading {
-    Invites,
+    Invites {
+        section: InvitesSection,
+        count: usize,
+    },
     Rooms,
     Spaces,
 }
@@ -589,7 +607,7 @@ enum Heading {
 impl Heading {
     fn id(self) -> &'static str {
         match self {
-            Self::Invites => INVITES_HEADING_ROW,
+            Self::Invites { .. } => INVITES_HEADING_ROW,
             Self::Rooms => ROOMS_HEADING_ROW,
             Self::Spaces => SPACES_HEADING_ROW,
         }
@@ -597,9 +615,20 @@ impl Heading {
 
     fn kind(self) -> RoomRowKind {
         match self {
-            Self::Invites => RoomRowKind::InvitesHeading,
+            Self::Invites { section, .. } => match section {
+                InvitesSection::Folded => RoomRowKind::InvitesFolded,
+                InvitesSection::Unfolded => RoomRowKind::InvitesUnfolded,
+                InvitesSection::Matches => RoomRowKind::InvitesHeading,
+            },
             Self::Rooms => RoomRowKind::RoomsHeading,
             Self::Spaces => RoomRowKind::SpacesHeading,
+        }
+    }
+
+    fn invites(self) -> usize {
+        match self {
+            Self::Invites { count, .. } => count,
+            Self::Rooms | Self::Spaces => 0,
         }
     }
 }
@@ -629,7 +658,7 @@ impl ListedRow<'_> {
             Self::Invite(invite) => B::convert_invite(invite, media),
             Self::Room(room) => B::convert_room(room, media),
             Self::Removal(removal) => B::convert_removal(removal, media),
-            Self::Heading(heading) => B::heading(heading.id(), heading.kind()),
+            Self::Heading(heading) => B::heading(heading.id(), heading.kind(), heading.invites()),
             Self::Space(space) => B::convert_space_match(space, media),
         }
     }
@@ -659,7 +688,7 @@ pub fn apply_rooms<B: UiBackend>(
     media: &dyn MediaCache,
 ) {
     let mut still_expected = HashSet::new();
-    for invite in listing.invites {
+    for invite in listing.shown_invites() {
         if record_invite_avatar_need(invite, media) == ShownAvatar::StillExpected {
             still_expected.insert(invite.id.as_ref());
         }

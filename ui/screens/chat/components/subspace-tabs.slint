@@ -1,0 +1,151 @@
+import { Palette } from "std-widgets.slint";
+
+import { UnreadDot } from "./unread-dot.slint";
+import { ContextPress } from "./context-press.slint";
+import { Interaction, ListItemArea } from "../../../components/a11y.slint";
+import { AppStyle, Fonts, Metrics, Radius, Space, Weight } from "../../../theme.slint";
+import { DirectoryView } from "../../../views.slint";
+import { Actions } from "../../../actions.slint";
+import { RoomMenu, RoomMenuOrigin, RoomMenuReturn, Subspaces } from "../../../local.slint";
+
+component SubspaceTab inherits ListItemArea {
+    in property <string> text;
+    in property <bool> alert;
+    in property <bool> mention;
+    in property <bool> hint;
+    in property <string> menu-id;
+
+    property <bool> has-unread: root.alert || root.mention || root.hint;
+    property <int> menu-returns: RoomMenu.focus-returns;
+
+    pure function describe() -> string {
+        if root.mention {
+            return @tr("{}, mentions you", root.text);
+        }
+        if root.alert {
+            return @tr("{}, unread", root.text);
+        }
+        if root.hint {
+            return @tr("{}, new activity", root.text);
+        }
+        return root.text;
+    }
+
+    width: min(content.preferred-width, Metrics.subspace-tab-max);
+    height: Metrics.subspace-tab;
+    border-radius: Radius.sm;
+    ring-radius: Radius.sm;
+    label: root.describe();
+    background: root.selected
+        ? AppStyle.accent-background-soft
+        : (root.has-hover || RoomMenu.shows(root.menu-id) ? AppStyle.overlay-hover : transparent);
+
+    init => {
+        if root.selected && Subspaces.take-refocus() {
+            root.take-focus();
+        }
+    }
+
+    changed menu-returns => {
+        if root.menu-id != "" && RoomMenu.returns-to(RoomMenuReturn.tile, root.menu-id) {
+            root.take-focus();
+        }
+    }
+
+    context-menu-requested => {
+        if root.menu-id == "" {
+            return EventResult.reject;
+        }
+        RoomMenu.open(
+            root.menu-id,
+            RoomMenuOrigin.rail,
+            root.absolute-position.x,
+            root.absolute-position.y + root.height + Space.xs,
+            true);
+        return EventResult.accept;
+    }
+
+    if root.menu-id != "": ContextPress {
+        hovered: root.has-hover && Interaction.actionable(root.enabled, root.above-modal);
+        pressed => {
+            RoomMenu.open(
+                root.menu-id,
+                RoomMenuOrigin.rail,
+                root.absolute-position.x + root.mouse-x,
+                root.absolute-position.y + root.mouse-y,
+                false);
+        }
+    }
+
+    selected-width := Text {
+        x: 0;
+        y: 0;
+        visible: false;
+        text: root.text;
+        font-family: Fonts.emoji;
+        font-size: Fonts.label;
+        font-weight: Weight.semibold;
+        accessible-role: none;
+    }
+
+    content := HorizontalLayout {
+        padding-left: Space.md;
+        padding-right: Space.md;
+        spacing: Space.sm;
+
+        Text {
+            preferred-width: selected-width.preferred-width;
+            text: root.text;
+            font-family: Fonts.emoji;
+            font-size: Fonts.label;
+            font-weight: root.selected ? Weight.semibold : Weight.regular;
+            color: Palette.foreground;
+            vertical-alignment: center;
+            overflow: elide;
+            accessible-role: none;
+        }
+
+        if root.has-unread: UnreadDot {
+            cross-axis-self-alignment: center;
+            diameter: Space.md;
+            alert: root.alert;
+            mention: root.mention;
+        }
+    }
+}
+
+export component SubspaceTabs inherits FlexboxLayout {
+    in property <bool> above-modal: false;
+
+    padding-left: Space.lg;
+    padding-right: Space.lg;
+    padding-bottom: Space.md;
+    spacing: Space.sm;
+    accessible-role: list;
+    accessible-label: @tr("Topics");
+    accessible-item-count: DirectoryView.subspaces.length + 1;
+
+    SubspaceTab {
+        index: 0;
+        above-modal: root.above-modal;
+        text: @tr("All in {}", DirectoryView.selected-space-name);
+        selected: DirectoryView.selected-subspace-id == "";
+        clicked => {
+            Actions.select-subspace("");
+        }
+    }
+
+    for subspace[idx] in DirectoryView.subspaces: SubspaceTab {
+        index: idx + 1;
+        above-modal: root.above-modal;
+        text: subspace.name;
+        menu-id: subspace.id;
+        alert: subspace.alert;
+        mention: subspace.mention;
+        hint: subspace.hint;
+        selected: DirectoryView.selected-subspace-id == subspace.id;
+        clicked => {
+            Actions.select-subspace(subspace.id);
+        }
+    }
+}
