@@ -13,7 +13,7 @@ import {
     CallTileEntry,
     UserDeviceEntry,
 } from "./types.slint";
-import { AttachmentKind, AudioKind, CallCamera, CallMic, CallOffer, CallPhase, CallRefusal, CallScreen, CallScreenRefusal, ChildAccess, ConnectionState, CreateRoomStatus, DirectChat, EncryptionActivity, EncryptionStanding, EncryptionStep, IdentityAlertKind, IdentityTrust, InviteAnswer, InviteKind, LoginActivity, LoginMethodKind, LoginPhase, MemberRole, Moderation, NotifyMode, PackSurface, PeopleSearchStatus, PresenceLine, PreviewKind, ReadersStatus, RecoveryStatus, RoomInfoPlacement, RoomKind, RoomMembership, RoomPreviewStatus, RoomScope, RosterStatus, ServiceKind, SourceEncryption, SourceStatus, SpaceIndexStatus, TimelineState, UpgradeLink, UserMessageKind, VerificationActivity, VerificationPhase, VerifyOffer } from "./enums.slint";
+import { AccountActivity, AccountStep, AttachmentKind, AudioKind, AuthStage, CallCamera, CallMic, CallOffer, CallPhase, CallRefusal, CallScreen, CallScreenRefusal, ChildAccess, ConnectionState, CreateRoomStatus, DirectChat, EncryptionActivity, EncryptionStanding, EncryptionStep, IdentityAlertKind, IdentityTrust, InviteAnswer, InviteKind, LoginActivity, LoginMethodKind, LoginPhase, MemberRole, Moderation, NotifyMode, PackSurface, PeopleSearchStatus, PresenceLine, PreviewKind, ReadersStatus, RecoveryStatus, RoomInfoPlacement, RoomKind, RoomMembership, RoomPreviewStatus, RoomScope, RosterStatus, ServiceKind, SourceEncryption, SourceStatus, SpaceIndexStatus, TimelineState, UpgradeLink, UserMessageKind, VerificationActivity, VerificationPhase, VerifyOffer } from "./enums.slint";
 
 export global LoginView {
     in property <LoginPhase> step: LoginPhase.loading;
@@ -428,8 +428,50 @@ export global EncryptionView {
     in property <EncryptionActivity> activity: EncryptionActivity.none;
     out property <bool> busy: activity != EncryptionActivity.none;
     in property <string> recovery-key;
+    in property <string> key-file;
+    in property <int> keys-count;
+    in property <int> keys-total;
+    in property <AuthStage> auth-stage: AuthStage.password;
+    in property <UserMessageKind> auth-error: UserMessageKind.none;
+    in property <string> auth-error-detail;
     in property <UserMessageKind> error: UserMessageKind.none;
     in property <string> error-detail;
+}
+
+export global AccountView {
+    in property <bool> visible;
+    in property <AccountStep> step: AccountStep.overview;
+    in property <AccountActivity> activity: AccountActivity.none;
+    out property <bool> busy: activity != AccountActivity.none;
+    in property <string> busy-session;
+    in property <bool> sessions-known;
+    in property <string> this-device-id;
+    in property <string> this-name;
+    in property <string> this-key;
+    in property <[UserDeviceEntry]> sessions;
+    in property <bool> facts-known;
+    in property <bool> oauth;
+    in property <bool> has-pages;
+    in property <bool> may-change-password: true;
+    in property <bool> name-managed;
+    in property <bool> avatar-managed;
+    in property <bool> forgets-rooms;
+    in property <string> default-room-version;
+    in property <AuthStage> auth-stage: AuthStage.password;
+    in property <AccountActivity> auth-for: AccountActivity.none;
+    in property <string> auth-subject;
+    in property <UserMessageKind> auth-error: UserMessageKind.none;
+    in property <string> auth-error-detail;
+    in property <UserMessageKind> error: UserMessageKind.none;
+    in property <string> error-detail;
+    in property <UserMessageKind> notice: UserMessageKind.none;
+    in property <string> notice-detail;
+}
+
+export global LogoutView {
+    in property <bool> visible;
+    in property <bool> keys-at-risk;
+    in property <int> unsent;
 }
 
 export global AttachmentView {

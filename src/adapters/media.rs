@@ -158,6 +158,24 @@ impl MediaFilePort for DesktopMediaFiles {
         Ok(Some(file_handle.path().display().to_string()))
     }
 
+    async fn choose_key_export(&self, default_filename: &str) -> Result<Option<PathBuf>> {
+        let dialog = AsyncFileDialog::new()
+            .set_title("Export room keys")
+            .set_file_name(default_filename);
+        Ok(dialog
+            .save_file()
+            .await
+            .map(|file_handle| file_handle.path().to_path_buf()))
+    }
+
+    async fn pick_key_file(&self) -> Result<Option<PathBuf>> {
+        let dialog = AsyncFileDialog::new().set_title("Import room keys");
+        Ok(dialog
+            .pick_file()
+            .await
+            .map(|file_handle| file_handle.path().to_path_buf()))
+    }
+
     async fn clear_session(&self) {
         let Some(session_dir) = self.session_dir.as_deref() else {
             return;

@@ -40,14 +40,15 @@ use crate::commands::effects::{Effect, VerificationActivity, VerificationUpdate}
 use crate::commands::messages::{UserMessage, UserMessageKind};
 use crate::commands::ui::Draft;
 use crate::commands::view::{
-    AppViewState, AttachmentView, AudioView, CallView, CardStatus, CopiedLink, CreateRoomView,
-    DirectoryView, EncryptionDialog, EncryptionStep, EncryptionView, IdentityAlertView,
-    InvitePeopleView, InviteView, LifecycleView, LoginStep, MentionsView, NotificationsView,
-    NowPlaying, PackView, PaginationView, PinnedView, PresenceView, ReadersView, RoomCard,
-    RoomInfoView, RoomLogView, RoomMenuTarget, RoomPreviewSheet, RoomPreviewView, ShownPreview,
-    SourceState, SpaceIndexView, Toast, TrackFile, TypingView, UnsentMessage, UpgradeView,
-    UserCard, UserInfoView, VideoView,
+    AccountAuth, AccountDialog, AccountStep, AccountView, AppViewState, AttachmentView, AudioView,
+    AuthPrompt, CallView, CardStatus, CopiedLink, CreateRoomView, DirectoryView, EncryptionDialog,
+    EncryptionStep, EncryptionView, IdentityAlertView, InvitePeopleView, InviteView, LifecycleView,
+    LoginStep, LogoutView, MentionsView, NotificationsView, NowPlaying, PackView, PaginationView,
+    PinnedView, PresenceView, ReadersView, RoomCard, RoomInfoView, RoomLogView, RoomMenuTarget,
+    RoomPreviewSheet, RoomPreviewView, ShownPreview, SourceState, SpaceIndexView, Toast, TrackFile,
+    TypingView, UnsentMessage, UpgradeView, UserCard, UserInfoView, VideoView,
 };
+use crate::domain::capabilities::{AVATAR_FIELD, AccountApi, AccountFacts, DISPLAY_NAME_FIELD};
 use crate::domain::encryption::KeyStorage;
 use crate::domain::invite::{Invite, InviteList};
 use crate::domain::message::{
@@ -59,6 +60,7 @@ use crate::domain::room::RoomId;
 use crate::domain::room_info::RoomAbout;
 use crate::domain::room_log::RoomLog;
 use crate::domain::room_preview::RoomPreview;
+use crate::domain::sessions::{OwnSessions, ThisSession};
 use crate::domain::sync::ReauthReason;
 use crate::domain::timeline::{OlderHistory, SourceEncryption, TimelinePatch, TimelineStatus};
 use crate::domain::user_info::Moderation;
@@ -360,6 +362,7 @@ fn apply_timeline<B: UiBackend>(
     }
 }
 
+#[allow(clippy::too_many_lines)]
 fn apply_snapshot<B: UiBackend>(
     w: &B::Window,
     view: &Arc<AppViewState>,
@@ -393,6 +396,8 @@ fn apply_snapshot<B: UiBackend>(
         call,
         notifications,
         encryption,
+        account,
+        logout,
         toast,
         message_link,
         room_link,
@@ -450,6 +455,8 @@ fn apply_snapshot<B: UiBackend>(
     apply_room_people(w, last, typing, presence);
     apply_notices::<B>(w, last, notifications, call, ctx);
     apply_encryption(w, last.map(|l| &l.encryption), encryption);
+    apply_account::<B>(w, last.map(|l| &l.account), account, ctx);
+    apply_logout(w, last.map(|l| &l.logout), logout);
     apply_toast(w, last.map(|l| &l.toast), toast);
     apply_copied_links(w, last, message_link, room_link);
     if last.is_none_or(|l| l.source != *source) {
@@ -1959,6 +1966,161 @@ fn apply_encryption(w: &impl UiProps, last: Option<&EncryptionView>, view: &Encr
         StringProp::EncryptionRecoveryKey,
         SharedString::from(shown_key),
     );
+    let (key_file, keys_count, keys_total) = match &dialog.step {
+        EncryptionStep::ExportingKeys(file) | EncryptionStep::ImportingKeys(file) => {
+            (file.as_str(), 0, 0)
+        }
+        EncryptionStep::KeysExported { count, file } => (file.as_str(), *count, 0),
+        EncryptionStep::KeysImported { imported, total } => ("", *imported, *total),
+        _ => ("", 0, 0),
+    };
+    w.set_string(StringProp::EncryptionKeyFile, SharedString::from(key_file));
+    w.set_int(IntProp::EncryptionKeysCount, saturating_i32(keys_count));
+    w.set_int(IntProp::EncryptionKeysTotal, saturating_i32(keys_total));
+    let closed_prompt = AuthPrompt::default();
+    let prompt = match &dialog.step {
+        EncryptionStep::AuthenticatingSetup(prompt)
+        | EncryptionStep::AuthenticatingReset(prompt) => prompt,
+        _ => &closed_prompt,
+    };
+    w.set_encryption_auth_stage(prompt.stage);
+    w.set_encryption_auth_error(prompt.error.kind);
+    w.set_string(
+        StringProp::EncryptionAuthErrorDetail,
+        SharedString::from(&prompt.error.detail),
+    );
+}
+
+fn saturating_i32(count: usize) -> i32 {
+    i32::try_from(count).unwrap_or(i32::MAX)
+}
+
+fn apply_account<B: UiBackend>(
+    w: &B::Window,
+    last: Option<&AccountView>,
+    view: &AccountView,
+    ctx: &UiEventContext<'_, B>,
+) {
+    if last == Some(view) {
+        return;
+    }
+    let closed = AccountDialog::default();
+    let dialog = view.dialog.as_ref().unwrap_or(&closed);
+    let last_dialog = last.and_then(|last| last.dialog.as_ref());
+    w.set_bool(BoolProp::AccountVisible, view.dialog.is_some());
+    w.set_account_step(&dialog.step);
+    w.set_account_activity(dialog.activity);
+    w.set_string(
+        StringProp::AccountBusySession,
+        dialog
+            .busy_session
+            .as_deref()
+            .map_or_else(SharedString::new, SharedString::from),
+    );
+    w.set_account_error(dialog.error.kind);
+    w.set_string(
+        StringProp::AccountErrorDetail,
+        SharedString::from(&dialog.error.detail),
+    );
+    w.set_account_notice(dialog.notice.kind);
+    w.set_string(
+        StringProp::AccountNoticeDetail,
+        SharedString::from(&dialog.notice.detail),
+    );
+    let closed_auth = AccountAuth::default();
+    let auth = match &dialog.step {
+        AccountStep::Authenticating(auth) => auth,
+        _ => &closed_auth,
+    };
+    w.set_account_auth_stage(auth.prompt.stage);
+    w.set_account_auth_error(auth.prompt.error.kind);
+    w.set_string(
+        StringProp::AccountAuthErrorDetail,
+        SharedString::from(&auth.prompt.error.detail),
+    );
+    w.set_account_auth_for(auth.guarding);
+    w.set_string(
+        StringProp::AccountAuthSubject,
+        SharedString::from(&auth.subject),
+    );
+    if last_dialog.is_none_or(|last| last.sessions != dialog.sessions) {
+        apply_own_sessions::<B>(w, dialog.sessions.as_ref(), ctx);
+    }
+    if last_dialog.is_none_or(|last| last.facts != dialog.facts) {
+        apply_account_facts(w, dialog.facts.as_ref());
+    }
+}
+
+fn apply_own_sessions<B: UiBackend>(
+    w: &B::Window,
+    sessions: Option<&OwnSessions>,
+    ctx: &UiEventContext<'_, B>,
+) {
+    w.set_bool(BoolProp::AccountSessionsKnown, sessions.is_some());
+    let this = sessions.map(|sessions| &sessions.this);
+    w.set_string(
+        StringProp::AccountThisDeviceId,
+        this.map_or_else(SharedString::new, |this| {
+            SharedString::from(this.device_id.as_str())
+        }),
+    );
+    w.set_string(
+        StringProp::AccountThisName,
+        this.and_then(|this| this.name.as_deref())
+            .map_or_else(SharedString::new, SharedString::from),
+    );
+    w.set_string(
+        StringProp::AccountThisKey,
+        this.and_then(ThisSession::fingerprint)
+            .map_or_else(SharedString::new, SharedString::from),
+    );
+    let rows = sessions
+        .iter()
+        .flat_map(|sessions| sessions.others.iter())
+        .map(B::convert_own_session)
+        .collect::<Vec<_>>();
+    ctx.models.account_sessions.set_vec(rows);
+}
+
+fn apply_account_facts(w: &impl UiProps, facts: Option<&AccountFacts>) {
+    let shown = facts.cloned().unwrap_or_default();
+    let capabilities = &shown.capabilities;
+    w.set_bool(BoolProp::AccountFactsKnown, facts.is_some());
+    w.set_bool(BoolProp::AccountOAuth, shown.api.is_oauth());
+    w.set_bool(
+        BoolProp::AccountHasPages,
+        matches!(shown.api, AccountApi::OAuth { pages: true }),
+    );
+    w.set_bool(
+        BoolProp::AccountMayChangePassword,
+        capabilities.change_password,
+    );
+    w.set_bool(
+        BoolProp::AccountNameManaged,
+        !capabilities.profile_fields.can_set(DISPLAY_NAME_FIELD),
+    );
+    w.set_bool(
+        BoolProp::AccountAvatarManaged,
+        !capabilities.profile_fields.can_set(AVATAR_FIELD),
+    );
+    w.set_bool(
+        BoolProp::AccountForgetsRooms,
+        capabilities.forget_forced_upon_leave,
+    );
+    w.set_string(
+        StringProp::AccountDefaultRoomVersion,
+        SharedString::from(&capabilities.default_room_version),
+    );
+}
+
+fn apply_logout(w: &impl UiProps, last: Option<&LogoutView>, view: &LogoutView) {
+    if last == Some(view) {
+        return;
+    }
+    let risks = view.warning.unwrap_or_default();
+    w.set_bool(BoolProp::LogoutVisible, view.warning.is_some());
+    w.set_bool(BoolProp::LogoutKeysAtRisk, risks.keys_at_risk);
+    w.set_int(IntProp::LogoutUnsent, saturating_i32(risks.unsent));
 }
 
 fn apply_unsent_edit(w: &impl UiProps, edit: Option<&MessageEdit>) {

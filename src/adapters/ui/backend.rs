@@ -19,8 +19,8 @@ use super::dto::{
     RoomRowKind, RowBody, SpaceChildDto, SpaceDto, ThumbUpdate, UserDeviceDto, call_tile_to_dto,
     cell_pack, decode_failure_kind, enrich_to_update, heading_to_dto, invite_to_dto,
     invitee_to_dto, log_line_to_dto, member_row_to_dto, mention_to_dto, message_to_dto,
-    reader_to_dto, room_to_dto, space_child_to_dto, space_match_to_dto, space_to_dto,
-    user_device_to_dto,
+    own_session_to_dto, reader_to_dto, room_to_dto, space_child_to_dto, space_match_to_dto,
+    space_to_dto, user_device_to_dto,
 };
 use super::fields::{
     BodyLineFields, BodyPieceFields, CallTileFields, InviteeFields, LogLineFields, MemberRowFields,
@@ -54,6 +54,7 @@ use crate::domain::message::TimelineMessage;
 use crate::domain::room::{Room, RoomId, Space};
 use crate::domain::room_info::{Reader, RosterMember};
 use crate::domain::room_log::LogLine;
+use crate::domain::sessions::OwnSession;
 use crate::domain::timeline::EnrichmentDelta;
 use crate::domain::user_info::UserDevice;
 use crate::ports::call::CallVideoPort;
@@ -146,6 +147,10 @@ pub trait UiBackend: Sized + 'static {
 
     fn convert_user_device(device: &UserDevice) -> Self::UserDevice {
         user_device_to_dto(device).into()
+    }
+
+    fn convert_own_session(session: &OwnSession) -> Self::UserDevice {
+        own_session_to_dto(session).into()
     }
 
     fn with_models<R>(

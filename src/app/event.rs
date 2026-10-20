@@ -1,5 +1,6 @@
 use std::path::PathBuf;
 
+use super::account::AccountOutcome;
 use super::calls::lane::LaneEvent;
 use super::encryption::EncryptionOutcome;
 use super::establish::EstablishedSession;
@@ -16,6 +17,7 @@ use crate::domain::call::media::MediaEvent;
 use crate::domain::call::ring::{CallSignal, RingId};
 use crate::domain::call::sfu::{GrantResult, SfuId};
 use crate::domain::call::{DeviceStanding, KeySendReport, MemberKey, Transport};
+use crate::domain::capabilities::AccountFacts;
 use crate::domain::encryption::{AccountEncryption, IdentityOutcome};
 use crate::domain::event_size::Oversize;
 use crate::domain::identity::{OwnIdentity, RoomAlert};
@@ -31,6 +33,7 @@ use crate::domain::room::RoomId;
 use crate::domain::room_creation::CreateResult;
 use crate::domain::room_info::{Reader, RoomAbout, RosterMember};
 use crate::domain::room_preview::{PreviewFailure, RoomPreview};
+use crate::domain::sessions::{LogoutRisks, OwnSessions};
 use crate::domain::sync::{ReauthReason, SessionLoss};
 use crate::domain::timeline::{
     AudioTrack, EventSource, MessageReaders, PaginationDirection, PaginationOutcome,
@@ -45,6 +48,7 @@ use crate::ports::matrix::{AuthenticatedSession, CleanupReport, PackCatalog};
 pub(super) enum EndReason {
     UserLogout,
     Expired,
+    Deactivated,
 }
 
 pub(super) struct AttachmentPicked {
@@ -147,6 +151,7 @@ pub(super) enum AppEvent {
     Packs(PacksEvent),
     Identity(IdentityEvent),
     Encryption(EncryptionEvent),
+    Account(AccountEvent),
     RoomLogGrew,
 }
 
@@ -345,6 +350,36 @@ impl EncryptionEvent {
             Self::Changed { .. } => "EncryptionChanged",
             Self::IdentitySettled { .. } => "IdentitySetupSettled",
             Self::ActionSettled { .. } => "EncryptionActionSettled",
+        }
+    }
+}
+
+pub(super) enum AccountEvent {
+    FactsRead {
+        generation: u64,
+        facts: AccountFacts,
+    },
+    SessionsChanged {
+        generation: u64,
+        sessions: OwnSessions,
+    },
+    Settled {
+        request: u64,
+        outcome: AccountOutcome,
+    },
+    LogoutChecked {
+        request: u64,
+        risks: LogoutRisks,
+    },
+}
+
+impl AccountEvent {
+    fn label(&self) -> &'static str {
+        match self {
+            Self::FactsRead { .. } => "AccountFactsRead",
+            Self::SessionsChanged { .. } => "OwnSessionsChanged",
+            Self::Settled { .. } => "AccountActionSettled",
+            Self::LogoutChecked { .. } => "LogoutChecked",
         }
     }
 }
@@ -601,6 +636,7 @@ impl AppEvent {
             Self::Packs(event) => event.label(),
             Self::Identity(event) => event.label(),
             Self::Encryption(event) => event.label(),
+            Self::Account(event) => event.label(),
             Self::RoomLogGrew => "RoomLogGrew",
         }
     }

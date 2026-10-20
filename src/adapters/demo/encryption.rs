@@ -7,7 +7,8 @@ use tokio::time::sleep;
 
 use super::catalog::{Flag, Scenarios};
 use crate::domain::encryption::{
-    AccountEncryption, KeyStorage, Recovery, RecoveryAttempt, RecoveryKey, SessionTrust,
+    AccountEncryption, KeyImport, KeyPassphrase, KeyStorage, Recovery, RecoveryAttempt,
+    RecoveryKey, SessionTrust,
 };
 
 const ENV_VAR: &str = "U2DM_DEMO_ENCRYPTION";
@@ -40,7 +41,7 @@ pub const CATALOG: Scenarios = Scenarios {
         Flag {
             value: "setup-refused",
             effect: "the homeserver wants a password before it takes the first cross-signing keys",
-            note: "the banner reads encryption-not-set-up; Try again is refused the same way",
+            note: "the banner reads encryption-not-set-up; Try again asks for the account password (U2DM_DEMO_ACCOUNT shapes the stages)",
         },
         Flag {
             value: "setup-fails",
@@ -64,13 +65,24 @@ pub const CATALOG: Scenarios = Scenarios {
         },
         Flag {
             value: "fails",
-            effect: "asking another session, using a recovery key, setting up and changing recovery all fail",
+            effect: "asking another session, using a recovery key, setting up and changing recovery, resetting the identity and exporting or importing room keys all fail",
             note: "each failure shows in the dialog",
+        },
+        Flag {
+            value: "not-a-key-file",
+            effect: "the file picked to import room keys is not a key export",
+            note: "",
+        },
+        Flag {
+            value: "key-file-cancelled",
+            effect: "the file chooser for exporting or importing room keys returns nothing, as if cancelled",
+            note: "",
         },
     ],
     notes: &[
         "unset, this session is verified and recovery is on",
         "while the session is unverified or has no identity, texts and polls in encrypted rooms are not sent, as the identity-based key sharing refuses them",
+        "an export writes no file and reports EXPORTED_KEYS keys; an import opens with the passphrase correct horse and reports IMPORTED_KEYS of KEY_FILE_KEYS",
     ],
 };
 
@@ -82,6 +94,9 @@ const SETUP_DELAY: Duration = Duration::from_secs(2);
 const ACTION_DELAY: Duration = Duration::from_millis(1500);
 const FIRST_ASSESSMENT_DELAY: Duration = Duration::from_secs(1);
 const SAS_DELAY: Duration = Duration::from_secs(2);
+pub const EXPORTED_KEYS: usize = 42;
+const IMPORTED_KEYS: usize = 12;
+const KEY_FILE_KEYS: usize = 15;
 
 #[derive(Default, Clone, Copy)]
 #[allow(clippy::struct_excessive_bools)]
@@ -96,6 +111,8 @@ pub struct Scenario {
     backup_unavailable: bool,
     slow: bool,
     pub fails: bool,
+    not_a_key_file: bool,
+    pub key_file_cancelled: bool,
 }
 
 pub fn scenario() -> Scenario {
@@ -122,6 +139,8 @@ fn from_env() -> Scenario {
         backup_unavailable = scenario.backup_unavailable,
         slow = scenario.slow,
         fails = scenario.fails,
+        not_a_key_file = scenario.not_a_key_file,
+        key_file_cancelled = scenario.key_file_cancelled,
         "demo mode: shaping this session's encryption"
     );
     scenario
@@ -139,6 +158,8 @@ fn apply(scenario: &mut Scenario, flag: &str) {
         "backup-unavailable" => scenario.backup_unavailable = true,
         "slow" => scenario.slow = true,
         "fails" => scenario.fails = true,
+        "not-a-key-file" => scenario.not_a_key_file = true,
+        "key-file-cancelled" => scenario.key_file_cancelled = true,
         other => tracing::warn!("unknown {ENV_VAR} flag: {other}"),
     }
 }
@@ -219,6 +240,19 @@ pub fn opens(key: &RecoveryKey) -> bool {
     squeezed == expected || typed == DEMO_PASSPHRASE
 }
 
+pub fn import_from(passphrase: &KeyPassphrase) -> KeyImport {
+    if scenario().not_a_key_file {
+        KeyImport::NotAKeyFile
+    } else if passphrase.expose() == DEMO_PASSPHRASE {
+        KeyImport::Imported {
+            imported: IMPORTED_KEYS,
+            total: KEY_FILE_KEYS,
+        }
+    } else {
+        KeyImport::WrongPassphrase
+    }
+}
+
 pub fn created_key() -> RecoveryKey {
     RecoveryKey::new(CREATED_KEY)
 }
@@ -293,6 +327,14 @@ impl EncryptionBook {
             } else {
                 Recovery::Incomplete
             };
+        });
+    }
+
+    pub fn identity_reset(&self) {
+        self.change(|state| {
+            state.trust = SessionTrust::Verified;
+            state.verified_sessions = false;
+            state.recovery = Recovery::Off;
         });
     }
 

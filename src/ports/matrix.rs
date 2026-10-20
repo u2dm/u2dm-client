@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -14,13 +14,16 @@ use crate::domain::call::{
     DelayedLeave, DeviceStanding, KeySendReport, MemberKey, OutgoingKey, OwnMembership,
     RestartResult, ScheduleResult, SentMembership, Transport,
 };
+use crate::domain::capabilities::{AccountFacts, AccountPage};
 use crate::domain::emote::Emote;
 use crate::domain::encryption::{
-    AccountEncryption, IdentityOutcome, RecoveryAttempt, RecoveryKey, RecoverySetup,
+    AccountEncryption, IdentityOutcome, KeyImport, KeyPassphrase, RecoveryAttempt, RecoveryKey,
+    RecoverySetup,
 };
 use crate::domain::identity::{OwnIdentity, RoomAlert};
 use crate::domain::image_pack::{ImagePack, PackId};
 use crate::domain::invite_people::{InviteResult, SearchResult};
+use crate::domain::link::LauncherSafeUrl;
 use crate::domain::matrix_link::RoomAddress;
 use crate::domain::media::{MediaRendition, OutgoingAttachment, WaveformNeed};
 use crate::domain::member_name::NamedUser;
@@ -32,9 +35,11 @@ use crate::domain::room::{NotifyMode, RoomId};
 use crate::domain::room_creation::{CreateResult, RoomBlueprint};
 use crate::domain::room_info::{Reader, RoomAbout, RosterMember};
 use crate::domain::room_preview::PreviewResult;
+use crate::domain::sessions::{LogoutRisks, OwnSessions};
 use crate::domain::space_index::HierarchyPage;
 use crate::domain::sync::{SyncEvent, SyncOutcome};
 use crate::domain::timeline::{TimelineCommand, TimelineFocus, TimelineUpdate};
+use crate::domain::uia::{AccountPassword, AuthAnswer, Guarded};
 use crate::domain::user_info::{
     GlobalProfile, IgnoreChange, Moderation, UserId, UserProfile, UserTrust,
 };
@@ -172,6 +177,7 @@ pub struct AuthenticatedSession {
     pub room_info: Arc<dyn RoomInfoPort>,
     pub user_info: Arc<dyn UserInfoPort>,
     pub image_packs: Arc<dyn ImagePackPort>,
+    pub account: Arc<dyn AccountPort>,
     pub lifecycle: Arc<dyn SessionPort>,
 }
 
@@ -464,10 +470,33 @@ pub trait IdentityPort: Send + Sync {
 #[async_trait]
 pub trait EncryptionPort: Send + Sync {
     async fn follow(&self, state_tx: mpsc::Sender<AccountEncryption>) -> Result<()>;
-    async fn set_up_identity(&self) -> Result<IdentityOutcome>;
+    async fn set_up_identity(&self, auth: Option<&AuthAnswer>) -> Result<IdentityOutcome>;
     async fn recover(&self, key: &RecoveryKey) -> Result<RecoveryAttempt>;
     async fn enable_recovery(&self) -> Result<RecoverySetup>;
     async fn change_recovery_key(&self) -> Result<RecoveryKey>;
+    async fn reset_identity(&self) -> Result<Guarded>;
+    async fn finish_identity_reset(&self, auth: &AuthAnswer) -> Result<Guarded>;
+    async fn abandon_identity_reset(&self);
+    async fn export_room_keys(&self, path: &Path, passphrase: &KeyPassphrase) -> Result<usize>;
+    async fn import_room_keys(&self, path: &Path, passphrase: &KeyPassphrase) -> Result<KeyImport>;
+}
+
+#[async_trait]
+pub trait AccountPort: Send + Sync {
+    async fn facts(&self) -> AccountFacts;
+    async fn follow_sessions(&self, sessions_tx: mpsc::Sender<OwnSessions>) -> Result<()>;
+    async fn rename_session(&self, device_id: &str, name: &str) -> Result<()>;
+    async fn sign_out_session(&self, device_id: &str, auth: Option<&AuthAnswer>)
+    -> Result<Guarded>;
+    async fn change_password(
+        &self,
+        password: &AccountPassword,
+        sign_out_others: bool,
+        auth: Option<&AuthAnswer>,
+    ) -> Result<Guarded>;
+    async fn deactivate(&self, erase: bool, auth: Option<&AuthAnswer>) -> Result<Guarded>;
+    async fn page(&self, page: &AccountPage) -> Option<LauncherSafeUrl>;
+    async fn logout_risks(&self) -> LogoutRisks;
 }
 
 #[async_trait]

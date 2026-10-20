@@ -6,6 +6,7 @@ use matrix_sdk::Client;
 use matrix_sdk::ruma::{IdParseError, OwnedRoomId};
 use tokio::sync::{RwLock, mpsc};
 
+use super::account::MatrixAccount;
 use super::auth;
 use super::encryption::MatrixEncryption;
 use super::identity_alerts::MatrixIdentityAlerts;
@@ -191,6 +192,7 @@ pub(super) async fn authenticate(
         room_info: Arc::new(MatrixRoomInfo::new(Arc::clone(&matrix))),
         user_info: Arc::new(MatrixUserInfo::new(Arc::clone(&matrix), pronouns)),
         image_packs: Arc::new(MatrixImagePacks::new(Arc::clone(&matrix))),
+        account: Arc::new(MatrixAccount::new(Arc::clone(&matrix))),
         lifecycle: Arc::new(MatrixLifecycle { matrix, resources }),
     }
 }

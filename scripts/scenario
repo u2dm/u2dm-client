@@ -79,6 +79,16 @@ scenario_env() {
     encryption-recovery-key) echo 'U2DM_DEMO_ENCRYPTION=unverified,no-sessions,slow U2DM_DEMO_WINDOW=900x760' ;;
     encryption-new-account) echo 'U2DM_DEMO_ENCRYPTION=new-account,key-storage-off U2DM_DEMO_WINDOW=900x760' ;;
     encryption-setup-refused) echo 'U2DM_DEMO_ENCRYPTION=setup-refused U2DM_DEMO_WINDOW=900x760' ;;
+    identity-reset)  echo 'U2DM_DEMO_ENCRYPTION=unverified,no-sessions,no-recovery U2DM_DEMO_WINDOW=900x760' ;;
+    identity-reset-oauth) echo 'U2DM_DEMO_ENCRYPTION=unverified,no-sessions,no-recovery U2DM_DEMO_ACCOUNT=oauth U2DM_DEMO_WINDOW=900x760' ;;
+    room-keys)       echo 'U2DM_DEMO_ENCRYPTION=slow U2DM_DEMO_WINDOW=900x760' ;;
+    account-sessions) echo 'U2DM_DEMO_ACCOUNT=slow U2DM_DEMO_WINDOW=900x760' ;;
+    account-password) echo 'U2DM_DEMO_ACCOUNT=two-stages U2DM_DEMO_WINDOW=900x760' ;;
+    account-sso)     echo 'U2DM_DEMO_ACCOUNT=sso-unfinished U2DM_DEMO_WINDOW=900x760' ;;
+    account-oauth)   echo 'U2DM_DEMO_ACCOUNT=oauth,forgets-rooms U2DM_DEMO_WINDOW=900x760' ;;
+    account-limits)  echo 'U2DM_DEMO_ACCOUNT=no-password-change,profile-managed,unsupported U2DM_DEMO_WINDOW=900x760' ;;
+    account-deactivate) echo 'U2DM_DEMO_ACCOUNT=dummy U2DM_DEMO_WINDOW=900x760' ;;
+    logout-warning)  echo 'U2DM_DEMO_ACCOUNT=last-session,unsent U2DM_DEMO_ENCRYPTION=no-recovery U2DM_DEMO_WINDOW=900x760' ;;
     invites)         echo 'U2DM_DEMO_INVITES=slow,late U2DM_DEMO_WINDOW=900x760' ;;
     invite-failures) echo 'U2DM_DEMO_INVITES=accept-fails,decline-fails,revoked U2DM_DEMO_WINDOW=900x760' ;;
     room-upgrades)   echo 'U2DM_DEMO_UPGRADES=slow U2DM_DEMO_WINDOW=900x760' ;;
@@ -736,7 +746,106 @@ scenario_steps() {
     encryption-setup-refused)
       echo '{"op":"select_room","room_id":"!design:demo.local"}'
       echo 'sleep 3'
-      echo '{"op":"open_encryption"}' ;;
+      echo '{"op":"open_encryption"}'
+      echo '{"op":"retry_encryption_setup"}'
+      echo 'sleep 3'
+      echo '{"op":"answer_auth_password","password":"not it"}'
+      echo 'sleep 3'
+      echo '{"op":"answer_auth_password","password":"demo password"}'
+      echo 'sleep 4' ;;
+    identity-reset)
+      echo 'sleep 2'
+      echo '{"op":"open_encryption"}'
+      echo '{"op":"start_identity_reset"}'
+      echo '{"op":"reset_identity"}'
+      echo 'sleep 1'
+      echo '{"op":"answer_auth_password","password":"demo password"}'
+      echo 'sleep 2' ;;
+    identity-reset-oauth)
+      echo 'sleep 2'
+      echo '{"op":"open_encryption"}'
+      echo '{"op":"start_identity_reset"}'
+      echo '{"op":"reset_identity"}'
+      echo 'sleep 1'
+      echo '{"op":"continue_auth"}'
+      echo 'sleep 2' ;;
+    room-keys)
+      echo 'sleep 2'
+      echo '{"op":"open_encryption"}'
+      echo '{"op":"start_key_export"}'
+      echo 'sleep 1'
+      echo '{"op":"export_room_keys","passphrase":"correct horse"}'
+      echo 'sleep 2'
+      echo '{"op":"show_encryption_overview"}'
+      echo '{"op":"start_key_import"}'
+      echo 'sleep 1'
+      echo '{"op":"import_room_keys","passphrase":"wrong horse"}'
+      echo 'sleep 2'
+      echo '{"op":"import_room_keys","passphrase":"correct horse"}'
+      echo 'sleep 2' ;;
+    account-sessions)
+      echo 'sleep 2'
+      echo '{"op":"open_account"}'
+      echo 'sleep 2'
+      echo '{"op":"rename_session","device_id":"OLDTABLET","name":"Tablet in the drawer"}'
+      echo 'sleep 2'
+      echo '{"op":"sign_out_session","device_id":"OLDTABLET"}'
+      echo 'sleep 2'
+      echo '{"op":"answer_auth_password","password":"not it"}'
+      echo 'sleep 2'
+      echo '{"op":"answer_auth_password","password":"demo password"}'
+      echo 'sleep 3' ;;
+    account-password)
+      echo 'sleep 2'
+      echo '{"op":"open_account"}'
+      echo 'sleep 1'
+      echo '{"op":"start_password_change"}'
+      echo '{"op":"change_password","password":"short"}'
+      echo 'sleep 1'
+      echo '{"op":"change_password","password":"Longer and 2 better!"}'
+      echo 'sleep 1'
+      echo '{"op":"answer_auth_password","password":"demo password"}'
+      echo 'sleep 1'
+      echo '{"op":"continue_auth"}'
+      echo 'sleep 2' ;;
+    account-sso)
+      echo 'sleep 2'
+      echo '{"op":"open_account"}'
+      echo 'sleep 1'
+      echo '{"op":"sign_out_session","device_id":"WEBFIREFOX"}'
+      echo 'sleep 1'
+      echo '{"op":"continue_auth"}'
+      echo 'sleep 1'
+      echo '{"op":"reopen_auth_page"}'
+      echo '{"op":"continue_auth"}'
+      echo 'sleep 2' ;;
+    account-oauth)
+      echo 'sleep 2'
+      echo '{"op":"open_account"}'
+      echo 'sleep 1'
+      echo '{"op":"sign_out_session","device_id":"WEBFIREFOX"}'
+      echo 'sleep 3'
+      echo '{"op":"open_account_page"}'
+      echo 'sleep 1' ;;
+    account-limits)
+      echo 'sleep 2'
+      echo '{"op":"open_account"}'
+      echo 'sleep 1'
+      echo '{"op":"start_password_change"}'
+      echo 'sleep 1'
+      echo '{"op":"sign_out_session","device_id":"WEBFIREFOX"}'
+      echo 'sleep 2' ;;
+    account-deactivate)
+      echo 'sleep 2'
+      echo '{"op":"open_account"}'
+      echo 'sleep 1'
+      echo '{"op":"start_deactivation"}'
+      echo '{"op":"deactivate_account","erase":true}'
+      echo 'sleep 3' ;;
+    logout-warning)
+      echo 'sleep 2'
+      echo '{"op":"logout"}'
+      echo 'sleep 1' ;;
     display-names)
       echo '{"op":"select_room","room_id":"!linux:demo.local"}'
       echo 'sleep 3'
@@ -844,7 +953,17 @@ scenario_note() {
     encryption-unverified) echo 'an unverified session: in !design a send is held and the banner reads session-unverified; another session verifies it through the encryption dialog, so the banner goes (encryption, identity_alert)' ;;
     encryption-recovery-key) echo 'an unverified session with no other session: a wrong recovery key is refused inline, the right one verifies it, slowly (encryption.step, encryption.error)' ;;
     encryption-new-account) echo 'an account without cross-signing: the session creates its identity, then sets up recovery with key storage turned off and shows the new key (encryption.recovery_key)' ;;
-    encryption-setup-refused) echo 'the homeserver refuses the first cross-signing upload without a password: the banner reads encryption-not-set-up and the dialog explains it (encryption.standing)' ;;
+    encryption-setup-refused) echo 'the homeserver refuses the first cross-signing upload without a password: Continue asks for it, a wrong one is refused in place, the right one creates the identity (encryption.standing verified)' ;;
+    identity-reset)  echo 'nothing can vouch for this session: Reset your identity asks for the password, then the session reads verified with recovery off (encryption.step identity-reset)' ;;
+    identity-reset-oauth) echo 'the same reset on an OAuth homeserver: the approval page opens in the browser, Continue publishes the identity' ;;
+    room-keys)       echo 'export 42 keys to a file, then import with a wrong and the right passphrase (encryption.step keys-imported, 12 of 15)' ;;
+    account-sessions) echo 'the account dialog: rename the old tablet, sign it out with a wrong then the right password (account.sessions loses OLDTABLET, notice session-signed-out)' ;;
+    account-password) echo 'a weak new password is refused before any request, a complex one asks for the password, then a browser step (account.notice password-changed-others-signed-out, sessions empty)' ;;
+    account-sso)     echo 'signing out asks for single sign-on on the fallback page: the first Continue is not finished yet, the second signs the session out' ;;
+    account-oauth)   echo 'an OAuth homeserver: Sign out opens the device_delete page and the session leaves the list 2s later; the account page opens; the homeserver section says leaving forgets rooms' ;;
+    account-limits)  echo 'm.change_password and m.profile_fields off: the dialog says so; signing out asks for a stage U2DM cannot complete (account.error auth-unsupported)' ;;
+    account-deactivate) echo 'deactivation with an m.login.dummy confirmation answered silently: the session ends on the login screen with account-deactivated' ;;
+    logout-warning)  echo 'the last session without key backup and two unsent messages: Log Out shows the warning instead of logging out (logout.keys_at_risk, logout.unsent)' ;;
     invites)         echo 'Leo'"'"'s chat invite arrives late and is accepted, opening the chat under DMs; Async Rust is declined; Hiking Club is accepted and opens in the rail (directory.invites, invite)' ;;
     invite-failures) echo 'an accept fails inline on its sheet, a decline with the sheet closed fails as a toast, then the open Climbing Crew sheet closes when its invite is withdrawn (invite.error, toast)' ;;
     room-upgrades)   echo 'Retro Gaming'"'"'s banner joins the room that replaced it, slowly: the new room opens and the old one leaves the list but still opens, with Open the new room; Frontend Guild'"'"'s creation row joins the room it continues, which opens unlisted (upgrade, directory.rooms)' ;;
@@ -926,7 +1045,10 @@ names() {
     call-no-permission call-unverified-session call-reconnect call-remote-sfu call-switch-rooms \
     call-compact call-crowd call-video call-camera call-screen-share call-share-screen \
     notifications notifications-focused notifications-burst \
-    encryption-unverified encryption-recovery-key encryption-new-account encryption-setup-refused
+    encryption-unverified encryption-recovery-key encryption-new-account encryption-setup-refused \
+    identity-reset identity-reset-oauth room-keys \
+    account-sessions account-password account-sso account-oauth account-limits account-deactivate \
+    logout-warning
 }
 
 cmd_list() {
@@ -991,7 +1113,9 @@ cmd_run() {
   jq -r 'if .view.room_menu then "  room menu \(.view.room_menu.room_id) unread=\(.view.room_menu.unread) notify=\(.view.room_menu.notify) busy=\(.view.room_menu.notify_busy) leaving=\(.view.room_menu.leaving)" else empty end' "$out/state.json"
   jq -r 'if .view.user_info.open then "  user info \(.view.user_info.user_id) in \(.view.user_info.room_id) \(.view.user_info.status) membership=\(.view.user_info.membership) role=\(.view.user_info.role) identity=\(.view.user_info.identity) verify=\(.view.user_info.verify) sessions=\([(.view.user_info.sessions // [])[] | "\(.device_id):\(.trust)"] | join(","))\(if .view.user_info.error.kind != "none" then " error=\(.view.user_info.error.kind)" else "" end) pronouns=\(.view.user_info.pronouns) direct=\(.view.user_info.direct) ignored=\(.view.user_info.ignored) kick=\(.view.user_info.may_kick) ban=\(.view.user_info.may_ban) unban=\(.view.user_info.may_unban)" else empty end' "$out/state.json"
   jq -r 'if .view.identity_alert.kind != "none" then "  identity alert \(.view.identity_alert.kind) \(.view.identity_alert.user_id // "") busy=\(.view.identity_alert.busy)" else empty end' "$out/state.json"
-  jq -r '.view.encryption | "  encryption \(.standing) recovery=\(.recovery) sessions=\(.verified_sessions) key_storage=\(.key_storage)\(if .open then " dialog=\(.step) activity=\(.activity) error=\(.error.kind)\(if .recovery_key then " key shown" else "" end)" else "" end)"' "$out/state.json"
+  jq -r '.view.encryption | "  encryption \(.standing) recovery=\(.recovery) sessions=\(.verified_sessions) key_storage=\(.key_storage)\(if .open then " dialog=\(.step) activity=\(.activity) error=\(.error.kind)\(if .recovery_key then " key shown" else "" end)\(if .auth then " auth=\(.auth.stage) auth_error=\(.auth.error.kind)" else "" end)\(if .key_file then " key_file=\(.key_file)" else "" end)\(if .keys_exported then " exported=\(.keys_exported)" else "" end)\(if .keys_imported then " imported=\(.keys_imported[0])/\(.keys_imported[1])" else "" end)" else "" end)"' "$out/state.json"
+  jq -r 'if .view.account then "  account \(.view.account.step) activity=\(.view.account.activity)\(if .view.account.auth then " auth=\(.view.account.auth.stage) for=\(.view.account.auth_for) auth_error=\(.view.account.auth.error.kind)" else "" end) sessions=\([(.view.account.sessions // [])[] | "\(.device_id):\(.name // "-")"] | join(",")) api=\(.view.account.facts.api // "-") notice=\(.view.account.notice.kind) error=\(.view.account.error.kind)" else empty end' "$out/state.json"
+  jq -r 'if .view.logout then "  logout warning keys_at_risk=\(.view.logout.keys_at_risk) unsent=\(.view.logout.unsent)" else empty end' "$out/state.json"
   jq -r '"  selected room \(.selected_room_id // "none")"' "$out/timeline.json"
   jq -r 'if .view.room_link.serial > 0 then "  room link #\(.view.room_link.serial) \(.view.room_link.url)" else empty end' "$out/state.json"
   jq -r 'if .view.room_log then "  room log \(.view.room_log.room_id) lines=\(.view.room_log.lines) dropped=\(.view.room_log.dropped) newest=\(.view.room_log.newest[-1] // "none")" else empty end' "$out/state.json"

@@ -1,3 +1,4 @@
+mod account;
 mod attachments;
 pub mod audio;
 mod browser;

@@ -1,3 +1,4 @@
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use tokio::sync::mpsc;
@@ -6,19 +7,25 @@ use super::event::{AppEvent, EncryptionEvent};
 use super::input::EventSender;
 use super::show_toast;
 use super::task_group::TaskGroup;
+use super::uia::{AuthRound, Next, Reply};
 use crate::commands::messages::{UserMessage, UserMessageKind};
 use crate::commands::view::{
     EncryptionActivity, EncryptionDialog, EncryptionStep, EncryptionView, Toast,
 };
 use crate::domain::encryption::{
-    AccountEncryption, IdentityOutcome, IdentitySetup, Recovery, RecoveryAttempt, RecoveryKey,
-    RecoverySetup, Standing,
+    AccountEncryption, IdentityOutcome, IdentitySetup, KeyImport, KeyPassphrase, Recovery,
+    RecoveryAttempt, RecoveryKey, RecoverySetup, Standing,
 };
 use crate::domain::identity::SessionAlert;
+use crate::domain::link::LauncherSafeUrl;
+use crate::domain::uia::{AuthAnswer, AuthChallenge, Guarded};
+use crate::ports::browser::BrowserPort;
 use crate::ports::matrix::{EncryptionPort, VerificationPort};
+use crate::ports::media::MediaFilePort;
 use crate::ports::output::AppOutputPort;
 
 const STATE_CHANNEL_CAP: usize = 8;
+const KEY_EXPORT_FILENAME: &str = "u2dm-room-keys.txt";
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 enum Action {
@@ -27,6 +34,11 @@ enum Action {
     SetUp,
     Change,
     Retry,
+    Reset,
+    Authenticate,
+    ChooseFile,
+    Export,
+    Import,
 }
 
 impl Action {
@@ -37,6 +49,11 @@ impl Action {
             Self::SetUp => EncryptionActivity::SettingUpRecovery,
             Self::Change => EncryptionActivity::ChangingKey,
             Self::Retry => EncryptionActivity::RetryingSetup,
+            Self::Reset => EncryptionActivity::ResettingIdentity,
+            Self::Authenticate => EncryptionActivity::Authenticating,
+            Self::ChooseFile => EncryptionActivity::ChoosingFile,
+            Self::Export => EncryptionActivity::ExportingKeys,
+            Self::Import => EncryptionActivity::ImportingKeys,
         }
     }
 }
@@ -47,7 +64,30 @@ pub(super) enum EncryptionOutcome {
     SetUp(RecoverySetup),
     Changed(RecoveryKey),
     IdentitySettled(Option<IdentityOutcome>),
+    Reset(Option<Guarded>),
+    FileChosen(KeyFile, Option<PathBuf>),
+    Exported(Option<usize>),
+    Imported(Option<KeyImport>),
     Failed(UserMessageKind),
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub(super) enum KeyFile {
+    Export,
+    Import,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum Guard {
+    SetUp,
+    Reset,
+}
+
+enum Step {
+    Shown(EncryptionStep),
+    Authenticating { guard: Guard, round: Box<AuthRound> },
+    Exporting(PathBuf),
+    Importing(PathBuf),
 }
 
 struct Pending {
@@ -56,22 +96,28 @@ struct Pending {
 }
 
 struct Dialog {
-    step: EncryptionStep,
+    step: Step,
     error: UserMessage,
 }
 
 impl Dialog {
     fn at(step: EncryptionStep) -> Self {
         Self {
-            step,
+            step: Step::Shown(step),
             error: UserMessage::default(),
         }
+    }
+
+    fn shows(&self, step: &EncryptionStep) -> bool {
+        matches!(&self.step, Step::Shown(shown) if shown == step)
     }
 }
 
 pub(super) struct Encryption {
     output: Arc<dyn AppOutputPort>,
     events: EventSender,
+    files: Arc<dyn MediaFilePort>,
+    browser: Arc<dyn BrowserPort>,
     actions: TaskGroup,
     requests: u64,
     first_request_of_session: u64,
@@ -82,10 +128,17 @@ pub(super) struct Encryption {
 }
 
 impl Encryption {
-    pub(super) fn new(output: Arc<dyn AppOutputPort>, events: EventSender) -> Self {
+    pub(super) fn new(
+        output: Arc<dyn AppOutputPort>,
+        events: EventSender,
+        files: Arc<dyn MediaFilePort>,
+        browser: Arc<dyn BrowserPort>,
+    ) -> Self {
         Self {
             output,
             events,
+            files,
+            browser,
             actions: TaskGroup::new("encryption-actions"),
             requests: 0,
             first_request_of_session: 1,
@@ -124,7 +177,10 @@ impl Encryption {
         let events = self.events.clone();
         let token = group.token();
         group.spawn(async move {
-            let Some(outcome) = token.run_until_cancelled(set_up(setup_port.as_ref())).await else {
+            let Some(outcome) = token
+                .run_until_cancelled(set_up(setup_port.as_ref(), None))
+                .await
+            else {
                 return;
             };
             drop(
@@ -142,10 +198,10 @@ impl Encryption {
         self.publish();
     }
 
-    pub(super) fn identity_settled(&mut self, outcome: Option<IdentityOutcome>) {
+    pub(super) fn identity_settled(&mut self, outcome: Option<&IdentityOutcome>) {
         self.setup = match outcome {
             Some(IdentityOutcome::Ready) => IdentitySetup::Settled,
-            Some(IdentityOutcome::NeedsAuthentication) => IdentitySetup::NeedsAuthentication,
+            Some(IdentityOutcome::NeedsAuthentication(_)) => IdentitySetup::NeedsAuthentication,
             None => IdentitySetup::Failed,
         };
         self.publish();
@@ -164,19 +220,49 @@ impl Encryption {
         self.publish();
     }
 
-    pub(super) fn close(&mut self) {
-        if self.dialog.take().is_none() {
+    pub(super) fn close(&mut self, port: Option<Arc<dyn EncryptionPort>>) {
+        let Some(dialog) = self.dialog.take() else {
             return;
-        }
+        };
         tracing::debug!("closing the encryption dialog");
+        if let (
+            Step::Authenticating {
+                guard: Guard::Reset,
+                ..
+            },
+            Some(port),
+        ) = (&dialog.step, port)
+            && self.pending.is_none()
+        {
+            self.abandon_reset(port);
+        }
         self.publish();
     }
 
+    fn abandon_reset(&mut self, port: Arc<dyn EncryptionPort>) {
+        self.actions.spawn(async move {
+            port.abandon_identity_reset().await;
+        });
+    }
+
     pub(super) fn show_overview(&mut self) {
+        let busy = self.pending.is_some();
         let Some(dialog) = self.dialog.as_mut() else {
             return;
         };
-        if self.pending.is_some() && dialog.step == EncryptionStep::EnteringKey {
+        let holds_typing = dialog.shows(&EncryptionStep::EnteringKey)
+            || matches!(
+                dialog.step,
+                Step::Authenticating { .. } | Step::Exporting(_) | Step::Importing(_)
+            );
+        if busy && holds_typing {
+            return;
+        }
+        if let Step::Authenticating {
+            guard: Guard::Reset,
+            ..
+        } = dialog.step
+        {
             return;
         }
         *dialog = Dialog::at(EncryptionStep::Overview);
@@ -199,7 +285,7 @@ impl Encryption {
         let entering = self
             .dialog
             .as_ref()
-            .is_some_and(|dialog| dialog.step == EncryptionStep::EnteringKey);
+            .is_some_and(|dialog| dialog.shows(&EncryptionStep::EnteringKey));
         if !entering {
             tracing::debug!("dropping a recovery key typed into a closed entry");
             return;
@@ -274,11 +360,173 @@ impl Encryption {
         }
         self.setup = IdentitySetup::Running;
         self.act(Action::Retry, move || async move {
-            EncryptionOutcome::IdentitySettled(set_up(port.as_ref()).await)
+            EncryptionOutcome::IdentitySettled(set_up(port.as_ref(), None).await)
         });
     }
 
-    pub(super) fn settled(&mut self, request: u64, outcome: EncryptionOutcome) {
+    pub(super) fn start_reset(&mut self) {
+        if !self.offers_reset() || self.pending.is_some() {
+            tracing::debug!("the identity cannot be reset from here now");
+            return;
+        }
+        let Some(dialog) = self.dialog.as_mut() else {
+            return;
+        };
+        *dialog = Dialog::at(EncryptionStep::ConfirmingReset);
+        self.publish();
+    }
+
+    pub(super) fn reset_identity(&mut self, port: Arc<dyn EncryptionPort>) {
+        let confirming = self
+            .dialog
+            .as_ref()
+            .is_some_and(|dialog| dialog.shows(&EncryptionStep::ConfirmingReset));
+        if !confirming || !self.offers_reset() {
+            tracing::debug!("dropping an identity reset nobody confirmed");
+            return;
+        }
+        tracing::info!("resetting the account's cryptographic identity");
+        self.act(Action::Reset, move || async move {
+            match port.reset_identity().await {
+                Ok(guarded) => EncryptionOutcome::Reset(Some(guarded)),
+                Err(e) => {
+                    tracing::warn!("could not reset the account's identity: {e}");
+                    EncryptionOutcome::Reset(None)
+                }
+            }
+        });
+    }
+
+    pub(super) fn awaits_auth(&self) -> bool {
+        self.dialog
+            .as_ref()
+            .is_some_and(|dialog| matches!(dialog.step, Step::Authenticating { .. }))
+    }
+
+    pub(super) fn answer_auth(&mut self, port: Arc<dyn EncryptionPort>, reply: Reply) {
+        if self.pending.is_some() {
+            tracing::debug!("an answer is already on its way to the homeserver");
+            return;
+        }
+        let Some(Dialog {
+            step: Step::Authenticating { guard, round },
+            error,
+        }) = self.dialog.as_mut()
+        else {
+            return;
+        };
+        let Some(answer) = round.reply(reply) else {
+            tracing::debug!("that answer does not fit the step the homeserver asks for");
+            return;
+        };
+        *error = UserMessage::default();
+        let guard = *guard;
+        self.authenticate(port, guard, answer);
+    }
+
+    pub(super) fn reopen_auth_page(&mut self) {
+        let Some(Dialog {
+            step: Step::Authenticating { round, .. },
+            ..
+        }) = self.dialog.as_ref()
+        else {
+            return;
+        };
+        if let Some(page) = round.page().cloned() {
+            self.launch(page);
+        }
+    }
+
+    pub(super) fn cancel_auth(&mut self, port: Arc<dyn EncryptionPort>) {
+        if self.pending.is_some() {
+            tracing::debug!("an answer is on its way to the homeserver, not abandoning it");
+            return;
+        }
+        let Some(dialog) = self.dialog.as_mut() else {
+            return;
+        };
+        let Step::Authenticating { guard, .. } = dialog.step else {
+            return;
+        };
+        tracing::debug!(
+            ?guard,
+            "abandoning the authentication the homeserver asked for"
+        );
+        *dialog = Dialog::at(EncryptionStep::Overview);
+        if guard == Guard::Reset {
+            self.abandon_reset(port);
+        }
+        self.publish();
+    }
+
+    pub(super) fn start_key_export(&mut self) {
+        self.choose_file(KeyFile::Export);
+    }
+
+    pub(super) fn start_key_import(&mut self) {
+        self.choose_file(KeyFile::Import);
+    }
+
+    pub(super) fn export_keys(&mut self, port: Arc<dyn EncryptionPort>, passphrase: KeyPassphrase) {
+        let Some(Dialog {
+            step: Step::Exporting(path),
+            ..
+        }) = self.dialog.as_ref()
+        else {
+            tracing::debug!("dropping a passphrase typed into a closed export");
+            return;
+        };
+        if passphrase.expose().is_empty() {
+            return;
+        }
+        let path = path.clone();
+        self.act(Action::Export, move || async move {
+            match port.export_room_keys(&path, &passphrase).await {
+                Ok(count) => {
+                    tracing::info!(count, "exported the room keys");
+                    EncryptionOutcome::Exported(Some(count))
+                }
+                Err(e) => {
+                    tracing::warn!("could not export the room keys: {e}");
+                    EncryptionOutcome::Exported(None)
+                }
+            }
+        });
+    }
+
+    pub(super) fn import_keys(&mut self, port: Arc<dyn EncryptionPort>, passphrase: KeyPassphrase) {
+        let Some(Dialog {
+            step: Step::Importing(path),
+            ..
+        }) = self.dialog.as_ref()
+        else {
+            tracing::debug!("dropping a passphrase typed into a closed import");
+            return;
+        };
+        if passphrase.expose().is_empty() {
+            return;
+        }
+        let path = path.clone();
+        self.act(Action::Import, move || async move {
+            match port.import_room_keys(&path, &passphrase).await {
+                Ok(import) => {
+                    tracing::info!(?import, "tried to import room keys");
+                    EncryptionOutcome::Imported(Some(import))
+                }
+                Err(e) => {
+                    tracing::warn!("could not import room keys: {e}");
+                    EncryptionOutcome::Imported(None)
+                }
+            }
+        });
+    }
+
+    pub(super) fn settled(
+        &mut self,
+        port: Option<Arc<dyn EncryptionPort>>,
+        request: u64,
+        outcome: EncryptionOutcome,
+    ) {
         if request < self.first_request_of_session {
             tracing::debug!(
                 request,
@@ -286,22 +534,25 @@ impl Encryption {
             );
             return;
         }
-        if self
+        let action = self
             .pending
-            .as_ref()
-            .is_some_and(|pending| pending.request == request)
-        {
-            self.pending = None;
-        }
+            .take_if(|pending| pending.request == request)
+            .map(|pending| pending.action);
         match outcome {
-            EncryptionOutcome::Requested => self.close(),
+            EncryptionOutcome::Requested => self.close_quietly(),
             EncryptionOutcome::Tried(attempt) => self.tried(attempt),
             EncryptionOutcome::SetUp(RecoverySetup::Created(key))
             | EncryptionOutcome::Changed(key) => self.show_key(key),
             EncryptionOutcome::SetUp(RecoverySetup::BackupInTheWay) => {
                 self.report(UserMessageKind::RecoveryBackupInTheWay);
             }
-            EncryptionOutcome::IdentitySettled(outcome) => self.identity_settled(outcome),
+            EncryptionOutcome::IdentitySettled(outcome) => {
+                self.setup_settled(port, action, outcome);
+            }
+            EncryptionOutcome::Reset(guarded) => self.reset_settled(port, guarded),
+            EncryptionOutcome::FileChosen(file, path) => self.file_chosen(file, path),
+            EncryptionOutcome::Exported(count) => self.exported(count),
+            EncryptionOutcome::Imported(import) => self.imported(import),
             EncryptionOutcome::Failed(kind) => self.report(kind),
         }
         self.publish();
@@ -328,6 +579,186 @@ impl Encryption {
         self.standing() == Standing::Verified
     }
 
+    fn offers_reset(&self) -> bool {
+        self.standing() == Standing::Unverified
+    }
+
+    fn setup_settled(
+        &mut self,
+        port: Option<Arc<dyn EncryptionPort>>,
+        action: Option<Action>,
+        outcome: Option<IdentityOutcome>,
+    ) {
+        let asked_here =
+            matches!(action, Some(Action::Retry | Action::Authenticate)) && self.dialog.is_some();
+        match outcome {
+            Some(IdentityOutcome::NeedsAuthentication(challenge)) if asked_here => {
+                self.setup = IdentitySetup::NeedsAuthentication;
+                self.needs_auth(port, Guard::SetUp, *challenge);
+            }
+            outcome => {
+                if matches!(
+                    self.dialog.as_ref().map(|dialog| &dialog.step),
+                    Some(Step::Authenticating {
+                        guard: Guard::SetUp,
+                        ..
+                    })
+                ) && let Some(dialog) = self.dialog.as_mut()
+                {
+                    *dialog = Dialog::at(EncryptionStep::Overview);
+                }
+                if outcome.is_none() && asked_here {
+                    self.report(UserMessageKind::EncryptionSetupFailed);
+                }
+                self.identity_settled(outcome.as_ref());
+            }
+        }
+    }
+
+    fn reset_settled(&mut self, port: Option<Arc<dyn EncryptionPort>>, guarded: Option<Guarded>) {
+        match guarded {
+            Some(Guarded::Done) => {
+                tracing::info!("reset the account's cryptographic identity");
+                self.setup = IdentitySetup::Settled;
+                self.dialog = Some(Dialog::at(EncryptionStep::IdentityReset));
+            }
+            Some(Guarded::NeedsAuth(challenge)) => self.needs_auth(port, Guard::Reset, *challenge),
+            None => {
+                if let Some(dialog) = self.dialog.as_mut() {
+                    *dialog = Dialog::at(EncryptionStep::ConfirmingReset);
+                }
+                self.report(UserMessageKind::IdentityResetFailed);
+            }
+        }
+    }
+
+    fn needs_auth(
+        &mut self,
+        port: Option<Arc<dyn EncryptionPort>>,
+        guard: Guard,
+        challenge: AuthChallenge,
+    ) {
+        let Some(dialog) = self.dialog.as_ref() else {
+            tracing::debug!("the dialog closed before the homeserver asked who you are");
+            return;
+        };
+        let previous = match &dialog.step {
+            Step::Authenticating { round, .. } => Some(round.as_ref()),
+            Step::Shown(_) | Step::Exporting(_) | Step::Importing(_) => None,
+        };
+        match AuthRound::after(challenge, previous) {
+            Next::Ask { round, open_page } => {
+                if open_page && let Some(page) = round.page().cloned() {
+                    self.launch(page);
+                }
+                self.set_step(Step::Authenticating {
+                    guard,
+                    round: Box::new(round),
+                });
+            }
+            Next::Answer { round, answer } => {
+                self.set_step(Step::Authenticating {
+                    guard,
+                    round: Box::new(round),
+                });
+                if let Some(port) = port {
+                    self.authenticate(port, guard, answer);
+                }
+            }
+            Next::Unsupported => {
+                let back = match guard {
+                    Guard::SetUp => EncryptionStep::Overview,
+                    Guard::Reset => EncryptionStep::ConfirmingReset,
+                };
+                self.set_step(Step::Shown(back));
+                self.report(UserMessageKind::AuthUnsupported);
+            }
+        }
+    }
+
+    fn authenticate(&mut self, port: Arc<dyn EncryptionPort>, guard: Guard, answer: AuthAnswer) {
+        match guard {
+            Guard::SetUp => self.act(Action::Authenticate, move || async move {
+                EncryptionOutcome::IdentitySettled(set_up(port.as_ref(), Some(&answer)).await)
+            }),
+            Guard::Reset => self.act(Action::Authenticate, move || async move {
+                match port.finish_identity_reset(&answer).await {
+                    Ok(guarded) => EncryptionOutcome::Reset(Some(guarded)),
+                    Err(e) => {
+                        tracing::warn!("the identity reset failed: {e}");
+                        EncryptionOutcome::Reset(None)
+                    }
+                }
+            }),
+        }
+    }
+
+    fn choose_file(&mut self, file: KeyFile) {
+        if self.dialog.is_none() || self.pending.is_some() {
+            return;
+        }
+        let files = Arc::clone(&self.files);
+        self.act(Action::ChooseFile, move || async move {
+            let chosen = match file {
+                KeyFile::Export => files.choose_key_export(KEY_EXPORT_FILENAME).await,
+                KeyFile::Import => files.pick_key_file().await,
+            };
+            match chosen {
+                Ok(path) => EncryptionOutcome::FileChosen(file, path),
+                Err(e) => {
+                    tracing::warn!(?file, "the file chooser failed: {e}");
+                    EncryptionOutcome::Failed(match file {
+                        KeyFile::Export => UserMessageKind::KeyExportFailed,
+                        KeyFile::Import => UserMessageKind::KeyImportFailed,
+                    })
+                }
+            }
+        });
+    }
+
+    fn file_chosen(&mut self, file: KeyFile, path: Option<PathBuf>) {
+        let Some(path) = path else {
+            tracing::debug!(?file, "no file chosen");
+            return;
+        };
+        let Some(dialog) = self.dialog.as_mut() else {
+            return;
+        };
+        dialog.error = UserMessage::default();
+        dialog.step = match file {
+            KeyFile::Export => Step::Exporting(path),
+            KeyFile::Import => Step::Importing(path),
+        };
+    }
+
+    fn exported(&mut self, count: Option<usize>) {
+        let Some(count) = count else {
+            self.report(UserMessageKind::KeyExportFailed);
+            return;
+        };
+        let Some(dialog) = self.dialog.as_mut() else {
+            return;
+        };
+        let file = match &dialog.step {
+            Step::Exporting(path) => file_label(path),
+            Step::Shown(_) | Step::Authenticating { .. } | Step::Importing(_) => String::new(),
+        };
+        *dialog = Dialog::at(EncryptionStep::KeysExported { count, file });
+    }
+
+    fn imported(&mut self, import: Option<KeyImport>) {
+        match import {
+            Some(KeyImport::Imported { imported, total }) => {
+                if let Some(dialog) = self.dialog.as_mut() {
+                    *dialog = Dialog::at(EncryptionStep::KeysImported { imported, total });
+                }
+            }
+            Some(KeyImport::WrongPassphrase) => self.report(UserMessageKind::KeyPassphraseWrong),
+            Some(KeyImport::NotAKeyFile) => self.report(UserMessageKind::KeyFileUnreadable),
+            None => self.report(UserMessageKind::KeyImportFailed),
+        }
+    }
+
     fn tried(&mut self, attempt: RecoveryAttempt) {
         let step = match attempt {
             RecoveryAttempt::Unlocked => EncryptionStep::Unlocked,
@@ -349,6 +780,12 @@ impl Encryption {
         self.dialog = Some(Dialog::at(EncryptionStep::ShowingKey(key)));
     }
 
+    fn close_quietly(&mut self) {
+        if self.dialog.take().is_some() {
+            tracing::debug!("closing the encryption dialog");
+        }
+    }
+
     fn report(&mut self, kind: UserMessageKind) {
         match self.dialog.as_mut() {
             Some(dialog) => dialog.error = UserMessage::new(kind),
@@ -356,14 +793,32 @@ impl Encryption {
         }
     }
 
+    fn set_step(&mut self, step: Step) {
+        if let Some(dialog) = self.dialog.as_mut() {
+            dialog.step = step;
+        }
+    }
+
+    fn launch(&mut self, page: LauncherSafeUrl) {
+        let browser = Arc::clone(&self.browser);
+        tracing::info!("opening the homeserver's page for the step it asks for");
+        self.actions.spawn(async move {
+            if let Err(e) = browser.open_url(&page).await {
+                tracing::warn!("the homeserver's page could not be opened: {e}");
+            }
+        });
+    }
+
     fn fall_back_from_unoffered_step(&mut self) {
+        let unlocks = self.state.recovery_unlocks();
+        let offers_reset = self.offers_reset();
+        let idle = self.pending.is_none();
         let Some(dialog) = self.dialog.as_mut() else {
             return;
         };
-        if dialog.step == EncryptionStep::EnteringKey
-            && self.pending.is_none()
-            && !self.state.recovery_unlocks()
-        {
+        let unoffered = (dialog.shows(&EncryptionStep::EnteringKey) && !unlocks)
+            || (dialog.shows(&EncryptionStep::ConfirmingReset) && !offers_reset);
+        if unoffered && idle {
             *dialog = Dialog::at(EncryptionStep::Overview);
         }
     }
@@ -410,7 +865,7 @@ impl Encryption {
             recovery: self.state.recovery,
             key_storage: self.state.key_storage,
             dialog: self.dialog.as_ref().map(|dialog| EncryptionDialog {
-                step: dialog.step.clone(),
+                step: shown_step(&dialog.step),
                 activity,
                 error: dialog.error.clone(),
             }),
@@ -420,8 +875,39 @@ impl Encryption {
     }
 }
 
-async fn set_up(port: &dyn EncryptionPort) -> Option<IdentityOutcome> {
-    match port.set_up_identity().await {
+fn shown_step(step: &Step) -> EncryptionStep {
+    match step {
+        Step::Shown(step) => step.clone(),
+        Step::Authenticating {
+            guard: Guard::SetUp,
+            round,
+        } if round.is_silent() => EncryptionStep::Overview,
+        Step::Authenticating {
+            guard: Guard::Reset,
+            round,
+        } if round.is_silent() => EncryptionStep::ConfirmingReset,
+        Step::Authenticating {
+            guard: Guard::SetUp,
+            round,
+        } => EncryptionStep::AuthenticatingSetup(round.prompt()),
+        Step::Authenticating {
+            guard: Guard::Reset,
+            round,
+        } => EncryptionStep::AuthenticatingReset(round.prompt()),
+        Step::Exporting(path) => EncryptionStep::ExportingKeys(file_label(path)),
+        Step::Importing(path) => EncryptionStep::ImportingKeys(file_label(path)),
+    }
+}
+
+fn file_label(path: &Path) -> String {
+    path.file_name().map_or_else(
+        || path.display().to_string(),
+        |name| name.to_string_lossy().into_owned(),
+    )
+}
+
+async fn set_up(port: &dyn EncryptionPort, auth: Option<&AuthAnswer>) -> Option<IdentityOutcome> {
+    match port.set_up_identity(auth).await {
         Ok(outcome) => Some(outcome),
         Err(e) => {
             tracing::warn!("could not set up the account's cross-signing identity: {e}");

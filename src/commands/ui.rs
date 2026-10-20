@@ -1,8 +1,9 @@
 use strum::Display as StrumDisplay;
 
 use crate::domain::auth::LoginCredentials;
+use crate::domain::capabilities::AccountPage;
 use crate::domain::emote::{ComposerText, Emote};
-use crate::domain::encryption::RecoveryKey;
+use crate::domain::encryption::{KeyPassphrase, RecoveryKey};
 use crate::domain::image_pack::PackId;
 use crate::domain::link::LauncherSafeUrl;
 use crate::domain::matrix_link::{AddressEntry, MatrixLink, RoomAddress, RoomLink};
@@ -11,6 +12,7 @@ use crate::domain::message::MessageEdit;
 use crate::domain::poll::PollDraft;
 use crate::domain::room::{NotifyMode, RoomId};
 use crate::domain::room_creation::RoomDraft;
+use crate::domain::uia::AccountPassword;
 use crate::domain::user_info::UserId;
 
 #[derive(StrumDisplay)]
@@ -150,6 +152,42 @@ pub enum UiCommand {
     SetUpRecovery,
     ChangeRecoveryKey,
     RetryEncryptionSetup,
+    StartIdentityReset,
+    ResetIdentity,
+    StartKeyExport,
+    #[strum(to_string = "ExportRoomKeys(...)")]
+    ExportRoomKeys(KeyPassphrase),
+    StartKeyImport,
+    #[strum(to_string = "ImportRoomKeys(...)")]
+    ImportRoomKeys(KeyPassphrase),
+    OpenAccount,
+    CloseAccount,
+    ShowAccountOverview,
+    #[strum(to_string = "RenameSession({device_id})")]
+    RenameSession {
+        device_id: String,
+        name: String,
+    },
+    #[strum(to_string = "SignOutSession({0})")]
+    SignOutSession(String),
+    #[strum(to_string = "OpenAccountPage")]
+    OpenAccountPage(AccountPage),
+    StartPasswordChange,
+    #[strum(to_string = "ChangePassword(...)")]
+    ChangePassword {
+        password: AccountPassword,
+        sign_out_others: bool,
+    },
+    StartDeactivation,
+    #[strum(to_string = "DeactivateAccount({erase})")]
+    DeactivateAccount {
+        erase: bool,
+    },
+    #[strum(to_string = "AnswerAuthPassword(...)")]
+    AnswerAuthPassword(AccountPassword),
+    ContinueAuth,
+    ReopenAuthPage,
+    CancelAuth,
     #[strum(to_string = "SendMessage({room_id})")]
     SendMessage {
         room_id: RoomId,
@@ -343,6 +381,8 @@ pub enum UiCommand {
     ShareScreen(bool),
     DismissToast,
     Logout,
+    ConfirmLogout,
+    CancelLogout,
     Quit,
 }
 
@@ -450,6 +490,26 @@ impl UiCommand {
             | Self::SetUpRecovery
             | Self::ChangeRecoveryKey
             | Self::RetryEncryptionSetup
+            | Self::StartIdentityReset
+            | Self::ResetIdentity
+            | Self::StartKeyExport
+            | Self::ExportRoomKeys(_)
+            | Self::StartKeyImport
+            | Self::ImportRoomKeys(_)
+            | Self::OpenAccount
+            | Self::CloseAccount
+            | Self::ShowAccountOverview
+            | Self::RenameSession { .. }
+            | Self::SignOutSession(_)
+            | Self::OpenAccountPage(_)
+            | Self::StartPasswordChange
+            | Self::ChangePassword { .. }
+            | Self::StartDeactivation
+            | Self::DeactivateAccount { .. }
+            | Self::AnswerAuthPassword(_)
+            | Self::ContinueAuth
+            | Self::ReopenAuthPage
+            | Self::CancelAuth
             | Self::SuggestMentions { .. }
             | Self::EndMentions
             | Self::DismissUnsent { .. }
@@ -495,6 +555,8 @@ impl UiCommand {
             | Self::ShareScreen(_)
             | Self::DismissToast
             | Self::Logout
+            | Self::ConfirmLogout
+            | Self::CancelLogout
             | Self::Quit => None,
         }
     }

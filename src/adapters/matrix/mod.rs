@@ -1,3 +1,4 @@
+mod account;
 mod attachment;
 mod auth;
 mod decrypt_wait;
@@ -19,6 +20,7 @@ mod server_notices;
 mod session;
 mod store;
 mod timeline;
+mod uia;
 mod user_info;
 mod verification;
 

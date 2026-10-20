@@ -11,6 +11,7 @@ import { CopyFeedback } from "../../../components/copier.slint";
 import { DotPulse } from "../../../components/dot-pulse.slint";
 import { DialogCard, ModalHost } from "../../../components/overlay.slint";
 import { TextField } from "../../../components/text-field.slint";
+import { AuthPrompt } from "./auth-prompt.slint";
 import { DialogNote, Verdict, VerificationHeader } from "./verification.slint";
 
 component ActivityRow inherits Text {
@@ -36,6 +37,21 @@ component ActivityRow inherits Text {
         }
         if activity == EncryptionActivity.retrying-setup {
             return @tr("Setting up encryption...");
+        }
+        if activity == EncryptionActivity.resetting-identity {
+            return @tr("Resetting your identity...");
+        }
+        if activity == EncryptionActivity.authenticating {
+            return @tr("Checking with your homeserver...");
+        }
+        if activity == EncryptionActivity.choosing-file {
+            return @tr("Choose a file in the window that opened...");
+        }
+        if activity == EncryptionActivity.exporting-keys {
+            return @tr("Exporting your room keys...");
+        }
+        if activity == EncryptionActivity.importing-keys {
+            return @tr("Importing room keys...");
         }
         return "";
     }
@@ -70,19 +86,65 @@ component SetupProblem inherits VerticalLayout {
 
     DialogNote {
         text: EncryptionView.standing == EncryptionStanding.setup-refused
-            ? @tr("Your homeserver wants you to confirm with your password before U2DM can create the keys that let your sessions trust each other, and U2DM cannot ask for it yet. Set up encryption in another Matrix app, then come back.")
+            ? @tr("Your homeserver wants to know it's you before U2DM creates the keys that let your sessions trust each other.")
             : @tr("U2DM couldn't create the keys that let your sessions trust each other.");
     }
 
     AppButton {
         above-modal: true;
-        text: @tr("Try again");
-        icon: IconSet.RotateCcw;
-        filled: false;
+        text: EncryptionView.standing == EncryptionStanding.setup-refused
+            ? @tr("Continue")
+            : @tr("Try again");
+        icon: EncryptionView.standing == EncryptionStanding.setup-refused
+            ? IconSet.Check
+            : IconSet.RotateCcw;
+        filled: EncryptionView.standing == EncryptionStanding.setup-refused;
         enabled: !EncryptionView.busy;
         busy: EncryptionView.activity == EncryptionActivity.retrying-setup;
         clicked => {
             Actions.retry-encryption-setup();
+        }
+    }
+}
+
+component RoomKeysSection inherits VerticalLayout {
+    spacing: Space.lg;
+
+    Rectangle {
+        height: Stroke.hairline;
+        background: AppStyle.overlay-pressed;
+    }
+
+    DialogNote {
+        text: @tr("A key file holds the keys to the encrypted messages this session can read, protected by a passphrase. Another Matrix app can import it.");
+    }
+
+    HorizontalLayout {
+        spacing: Space.lg;
+
+        AppButton {
+            horizontal-stretch: 1;
+            above-modal: true;
+            text: @tr("Export room keys");
+            icon: IconSet.FileDown;
+            filled: false;
+            enabled: !EncryptionView.busy;
+            busy: EncryptionView.activity == EncryptionActivity.choosing-file;
+            clicked => {
+                Actions.start-key-export();
+            }
+        }
+
+        AppButton {
+            horizontal-stretch: 1;
+            above-modal: true;
+            text: @tr("Import room keys");
+            icon: IconSet.FileUp;
+            filled: false;
+            enabled: !EncryptionView.busy;
+            clicked => {
+                Actions.start-key-import();
+            }
         }
     }
 }
@@ -127,8 +189,22 @@ component Unverified inherits VerticalLayout {
     }
 
     if !EncryptionView.verified-sessions && !root.recovery-unlocks: NoticeBanner {
-        text: @tr("You have no other verified session and no recovery key, so nothing can vouch for this one. To start again, reset your identity in another Matrix app; messages encrypted before then stay unreadable.");
+        text: @tr("You have no other verified session and no recovery key, so nothing can vouch for this one. You can start again with a new identity; messages encrypted before then stay unreadable.");
     }
+
+    AppButton {
+        above-modal: true;
+        text: @tr("Reset your identity");
+        icon: IconSet.RotateCcw;
+        tint: AppStyle.danger-muted;
+        filled: false;
+        enabled: !EncryptionView.busy;
+        clicked => {
+            Actions.start-identity-reset();
+        }
+    }
+
+    RoomKeysSection { }
 }
 
 component RecoverySection inherits VerticalLayout {
@@ -205,6 +281,220 @@ component Verified inherits VerticalLayout {
     }
 
     RecoverySection { }
+
+    RoomKeysSection { }
+}
+
+component ResetConfirm inherits VerticalLayout {
+    spacing: Space.xl;
+
+    Verdict {
+        icon: IconSet.TriangleAlert;
+        tint: AppStyle.danger-muted;
+        surface: AppStyle.danger-background;
+        title: @tr("Reset your identity?");
+    }
+
+    DialogNote {
+        text: @tr("Only do this if you have no other session and no recovery key left. Your key backup and recovery are deleted, the messages you couldn't read stay unreadable, and the people you verified are told your identity changed.");
+    }
+
+    HorizontalLayout {
+        spacing: Space.lg;
+
+        AppButton {
+            horizontal-stretch: 1;
+            above-modal: true;
+            text: @tr("Back");
+            icon: IconSet.ArrowLeft;
+            filled: false;
+            enabled: !EncryptionView.busy;
+            clicked => {
+                Actions.show-encryption-overview();
+            }
+        }
+
+        AppButton {
+            horizontal-stretch: 1;
+            above-modal: true;
+            text: @tr("Reset");
+            icon: IconSet.RotateCcw;
+            tint: AppStyle.call-decline;
+            busy: EncryptionView.activity == EncryptionActivity.resetting-identity;
+            clicked => {
+                Actions.reset-identity();
+            }
+        }
+    }
+}
+
+component ResetDone inherits VerticalLayout {
+    spacing: Space.xl;
+
+    Verdict {
+        icon: IconSet.ShieldCheck;
+        tint: AppStyle.success;
+        surface: AppStyle.success-background;
+        title: @tr("Your identity was reset");
+    }
+
+    DialogNote {
+        text: @tr("This session is verified with your new identity. Set up recovery next, so a lost session doesn't cost you your messages again.");
+    }
+
+    AppButton {
+        above-modal: true;
+        text: @tr("Done");
+        icon: IconSet.Check;
+        clicked => {
+            Actions.show-encryption-overview();
+        }
+    }
+}
+
+component KeyFileStep inherits VerticalLayout {
+    in property <bool> exporting;
+
+    property <string> typed;
+    property <string> repeated;
+    property <bool> complete: root.typed != "" && (!root.exporting || root.typed == root.repeated);
+
+    function submit() {
+        if !root.complete || EncryptionView.busy {
+            return;
+        }
+        if root.exporting {
+            Actions.export-room-keys(root.typed);
+        } else {
+            Actions.import-room-keys(root.typed);
+        }
+        root.typed = "";
+        root.repeated = "";
+    }
+
+    spacing: Space.xl;
+
+    DialogNote {
+        text: root.exporting
+            ? @tr("Protect {} with a passphrase. You need it to import the keys again.", EncryptionView.key-file)
+            : @tr("Enter the passphrase that protects {}.", EncryptionView.key-file);
+    }
+
+    TextField {
+        icon: IconSet.KeyRound;
+        secret: true;
+        above-modal: true;
+        enabled: !EncryptionView.busy;
+        placeholder: @tr("Passphrase");
+        label: @tr("Passphrase");
+        reveal-label: @tr("Show the passphrase");
+        conceal-label: @tr("Hide the passphrase");
+        text <=> root.typed;
+        init => {
+            self.focus-input();
+        }
+        accepted => {
+            root.submit();
+        }
+    }
+
+    if root.exporting: TextField {
+        icon: IconSet.KeyRound;
+        secret: true;
+        above-modal: true;
+        enabled: !EncryptionView.busy;
+        placeholder: @tr("Repeat the passphrase");
+        label: @tr("Repeat the passphrase");
+        reveal-label: @tr("Show the repeated passphrase");
+        conceal-label: @tr("Hide the repeated passphrase");
+        text <=> root.repeated;
+        accepted => {
+            root.submit();
+        }
+    }
+
+    if root.exporting && root.typed != "" && root.repeated != "" && root.typed != root.repeated: Text {
+        text: @tr("The passphrases don't match.");
+        font-size: Fonts.body-small;
+        color: AppStyle.danger;
+        wrap: word-wrap;
+        accessible-live-region: AccessibleLiveness.polite;
+    }
+
+    HorizontalLayout {
+        spacing: Space.lg;
+
+        AppButton {
+            horizontal-stretch: 1;
+            above-modal: true;
+            text: @tr("Back");
+            icon: IconSet.ArrowLeft;
+            filled: false;
+            enabled: !EncryptionView.busy;
+            clicked => {
+                Actions.show-encryption-overview();
+            }
+        }
+
+        AppButton {
+            horizontal-stretch: 1;
+            above-modal: true;
+            text: root.exporting ? @tr("Export") : @tr("Import");
+            icon: root.exporting ? IconSet.FileDown : IconSet.FileUp;
+            enabled: EncryptionView.busy || root.complete;
+            busy: EncryptionView.activity == EncryptionActivity.exporting-keys
+                || EncryptionView.activity == EncryptionActivity.importing-keys;
+            clicked => {
+                root.submit();
+            }
+        }
+    }
+}
+
+component KeysDone inherits VerticalLayout {
+    in property <bool> exported;
+
+    spacing: Space.xl;
+
+    Verdict {
+        icon: root.exported ? IconSet.FileDown : IconSet.FileUp;
+        tint: AppStyle.success;
+        surface: AppStyle.success-background;
+        title: root.exported ? @tr("Room keys exported") : @tr("Room keys imported");
+    }
+
+    if root.exported: DialogNote {
+        text: @tr("Exported {n} room key." | "Exported {n} room keys." % EncryptionView.keys-count);
+    }
+
+    if root.exported: DialogNote {
+        text: @tr("Keep {} and its passphrase somewhere safe.", EncryptionView.key-file);
+    }
+
+    if !root.exported && EncryptionView.keys-total == 0: DialogNote {
+        text: @tr("The file holds no room keys.");
+    }
+
+    if !root.exported && EncryptionView.keys-total > 0 && EncryptionView.keys-count == EncryptionView.keys-total: DialogNote {
+        text: @tr("Imported {n} room key." | "Imported all {n} room keys in the file." % EncryptionView.keys-total);
+    }
+
+    if !root.exported && EncryptionView.keys-count == 0 && EncryptionView.keys-total > 0: DialogNote {
+        text: @tr("The room key in the file was here already." | "All {n} room keys in the file were here already." % EncryptionView.keys-total);
+    }
+
+    if !root.exported && EncryptionView.keys-count > 0 && EncryptionView.keys-count < EncryptionView.keys-total: DialogNote {
+        text: @tr("Imported {} of the {} room keys in the file. The others were here already.", EncryptionView.keys-count, EncryptionView.keys-total);
+    }
+
+    AppButton {
+        above-modal: true;
+        text: @tr("Done");
+        icon: IconSet.Check;
+        clicked => {
+            Actions.show-encryption-overview();
+        }
+    }
 }
 
 component Overview inherits VerticalLayout {
@@ -377,7 +667,13 @@ component KeyReveal inherits VerticalLayout {
 
 export component EncryptionDialog inherits ModalHost {
     dim-opacity: AppStyle.dialog-scrim;
-    light-dismiss: EncryptionView.step != EncryptionStep.showing-key;
+    light-dismiss: EncryptionView.step == EncryptionStep.overview
+        || EncryptionView.step == EncryptionStep.entering-key
+        || EncryptionView.step == EncryptionStep.unlocked
+        || EncryptionView.step == EncryptionStep.unlocked-without-backup
+        || EncryptionView.step == EncryptionStep.identity-reset
+        || EncryptionView.step == EncryptionStep.keys-exported
+        || EncryptionView.step == EncryptionStep.keys-imported;
     label: @tr("Encryption");
     dismissed => {
         Actions.close-encryption();
@@ -435,7 +731,51 @@ export component EncryptionDialog inherits ModalHost {
                     }
                 }
 
-                if EncryptionView.busy: ActivityRow { }
+                if EncryptionView.step == EncryptionStep.confirming-reset: ResetConfirm { }
+
+                if EncryptionView.step == EncryptionStep.authenticating-setup
+                    || EncryptionView.step == EncryptionStep.authenticating-reset: AuthPrompt {
+                    stage: EncryptionView.auth-stage;
+                    purpose: EncryptionView.step == EncryptionStep.authenticating-reset
+                        ? @tr("To publish your new identity, your homeserver wants to know it's you.")
+                        : @tr("To create your encryption keys, your homeserver wants to know it's you.");
+                    busy: EncryptionView.busy;
+                    error: EncryptionView.auth-error;
+                    error-detail: EncryptionView.auth-error-detail;
+                    submit-password(password) => {
+                        Actions.answer-auth-password(password);
+                    }
+                    continue-clicked => {
+                        Actions.continue-auth();
+                    }
+                    reopen-clicked => {
+                        Actions.reopen-auth-page();
+                    }
+                    cancel-clicked => {
+                        Actions.cancel-auth();
+                    }
+                }
+
+                if EncryptionView.step == EncryptionStep.identity-reset: ResetDone { }
+
+                if EncryptionView.step == EncryptionStep.exporting-keys: KeyFileStep {
+                    exporting: true;
+                }
+
+                if EncryptionView.step == EncryptionStep.importing-keys: KeyFileStep {
+                    exporting: false;
+                }
+
+                if EncryptionView.step == EncryptionStep.keys-exported: KeysDone {
+                    exported: true;
+                }
+
+                if EncryptionView.step == EncryptionStep.keys-imported: KeysDone {
+                    exported: false;
+                }
+
+                if EncryptionView.busy && EncryptionView.step != EncryptionStep.authenticating-setup
+                    && EncryptionView.step != EncryptionStep.authenticating-reset: ActivityRow { }
 
                 if !EncryptionView.busy && EncryptionView.error != UserMessageKind.none: ErrorBanner {
                     messages: [{ kind: EncryptionView.error, detail: EncryptionView.error-detail }];

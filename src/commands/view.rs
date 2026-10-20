@@ -8,6 +8,7 @@ use super::ui::Draft;
 use crate::domain::auth::{LoginMethod, Session};
 use crate::domain::call::MemberKey;
 use crate::domain::call::video::{FeedId, ScreenRefusal};
+use crate::domain::capabilities::AccountFacts;
 use crate::domain::encryption::{KeyStorage, Recovery, RecoveryKey, Standing};
 use crate::domain::event_size::Oversize;
 use crate::domain::identity::IdentityAlert;
@@ -24,6 +25,7 @@ use crate::domain::room_creation::RoomKind;
 use crate::domain::room_info::{Reader, RoomAbout, RosterMember};
 use crate::domain::room_log::RoomLog;
 use crate::domain::room_preview::RoomPreview;
+use crate::domain::sessions::{LogoutRisks, OwnSessions};
 use crate::domain::space_index::SpaceChild;
 use crate::domain::sync::{ConnectionStatus, ReauthReason};
 use crate::domain::timeline::{EventSource, OlderHistory};
@@ -57,6 +59,8 @@ pub struct AppViewState {
     pub call: CallView,
     pub notifications: NotificationsView,
     pub encryption: EncryptionView,
+    pub account: AccountView,
+    pub logout: LogoutView,
     pub toast: Toast,
     pub message_link: CopiedLink,
     pub room_link: CopiedLink,
@@ -424,6 +428,20 @@ pub enum EncryptionStep {
     Unlocked,
     UnlockedWithoutBackup,
     ShowingKey(RecoveryKey),
+    ConfirmingReset,
+    AuthenticatingSetup(AuthPrompt),
+    AuthenticatingReset(AuthPrompt),
+    IdentityReset,
+    ExportingKeys(String),
+    KeysExported {
+        count: usize,
+        file: String,
+    },
+    ImportingKeys(String),
+    KeysImported {
+        imported: usize,
+        total: usize,
+    },
 }
 
 #[derive(Clone, Copy, Default, PartialEq, Eq)]
@@ -435,6 +453,72 @@ pub enum EncryptionActivity {
     SettingUpRecovery,
     ChangingKey,
     RetryingSetup,
+    ResettingIdentity,
+    Authenticating,
+    ChoosingFile,
+    ExportingKeys,
+    ImportingKeys,
+}
+
+#[derive(Clone, Copy, Default, PartialEq, Eq)]
+pub enum AuthStage {
+    #[default]
+    Password,
+    Approve,
+    Browser,
+}
+
+#[derive(Clone, Default, PartialEq, Eq)]
+pub struct AuthPrompt {
+    pub stage: AuthStage,
+    pub error: UserMessage,
+}
+
+#[derive(Clone, Default, PartialEq, Eq)]
+pub struct AccountView {
+    pub dialog: Option<AccountDialog>,
+}
+
+#[derive(Clone, Default, PartialEq, Eq)]
+pub struct AccountDialog {
+    pub step: AccountStep,
+    pub activity: AccountActivity,
+    pub busy_session: Option<String>,
+    pub sessions: Option<OwnSessions>,
+    pub facts: Option<AccountFacts>,
+    pub error: UserMessage,
+    pub notice: UserMessage,
+}
+
+#[derive(Clone, Default, PartialEq, Eq)]
+pub enum AccountStep {
+    #[default]
+    Overview,
+    ChangingPassword,
+    ConfirmingDeactivation,
+    Authenticating(AccountAuth),
+}
+
+#[derive(Clone, Default, PartialEq, Eq)]
+pub struct AccountAuth {
+    pub prompt: AuthPrompt,
+    pub guarding: AccountActivity,
+    pub subject: String,
+}
+
+#[derive(Clone, Copy, Default, PartialEq, Eq)]
+pub enum AccountActivity {
+    #[default]
+    None,
+    Renaming,
+    SigningOut,
+    ChangingPassword,
+    Deactivating,
+}
+
+#[derive(Clone, Copy, Default, PartialEq, Eq)]
+pub struct LogoutView {
+    pub warning: Option<LogoutRisks>,
 }
 
 #[derive(Clone, Default, PartialEq)]

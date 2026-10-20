@@ -1,5 +1,5 @@
 import { Delivery, LoginPhase, MessageKind, PollPhase, ReactionSend, RoomInfoPlacement, Shield } from "./enums.slint";
-import { AttachmentView, CreateRoomView, EncryptionView, InvitePeopleView, InviteView, LoginView, ReadersView, RoomInfoView, RoomLogView, RoomMenuView, RoomPreviewView, RoomView, SourceView, UserInfoView, VerificationView, VideoView, WindowView } from "./views.slint";
+import { AccountView, AttachmentView, CreateRoomView, EncryptionView, InvitePeopleView, InviteView, LoginView, LogoutView, ReadersView, RoomInfoView, RoomLogView, RoomMenuView, RoomPreviewView, RoomView, SourceView, UserInfoView, VerificationView, VideoView, WindowView } from "./views.slint";
 import { Actions } from "./actions.slint";
 import { MessageEntry, ReactionEntry } from "./types.slint";
 import { MessagePreview } from "./messages.slint";
@@ -153,6 +153,10 @@ export global Shell {
         && LoginView.step == LoginPhase.logged-in;
     out property <bool> encryption-open: EncryptionView.visible
         && LoginView.step == LoginPhase.logged-in;
+    out property <bool> account-open: AccountView.visible
+        && LoginView.step == LoginPhase.logged-in;
+    out property <bool> logout-open: LogoutView.visible
+        && LoginView.step == LoginPhase.logged-in;
     out property <bool> attachment-open: AttachmentView.visible
         && LoginView.step == LoginPhase.logged-in;
     out property <bool> video-open: VideoView.visible
@@ -178,6 +182,8 @@ export global Shell {
     out property <bool> modal-over-nav: root.drawer-open
         || root.verification-open
         || root.encryption-open
+        || root.account-open
+        || root.logout-open
         || root.attachment-open
         || root.video-open
         || root.poll-open

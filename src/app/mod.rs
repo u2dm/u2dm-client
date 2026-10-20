@@ -1,3 +1,4 @@
+mod account;
 mod active_timeline;
 mod attachments;
 mod audio;
@@ -37,6 +38,7 @@ mod space_order;
 mod submissions;
 mod task_group;
 mod typing;
+mod uia;
 mod upgrades;
 mod user_info;
 mod verification;
@@ -45,6 +47,7 @@ mod video;
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use account::{Account, LogoutDecision, Settled as AccountSettled};
 use active_timeline::ActiveTimeline;
 use attachments::Attachments;
 use audio::AudioController;
@@ -52,7 +55,7 @@ use calls::Calls;
 use encryption::Encryption;
 use establish::{EstablishedSession, Rollback};
 use event::{
-    AppEvent, CallEvent, CreationSettled, EncryptionEvent, EndReason, IdentityEvent,
+    AccountEvent, AppEvent, CallEvent, CreationSettled, EncryptionEvent, EndReason, IdentityEvent,
     InvitePeopleEvent, MentionsEvent, MessageActionEvent, PacksEvent, PresenceEvent, PreviewEvent,
     ReadersEvent, RoomActionEvent, SessionEvent, TimelineEvent, UserInfoEvent,
 };
@@ -84,6 +87,7 @@ use submissions::Submissions;
 use task_group::TaskGroup;
 use tokio::sync::{mpsc, watch};
 use typing::Typing;
+use uia::Reply;
 use upgrades::{RoomUpgrades, Toward, UpgradeJoined};
 use user_info::{ChatReady, UserInfo};
 use verification::VerificationController;
@@ -235,6 +239,7 @@ pub struct AppService {
     verification: VerificationController,
     identity_alerts: IdentityAlerts,
     encryption: Encryption,
+    account: Account,
     media: MediaActions,
     audio: AudioController,
     video: VideoController,
@@ -280,6 +285,13 @@ impl AppService {
     ) -> Self {
         let events = commands.events();
         Self {
+            encryption: Encryption::new(
+                Arc::clone(&output),
+                events.clone(),
+                Arc::clone(&media_files),
+                Arc::clone(&browser),
+            ),
+            account: Account::new(Arc::clone(&output), events.clone(), Arc::clone(&browser)),
             session: SessionController::new(
                 auth,
                 storage,
@@ -292,7 +304,6 @@ impl AppService {
             pinned: PinnedMessages::new(Arc::clone(&output), events.clone()),
             verification: VerificationController::new(Arc::clone(&output), events.clone()),
             identity_alerts: IdentityAlerts::new(Arc::clone(&output), events.clone()),
-            encryption: Encryption::new(Arc::clone(&output), events.clone()),
             media: MediaActions::new(Arc::clone(&media_files), Arc::clone(&output)),
             audio: AudioController::new(Arc::clone(&output), events.clone()),
             video: VideoController::new(Arc::clone(&output), events.clone()),
@@ -649,7 +660,10 @@ impl AppService {
                 self.resolve_identity_alert(Resolution::AcknowledgeOwnReset);
             }
             UiCommand::OpenEncryption => self.encryption.open(),
-            UiCommand::CloseEncryption => self.encryption.close(),
+            UiCommand::CloseEncryption => {
+                let port = self.port(|a| &a.encryption);
+                self.encryption.close(port);
+            }
             UiCommand::ShowEncryptionOverview => self.encryption.show_overview(),
             UiCommand::EnterRecoveryKey => self.encryption.enter_key(),
             UiCommand::UseRecoveryKey(key) => self.use_recovery_key(key),
@@ -657,6 +671,26 @@ impl AppService {
             UiCommand::SetUpRecovery => self.set_up_recovery(),
             UiCommand::ChangeRecoveryKey => self.change_recovery_key(),
             UiCommand::RetryEncryptionSetup => self.retry_encryption_setup(),
+            cmd @ (UiCommand::StartIdentityReset
+            | UiCommand::ResetIdentity
+            | UiCommand::StartKeyExport
+            | UiCommand::ExportRoomKeys(_)
+            | UiCommand::StartKeyImport
+            | UiCommand::ImportRoomKeys(_)) => self.handle_key_command(cmd),
+            cmd @ (UiCommand::OpenAccount
+            | UiCommand::CloseAccount
+            | UiCommand::ShowAccountOverview
+            | UiCommand::RenameSession { .. }
+            | UiCommand::SignOutSession(_)
+            | UiCommand::OpenAccountPage(_)
+            | UiCommand::StartPasswordChange
+            | UiCommand::ChangePassword { .. }
+            | UiCommand::StartDeactivation
+            | UiCommand::DeactivateAccount { .. }) => self.handle_account_command(cmd),
+            cmd @ (UiCommand::AnswerAuthPassword(_)
+            | UiCommand::ContinueAuth
+            | UiCommand::ReopenAuthPage
+            | UiCommand::CancelAuth) => self.handle_auth_command(cmd),
             UiCommand::RetryTimeline => {
                 self.retry_timeline().await;
             }
@@ -841,8 +875,8 @@ impl AppService {
             UiCommand::DismissVerification => {
                 self.dismiss_verification().await;
             }
-            UiCommand::Logout => {
-                self.end_session(EndReason::UserLogout).await;
+            cmd @ (UiCommand::Logout | UiCommand::ConfirmLogout | UiCommand::CancelLogout) => {
+                self.handle_logout_command(cmd).await;
             }
             UiCommand::Quit => {
                 self.handle_quit().await;
@@ -1674,13 +1708,13 @@ impl AppService {
                     tracing::debug!("identity setup of a session that no longer runs, dropping");
                     return;
                 }
-                self.encryption.identity_settled(outcome);
+                self.encryption.identity_settled(outcome.as_ref());
             }
             EncryptionEvent::ActionSettled { request, outcome } => {
-                if self.held_session.running().is_none() {
+                let Some(port) = self.port(|a| &a.encryption) else {
                     return;
-                }
-                self.encryption.settled(request, outcome);
+                };
+                self.encryption.settled(Some(port), request, outcome);
             }
         }
         self.raise_session_alert();
@@ -1718,6 +1752,130 @@ impl AppService {
         if let Some(port) = self.port(|a| &a.encryption) {
             self.encryption.retry_setup(port);
             self.raise_session_alert();
+        }
+    }
+
+    fn handle_key_command(&mut self, cmd: UiCommand) {
+        let Some(port) = self.port(|a| &a.encryption) else {
+            return;
+        };
+        match cmd {
+            UiCommand::StartIdentityReset => self.encryption.start_reset(),
+            UiCommand::ResetIdentity => self.encryption.reset_identity(port),
+            UiCommand::StartKeyExport => self.encryption.start_key_export(),
+            UiCommand::ExportRoomKeys(passphrase) => self.encryption.export_keys(port, passphrase),
+            UiCommand::StartKeyImport => self.encryption.start_key_import(),
+            UiCommand::ImportRoomKeys(passphrase) => self.encryption.import_keys(port, passphrase),
+            other => tracing::warn!(command = %other, "this command is not about room keys"),
+        }
+    }
+
+    fn handle_account_command(&mut self, cmd: UiCommand) {
+        let Some(port) = self.port(|a| &a.account) else {
+            return;
+        };
+        match cmd {
+            UiCommand::OpenAccount => self.account.open(&port),
+            UiCommand::CloseAccount => self.account.close(),
+            UiCommand::ShowAccountOverview => self.account.show_overview(),
+            UiCommand::RenameSession { device_id, name } => {
+                self.account.rename_session(port, device_id, &name);
+            }
+            UiCommand::SignOutSession(device_id) => self.account.sign_out_session(port, device_id),
+            UiCommand::OpenAccountPage(page) => self.account.open_account_page(port, page),
+            UiCommand::StartPasswordChange => self.account.start_password_change(),
+            UiCommand::ChangePassword {
+                password,
+                sign_out_others,
+            } => self
+                .account
+                .change_password(port, password, sign_out_others),
+            UiCommand::StartDeactivation => self.account.start_deactivation(port),
+            UiCommand::DeactivateAccount { erase } => self.account.deactivate(port, erase),
+            other => tracing::warn!(command = %other, "this command is not about the account"),
+        }
+    }
+
+    fn answer_auth(&mut self, reply: Reply) {
+        if self.account.awaits_auth() {
+            if let Some(port) = self.port(|a| &a.account) {
+                self.account.answer_auth(port, reply);
+            }
+        } else if self.encryption.awaits_auth()
+            && let Some(port) = self.port(|a| &a.encryption)
+        {
+            self.encryption.answer_auth(port, reply);
+        }
+    }
+
+    fn reopen_auth_page(&mut self) {
+        if self.account.awaits_auth() {
+            self.account.reopen_auth_page();
+        } else {
+            self.encryption.reopen_auth_page();
+        }
+    }
+
+    fn cancel_auth(&mut self) {
+        if self.account.awaits_auth() {
+            self.account.cancel_auth();
+        } else if let Some(port) = self.port(|a| &a.encryption) {
+            self.encryption.cancel_auth(port);
+        }
+    }
+
+    fn handle_auth_command(&mut self, cmd: UiCommand) {
+        match cmd {
+            UiCommand::AnswerAuthPassword(password) => {
+                self.answer_auth(Reply::Password(password));
+            }
+            UiCommand::ContinueAuth => self.answer_auth(Reply::Continue),
+            UiCommand::ReopenAuthPage => self.reopen_auth_page(),
+            UiCommand::CancelAuth => self.cancel_auth(),
+            other => tracing::warn!(command = %other, "this command is not about authentication"),
+        }
+    }
+
+    async fn handle_logout_command(&mut self, cmd: UiCommand) {
+        match cmd {
+            UiCommand::Logout => match self.port(|a| &a.account) {
+                Some(port) => self.account.check_logout(port),
+                None => self.end_session(EndReason::UserLogout).await,
+            },
+            UiCommand::ConfirmLogout => {
+                if self.account.confirm_logout() {
+                    self.end_session(EndReason::UserLogout).await;
+                }
+            }
+            UiCommand::CancelLogout => self.account.cancel_logout(),
+            other => tracing::warn!(command = %other, "this command is not about logging out"),
+        }
+    }
+
+    async fn handle_account(&mut self, event: AccountEvent) {
+        if self.held_session.running().is_none() {
+            return;
+        }
+        match event {
+            AccountEvent::FactsRead { generation, facts } => {
+                self.account.facts_read(generation, facts);
+            }
+            AccountEvent::SessionsChanged {
+                generation,
+                sessions,
+            } => self.account.sessions_changed(generation, sessions),
+            AccountEvent::Settled { request, outcome } => {
+                let port = self.port(|a| &a.account);
+                if let AccountSettled::Deactivated = self.account.settled(port, request, outcome) {
+                    tracing::info!("the account was deactivated, clearing local state");
+                    self.end_session(EndReason::Deactivated).await;
+                }
+            }
+            AccountEvent::LogoutChecked { request, risks } => {
+                if let LogoutDecision::Proceed = self.account.logout_checked(request, risks) {
+                    self.end_session(EndReason::UserLogout).await;
+                }
+            }
         }
     }
 
@@ -1813,6 +1971,7 @@ impl AppService {
         }
     }
 
+    #[allow(clippy::too_many_lines)]
     async fn handle_event(&mut self, event: AppEvent) {
         match event {
             AppEvent::Session(event) => self.handle_session_event(event).await,
@@ -1910,6 +2069,7 @@ impl AppService {
             AppEvent::Packs(event) => self.handle_packs(event),
             AppEvent::Identity(event) => self.handle_identity(event),
             AppEvent::Encryption(event) => self.handle_encryption(event),
+            AppEvent::Account(event) => self.handle_account(event).await,
             AppEvent::RoomLogGrew => self.room_log.reread(),
         }
     }
@@ -2227,6 +2387,7 @@ impl AppService {
         }
         let mut messages = match reason {
             EndReason::Expired => vec![UserMessage::new(UserMessageKind::SessionExpired)],
+            EndReason::Deactivated => vec![UserMessage::new(UserMessageKind::AccountDeactivated)],
             EndReason::UserLogout => Vec::new(),
         };
         messages.extend(left_behind.map(session::left_behind_notice));
@@ -2933,6 +3094,7 @@ impl AppService {
             self.pinned.restart(),
             self.identity_alerts.restart(),
             self.encryption.restart(),
+            self.account.restart(),
             self.operations.restart(),
             self.send_lanes.restart(),
             self.media.cancel_and_drain(),
@@ -2986,7 +3148,10 @@ impl AppService {
                     left_behind,
                 );
             }
-            (Some(Ending::Live(ending) | Ending::Detached(ending)), EndReason::Expired) => {
+            (
+                Some(Ending::Live(ending) | Ending::Detached(ending)),
+                EndReason::Expired | EndReason::Deactivated,
+            ) => {
                 self.tear_down_session(Box::new(AppViewState::logged_out()))
                     .await;
                 self.session.spawn_erase_session(
@@ -3062,6 +3227,7 @@ impl AppService {
             self.pinned.shutdown(),
             self.identity_alerts.shutdown(),
             self.encryption.shutdown(),
+            self.account.shutdown(),
             self.operations.shutdown(),
             self.send_lanes.shutdown(),
             self.media.drain(),

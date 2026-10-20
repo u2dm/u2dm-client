@@ -5,17 +5,18 @@ use crate::adapters::ui::identity_banner;
 use crate::commands::messages::{UserMessage, UserMessageKind};
 use crate::commands::ui::Draft;
 use crate::commands::view::{
-    ActiveCall, AppViewState, AttachmentView, AudioView, CallPhase, CallTile, CallView, CameraView,
-    CantDecrypt, CardStatus, CopiedLink, CreateRoomView, DirectoryView, EncryptionStep,
-    EncryptionView, IdentityAlertView, InvitePeopleView, InviteView, InviteeRow, JoinOffer,
-    JoinRefusal, LifecycleView, LoginStep, MentionsView, MicrophoneView, NotificationsView,
-    PackView, PaginationView, PinnedView, PresenceView, ReadersView, RoomInfoView, RoomLogView,
-    RoomMenuTarget, RoomPreviewSheet, RoomPreviewView, RosterRow, ScreenView, SourceState,
-    SpaceIndexRow, SpaceIndexView, SpaceMatch, TileKind, TileState, Toast, TrackFile, TypingView,
-    UnsentMessage, UpgradeView, UserInfoView, VideoView,
+    AccountStep, AccountView, ActiveCall, AppViewState, AttachmentView, AudioView, AuthPrompt,
+    CallPhase, CallTile, CallView, CameraView, CantDecrypt, CardStatus, CopiedLink, CreateRoomView,
+    DirectoryView, EncryptionStep, EncryptionView, IdentityAlertView, InvitePeopleView, InviteView,
+    InviteeRow, JoinOffer, JoinRefusal, LifecycleView, LoginStep, LogoutView, MentionsView,
+    MicrophoneView, NotificationsView, PackView, PaginationView, PinnedView, PresenceView,
+    ReadersView, RoomInfoView, RoomLogView, RoomMenuTarget, RoomPreviewSheet, RoomPreviewView,
+    RosterRow, ScreenView, SourceState, SpaceIndexRow, SpaceIndexView, SpaceMatch, TileKind,
+    TileState, Toast, TrackFile, TypingView, UnsentMessage, UpgradeView, UserInfoView, VideoView,
 };
 use crate::domain::call::video::ScreenRefusal;
 use crate::domain::call::{CallIntent, RoomCall};
+use crate::domain::capabilities::{AVATAR_FIELD, AccountApi, AccountFacts, DISPLAY_NAME_FIELD};
 use crate::domain::encryption::KeyStorage;
 use crate::domain::event_size::Oversize;
 use crate::domain::image_pack::{ImagePack, ImageUsage, PackOrigin, PackTitle};
@@ -28,6 +29,7 @@ use crate::domain::room::{Room, Space};
 use crate::domain::room_info::{Reader, RosterSection};
 use crate::domain::room_preview::{PreviewMembership, RoomPreview};
 use crate::domain::room_state::HistoryVisibility;
+use crate::domain::sessions::OwnSessions;
 use crate::domain::space_index::{ChildKind, JoinRule};
 use crate::domain::sync::{ConnectionStatus, ReauthReason};
 use crate::domain::timeline::{OlderHistory, SourceEncryption};
@@ -61,6 +63,8 @@ pub struct ViewDto {
     call: CallDto,
     notifications: Vec<NotificationDto>,
     encryption: EncryptionDto,
+    account: Option<AccountDto>,
+    logout: Option<LogoutDto>,
     toast: ToastDto,
     message_link: LinkDto,
     room_link: LinkDto,
@@ -255,7 +259,65 @@ struct EncryptionDto {
     step: Option<&'static str>,
     activity: Option<&'static str>,
     recovery_key: Option<String>,
+    key_file: Option<String>,
+    keys_exported: Option<usize>,
+    keys_imported: Option<(usize, usize)>,
+    auth: Option<AuthDto>,
     error: Option<MessageDto>,
+}
+
+#[derive(Serialize)]
+struct AuthDto {
+    stage: &'static str,
+    error: MessageDto,
+}
+
+#[derive(Serialize)]
+struct AccountDto {
+    step: &'static str,
+    activity: &'static str,
+    busy_session: Option<String>,
+    auth: Option<AuthDto>,
+    auth_for: Option<&'static str>,
+    this_session: Option<ThisSessionDto>,
+    sessions: Option<Vec<OwnSessionDto>>,
+    facts: Option<AccountFactsDto>,
+    error: MessageDto,
+    notice: MessageDto,
+}
+
+#[derive(Serialize)]
+struct ThisSessionDto {
+    device_id: String,
+    name: Option<String>,
+    fingerprint: Option<String>,
+}
+
+#[derive(Serialize)]
+struct OwnSessionDto {
+    device_id: String,
+    name: Option<String>,
+    last_seen_ms: Option<u64>,
+    last_seen_ip: Option<String>,
+    trust: &'static str,
+}
+
+#[derive(Serialize)]
+#[allow(clippy::struct_excessive_bools)]
+struct AccountFactsDto {
+    api: &'static str,
+    pages: bool,
+    change_password: bool,
+    display_name_settable: bool,
+    avatar_settable: bool,
+    default_room_version: String,
+    forget_forced_upon_leave: bool,
+}
+
+#[derive(Serialize)]
+struct LogoutDto {
+    keys_at_risk: bool,
+    unsent: usize,
 }
 
 #[derive(Serialize)]
@@ -724,6 +786,8 @@ pub fn view(source: &AppViewState) -> ViewDto {
         call: call(&source.call),
         notifications: notifications(&source.notifications),
         encryption: encryption(&source.encryption),
+        account: account(&source.account),
+        logout: logout(source.logout),
         toast: toast(&source.toast),
         message_link: link(&source.message_link),
         room_link: link(&source.room_link),
@@ -1006,13 +1070,101 @@ fn encryption(source: &EncryptionView) -> EncryptionDto {
         activity: dialog.map(|dialog| names::encryption_activity(dialog.activity)),
         recovery_key: dialog.and_then(|dialog| match &dialog.step {
             EncryptionStep::ShowingKey(key) => Some(key.expose().to_owned()),
-            EncryptionStep::Overview
-            | EncryptionStep::EnteringKey
-            | EncryptionStep::Unlocked
-            | EncryptionStep::UnlockedWithoutBackup => None,
+            _ => None,
+        }),
+        key_file: dialog.and_then(|dialog| match &dialog.step {
+            EncryptionStep::ExportingKeys(file)
+            | EncryptionStep::ImportingKeys(file)
+            | EncryptionStep::KeysExported { file, .. } => Some(file.clone()),
+            _ => None,
+        }),
+        keys_exported: dialog.and_then(|dialog| match &dialog.step {
+            EncryptionStep::KeysExported { count, .. } => Some(*count),
+            _ => None,
+        }),
+        keys_imported: dialog.and_then(|dialog| match &dialog.step {
+            EncryptionStep::KeysImported { imported, total } => Some((*imported, *total)),
+            _ => None,
+        }),
+        auth: dialog.and_then(|dialog| match &dialog.step {
+            EncryptionStep::AuthenticatingSetup(prompt)
+            | EncryptionStep::AuthenticatingReset(prompt) => Some(auth(prompt)),
+            _ => None,
         }),
         error: dialog.map(|dialog| message(&dialog.error)),
     }
+}
+
+fn auth(prompt: &AuthPrompt) -> AuthDto {
+    AuthDto {
+        stage: names::auth_stage(prompt.stage),
+        error: message(&prompt.error),
+    }
+}
+
+fn account(source: &AccountView) -> Option<AccountDto> {
+    let dialog = source.dialog.as_ref()?;
+    Some(AccountDto {
+        step: names::account_step(&dialog.step),
+        activity: names::account_activity(dialog.activity),
+        busy_session: dialog.busy_session.clone(),
+        auth: match &dialog.step {
+            AccountStep::Authenticating(account_auth) => Some(auth(&account_auth.prompt)),
+            _ => None,
+        },
+        auth_for: match &dialog.step {
+            AccountStep::Authenticating(account_auth) => {
+                Some(names::account_activity(account_auth.guarding))
+            }
+            _ => None,
+        },
+        this_session: dialog.sessions.as_ref().map(|sessions| ThisSessionDto {
+            device_id: sessions.this.device_id.clone(),
+            name: sessions.this.name.clone(),
+            fingerprint: sessions.this.fingerprint(),
+        }),
+        sessions: dialog.sessions.as_ref().map(own_sessions),
+        facts: dialog.facts.as_ref().map(account_facts),
+        error: message(&dialog.error),
+        notice: message(&dialog.notice),
+    })
+}
+
+fn own_sessions(sessions: &OwnSessions) -> Vec<OwnSessionDto> {
+    sessions
+        .others
+        .iter()
+        .map(|session| OwnSessionDto {
+            device_id: session.device_id.clone(),
+            name: session.name.clone(),
+            last_seen_ms: session.last_seen_ms,
+            last_seen_ip: session.last_seen_ip.clone(),
+            trust: names::device_trust(session.trust),
+        })
+        .collect()
+}
+
+fn account_facts(facts: &AccountFacts) -> AccountFactsDto {
+    let capabilities = &facts.capabilities;
+    AccountFactsDto {
+        api: match facts.api {
+            AccountApi::Legacy => "legacy",
+            AccountApi::OAuth { .. } => "oauth",
+        },
+        pages: matches!(facts.api, AccountApi::OAuth { pages: true }),
+        change_password: capabilities.change_password,
+        display_name_settable: capabilities.profile_fields.can_set(DISPLAY_NAME_FIELD),
+        avatar_settable: capabilities.profile_fields.can_set(AVATAR_FIELD),
+        default_room_version: capabilities.default_room_version.clone(),
+        forget_forced_upon_leave: capabilities.forget_forced_upon_leave,
+    }
+}
+
+fn logout(source: LogoutView) -> Option<LogoutDto> {
+    source.warning.map(|risks| LogoutDto {
+        keys_at_risk: risks.keys_at_risk,
+        unsent: risks.unsent,
+    })
 }
 
 fn mentions(source: &MentionsView) -> MentionsDto {

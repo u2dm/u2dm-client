@@ -1,0 +1,104 @@
+import { IconSet } from "@lucide";
+
+import { LogoutView } from "../../../views.slint";
+import { Actions } from "../../../actions.slint";
+import { MetaTip, Reactions } from "../../../local.slint";
+import { AppStyle, Space } from "../../../theme.slint";
+import { AppButton } from "../../../components/button.slint";
+import { DialogCard, ModalHost } from "../../../components/overlay.slint";
+import { DialogNote, Verdict } from "./verification.slint";
+
+export component LogoutWarningDialog inherits ModalHost {
+    dim-opacity: AppStyle.dialog-scrim;
+    label: @tr("Log out");
+    dismissed => {
+        Actions.cancel-logout();
+    }
+    opened => {
+        Reactions.close();
+        MetaTip.clear();
+    }
+
+    property <length> card-width: min(AppStyle.card-width-wide, root.width - AppStyle.card-inset);
+
+    DialogCard {
+        x: (root.width - self.width) / 2;
+        y: (root.height - self.height) / 2;
+        width: root.card-width;
+        height: card-body.preferred-height;
+
+        card-body := VerticalLayout {
+            padding: Space.xxl;
+            spacing: Space.xl;
+
+            Verdict {
+                icon: IconSet.TriangleAlert;
+                tint: AppStyle.warning;
+                surface: AppStyle.overlay-subtle;
+                title: @tr("Log out?");
+            }
+
+            if LogoutView.keys-at-risk: DialogNote {
+                text: @tr("None of your other sessions is verified, and your message keys aren't backed up. If you log out now, you lose access to your encrypted messages for good.");
+            }
+
+            if LogoutView.keys-at-risk: HorizontalLayout {
+                spacing: Space.lg;
+
+                AppButton {
+                    horizontal-stretch: 1;
+                    above-modal: true;
+                    text: @tr("Set up recovery");
+                    icon: IconSet.KeyRound;
+                    filled: false;
+                    clicked => {
+                        Actions.cancel-logout();
+                        Actions.open-encryption();
+                    }
+                }
+
+                AppButton {
+                    horizontal-stretch: 1;
+                    above-modal: true;
+                    text: @tr("Export room keys");
+                    icon: IconSet.FileDown;
+                    filled: false;
+                    clicked => {
+                        Actions.cancel-logout();
+                        Actions.open-encryption();
+                        Actions.start-key-export();
+                    }
+                }
+            }
+
+            if LogoutView.unsent > 0: DialogNote {
+                text: @tr("{n} message hasn't been sent yet. Logging out discards it." | "{n} messages haven't been sent yet. Logging out discards them." % LogoutView.unsent);
+            }
+
+            HorizontalLayout {
+                spacing: Space.lg;
+
+                AppButton {
+                    horizontal-stretch: 1;
+                    above-modal: true;
+                    text: @tr("Cancel");
+                    filled: false;
+                    clicked => {
+                        Actions.cancel-logout();
+                    }
+                }
+
+                AppButton {
+                    horizontal-stretch: 1;
+                    above-modal: true;
+                    text: @tr("Log out anyway");
+                    icon: IconSet.LogOut;
+                    tint: AppStyle.call-decline;
+                    clicked => {
+                        Actions.confirm-logout();
+                    }
+                }
+            }
+        }
+    }
+}

@@ -105,6 +105,22 @@ export struct UserDeviceEntry {
     device-id: string,
     name: string,
     trust: DeviceTrust,
+    last-seen: string,
+    ip: string,
+}
+
+export struct RenameSessionRequest {
+    device-id: string,
+    name: string,
+}
+
+export struct ChangePasswordRequest {
+    password: string,
+    sign-out-others: bool,
+}
+
+export struct DeactivateRequest {
+    erase: bool,
 }
 
 export struct StartCallRequest {

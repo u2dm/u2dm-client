@@ -44,6 +44,7 @@ use crate::domain::room::{Room, Space};
 use crate::domain::room_info::{MemberRole, Reader, RosterMember};
 use crate::domain::room_log::{LogLevel, LogLine};
 use crate::domain::room_preview::RoomPreview;
+use crate::domain::sessions::OwnSession;
 use crate::domain::space_index::{ChildKind, SpaceChild};
 use crate::domain::timeline::EnrichmentDelta;
 use crate::domain::user_info::{DeviceTrust, Pronouns, UserDevice, UserProfile};
@@ -619,6 +620,8 @@ pub struct UserDeviceDto {
     pub device_id: SharedString,
     pub name: SharedString,
     pub trust: DeviceTrust,
+    pub last_seen: SharedString,
+    pub ip: SharedString,
 }
 
 pub struct LogLineDto {
@@ -1701,6 +1704,26 @@ pub fn user_device_to_dto(device: &UserDevice) -> UserDeviceDto {
             .as_deref()
             .map_or_else(SharedString::new, SharedString::from),
         trust: device.trust,
+        last_seen: SharedString::new(),
+        ip: SharedString::new(),
+    }
+}
+
+pub fn own_session_to_dto(session: &OwnSession) -> UserDeviceDto {
+    UserDeviceDto {
+        device_id: SharedString::from(session.device_id.as_str()),
+        name: session
+            .name
+            .as_deref()
+            .map_or_else(SharedString::new, SharedString::from),
+        trust: session.trust,
+        last_seen: session.last_seen_ms.map_or_else(SharedString::new, |at| {
+            SharedString::from(room_activity_label(at))
+        }),
+        ip: session
+            .last_seen_ip
+            .as_deref()
+            .map_or_else(SharedString::new, SharedString::from),
     }
 }
 

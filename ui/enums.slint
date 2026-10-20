@@ -170,6 +170,26 @@ export enum UserMessageKind {
     recovery-setup-failed,
     recovery-backup-in-the-way,
     recovery-key-change-failed,
+    auth-password-wrong,
+    auth-step-unfinished,
+    auth-refused,
+    auth-unsupported,
+    session-rename-failed,
+    session-sign-out-failed,
+    session-signed-out,
+    password-change-failed,
+    new-password-too-weak,
+    new-password-refused,
+    password-changed,
+    password-changed-others-signed-out,
+    deactivation-failed,
+    account-page-opened,
+    identity-reset-failed,
+    encryption-setup-failed,
+    key-export-failed,
+    key-import-failed,
+    key-passphrase-wrong,
+    key-file-unreadable,
 }
 
 export enum SendState {
@@ -500,6 +520,14 @@ export enum EncryptionStep {
     unlocked,
     unlocked-without-backup,
     showing-key,
+    confirming-reset,
+    authenticating-setup,
+    authenticating-reset,
+    identity-reset,
+    exporting-keys,
+    keys-exported,
+    importing-keys,
+    keys-imported,
 }
 
 export enum EncryptionActivity {
@@ -509,6 +537,32 @@ export enum EncryptionActivity {
     setting-up-recovery,
     changing-key,
     retrying-setup,
+    resetting-identity,
+    authenticating,
+    choosing-file,
+    exporting-keys,
+    importing-keys,
+}
+
+export enum AuthStage {
+    password,
+    approve,
+    browser,
+}
+
+export enum AccountStep {
+    overview,
+    changing-password,
+    confirming-deactivation,
+    authenticating,
+}
+
+export enum AccountActivity {
+    none,
+    renaming,
+    signing-out,
+    changing-password,
+    deactivating,
 }
 
 export enum MemberRowKind {

@@ -335,6 +335,66 @@ export global UserMessages {
         if kind == UserMessageKind.recovery-key-change-failed {
             return @tr("Could not change the recovery key. Please try again.");
         }
+        if kind == UserMessageKind.auth-password-wrong {
+            return @tr("That password isn't right. Please try again.");
+        }
+        if kind == UserMessageKind.auth-step-unfinished {
+            return @tr("Your homeserver says that step isn't finished yet. Finish it in your browser, then continue.");
+        }
+        if kind == UserMessageKind.auth-refused {
+            return @tr("Your homeserver refused the confirmation: {}", detail);
+        }
+        if kind == UserMessageKind.auth-unsupported {
+            return @tr("Your homeserver asks for a kind of confirmation U2DM can't do yet. Use another Matrix app for this.");
+        }
+        if kind == UserMessageKind.session-rename-failed {
+            return @tr("Could not rename the session. Please try again.");
+        }
+        if kind == UserMessageKind.session-sign-out-failed {
+            return @tr("Could not sign out of {}. Please try again.", detail);
+        }
+        if kind == UserMessageKind.session-signed-out {
+            return @tr("Signed out of {}.", detail);
+        }
+        if kind == UserMessageKind.password-change-failed {
+            return @tr("Could not change your password. Please try again.");
+        }
+        if kind == UserMessageKind.new-password-too-weak {
+            return @tr("Use at least 8 characters, with a lower-case letter, an upper-case letter, a number and a symbol.");
+        }
+        if kind == UserMessageKind.new-password-refused {
+            return @tr("Your homeserver refused that password: {}", detail);
+        }
+        if kind == UserMessageKind.password-changed {
+            return @tr("Your password was changed.");
+        }
+        if kind == UserMessageKind.password-changed-others-signed-out {
+            return @tr("Your password was changed, and your other sessions were signed out.");
+        }
+        if kind == UserMessageKind.deactivation-failed {
+            return @tr("Could not deactivate your account. Please try again.");
+        }
+        if kind == UserMessageKind.account-page-opened {
+            return @tr("Your homeserver's account page opened in your browser. Continue there.");
+        }
+        if kind == UserMessageKind.identity-reset-failed {
+            return @tr("Could not reset your identity. Please try again.");
+        }
+        if kind == UserMessageKind.encryption-setup-failed {
+            return @tr("Could not set up encryption. Please try again.");
+        }
+        if kind == UserMessageKind.key-export-failed {
+            return @tr("Could not export your room keys.");
+        }
+        if kind == UserMessageKind.key-import-failed {
+            return @tr("Could not import room keys from that file.");
+        }
+        if kind == UserMessageKind.key-passphrase-wrong {
+            return @tr("That passphrase doesn't open this file.");
+        }
+        if kind == UserMessageKind.key-file-unreadable {
+            return @tr("That file isn't a room key export U2DM can read.");
+        }
         return "";
     }
 }

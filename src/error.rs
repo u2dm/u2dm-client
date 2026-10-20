@@ -50,6 +50,9 @@ pub enum AppError {
     #[error("the person is no longer in your direct chat with them")]
     PartnerLeftChat,
 
+    #[error("the homeserver refused the new password as too weak: {0}")]
+    WeakPassword(String),
+
     #[error("{0}")]
     Other(String),
 }

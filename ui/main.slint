@@ -32,6 +32,8 @@ import {
     PresenceView,
     CallView,
     EncryptionView,
+    AccountView,
+    LogoutView,
     WindowView,
     SourceView,
     RoomMenuView,
@@ -57,6 +59,8 @@ import { ReauthenticateScreen } from "./screens/login/reauthenticate.slint";
 import { ChatScreen } from "./screens/chat/chat.slint";
 import { VerificationDialog } from "./screens/chat/components/verification.slint";
 import { EncryptionDialog } from "./screens/chat/components/encryption.slint";
+import { AccountDialog } from "./screens/chat/components/account.slint";
+import { LogoutWarningDialog } from "./screens/chat/components/logout-warning.slint";
 import { AttachmentDialog } from "./screens/chat/components/timeline/attachment-dialog.slint";
 import { PollDialog } from "./screens/chat/components/timeline/poll-dialog.slint";
 import { VideoPlayer } from "./screens/chat/components/timeline/video-player.slint";
@@ -75,7 +79,7 @@ export { EmojiStore }
 export { LoginPhase, ConnectionState, TimelineState, VerificationPhase, MediaState, MediaFailure }
 export { MessageKind, PreviewKind, ServiceKind, LoginMethodKind, AudioKind }
 export { LoginView, SessionView, DirectoryView, SpaceIndexView, RoomView, PackView, VerificationView }
-export { AttachmentView, VideoView, AudioView, UnsentView, IdentityAlertView, UpgradeView, TypingView, PresenceView, CallView, EncryptionView, WindowView, RoomInfoView, SourceView, RoomMenuView, RoomLogView, UserInfoView, InviteView, RoomPreviewView, CreateRoomView, InvitePeopleView, ReadersView, MentionsView }
+export { AttachmentView, VideoView, AudioView, UnsentView, IdentityAlertView, UpgradeView, TypingView, PresenceView, CallView, EncryptionView, AccountView, LogoutView, WindowView, RoomInfoView, SourceView, RoomMenuView, RoomLogView, UserInfoView, InviteView, RoomPreviewView, CreateRoomView, InvitePeopleView, ReadersView, MentionsView }
 export { Actions }
 export { Probe, ReplySwipe, RoomMenu }
 export { NotificationText, SpoilerCover }
@@ -174,7 +178,9 @@ export component AppWindow inherits Window {
     if Shell.room-preview-open: RoomPreviewDialog { }
     if Shell.source-open: EventSourceDialog { }
     if Shell.room-log-open: RoomLogDialog { }
+    if Shell.account-open: AccountDialog { }
     if Shell.encryption-open: EncryptionDialog { }
+    if Shell.logout-open: LogoutWarningDialog { }
     if LoginView.step == LoginPhase.logged-in && CallView.ring-visible: IncomingCallCard {
         x: root.width - self.width - Metrics.incoming-call-inset;
         y: Metrics.header-row + Metrics.incoming-call-top;

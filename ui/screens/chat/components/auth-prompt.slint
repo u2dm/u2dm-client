@@ -1,0 +1,134 @@
+import { IconSet } from "@lucide";
+
+import { AuthStage, UserMessageKind } from "../../../enums.slint";
+import { AppStyle, Space } from "../../../theme.slint";
+import { AppButton } from "../../../components/button.slint";
+import { ErrorBanner } from "../../../components/banner.slint";
+import { TextField } from "../../../components/text-field.slint";
+import { DialogNote, Verdict } from "./verification.slint";
+
+export component AuthPrompt inherits VerticalLayout {
+    in property <AuthStage> stage;
+    in property <string> purpose;
+    in property <bool> busy;
+    in property <UserMessageKind> error: UserMessageKind.none;
+    in property <string> error-detail;
+
+    callback submit-password(string);
+    callback continue-clicked();
+    callback reopen-clicked();
+    callback cancel-clicked();
+
+    property <string> typed;
+    property <bool> asks-password: root.stage == AuthStage.password;
+
+    function submit() {
+        if root.typed == "" || root.busy {
+            return;
+        }
+        root.submit-password(root.typed);
+        root.typed = "";
+    }
+
+    pure function title-for(stage: AuthStage) -> string {
+        if stage == AuthStage.approve {
+            return @tr("Approve it in your browser");
+        }
+        if stage == AuthStage.browser {
+            return @tr("Finish in your browser");
+        }
+        return @tr("Confirm it's you");
+    }
+
+    pure function note-for(stage: AuthStage) -> string {
+        if stage == AuthStage.approve {
+            return @tr("Your homeserver opened a page in your browser to approve this. Approve it there, then come back and continue.");
+        }
+        if stage == AuthStage.browser {
+            return @tr("Your homeserver needs a step it handles on its own page, which opened in your browser. Finish it there, then come back and continue.");
+        }
+        return @tr("Enter your account password.");
+    }
+
+    spacing: Space.xl;
+
+    Verdict {
+        icon: root.asks-password ? IconSet.LockKeyhole : IconSet.ExternalLink;
+        tint: AppStyle.accent-on-surface;
+        surface: AppStyle.overlay-subtle;
+        title: root.title-for(root.stage);
+    }
+
+    if root.purpose != "": DialogNote {
+        text: root.purpose;
+    }
+
+    DialogNote {
+        text: root.note-for(root.stage);
+    }
+
+    if root.asks-password: TextField {
+        icon: IconSet.KeyRound;
+        secret: true;
+        above-modal: true;
+        enabled: !root.busy;
+        placeholder: @tr("Password");
+        label: @tr("Account password");
+        reveal-label: @tr("Show the password");
+        conceal-label: @tr("Hide the password");
+        text <=> root.typed;
+        init => {
+            self.focus-input();
+        }
+        accepted => {
+            root.submit();
+        }
+    }
+
+    if !root.asks-password: AppButton {
+        above-modal: true;
+        text: @tr("Open the page again");
+        icon: IconSet.ExternalLink;
+        filled: false;
+        enabled: !root.busy;
+        clicked => {
+            root.reopen-clicked();
+        }
+    }
+
+    if !root.busy && root.error != UserMessageKind.none: ErrorBanner {
+        messages: [{ kind: root.error, detail: root.error-detail }];
+    }
+
+    HorizontalLayout {
+        spacing: Space.lg;
+
+        AppButton {
+            horizontal-stretch: 1;
+            above-modal: true;
+            text: @tr("Cancel");
+            icon: IconSet.X;
+            filled: false;
+            enabled: !root.busy;
+            clicked => {
+                root.cancel-clicked();
+            }
+        }
+
+        AppButton {
+            horizontal-stretch: 1;
+            above-modal: true;
+            text: @tr("Continue");
+            icon: IconSet.Check;
+            enabled: root.busy || !root.asks-password || root.typed != "";
+            busy: root.busy;
+            clicked => {
+                if root.asks-password {
+                    root.submit();
+                } else {
+                    root.continue-clicked();
+                }
+            }
+        }
+    }
+}

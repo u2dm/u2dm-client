@@ -10,8 +10,9 @@ use slint::{
 use tokio::runtime::Runtime;
 use tokio::sync::{mpsc, watch};
 use u2dm_ui::{
-    Actions, AppWindow, AttachmentKind as UiAttachmentKind, AttachmentView,
-    AudioKind as UiAudioKind, AudioView, BodyLine, BodyPiece, CallCamera as UiCallCamera,
+    AccountActivity as UiAccountActivity, AccountStep as UiAccountStep, AccountView, Actions,
+    AppWindow, AttachmentKind as UiAttachmentKind, AttachmentView, AudioKind as UiAudioKind,
+    AudioView, AuthStage as UiAuthStage, BodyLine, BodyPiece, CallCamera as UiCallCamera,
     CallMic as UiCallMic, CallOffer as UiCallOffer, CallPhase as UiCallPhase,
     CallRefusal as UiCallRefusal, CallScreen as UiCallScreen,
     CallScreenRefusal as UiCallScreenRefusal, CallTileEntry, CallTileState as UiCallTileState,
@@ -26,7 +27,7 @@ use u2dm_ui::{
     InviteKind as UiInviteKind, InvitePeopleView, InviteView, InviteeEntry,
     InviteeState as UiInviteeState, LogLevel as UiLogLevel, LogLineEntry,
     LoginActivity as UiLoginActivity, LoginMethodKind as UiLoginMethodKind, LoginPhase, LoginView,
-    MediaFailure as UiMediaFailure, MediaState as UiMediaState, MemberEntry,
+    LogoutView, MediaFailure as UiMediaFailure, MediaState as UiMediaState, MemberEntry,
     MemberRole as UiMemberRole, MemberRowKind as UiMemberRowKind, MentionWord, MentionsView,
     MessageEntry, MessageKind as UiMessageKind, Moderation as UiModeration, NotificationText,
     NotifyMode as UiNotifyMode, PackCell, PackOrigin as UiPackOrigin, PackRow,
@@ -83,24 +84,24 @@ use super::props::EnumProp;
 use super::props::{BoolProp, IntProp, StringProp, UiProps};
 use super::router::{DraftVerdict, EditedRow, EditedText};
 use super::schema::{
-    attachment_kinds, audio_kinds, body_line_fields, body_piece_fields, bool_props, call_cameras,
-    call_mics, call_offers, call_phases, call_refusals, call_screen_refusals, call_screens,
-    call_tile_fields, call_tile_marks, child_accesses, connection_states, create_room_statuses,
-    decryption_failures, deliveries, device_trusts, direct_chats, emoji_arts,
-    encryption_activities, encryption_standings, encryption_steps, enum_props,
-    identity_alert_kinds, identity_trusts, int_props, invite_answers, invite_kinds, invitee_fields,
-    invitee_states, log_levels, log_line_fields, login_activities, login_methods, login_phases,
-    media_failures, media_states, member_roles, member_row_fields, member_row_kinds,
-    message_fields, message_kinds, model_props, notify_modes, pack_cell_fields, pack_origins,
-    pack_row_fields, pack_surfaces, pack_tab_fields, pending_moderations, people_search_statuses,
-    poll_answer_fields, poll_phases, presence_lines, preview_kinds, reaction_fields,
-    reaction_sends, reactor_fields, readers_statuses, recovery_statuses, room_accesses,
-    room_call_marks, room_fields, room_info_placements, room_kinds, room_memberships,
-    room_preview_statuses, room_row_kinds, room_scopes, roster_statuses, send_states,
-    service_kinds, shield_reasons, shields, simple_callbacks, source_encryptions, source_statuses,
-    space_child_fields, space_fields, space_index_statuses, spoiler_states, string_props,
-    timeline_states, upgrade_links, user_device_fields, user_message_kinds,
-    verification_activities, verification_phases, verify_offers,
+    account_activities, account_steps, attachment_kinds, audio_kinds, auth_stages,
+    body_line_fields, body_piece_fields, bool_props, call_cameras, call_mics, call_offers,
+    call_phases, call_refusals, call_screen_refusals, call_screens, call_tile_fields,
+    call_tile_marks, child_accesses, connection_states, create_room_statuses, decryption_failures,
+    deliveries, device_trusts, direct_chats, emoji_arts, encryption_activities,
+    encryption_standings, encryption_steps, enum_props, identity_alert_kinds, identity_trusts,
+    int_props, invite_answers, invite_kinds, invitee_fields, invitee_states, log_levels,
+    log_line_fields, login_activities, login_methods, login_phases, media_failures, media_states,
+    member_roles, member_row_fields, member_row_kinds, message_fields, message_kinds, model_props,
+    notify_modes, pack_cell_fields, pack_origins, pack_row_fields, pack_surfaces, pack_tab_fields,
+    pending_moderations, people_search_statuses, poll_answer_fields, poll_phases, presence_lines,
+    preview_kinds, reaction_fields, reaction_sends, reactor_fields, readers_statuses,
+    recovery_statuses, room_accesses, room_call_marks, room_fields, room_info_placements,
+    room_kinds, room_memberships, room_preview_statuses, room_row_kinds, room_scopes,
+    roster_statuses, send_states, service_kinds, shield_reasons, shields, simple_callbacks,
+    source_encryptions, source_statuses, space_child_fields, space_fields, space_index_statuses,
+    spoiler_states, string_props, timeline_states, upgrade_links, user_device_fields,
+    user_message_kinds, verification_activities, verification_phases, verify_offers,
 };
 use super::session::active_models;
 use super::video::{self, millis_to_duration};
@@ -110,11 +111,11 @@ use crate::commands::effects::{Effect, VerificationActivity};
 use crate::commands::messages::{UserMessage, UserMessageKind};
 use crate::commands::ui::{ComposerActivity, TimelineVisibility, ViewportChanged, WindowAttention};
 use crate::commands::view::{
-    AppViewState, AttachmentKind, CallPhase, CameraView, ChildAccess, CreateRoomStatus, DirectChat,
-    EncryptionActivity, EncryptionStep, InviteeState, JoinRefusal, LoginActivity, LoginStep,
-    MicrophoneView, PendingAnswer, PendingModeration, PeopleSearchStatus, ReadersStatus,
-    RoomInfoPlacement, RoomPreviewSheet, RoomScope, RosterStatus, SourceState, SpaceIndexStatus,
-    UpgradeLink, VerifyOffer,
+    AccountActivity, AccountStep, AppViewState, AttachmentKind, AuthStage, CallPhase, CameraView,
+    ChildAccess, CreateRoomStatus, DirectChat, EncryptionActivity, EncryptionStep, InviteeState,
+    JoinRefusal, LoginActivity, LoginStep, MicrophoneView, PendingAnswer, PendingModeration,
+    PeopleSearchStatus, ReadersStatus, RoomInfoPlacement, RoomPreviewSheet, RoomScope,
+    RosterStatus, SourceState, SpaceIndexStatus, UpgradeLink, VerifyOffer,
 };
 use crate::domain::auth::LoginMethod;
 use crate::domain::call::video::ScreenRefusal;
@@ -203,6 +204,9 @@ macro_rules! bind_compiled_callbacks {
     };
     (@one $win:ident $tx:ident $on:ident $fn:ident user) => {
         bind_compiled_callbacks!(@string $win $tx $on $fn)
+    };
+    (@one $win:ident $tx:ident $on:ident $fn:ident manual) => {
+        bind_compiled_callbacks!(@unit $win $tx $on $fn)
     };
     (@one $win:ident $tx:ident $on:ident $fn:ident manual_string) => {
         bind_compiled_callbacks!(@string $win $tx $on $fn)
@@ -478,6 +482,9 @@ encryption_standings!(impl_slint_enum Standing UiEncryptionStanding;);
 recovery_statuses!(impl_slint_enum Recovery UiRecoveryStatus;);
 encryption_steps!(impl_slint_enum EncryptionStep UiEncryptionStep;);
 encryption_activities!(impl_slint_enum EncryptionActivity UiEncryptionActivity;);
+auth_stages!(impl_slint_enum AuthStage UiAuthStage;);
+account_steps!(impl_slint_enum AccountStep UiAccountStep;);
+account_activities!(impl_slint_enum AccountActivity UiAccountActivity;);
 preview_kinds!(impl_slint_enum MessagePreviewKind UiPreviewKind;);
 audio_kinds!(impl_slint_enum AudioKind UiAudioKind;);
 service_kinds!(impl_slint_enum ServiceKind UiServiceKind;);

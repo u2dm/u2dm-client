@@ -278,6 +278,28 @@ pub(super) fn command_allowed(phase: AppPhase, cmd: &UiCommand) -> bool {
         | UiCommand::SetUpRecovery
         | UiCommand::ChangeRecoveryKey
         | UiCommand::RetryEncryptionSetup
+        | UiCommand::StartIdentityReset
+        | UiCommand::ResetIdentity
+        | UiCommand::StartKeyExport
+        | UiCommand::ExportRoomKeys(_)
+        | UiCommand::StartKeyImport
+        | UiCommand::ImportRoomKeys(_)
+        | UiCommand::OpenAccount
+        | UiCommand::CloseAccount
+        | UiCommand::ShowAccountOverview
+        | UiCommand::RenameSession { .. }
+        | UiCommand::SignOutSession(_)
+        | UiCommand::OpenAccountPage(_)
+        | UiCommand::StartPasswordChange
+        | UiCommand::ChangePassword { .. }
+        | UiCommand::StartDeactivation
+        | UiCommand::DeactivateAccount { .. }
+        | UiCommand::AnswerAuthPassword(_)
+        | UiCommand::ContinueAuth
+        | UiCommand::ReopenAuthPage
+        | UiCommand::CancelAuth
+        | UiCommand::ConfirmLogout
+        | UiCommand::CancelLogout
         | UiCommand::SendMessage { .. }
         | UiCommand::EditMessage { .. }
         | UiCommand::SuggestMentions { .. }

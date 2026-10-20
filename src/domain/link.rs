@@ -5,7 +5,7 @@ use url::{Host, Url};
 const MESSAGE_LINK_SCHEMES: &[&str] = &["http", "https", "mailto"];
 const LOOPBACK_NAME: &str = "localhost";
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LauncherSafeUrl(Url);
 
 impl LauncherSafeUrl {

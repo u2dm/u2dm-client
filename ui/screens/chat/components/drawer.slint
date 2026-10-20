@@ -62,7 +62,7 @@ export component Drawer inherits Rectangle {
         max(Metrics.drawer-min-width, root.width - Metrics.overlay-peek),
     );
     property <bool> accounts-expanded: false;
-    property <int> action-rows: 5;
+    property <int> action-rows: 6;
     property <length> accounts-height: root.accounts-expanded ? Metrics.drawer-accounts-row : 0;
     property <bool> encryption-needs-you: EncryptionView.standing == EncryptionStanding.unverified
         || EncryptionView.standing == EncryptionStanding.setup-refused
@@ -265,7 +265,7 @@ export component Drawer inherits Rectangle {
 
                 DrawerRow {
                     x: 0;
-                    y: actions.content-height - 4 * self.height;
+                    y: actions.content-height - 5 * self.height;
                     width: 100%;
                     icon: IconSet.Grid2x2Plus;
                     label: @tr("New space");
@@ -277,13 +277,25 @@ export component Drawer inherits Rectangle {
 
                 DrawerRow {
                     x: 0;
-                    y: actions.content-height - 3 * self.height;
+                    y: actions.content-height - 4 * self.height;
                     width: 100%;
                     icon: IconSet.DoorOpen;
                     label: @tr("Join a room");
                     clicked => {
                         root.dismiss();
                         Actions.open-room-finder();
+                    }
+                }
+
+                DrawerRow {
+                    x: 0;
+                    y: actions.content-height - 3 * self.height;
+                    width: 100%;
+                    icon: IconSet.UserRoundCog;
+                    label: @tr("Account and sessions");
+                    clicked => {
+                        root.dismiss();
+                        Actions.open-account();
                     }
                 }
 

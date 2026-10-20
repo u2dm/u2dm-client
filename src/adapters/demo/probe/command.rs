@@ -9,8 +9,9 @@ use crate::adapters::demo::attachments;
 use crate::adapters::ui::dump::Poke;
 use crate::adapters::ui::{link_command, matrix_link, room_address_entry};
 use crate::commands::ui::{MessageDraft, ReplyDraft, UiCommand};
+use crate::domain::capabilities::AccountPage;
 use crate::domain::emote::{ComposerText, Emote};
-use crate::domain::encryption::RecoveryKey;
+use crate::domain::encryption::{KeyPassphrase, RecoveryKey};
 use crate::domain::image_pack::PackId;
 use crate::domain::matrix_link::{RoomAddress, RoomLink};
 use crate::domain::media::AttachmentPick;
@@ -19,11 +20,16 @@ use crate::domain::poll::{ChoiceMode, PollDisclosure, PollDraft};
 use crate::domain::room::RoomId;
 use crate::domain::room_creation::{RoomAccess, RoomDraft, RoomKind};
 use crate::domain::sync::{ReauthReason, SessionLoss};
+use crate::domain::uia::AccountPassword;
 use crate::domain::user_info::UserId;
 use crate::ports::handoff::Handoff;
 use crate::ports::notifier::NoticeAction;
 
 const PROBE_EMOTE_HEIGHT: &str = "32";
+
+fn signs_out_others() -> bool {
+    true
+}
 
 #[derive(Deserialize)]
 #[serde(tag = "op", rename_all = "snake_case", deny_unknown_fields)]
@@ -252,6 +258,47 @@ pub enum ProbeCommand {
     SetUpRecovery,
     ChangeRecoveryKey,
     RetryEncryptionSetup,
+    StartIdentityReset,
+    ResetIdentity,
+    StartKeyExport,
+    ExportRoomKeys {
+        passphrase: String,
+    },
+    StartKeyImport,
+    ImportRoomKeys {
+        passphrase: String,
+    },
+    OpenAccount,
+    CloseAccount,
+    ShowAccountOverview,
+    RenameSession {
+        device_id: String,
+        name: String,
+    },
+    SignOutSession {
+        device_id: String,
+    },
+    OpenAccountPage,
+    OpenSessionsPage,
+    StartPasswordChange,
+    ChangePassword {
+        password: String,
+        #[serde(default = "signs_out_others")]
+        sign_out_others: bool,
+    },
+    StartDeactivation,
+    DeactivateAccount {
+        #[serde(default)]
+        erase: bool,
+    },
+    AnswerAuthPassword {
+        password: String,
+    },
+    ContinueAuth,
+    ReopenAuthPage,
+    CancelAuth,
+    ConfirmLogout,
+    CancelLogout,
     SendMessage {
         #[serde(default)]
         room_id: Option<String>,
@@ -847,6 +894,43 @@ pub fn to_driven(command: ProbeCommand, selected: Selection<'_>) -> Result<Drive
         ProbeCommand::SetUpRecovery => UiCommand::SetUpRecovery,
         ProbeCommand::ChangeRecoveryKey => UiCommand::ChangeRecoveryKey,
         ProbeCommand::RetryEncryptionSetup => UiCommand::RetryEncryptionSetup,
+        ProbeCommand::StartIdentityReset => UiCommand::StartIdentityReset,
+        ProbeCommand::ResetIdentity => UiCommand::ResetIdentity,
+        ProbeCommand::StartKeyExport => UiCommand::StartKeyExport,
+        ProbeCommand::ExportRoomKeys { passphrase } => {
+            UiCommand::ExportRoomKeys(KeyPassphrase::new(passphrase))
+        }
+        ProbeCommand::StartKeyImport => UiCommand::StartKeyImport,
+        ProbeCommand::ImportRoomKeys { passphrase } => {
+            UiCommand::ImportRoomKeys(KeyPassphrase::new(passphrase))
+        }
+        ProbeCommand::OpenAccount => UiCommand::OpenAccount,
+        ProbeCommand::CloseAccount => UiCommand::CloseAccount,
+        ProbeCommand::ShowAccountOverview => UiCommand::ShowAccountOverview,
+        ProbeCommand::RenameSession { device_id, name } => {
+            UiCommand::RenameSession { device_id, name }
+        }
+        ProbeCommand::SignOutSession { device_id } => UiCommand::SignOutSession(device_id),
+        ProbeCommand::OpenAccountPage => UiCommand::OpenAccountPage(AccountPage::Account),
+        ProbeCommand::OpenSessionsPage => UiCommand::OpenAccountPage(AccountPage::Sessions),
+        ProbeCommand::StartPasswordChange => UiCommand::StartPasswordChange,
+        ProbeCommand::ChangePassword {
+            password,
+            sign_out_others,
+        } => UiCommand::ChangePassword {
+            password: AccountPassword::new(password),
+            sign_out_others,
+        },
+        ProbeCommand::StartDeactivation => UiCommand::StartDeactivation,
+        ProbeCommand::DeactivateAccount { erase } => UiCommand::DeactivateAccount { erase },
+        ProbeCommand::AnswerAuthPassword { password } => {
+            UiCommand::AnswerAuthPassword(AccountPassword::new(password))
+        }
+        ProbeCommand::ContinueAuth => UiCommand::ContinueAuth,
+        ProbeCommand::ReopenAuthPage => UiCommand::ReopenAuthPage,
+        ProbeCommand::CancelAuth => UiCommand::CancelAuth,
+        ProbeCommand::ConfirmLogout => UiCommand::ConfirmLogout,
+        ProbeCommand::CancelLogout => UiCommand::CancelLogout,
         ProbeCommand::SendMessage {
             room_id,
             body,

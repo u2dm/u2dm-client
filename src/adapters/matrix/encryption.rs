@@ -1,5 +1,7 @@
 use std::collections::BTreeMap;
+use std::path::Path;
 use std::pin::Pin;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex as StdMutex};
 
 use async_trait::async_trait;
@@ -9,19 +11,26 @@ use matrix_sdk::Client;
 use matrix_sdk::encryption::identities::UserIdentity;
 use matrix_sdk::encryption::recovery::{RecoveryError, RecoveryState};
 use matrix_sdk::encryption::secret_storage::SecretStorageError;
+use matrix_sdk::encryption::{
+    CrossSigningResetAuthType, KeyExportError, OAuthCrossSigningResetInfo, RoomKeyImportError,
+};
 use matrix_sdk::ruma::api::client::keys::get_keys;
 use matrix_sdk::ruma::events::GlobalAccountDataEventType;
 use matrix_sdk::ruma::events::secret::request::SecretName;
 use matrix_sdk::ruma::{OwnedUserId, UserId};
 use matrix_sdk_base::crypto::secret_storage::DecodeError;
 use tokio::sync::{Notify, mpsc};
+use tokio::task::spawn_blocking;
 
 use super::session::ClientHandle;
+use super::uia;
 use super::user_info::own_user;
+use crate::adapters::private_fs;
 use crate::domain::encryption::{
-    AccountEncryption, IdentityOutcome, KeyStorage, Recovery, RecoveryAttempt, RecoveryKey,
-    RecoverySetup, SessionTrust,
+    AccountEncryption, IdentityOutcome, KeyImport, KeyPassphrase, KeyStorage, Recovery,
+    RecoveryAttempt, RecoveryKey, RecoverySetup, SessionTrust,
 };
+use crate::domain::uia::{AuthAnswer, AuthChallenge, Guarded, OAUTH_STAGE};
 use crate::error::{AppError, Result};
 use crate::ports::matrix::EncryptionPort;
 
@@ -32,6 +41,7 @@ pub(super) struct MatrixEncryption {
     matrix: Arc<ClientHandle>,
     changed: Notify,
     unpublished: Unpublished,
+    resetting: AtomicBool,
 }
 
 impl MatrixEncryption {
@@ -40,7 +50,17 @@ impl MatrixEncryption {
             matrix,
             changed: Notify::new(),
             unpublished: Unpublished::default(),
+            resetting: AtomicBool::new(false),
         }
+    }
+
+    async fn keep_published_identity(&self, client: &Client) {
+        let Ok(own) = own_user(client) else {
+            return;
+        };
+        self.unpublished.remember(client, &own).await;
+        read_own_identity_back(client, &own).await;
+        self.changed.notify_one();
     }
 }
 
@@ -90,8 +110,8 @@ impl EncryptionPort for MatrixEncryption {
         follow(&client, &self.changed, &self.unpublished, state_tx).await
     }
 
-    async fn set_up_identity(&self) -> Result<IdentityOutcome> {
-        let outcome = set_up_identity(&self.matrix.client().await?, &self.unpublished).await;
+    async fn set_up_identity(&self, auth: Option<&AuthAnswer>) -> Result<IdentityOutcome> {
+        let outcome = set_up_identity(&self.matrix.client().await?, &self.unpublished, auth).await;
         self.changed.notify_one();
         outcome
     }
@@ -140,9 +160,148 @@ impl EncryptionPort for MatrixEncryption {
         self.changed.notify_one();
         Ok(RecoveryKey::new(key))
     }
+
+    async fn reset_identity(&self) -> Result<Guarded> {
+        let client = self.matrix.client().await?;
+        self.resetting.store(true, Ordering::SeqCst);
+        let started = client.encryption().recovery().reset_identity().await;
+        self.changed.notify_one();
+        match started {
+            Ok(None) => {
+                self.resetting.store(false, Ordering::SeqCst);
+                identity_replaced(&client, &self.unpublished).await;
+                Ok(Guarded::Done)
+            }
+            Ok(Some(handle)) => {
+                tracing::info!(
+                    "the homeserver wants the user to authenticate before it takes the new identity"
+                );
+                Ok(Guarded::NeedsAuth(Box::new(reset_challenge(
+                    &client,
+                    handle.auth_type(),
+                ))))
+            }
+            Err(e) => {
+                self.resetting.store(false, Ordering::SeqCst);
+                self.keep_published_identity(&client).await;
+                Err(AppError::Other(format!(
+                    "could not reset the identity: {e}"
+                )))
+            }
+        }
+    }
+
+    async fn finish_identity_reset(&self, auth: &AuthAnswer) -> Result<Guarded> {
+        let client = self.matrix.client().await?;
+        let auth_data = uia::auth_data(&client, auth)?;
+        let uploaded = client.encryption().bootstrap_cross_signing(auth_data).await;
+        self.changed.notify_one();
+        match uploaded {
+            Ok(()) => {
+                self.resetting.store(false, Ordering::SeqCst);
+                identity_replaced(&client, &self.unpublished).await;
+                Ok(Guarded::Done)
+            }
+            Err(error) => {
+                if let Some(info) = error.as_uiaa_response() {
+                    return Ok(Guarded::NeedsAuth(Box::new(uia::challenge(&client, info))));
+                }
+                self.resetting.store(false, Ordering::SeqCst);
+                self.keep_published_identity(&client).await;
+                Err(AppError::Other(format!(
+                    "could not publish the new identity: {error}"
+                )))
+            }
+        }
+    }
+
+    async fn abandon_identity_reset(&self) {
+        if !self.resetting.swap(false, Ordering::SeqCst) {
+            return;
+        }
+        tracing::info!("abandoning the identity reset, keeping the identity the homeserver holds");
+        if let Ok(client) = self.matrix.client().await {
+            self.keep_published_identity(&client).await;
+        }
+    }
+
+    async fn export_room_keys(&self, path: &Path, passphrase: &KeyPassphrase) -> Result<usize> {
+        let client = self.matrix.client().await?;
+        let destination = path.to_path_buf();
+        spawn_blocking(move || private_fs::create_or_open_private_blocking(&destination))
+            .await
+            .map_err(|e| AppError::Other(format!("could not create the key file: {e}")))??;
+        let mut exported = 0;
+        client
+            .encryption()
+            .export_room_keys(path.to_path_buf(), passphrase.expose(), |_| {
+                exported += 1;
+                true
+            })
+            .await
+            .map_err(|e| AppError::Other(format!("could not export the room keys: {e}")))?;
+        Ok(exported)
+    }
+
+    async fn import_room_keys(&self, path: &Path, passphrase: &KeyPassphrase) -> Result<KeyImport> {
+        let client = self.matrix.client().await?;
+        let imported = client
+            .encryption()
+            .import_room_keys(path.to_path_buf(), passphrase.expose())
+            .await;
+        self.changed.notify_one();
+        match imported {
+            Ok(result) => Ok(KeyImport::Imported {
+                imported: result.imported_count,
+                total: result.total_count,
+            }),
+            Err(RoomKeyImportError::Export(KeyExportError::InvalidMac)) => {
+                Ok(KeyImport::WrongPassphrase)
+            }
+            Err(RoomKeyImportError::Export(
+                KeyExportError::InvalidHeaders
+                | KeyExportError::UnsupportedVersion
+                | KeyExportError::InvalidUtf8(_)
+                | KeyExportError::Json(_)
+                | KeyExportError::Decode(_),
+            )) => Ok(KeyImport::NotAKeyFile),
+            Err(e) => Err(AppError::Other(format!(
+                "could not import the room keys: {e}"
+            ))),
+        }
+    }
 }
 
-async fn set_up_identity(client: &Client, unpublished: &Unpublished) -> Result<IdentityOutcome> {
+fn reset_challenge(client: &Client, auth: &CrossSigningResetAuthType) -> AuthChallenge {
+    match auth {
+        CrossSigningResetAuthType::Uiaa(info) => uia::challenge(client, info),
+        CrossSigningResetAuthType::OAuth(OAuthCrossSigningResetInfo {
+            approval_url,
+            session,
+        }) => AuthChallenge {
+            session: session.clone(),
+            flows: vec![vec![OAUTH_STAGE.to_owned()]],
+            completed: Vec::new(),
+            oauth_url: Some(approval_url.to_string()),
+            homeserver: client.homeserver().to_string(),
+            refusal: None,
+        },
+    }
+}
+
+async fn identity_replaced(client: &Client, unpublished: &Unpublished) {
+    tracing::info!("published the account's new cross-signing identity");
+    unpublished.forget();
+    if let Ok(own) = own_user(client) {
+        read_own_identity_back(client, &own).await;
+    }
+}
+
+async fn set_up_identity(
+    client: &Client,
+    unpublished: &Unpublished,
+    auth: Option<&AuthAnswer>,
+) -> Result<IdentityOutcome> {
     let own = own_user(client)?;
     if homeserver_holds_identity(client, &own).await? {
         unpublished.forget();
@@ -150,7 +309,7 @@ async fn set_up_identity(client: &Client, unpublished: &Unpublished) -> Result<I
         return Ok(IdentityOutcome::Ready);
     }
     tracing::info!("the account has no published cross-signing identity; creating one");
-    let outcome = create_identity(client).await;
+    let outcome = create_identity(client, auth).await;
     if matches!(outcome, Ok(IdentityOutcome::Ready)) {
         tracing::info!("created and published the account's cross-signing identity");
         unpublished.forget();
@@ -171,19 +330,25 @@ async fn homeserver_holds_identity(client: &Client, own: &UserId) -> Result<bool
     Ok(response.master_keys.contains_key(own))
 }
 
-async fn create_identity(client: &Client) -> Result<IdentityOutcome> {
-    let Err(error) = client.encryption().bootstrap_cross_signing(None).await else {
+async fn create_identity(client: &Client, auth: Option<&AuthAnswer>) -> Result<IdentityOutcome> {
+    let auth_data = auth
+        .map(|auth| uia::auth_data(client, auth))
+        .transpose()?
+        .flatten();
+    let Err(error) = client.encryption().bootstrap_cross_signing(auth_data).await else {
         return Ok(IdentityOutcome::Ready);
     };
-    if error.as_uiaa_response().is_none() {
+    let Some(info) = error.as_uiaa_response() else {
         return Err(AppError::Other(format!(
             "could not publish cross-signing keys: {error}"
         )));
-    }
+    };
     tracing::warn!(
         "the homeserver wants the user to authenticate before it takes this account's first cross-signing keys"
     );
-    Ok(IdentityOutcome::NeedsAuthentication)
+    Ok(IdentityOutcome::NeedsAuthentication(Box::new(
+        uia::challenge(client, info),
+    )))
 }
 
 async fn read_own_identity_back(client: &Client, own: &UserId) {

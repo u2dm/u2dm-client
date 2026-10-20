@@ -13,8 +13,9 @@ use crate::commands::ui::{
     ViewportChanged, WindowAttention, WindowFocus,
 };
 use crate::domain::auth::LoginCredentials;
+use crate::domain::capabilities::AccountPage;
 use crate::domain::emote::ComposerText;
-use crate::domain::encryption::RecoveryKey;
+use crate::domain::encryption::{KeyPassphrase, RecoveryKey};
 use crate::domain::event_size::{EventSize, Oversize};
 use crate::domain::image_pack::PackId;
 use crate::domain::link::LauncherSafeUrl;
@@ -24,6 +25,7 @@ use crate::domain::message::{EditKind, EditTarget, MessageEdit, TextRevision};
 use crate::domain::poll::{ChoiceMode, PollDisclosure, PollDraft};
 use crate::domain::room::{NotifyMode, RoomId};
 use crate::domain::room_creation::{RoomAccess, RoomDraft, RoomKind};
+use crate::domain::uia::AccountPassword;
 use crate::domain::user_info::UserId;
 
 type Tx = CommandSender;
@@ -105,6 +107,7 @@ macro_rules! gen_router_fns {
             }
         }
     };
+    (@one $fn:ident manual $cmd:ident) => {};
     (@one $fn:ident manual_string $cmd:ident) => {};
     (@one $fn:ident request $cmd:ident) => {};
     (@one $fn:ident verdict $cmd:ident) => {};
@@ -149,6 +152,68 @@ pub fn use_recovery_key(tx: &Tx, key: String) {
         return;
     }
     send_command(tx, UiCommand::UseRecoveryKey(RecoveryKey::new(key)));
+}
+
+pub fn export_room_keys(tx: &Tx, passphrase: String) {
+    if passphrase.is_empty() {
+        return;
+    }
+    send_command(
+        tx,
+        UiCommand::ExportRoomKeys(KeyPassphrase::new(passphrase)),
+    );
+}
+
+pub fn import_room_keys(tx: &Tx, passphrase: String) {
+    if passphrase.is_empty() {
+        return;
+    }
+    send_command(
+        tx,
+        UiCommand::ImportRoomKeys(KeyPassphrase::new(passphrase)),
+    );
+}
+
+pub fn rename_session(tx: &Tx, device_id: String, name: String) {
+    if device_id.is_empty() || name.trim().is_empty() {
+        return;
+    }
+    send_command(tx, UiCommand::RenameSession { device_id, name });
+}
+
+pub fn open_account_page(tx: &Tx) {
+    send_command(tx, UiCommand::OpenAccountPage(AccountPage::Account));
+}
+
+pub fn open_sessions_page(tx: &Tx) {
+    send_command(tx, UiCommand::OpenAccountPage(AccountPage::Sessions));
+}
+
+pub fn change_password(tx: &Tx, password: String, sign_out_others: bool) {
+    if password.is_empty() {
+        return;
+    }
+    send_command(
+        tx,
+        UiCommand::ChangePassword {
+            password: AccountPassword::new(password),
+            sign_out_others,
+        },
+    );
+}
+
+pub fn deactivate_account(tx: &Tx, erase: bool) {
+    send_command(tx, UiCommand::DeactivateAccount { erase });
+}
+
+pub fn answer_auth_password(tx: &Tx, password: String) {
+    if password.is_empty() {
+        return;
+    }
+    send_command(
+        tx,
+        UiCommand::AnswerAuthPassword(AccountPassword::new(password)),
+    );
 }
 
 pub fn move_space(tx: &Tx, from: usize, to: usize, reorder: impl FnOnce(usize, usize)) {

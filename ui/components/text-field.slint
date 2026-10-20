@@ -13,6 +13,10 @@ component ScrollingInput inherits Rectangle {
 
     callback accepted();
 
+    public function select-all() {
+        input.select-all();
+    }
+
     clip: true;
     min-width: 1px;
     min-height: input.preferred-height;
@@ -67,6 +71,10 @@ component RevealedInput inherits Rectangle {
 
     callback accepted();
 
+    public function select-all() {
+        input.select-all();
+    }
+
     accessible-role: groupbox;
     forward-focus: input;
 
@@ -104,6 +112,14 @@ export component TextField inherits Rectangle {
             revealed-input.focus();
         } else {
             input.focus();
+        }
+    }
+
+    public function select-all() {
+        if root.revealed {
+            revealed-input.select-all();
+        } else {
+            input.select-all();
         }
     }
 

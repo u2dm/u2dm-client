@@ -17,6 +17,9 @@ import {
     MicrophoneRequest,
     CameraRequest,
     ScreenShareRequest,
+    RenameSessionRequest,
+    ChangePasswordRequest,
+    DeactivateRequest,
 } from "./types.slint";
 import { NotifyMode, PackSurface } from "./enums.slint";
 
@@ -30,6 +33,24 @@ export global Actions {
     callback reauth-password(string);
     callback reauth-oauth();
     callback logout();
+    callback confirm-logout();
+    callback cancel-logout();
+
+    callback open-account();
+    callback close-account();
+    callback show-account-overview();
+    callback rename-session(RenameSessionRequest);
+    callback sign-out-session(string);
+    callback open-account-page();
+    callback open-sessions-page();
+    callback start-password-change();
+    callback change-password(ChangePasswordRequest);
+    callback start-deactivation();
+    callback deactivate-account(DeactivateRequest);
+    callback answer-auth-password(string);
+    callback continue-auth();
+    callback reopen-auth-page();
+    callback cancel-auth();
 
     callback select-room(string);
     callback open-notification(string);
@@ -191,4 +212,10 @@ export global Actions {
     callback set-up-recovery();
     callback change-recovery-key();
     callback retry-encryption-setup();
+    callback start-identity-reset();
+    callback reset-identity();
+    callback start-key-export();
+    callback export-room-keys(string);
+    callback start-key-import();
+    callback import-room-keys(string);
 }

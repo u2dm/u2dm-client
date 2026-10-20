@@ -189,6 +189,21 @@ const ENUM_COVERAGE: &[EnumCoverage] = &[
         falls_through: &["none"],
     },
     EnumCoverage {
+        slint_enum: "AccountStep",
+        branches_in: "ui/screens/chat/components/account.slint",
+        falls_through: &[],
+    },
+    EnumCoverage {
+        slint_enum: "AccountActivity",
+        branches_in: "ui/screens/chat/components/account.slint",
+        falls_through: &["none"],
+    },
+    EnumCoverage {
+        slint_enum: "AuthStage",
+        branches_in: "ui/screens/chat/components/auth-prompt.slint",
+        falls_through: &[],
+    },
+    EnumCoverage {
         slint_enum: "PollPhase",
         branches_in: "ui/screens/chat/components/timeline/messages/poll-message.slint",
         falls_through: &[],
@@ -263,6 +278,9 @@ const ENUM_TABLES: &[(&str, &str)] = &[
     ("RecoveryStatus", "recovery_statuses"),
     ("EncryptionStep", "encryption_steps"),
     ("EncryptionActivity", "encryption_activities"),
+    ("AuthStage", "auth_stages"),
+    ("AccountStep", "account_steps"),
+    ("AccountActivity", "account_activities"),
     ("MemberRowKind", "member_row_kinds"),
     ("RoomRowKind", "room_row_kinds"),
     ("RoomCallMark", "room_call_marks"),
@@ -444,6 +462,11 @@ const SCENARIO_SOURCES: &[ScenarioSource] = &[
     },
     ScenarioSource {
         file: "src/adapters/demo/encryption.rs",
+        arms_between: ("fn apply(scenario: &mut Scenario, flag: &str) {", "\n}"),
+        ignored: &[],
+    },
+    ScenarioSource {
+        file: "src/adapters/demo/account.rs",
         arms_between: ("fn apply(scenario: &mut Scenario, flag: &str) {", "\n}"),
         ignored: &[],
     },

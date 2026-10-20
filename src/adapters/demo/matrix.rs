@@ -3,7 +3,7 @@ use std::fs;
 use std::future::pending;
 use std::mem;
 use std::ops::Range;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -15,6 +15,7 @@ use tokio::time::sleep;
 use tokio_util::sync::CancellationToken;
 use url::Url;
 
+use super::account::{self, AccountBook};
 use super::calls::{self, Step};
 use super::encryption::{self, EncryptionBook};
 use super::identity::{self, IdentityBook, SendHold};
@@ -35,9 +36,11 @@ use crate::domain::call::{
     DelayedLeave, DeviceStanding, KeySendReport, MemberKey, OutgoingKey, OwnMembership,
     RestartResult, ScheduleFailure, ScheduleResult, Secret, SentMembership, Transport,
 };
+use crate::domain::capabilities::{AccountFacts, AccountPage};
 use crate::domain::emote::Emote;
 use crate::domain::encryption::{
-    AccountEncryption, IdentityOutcome, RecoveryAttempt, RecoveryKey, RecoverySetup,
+    AccountEncryption, IdentityOutcome, KeyImport, KeyPassphrase, Recovery, RecoveryAttempt,
+    RecoveryKey, RecoverySetup,
 };
 use crate::domain::event_size::{Encryption, EventIds, EventSize};
 use crate::domain::identity::{OwnIdentity, RoomAlert};
@@ -67,6 +70,7 @@ use crate::domain::room_info::{
     MemberRole, Reader, RoomAbout, RosterMember, RosterSection, sort_roster,
 };
 use crate::domain::room_preview::{PreviewFailure, PreviewMembership, PreviewResult};
+use crate::domain::sessions::{LogoutRisks, OwnSessions};
 use crate::domain::space_index::HierarchyPage;
 use crate::domain::sync::{SyncEvent, SyncOutcome, SyncSupport};
 use crate::domain::timeline::{
@@ -74,6 +78,7 @@ use crate::domain::timeline::{
     PaginationDirection, PaginationOutcome, TimelineCommand, TimelineFocus, TimelinePatch,
     TimelineUpdate, locate_audio,
 };
+use crate::domain::uia::{AccountPassword, AuthAnswer, Guarded};
 use crate::domain::user_info::{
     GlobalProfile, IdentityTrust, IgnoreChange, Moderation, RoomMembership, UserId, UserProfile,
     UserTrust, localpart, server_part,
@@ -81,7 +86,7 @@ use crate::domain::user_info::{
 use crate::domain::verification::{VerificationCancellation, VerificationEvent};
 use crate::error::{AppError, Result};
 use crate::ports::matrix::{
-    AttachmentHandoff, AuthPort, AuthenticatedSession, CallSignalPort, CleanupReport,
+    AccountPort, AttachmentHandoff, AuthPort, AuthenticatedSession, CallSignalPort, CleanupReport,
     DeviceRemoval, EncryptionPort, IdentityPort, ImagePackPort, InterruptedLogin, InvitePeoplePort,
     InvitePort, LocalDataOwnership, MediaPort, PackCatalog, PinnedPort, PresencePort, ProgressSink,
     PushPort, RestoreOutcome, RestoreStep, RoomCreationPort, RoomInfoPort, RoomPreviewPort,
@@ -279,6 +284,7 @@ fn authenticated(session: Session) -> AuthenticatedSession {
     let room_info = Arc::clone(&authed);
     let user_info = Arc::clone(&authed);
     let image_packs = Arc::clone(&authed);
+    let account = Arc::clone(&authed);
     AuthenticatedSession {
         session,
         sync,
@@ -303,6 +309,7 @@ fn authenticated(session: Session) -> AuthenticatedSession {
         room_info,
         user_info,
         image_packs,
+        account,
         lifecycle: authed,
     }
 }
@@ -434,6 +441,7 @@ struct DemoAuthed {
     shared_packs: Mutex<HashMap<String, bool>>,
     identity: IdentityBook,
     encryption: EncryptionBook,
+    account: Arc<AccountBook>,
     verified_people: user_info::VerifiedPeople,
     typing_notices: typing::NoticeClock,
     presence: presence::PresenceBook,
@@ -1370,17 +1378,19 @@ impl EncryptionPort for DemoAuthed {
         }
     }
 
-    async fn set_up_identity(&self) -> Result<IdentityOutcome> {
+    async fn set_up_identity(&self, auth: Option<&AuthAnswer>) -> Result<IdentityOutcome> {
         if self.encryption.has_identity() {
             return Ok(IdentityOutcome::Ready);
         }
         let attempt = self.encryption.count_setup_attempt();
         encryption::pause_setup().await;
-        if encryption::identity_refused() {
+        if encryption::identity_refused()
+            && let Guarded::NeedsAuth(challenge) = self.account.guard(auth, false)
+        {
             tracing::debug!(
                 "demo: the homeserver wants a password for the first cross-signing keys"
             );
-            return Ok(IdentityOutcome::NeedsAuthentication);
+            return Ok(IdentityOutcome::NeedsAuthentication(challenge));
         }
         if encryption::first_setup_fails(attempt) {
             return Err(unavailable("Creating the cross-signing identity"));
@@ -1421,6 +1431,155 @@ impl EncryptionPort for DemoAuthed {
         }
         tracing::debug!("demo: changed the recovery key");
         Ok(encryption::changed_key())
+    }
+
+    async fn reset_identity(&self) -> Result<Guarded> {
+        encryption::pause_action().await;
+        if encryption::scenario().fails {
+            return Err(unavailable("Resetting the identity"));
+        }
+        tracing::debug!("demo: the homeserver asks who you are before the new identity");
+        Ok(self.account.guard(None, account::scenario().oauth))
+    }
+
+    async fn finish_identity_reset(&self, auth: &AuthAnswer) -> Result<Guarded> {
+        encryption::pause_action().await;
+        let guarded = self.account.guard(Some(auth), account::scenario().oauth);
+        if guarded == Guarded::Done {
+            tracing::debug!("demo: published the account's new identity");
+            self.encryption.identity_reset();
+        }
+        Ok(guarded)
+    }
+
+    async fn abandon_identity_reset(&self) {
+        tracing::debug!("demo: abandoned the identity reset");
+    }
+
+    async fn export_room_keys(&self, path: &Path, _passphrase: &KeyPassphrase) -> Result<usize> {
+        encryption::pause_action().await;
+        if encryption::scenario().fails {
+            return Err(unavailable("Exporting room keys"));
+        }
+        tracing::info!(path = %path.display(), "demo: exported the room keys without writing a file");
+        Ok(encryption::EXPORTED_KEYS)
+    }
+
+    async fn import_room_keys(&self, path: &Path, passphrase: &KeyPassphrase) -> Result<KeyImport> {
+        encryption::pause_action().await;
+        if encryption::scenario().fails {
+            return Err(unavailable("Importing room keys"));
+        }
+        tracing::info!(path = %path.display(), "demo: importing room keys");
+        Ok(encryption::import_from(passphrase))
+    }
+}
+
+#[async_trait]
+impl AccountPort for DemoAuthed {
+    async fn facts(&self) -> AccountFacts {
+        account::pause().await;
+        account::facts()
+    }
+
+    async fn follow_sessions(&self, sessions_tx: mpsc::Sender<OwnSessions>) -> Result<()> {
+        let device_id = data::session().device_id;
+        let mut revision = self.account.subscribe();
+        loop {
+            if sessions_tx
+                .send(self.account.sessions(&device_id))
+                .await
+                .is_err()
+            {
+                return Ok(());
+            }
+            if revision.changed().await.is_err() {
+                return Ok(());
+            }
+        }
+    }
+
+    async fn rename_session(&self, device_id: &str, name: &str) -> Result<()> {
+        account::pause().await;
+        if account::scenario().fails {
+            return Err(unavailable("Renaming a session"));
+        }
+        tracing::debug!(%device_id, "demo: renamed the session");
+        self.account
+            .rename(&data::session().device_id, device_id, name);
+        Ok(())
+    }
+
+    async fn sign_out_session(
+        &self,
+        device_id: &str,
+        auth: Option<&AuthAnswer>,
+    ) -> Result<Guarded> {
+        account::pause().await;
+        if account::scenario().fails {
+            return Err(unavailable("Signing out a session"));
+        }
+        let guarded = self.account.guard(auth, false);
+        if guarded == Guarded::Done {
+            tracing::debug!(%device_id, "demo: signed the session out");
+            self.account.remove(device_id);
+        }
+        Ok(guarded)
+    }
+
+    async fn change_password(
+        &self,
+        _password: &AccountPassword,
+        sign_out_others: bool,
+        auth: Option<&AuthAnswer>,
+    ) -> Result<Guarded> {
+        account::pause().await;
+        if account::scenario().fails {
+            return Err(unavailable("Changing the password"));
+        }
+        let guarded = self.account.guard(auth, false);
+        if guarded != Guarded::Done {
+            return Ok(guarded);
+        }
+        if account::scenario().weak_password {
+            return Err(AppError::WeakPassword(
+                account::WEAK_PASSWORD_REASON.to_owned(),
+            ));
+        }
+        tracing::debug!(sign_out_others, "demo: changed the password");
+        if sign_out_others {
+            self.account.remove_all_others();
+        }
+        Ok(Guarded::Done)
+    }
+
+    async fn deactivate(&self, erase: bool, auth: Option<&AuthAnswer>) -> Result<Guarded> {
+        account::pause().await;
+        if account::scenario().fails {
+            return Err(unavailable("Deactivating the account"));
+        }
+        let guarded = self.account.guard(auth, false);
+        if guarded == Guarded::Done {
+            tracing::info!(erase, "demo: deactivated the account");
+        }
+        Ok(guarded)
+    }
+
+    async fn page(&self, page: &AccountPage) -> Option<LauncherSafeUrl> {
+        let url = account::page(page)?;
+        if let AccountPage::SignOut(device_id) = page {
+            let book = Arc::clone(&self.account);
+            let device_id = device_id.clone();
+            tokio::spawn(async move {
+                account::signed_out_in_browser(&book, &device_id).await;
+            });
+        }
+        Some(url)
+    }
+
+    async fn logout_risks(&self) -> LogoutRisks {
+        self.account
+            .logout_risks(self.encryption.state().recovery == Recovery::On)
     }
 }
 

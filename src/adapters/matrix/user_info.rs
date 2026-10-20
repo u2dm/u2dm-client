@@ -290,7 +290,7 @@ fn identity_trust(identity: Option<&UserIdentity>) -> IdentityTrust {
     }
 }
 
-fn device_trust(device: &Device) -> DeviceTrust {
+pub(super) fn device_trust(device: &Device) -> DeviceTrust {
     if device.is_verified() {
         DeviceTrust::Verified
     } else if device.is_cross_signed_by_owner() {
@@ -345,9 +345,9 @@ async fn learn_keys_of(client: &Client, user: &OwnedUserId) -> Result<()> {
         .map_err(|e| AppError::Other(format!("could not ask the homeserver for the keys: {e}")))
 }
 
-type TrustWakes = SelectAll<Pin<Box<dyn Stream<Item = bool> + Send>>>;
+pub(super) type TrustWakes = SelectAll<Pin<Box<dyn Stream<Item = bool> + Send>>>;
 
-async fn trust_wakes(client: &Client, people: [OwnedUserId; 2]) -> Result<TrustWakes> {
+pub(super) async fn trust_wakes(client: &Client, people: [OwnedUserId; 2]) -> Result<TrustWakes> {
     let encryption = client.encryption();
     let watched = people.clone();
     let identities = encryption
@@ -377,7 +377,7 @@ async fn trust_wakes(client: &Client, people: [OwnedUserId; 2]) -> Result<TrustW
     Ok(select_all(streams))
 }
 
-async fn next_wake(wakes: &mut TrustWakes) -> bool {
+pub(super) async fn next_wake(wakes: &mut TrustWakes) -> bool {
     while let Some(concerns) = wakes.next().await {
         if concerns {
             return true;

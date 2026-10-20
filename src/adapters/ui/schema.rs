@@ -24,6 +24,17 @@ macro_rules! string_props {
         VerificationErrorDetail VerificationView "VerificationView" "error-detail" set_error_detail get_error_detail;
         EncryptionRecoveryKey EncryptionView "EncryptionView" "recovery-key" set_recovery_key get_recovery_key;
         EncryptionErrorDetail EncryptionView "EncryptionView" "error-detail" set_error_detail get_error_detail;
+        EncryptionKeyFile EncryptionView "EncryptionView" "key-file" set_key_file get_key_file;
+        EncryptionAuthErrorDetail EncryptionView "EncryptionView" "auth-error-detail" set_auth_error_detail get_auth_error_detail;
+        AccountThisName AccountView "AccountView" "this-name" set_this_name get_this_name;
+        AccountThisDeviceId AccountView "AccountView" "this-device-id" set_this_device_id get_this_device_id;
+        AccountThisKey AccountView "AccountView" "this-key" set_this_key get_this_key;
+        AccountBusySession AccountView "AccountView" "busy-session" set_busy_session get_busy_session;
+        AccountErrorDetail AccountView "AccountView" "error-detail" set_error_detail get_error_detail;
+        AccountNoticeDetail AccountView "AccountView" "notice-detail" set_notice_detail get_notice_detail;
+        AccountAuthErrorDetail AccountView "AccountView" "auth-error-detail" set_auth_error_detail get_auth_error_detail;
+        AccountDefaultRoomVersion AccountView "AccountView" "default-room-version" set_default_room_version get_default_room_version;
+        AccountAuthSubject AccountView "AccountView" "auth-subject" set_auth_subject get_auth_subject;
         SelectedRoomName RoomView "RoomView" "selected-room-name" set_selected_room_name get_selected_room_name;
         SelectedRoomInitial RoomView "RoomView" "selected-room-initial" set_selected_room_initial get_selected_room_initial;
         FocusEventId RoomView "RoomView" "focus-event-id" set_focus_event_id get_focus_event_id;
@@ -165,6 +176,36 @@ macro_rules! simple_callbacks {
         on_change_recovery_key "change-recovery-key" change_recovery_key plain ChangeRecoveryKey;
         on_retry_encryption_setup "retry-encryption-setup" retry_encryption_setup plain
             RetryEncryptionSetup;
+        on_start_identity_reset "start-identity-reset" start_identity_reset plain
+            StartIdentityReset;
+        on_reset_identity "reset-identity" reset_identity plain ResetIdentity;
+        on_start_key_export "start-key-export" start_key_export plain StartKeyExport;
+        on_export_room_keys "export-room-keys" export_room_keys manual_string ExportRoomKeys;
+        on_start_key_import "start-key-import" start_key_import plain StartKeyImport;
+        on_import_room_keys "import-room-keys" import_room_keys manual_string ImportRoomKeys;
+        on_open_account "open-account" open_account plain OpenAccount;
+        on_close_account "close-account" close_account plain CloseAccount;
+        on_show_account_overview "show-account-overview" show_account_overview plain
+            ShowAccountOverview;
+        on_rename_session "rename-session" rename_session
+            request(device_id "device-id" text, name "name" text) RenameSession;
+        on_sign_out_session "sign-out-session" sign_out_session pass SignOutSession;
+        on_open_account_page "open-account-page" open_account_page manual OpenAccountPage;
+        on_open_sessions_page "open-sessions-page" open_sessions_page manual OpenAccountPage;
+        on_start_password_change "start-password-change" start_password_change plain
+            StartPasswordChange;
+        on_change_password "change-password" change_password
+            request(password "password" text, sign_out_others "sign-out-others" flag) ChangePassword;
+        on_start_deactivation "start-deactivation" start_deactivation plain StartDeactivation;
+        on_deactivate_account "deactivate-account" deactivate_account
+            request(erase "erase" flag) DeactivateAccount;
+        on_answer_auth_password "answer-auth-password" answer_auth_password manual_string
+            AnswerAuthPassword;
+        on_continue_auth "continue-auth" continue_auth plain ContinueAuth;
+        on_reopen_auth_page "reopen-auth-page" reopen_auth_page plain ReopenAuthPage;
+        on_cancel_auth "cancel-auth" cancel_auth plain CancelAuth;
+        on_confirm_logout "confirm-logout" confirm_logout plain ConfirmLogout;
+        on_cancel_logout "cancel-logout" cancel_logout plain CancelLogout;
         on_retry_timeline "retry-timeline" retry_timeline plain RetryTimeline;
         on_decline_call "decline-call" decline_call room DeclineCall;
         on_silence_ring "silence-ring" silence_ring plain SilenceRing;
@@ -311,6 +352,17 @@ macro_rules! bool_props {
         EncryptionVisible EncryptionView "EncryptionView" "visible" set_visible get_visible;
         EncryptionVerifiedSessions EncryptionView "EncryptionView" "verified-sessions" set_verified_sessions get_verified_sessions;
         EncryptionKeyStorageOff EncryptionView "EncryptionView" "key-storage-off" set_key_storage_off get_key_storage_off;
+        AccountVisible AccountView "AccountView" "visible" set_visible get_visible;
+        AccountSessionsKnown AccountView "AccountView" "sessions-known" set_sessions_known get_sessions_known;
+        AccountFactsKnown AccountView "AccountView" "facts-known" set_facts_known get_facts_known;
+        AccountOAuth AccountView "AccountView" "oauth" set_oauth get_oauth;
+        AccountHasPages AccountView "AccountView" "has-pages" set_has_pages get_has_pages;
+        AccountMayChangePassword AccountView "AccountView" "may-change-password" set_may_change_password get_may_change_password;
+        AccountNameManaged AccountView "AccountView" "name-managed" set_name_managed get_name_managed;
+        AccountAvatarManaged AccountView "AccountView" "avatar-managed" set_avatar_managed get_avatar_managed;
+        AccountForgetsRooms AccountView "AccountView" "forgets-rooms" set_forgets_rooms get_forgets_rooms;
+        LogoutVisible LogoutView "LogoutView" "visible" set_visible get_visible;
+        LogoutKeysAtRisk LogoutView "LogoutView" "keys-at-risk" set_keys_at_risk get_keys_at_risk;
         DirectAlert DirectoryView "DirectoryView" "direct-alert" set_direct_alert get_direct_alert;
         DirectMention DirectoryView "DirectoryView" "direct-mention" set_direct_mention get_direct_mention;
         DirectHint DirectoryView "DirectoryView" "direct-hint" set_direct_hint get_direct_hint;
@@ -439,6 +491,9 @@ macro_rules! int_props {
         RoomLogLinesLanded RoomLogView "RoomLogView" "lines-landed" set_lines_landed get_lines_landed;
         ReadersCount ReadersView "ReadersView" "count" set_count get_count;
         ReadersPagesLanded ReadersView "ReadersView" "pages-landed" set_pages_landed get_pages_landed;
+        LogoutUnsent LogoutView "LogoutView" "unsent" set_unsent get_unsent;
+        EncryptionKeysCount EncryptionView "EncryptionView" "keys-count" set_keys_count get_keys_count;
+        EncryptionKeysTotal EncryptionView "EncryptionView" "keys-total" set_keys_total get_keys_total;
     } };
 }
 pub(crate) use int_props;
@@ -477,6 +532,24 @@ macro_rules! enum_props {
             EncryptionView "EncryptionView" "activity" set_activity get_activity;
         EncryptionError set_encryption_error(UserMessageKind)
             EncryptionView "EncryptionView" "error" set_error get_error;
+        EncryptionAuthStage set_encryption_auth_stage(AuthStage)
+            EncryptionView "EncryptionView" "auth-stage" set_auth_stage get_auth_stage;
+        EncryptionAuthError set_encryption_auth_error(UserMessageKind)
+            EncryptionView "EncryptionView" "auth-error" set_auth_error get_auth_error;
+        AccountStep set_account_step(&AccountStep)
+            AccountView "AccountView" "step" set_step get_step;
+        AccountActivity set_account_activity(AccountActivity)
+            AccountView "AccountView" "activity" set_activity get_activity;
+        AccountError set_account_error(UserMessageKind)
+            AccountView "AccountView" "error" set_error get_error;
+        AccountNotice set_account_notice(UserMessageKind)
+            AccountView "AccountView" "notice" set_notice get_notice;
+        AccountAuthStage set_account_auth_stage(AuthStage)
+            AccountView "AccountView" "auth-stage" set_auth_stage get_auth_stage;
+        AccountAuthError set_account_auth_error(UserMessageKind)
+            AccountView "AccountView" "auth-error" set_auth_error get_auth_error;
+        AccountAuthFor set_account_auth_for(AccountActivity)
+            AccountView "AccountView" "auth-for" set_auth_for get_auth_for;
         AttachmentKind set_attachment_kind(AttachmentKind)
             AttachmentView "AttachmentView" "kind" set_kind get_kind;
         AttachmentError set_attachment_error(UserMessageKind)
@@ -590,6 +663,7 @@ macro_rules! model_props {
         room_log LogLine SpliceModel RoomLogView "RoomLogView" "lines" set_lines;
         call_tiles CallTile VecModel CallView "CallView" "tiles" set_tiles;
         user_devices UserDevice VecModel UserInfoView "UserInfoView" "devices" set_devices;
+        account_sessions UserDevice VecModel AccountView "AccountView" "sessions" set_sessions;
     } };
 }
 pub(crate) use model_props;
@@ -814,6 +888,26 @@ macro_rules! user_message_kinds {
         RecoverySetupFailed       RecoverySetupFailed     "recovery-setup-failed";
         RecoveryBackupInTheWay    RecoveryBackupInTheWay  "recovery-backup-in-the-way";
         RecoveryKeyChangeFailed   RecoveryKeyChangeFailed "recovery-key-change-failed";
+        AuthPasswordWrong         AuthPasswordWrong       "auth-password-wrong";
+        AuthStepUnfinished        AuthStepUnfinished      "auth-step-unfinished";
+        AuthRefused               AuthRefused             "auth-refused";
+        AuthUnsupported           AuthUnsupported         "auth-unsupported";
+        SessionRenameFailed       SessionRenameFailed     "session-rename-failed";
+        SessionSignOutFailed      SessionSignOutFailed    "session-sign-out-failed";
+        SessionSignedOut          SessionSignedOut        "session-signed-out";
+        PasswordChangeFailed      PasswordChangeFailed    "password-change-failed";
+        NewPasswordTooWeak        NewPasswordTooWeak      "new-password-too-weak";
+        NewPasswordRefused        NewPasswordRefused      "new-password-refused";
+        PasswordChanged           PasswordChanged         "password-changed";
+        PasswordChangedOthersSignedOut PasswordChangedOthersSignedOut "password-changed-others-signed-out";
+        DeactivationFailed        DeactivationFailed      "deactivation-failed";
+        AccountPageOpened         AccountPageOpened       "account-page-opened";
+        IdentityResetFailed       IdentityResetFailed     "identity-reset-failed";
+        EncryptionSetupFailed     EncryptionSetupFailed   "encryption-setup-failed";
+        KeyExportFailed           KeyExportFailed         "key-export-failed";
+        KeyImportFailed           KeyImportFailed         "key-import-failed";
+        KeyPassphraseWrong        KeyPassphraseWrong      "key-passphrase-wrong";
+        KeyFileUnreadable         KeyFileUnreadable       "key-file-unreadable";
     } };
 }
 pub(crate) use user_message_kinds;
@@ -1138,11 +1232,19 @@ pub(crate) use recovery_statuses;
 
 macro_rules! encryption_steps {
     ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
-        Overview              Overview              "overview";
-        EnteringKey           EnteringKey           "entering-key";
-        Unlocked              Unlocked              "unlocked";
-        UnlockedWithoutBackup UnlockedWithoutBackup "unlocked-without-backup";
-        ShowingKey(_)         ShowingKey            "showing-key";
+        Overview               Overview              "overview";
+        EnteringKey            EnteringKey           "entering-key";
+        Unlocked               Unlocked              "unlocked";
+        UnlockedWithoutBackup  UnlockedWithoutBackup "unlocked-without-backup";
+        ShowingKey(_)          ShowingKey            "showing-key";
+        ConfirmingReset        ConfirmingReset       "confirming-reset";
+        AuthenticatingSetup(_) AuthenticatingSetup   "authenticating-setup";
+        AuthenticatingReset(_) AuthenticatingReset   "authenticating-reset";
+        IdentityReset          IdentityReset         "identity-reset";
+        ExportingKeys(_)       ExportingKeys         "exporting-keys";
+        KeysExported{..}       KeysExported          "keys-exported";
+        ImportingKeys(_)       ImportingKeys         "importing-keys";
+        KeysImported{..}       KeysImported          "keys-imported";
     } };
 }
 pub(crate) use encryption_steps;
@@ -1155,9 +1257,44 @@ macro_rules! encryption_activities {
         SettingUpRecovery SettingUpRecovery "setting-up-recovery";
         ChangingKey       ChangingKey       "changing-key";
         RetryingSetup     RetryingSetup     "retrying-setup";
+        ResettingIdentity ResettingIdentity "resetting-identity";
+        Authenticating    Authenticating    "authenticating";
+        ChoosingFile      ChoosingFile      "choosing-file";
+        ExportingKeys     ExportingKeys     "exporting-keys";
+        ImportingKeys     ImportingKeys     "importing-keys";
     } };
 }
 pub(crate) use encryption_activities;
+
+macro_rules! auth_stages {
+    ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
+        Password Password "password";
+        Approve  Approve  "approve";
+        Browser  Browser  "browser";
+    } };
+}
+pub(crate) use auth_stages;
+
+macro_rules! account_steps {
+    ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
+        Overview               Overview               "overview";
+        ChangingPassword       ChangingPassword       "changing-password";
+        ConfirmingDeactivation ConfirmingDeactivation "confirming-deactivation";
+        Authenticating(_)      Authenticating         "authenticating";
+    } };
+}
+pub(crate) use account_steps;
+
+macro_rules! account_activities {
+    ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
+        None             None             "none";
+        Renaming         Renaming         "renaming";
+        SigningOut       SigningOut       "signing-out";
+        ChangingPassword ChangingPassword "changing-password";
+        Deactivating     Deactivating     "deactivating";
+    } };
+}
+pub(crate) use account_activities;
 
 macro_rules! pending_moderations {
     ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
@@ -1780,6 +1917,8 @@ macro_rules! user_device_fields {
         device_id set_device_id "device-id" text;
         name set_name "name" text;
         trust set_trust "trust" enumk(DeviceTrust);
+        last_seen set_last_seen "last-seen" text;
+        ip set_ip "ip" text;
     } };
 }
 pub(crate) use user_device_fields;

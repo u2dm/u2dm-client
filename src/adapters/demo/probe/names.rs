@@ -1,21 +1,22 @@
 use crate::adapters::ui::IdentityAlertKind;
 use crate::adapters::ui::schema::{
-    attachment_kinds, audio_kinds, child_accesses, connection_states, create_room_statuses,
-    device_trusts, direct_chats, encryption_activities, encryption_standings, encryption_steps,
-    enum_names, identity_alert_kinds, identity_trusts, invite_answers, invite_kinds,
-    invitee_states, log_levels, login_activities, login_methods, login_phases, member_roles,
-    notify_modes, pending_moderations, people_search_statuses, presence_lines, preview_kinds,
-    readers_statuses, recovery_statuses, room_accesses, room_info_placements, room_kinds,
-    room_memberships, room_preview_statuses, room_scopes, roster_statuses, source_encryptions,
-    source_statuses, space_index_statuses, upgrade_links, user_message_kinds, variant_named,
-    verify_offers,
+    account_activities, account_steps, attachment_kinds, audio_kinds, auth_stages, child_accesses,
+    connection_states, create_room_statuses, device_trusts, direct_chats, encryption_activities,
+    encryption_standings, encryption_steps, enum_names, identity_alert_kinds, identity_trusts,
+    invite_answers, invite_kinds, invitee_states, log_levels, login_activities, login_methods,
+    login_phases, member_roles, notify_modes, pending_moderations, people_search_statuses,
+    presence_lines, preview_kinds, readers_statuses, recovery_statuses, room_accesses,
+    room_info_placements, room_kinds, room_memberships, room_preview_statuses, room_scopes,
+    roster_statuses, source_encryptions, source_statuses, space_index_statuses, upgrade_links,
+    user_message_kinds, variant_named, verify_offers,
 };
 use crate::commands::messages::UserMessageKind;
 use crate::commands::view::{
-    AttachmentKind, ChildAccess, CreateRoomStatus, DirectChat, EncryptionActivity, EncryptionStep,
-    InviteeState, LoginActivity, LoginStep, PendingAnswer, PendingModeration, PeopleSearchStatus,
-    ReadersStatus, RoomInfoPlacement, RoomPreviewSheet, RoomScope, RosterStatus, SourceState,
-    SpaceIndexStatus, UpgradeLink, VerifyOffer,
+    AccountActivity, AccountStep, AttachmentKind, AuthStage, ChildAccess, CreateRoomStatus,
+    DirectChat, EncryptionActivity, EncryptionStep, InviteeState, LoginActivity, LoginStep,
+    PendingAnswer, PendingModeration, PeopleSearchStatus, ReadersStatus, RoomInfoPlacement,
+    RoomPreviewSheet, RoomScope, RosterStatus, SourceState, SpaceIndexStatus, UpgradeLink,
+    VerifyOffer,
 };
 use crate::domain::auth::LoginMethod;
 use crate::domain::encryption::{Recovery, Standing};
@@ -63,6 +64,9 @@ encryption_standings!(enum_names val encryption_standing Standing;);
 recovery_statuses!(enum_names val recovery_status Recovery;);
 encryption_steps!(enum_names ref encryption_step EncryptionStep;);
 encryption_activities!(enum_names val encryption_activity EncryptionActivity;);
+auth_stages!(enum_names val auth_stage AuthStage;);
+account_steps!(enum_names ref account_step AccountStep;);
+account_activities!(enum_names val account_activity AccountActivity;);
 source_statuses!(enum_names ref source_status SourceState;);
 source_encryptions!(enum_names ref source_encryption SourceEncryption;);
 readers_statuses!(enum_names val readers_status ReadersStatus;);

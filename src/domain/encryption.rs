@@ -1,6 +1,7 @@
 use std::fmt;
 
 use crate::domain::identity::SessionAlert;
+use crate::domain::uia::AuthChallenge;
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum SessionTrust {
@@ -50,10 +51,10 @@ pub enum IdentitySetup {
     Failed,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum IdentityOutcome {
     Ready,
-    NeedsAuthentication,
+    NeedsAuthentication(Box<AuthChallenge>),
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -117,4 +118,30 @@ pub enum RecoveryAttempt {
 pub enum RecoverySetup {
     Created(RecoveryKey),
     BackupInTheWay,
+}
+
+#[derive(Clone, PartialEq, Eq)]
+pub struct KeyPassphrase(String);
+
+impl KeyPassphrase {
+    pub fn new(passphrase: impl Into<String>) -> Self {
+        Self(passphrase.into())
+    }
+
+    pub fn expose(&self) -> &str {
+        &self.0
+    }
+}
+
+impl fmt::Debug for KeyPassphrase {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("KeyPassphrase([REDACTED])")
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum KeyImport {
+    Imported { imported: usize, total: usize },
+    WrongPassphrase,
+    NotAKeyFile,
 }

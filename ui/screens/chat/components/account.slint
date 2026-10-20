@@ -1,0 +1,695 @@
+import { Palette, ScrollView } from "std-widgets.slint";
+import { IconDisplay, IconSet, Icon } from "@lucide";
+
+import { AccountActivity, AccountStep, DeviceTrust, EncryptionStanding, UserMessageKind } from "../../../enums.slint";
+import { AccountView, EncryptionView, SessionView } from "../../../views.slint";
+import { UserDeviceEntry } from "../../../types.slint";
+import { UserMessages } from "../../../messages.slint";
+import { Actions } from "../../../actions.slint";
+import { MetaTip, Reactions } from "../../../local.slint";
+import { AppStyle, Fonts, IconSize, Radius, Space, Stroke, Weight } from "../../../theme.slint";
+import { AppButton } from "../../../components/button.slint";
+import { ErrorBanner, NoticeBanner } from "../../../components/banner.slint";
+import { CheckRow } from "../../../components/check-row.slint";
+import { DialogCard, ModalHost } from "../../../components/overlay.slint";
+import { TextField } from "../../../components/text-field.slint";
+import { AuthPrompt } from "./auth-prompt.slint";
+import { DialogNote, Verdict, VerificationHeader } from "./verification.slint";
+
+component SectionLabel inherits Text {
+    font-size: Fonts.caption;
+    font-weight: Weight.semibold;
+    color: AppStyle.foreground-muted;
+}
+
+component FactLine inherits Text {
+    font-size: Fonts.body-small;
+    wrap: word-wrap;
+    color: AppStyle.foreground-muted;
+}
+
+component RenameField inherits HorizontalLayout {
+    in property <string> device-id;
+    in property <string> current;
+
+    callback done();
+
+    property <string> draft: root.current;
+
+    function save() {
+        if root.draft == "" {
+            return;
+        }
+        Actions.rename-session({ device-id: root.device-id, name: root.draft });
+        root.done();
+    }
+
+    spacing: Space.md;
+
+    field := TextField {
+        horizontal-stretch: 1;
+        icon: IconSet.PencilLine;
+        above-modal: true;
+        label: @tr("Session name");
+        placeholder: @tr("Session name");
+        text <=> root.draft;
+        init => {
+            self.focus-input();
+            self.select-all();
+        }
+        accepted => {
+            root.save();
+        }
+    }
+
+    AppButton {
+        horizontal-stretch: 0;
+        above-modal: true;
+        text: @tr("Cancel");
+        filled: false;
+        clicked => {
+            root.done();
+        }
+    }
+
+    AppButton {
+        horizontal-stretch: 0;
+        above-modal: true;
+        text: @tr("Save");
+        icon: IconSet.Check;
+        enabled: root.draft != "";
+        clicked => {
+            root.save();
+        }
+    }
+}
+
+component ThisSessionCard inherits Rectangle {
+    property <bool> renaming;
+    property <bool> busy: AccountView.activity == AccountActivity.renaming
+        && AccountView.busy-session == AccountView.this-device-id;
+    property <string> shown-name: AccountView.this-name != ""
+        ? AccountView.this-name
+        : AccountView.this-device-id;
+    property <bool> verified: EncryptionView.standing == EncryptionStanding.verified;
+
+    background: AppStyle.overlay-subtle;
+    border-radius: Radius.md;
+    border-width: Stroke.hairline;
+    border-color: AppStyle.border;
+    height: body.preferred-height;
+
+    body := VerticalLayout {
+        padding: Space.lg;
+        spacing: Space.md;
+
+        if !root.renaming: HorizontalLayout {
+            spacing: Space.md;
+
+            IconDisplay {
+                cross-axis-self-alignment: center;
+                icon: IconSet.Laptop;
+                size: IconSize.md;
+                stroke: Palette.foreground;
+            }
+
+            Text {
+                horizontal-stretch: 1;
+                text: root.shown-name;
+                font-size: Fonts.body;
+                font-weight: Weight.semibold;
+                vertical-alignment: center;
+                overflow: elide;
+            }
+
+            if !AccountView.oauth: AppButton {
+                horizontal-stretch: 0;
+                above-modal: true;
+                text: @tr("Rename");
+                filled: false;
+                enabled: !AccountView.busy;
+                busy: root.busy;
+                clicked => {
+                    root.renaming = true;
+                }
+            }
+        }
+
+        if root.renaming: RenameField {
+            device-id: AccountView.this-device-id;
+            current: AccountView.this-name;
+            done => {
+                root.renaming = false;
+            }
+        }
+
+        Text {
+            text: @tr("Session ID: {}", AccountView.this-device-id);
+            font-size: Fonts.body-small;
+            color: AppStyle.foreground-muted;
+            wrap: word-wrap;
+        }
+
+        if AccountView.this-key != "": VerticalLayout {
+            spacing: Space.xs;
+
+            Text {
+                text: @tr("Session key");
+                font-size: Fonts.body-small;
+                color: AppStyle.foreground-muted;
+            }
+
+            Text {
+                text: AccountView.this-key;
+                font-family: Fonts.mono;
+                font-size: Fonts.body-small;
+                wrap: word-wrap;
+                accessible-label: @tr("Session key: {}", AccountView.this-key);
+            }
+        }
+
+        HorizontalLayout {
+            spacing: Space.md;
+
+            IconDisplay {
+                cross-axis-self-alignment: center;
+                icon: root.verified ? IconSet.ShieldCheck : IconSet.ShieldAlert;
+                size: IconSize.sm;
+                stroke: root.verified ? AppStyle.accent-on-surface : AppStyle.warning;
+            }
+
+            Text {
+                horizontal-stretch: 1;
+                text: root.verified ? @tr("Verified") : @tr("Not verified");
+                font-size: Fonts.body-small;
+                vertical-alignment: center;
+                color: AppStyle.foreground-muted;
+            }
+
+            if !root.verified: AppButton {
+                horizontal-stretch: 0;
+                above-modal: true;
+                text: @tr("Verify");
+                filled: false;
+                clicked => {
+                    Actions.close-account();
+                    Actions.open-encryption();
+                }
+            }
+        }
+    }
+}
+
+component OwnSessionRow inherits Rectangle {
+    in property <UserDeviceEntry> session;
+
+    property <bool> renaming;
+    property <bool> confirming;
+    property <bool> mine: AccountView.busy-session == root.session.device-id;
+    property <bool> renaming-busy: root.mine && AccountView.activity == AccountActivity.renaming;
+    property <bool> signing-out: root.mine
+        && (AccountView.activity == AccountActivity.signing-out
+            || AccountView.step == AccountStep.authenticating);
+    property <string> shown-name: root.session.name != "" ? root.session.name : root.session.device-id;
+    property <bool> verified: root.session.trust == DeviceTrust.verified;
+
+    pure function seen-line(session: UserDeviceEntry) -> string {
+        if session.last-seen != "" && session.ip != "" {
+            return @tr("Last active {} · {}", session.last-seen, session.ip);
+        }
+        if session.last-seen != "" {
+            return @tr("Last active {}", session.last-seen);
+        }
+        return session.device-id;
+    }
+
+    height: body.preferred-height;
+    accessible-role: groupbox;
+    accessible-label: @tr("Session {}, {}: {}", root.shown-name, root.session.device-id, root.verified ? @tr("Verified") : @tr("Not verified"));
+
+    body := VerticalLayout {
+        padding-top: Space.md;
+        padding-bottom: Space.md;
+        spacing: Space.md;
+
+        if !root.renaming: HorizontalLayout {
+            spacing: Space.lg;
+
+            IconDisplay {
+                cross-axis-self-alignment: center;
+                icon: root.verified ? IconSet.ShieldCheck : IconSet.ShieldAlert;
+                size: IconSize.md;
+                stroke: root.verified ? AppStyle.accent-on-surface : AppStyle.warning;
+            }
+
+            VerticalLayout {
+                alignment: center;
+                spacing: Space.xs;
+                horizontal-stretch: 1;
+
+                Text {
+                    text: root.shown-name;
+                    font-size: Fonts.body;
+                    overflow: elide;
+                }
+
+                Text {
+                    text: root.verified
+                        ? root.seen-line(root.session)
+                        : @tr("Not verified · {}", root.seen-line(root.session));
+                    font-size: Fonts.caption;
+                    color: AppStyle.foreground-muted;
+                    wrap: word-wrap;
+                }
+            }
+
+            if !AccountView.oauth && !root.confirming: AppButton {
+                horizontal-stretch: 0;
+                above-modal: true;
+                text: @tr("Rename");
+                filled: false;
+                enabled: !AccountView.busy;
+                busy: root.renaming-busy;
+                clicked => {
+                    root.renaming = true;
+                }
+            }
+
+            if !root.confirming: AppButton {
+                horizontal-stretch: 0;
+                above-modal: true;
+                text: @tr("Sign out");
+                tint: AppStyle.danger-muted;
+                filled: false;
+                enabled: !AccountView.busy;
+                busy: root.signing-out;
+                clicked => {
+                    if AccountView.oauth {
+                        Actions.sign-out-session(root.session.device-id);
+                    } else {
+                        root.confirming = true;
+                    }
+                }
+            }
+        }
+
+        if root.renaming: RenameField {
+            device-id: root.session.device-id;
+            current: root.session.name;
+            done => {
+                root.renaming = false;
+            }
+        }
+
+        if root.confirming: HorizontalLayout {
+            spacing: Space.md;
+
+            Text {
+                horizontal-stretch: 1;
+                text: @tr("Sign out of {}? It stops receiving your messages.", root.shown-name);
+                font-size: Fonts.body-small;
+                vertical-alignment: center;
+                wrap: word-wrap;
+            }
+
+            AppButton {
+                horizontal-stretch: 0;
+                above-modal: true;
+                text: @tr("Cancel");
+                filled: false;
+                clicked => {
+                    root.confirming = false;
+                }
+            }
+
+            AppButton {
+                horizontal-stretch: 0;
+                above-modal: true;
+                text: @tr("Sign out");
+                tint: AppStyle.danger-muted;
+                clicked => {
+                    root.confirming = false;
+                    Actions.sign-out-session(root.session.device-id);
+                }
+            }
+        }
+    }
+}
+
+component Overview inherits VerticalLayout {
+    spacing: Space.lg;
+
+    SectionLabel {
+        text: @tr("THIS SESSION");
+    }
+
+    if AccountView.sessions-known: ThisSessionCard { }
+
+    if !AccountView.sessions-known: DialogNote {
+        text: @tr("Reading your sessions...");
+    }
+
+    if AccountView.sessions-known: SectionLabel {
+        text: @tr("OTHER SESSIONS");
+    }
+
+    if AccountView.sessions-known && AccountView.sessions.length == 0: FactLine {
+        text: @tr("You aren't signed in anywhere else.");
+    }
+
+    for session in AccountView.sessions: OwnSessionRow {
+        session: session;
+    }
+
+    if AccountView.sessions-known && EncryptionView.standing != EncryptionStanding.verified
+        && AccountView.sessions.length > 0: FactLine {
+        text: @tr("Verify this session to see which of your other sessions are verified.");
+    }
+
+    if AccountView.oauth && AccountView.has-pages: AppButton {
+        above-modal: true;
+        text: @tr("Manage your sessions in your browser");
+        icon: IconSet.ExternalLink;
+        filled: false;
+        clicked => {
+            Actions.open-sessions-page();
+        }
+    }
+
+    if AccountView.facts-known: SectionLabel {
+        text: @tr("ACCOUNT");
+    }
+
+    if AccountView.facts-known && !AccountView.oauth && AccountView.may-change-password: AppButton {
+        above-modal: true;
+        text: @tr("Change password");
+        icon: IconSet.KeyRound;
+        filled: false;
+        enabled: !AccountView.busy;
+        clicked => {
+            Actions.start-password-change();
+        }
+    }
+
+    if AccountView.facts-known && !AccountView.oauth && !AccountView.may-change-password: FactLine {
+        text: @tr("Your homeserver doesn't let you change your password here.");
+    }
+
+    if AccountView.facts-known && AccountView.oauth && AccountView.has-pages: AppButton {
+        above-modal: true;
+        text: @tr("Manage your account in your browser");
+        icon: IconSet.ExternalLink;
+        filled: false;
+        clicked => {
+            Actions.open-account-page();
+        }
+    }
+
+    if AccountView.facts-known && AccountView.oauth && !AccountView.has-pages: FactLine {
+        text: @tr("Your homeserver manages your account on its own website.");
+    }
+
+    if AccountView.facts-known && (!AccountView.oauth || AccountView.has-pages): AppButton {
+        above-modal: true;
+        text: @tr("Deactivate account");
+        icon: IconSet.UserRoundX;
+        tint: AppStyle.danger-muted;
+        filled: false;
+        enabled: !AccountView.busy;
+        clicked => {
+            Actions.start-deactivation();
+        }
+    }
+
+    if AccountView.facts-known: SectionLabel {
+        text: @tr("HOMESERVER");
+    }
+
+    if AccountView.facts-known && AccountView.name-managed && AccountView.avatar-managed: FactLine {
+        text: @tr("Your homeserver manages your name and avatar.");
+    }
+
+    if AccountView.facts-known && AccountView.name-managed && !AccountView.avatar-managed: FactLine {
+        text: @tr("Your homeserver manages your name.");
+    }
+
+    if AccountView.facts-known && !AccountView.name-managed && AccountView.avatar-managed: FactLine {
+        text: @tr("Your homeserver manages your avatar.");
+    }
+
+    if AccountView.facts-known && AccountView.forgets-rooms: FactLine {
+        text: @tr("Leaving a room also forgets it, so its history goes from your account.");
+    }
+
+    if AccountView.facts-known: FactLine {
+        text: @tr("New rooms use room version {}.", AccountView.default-room-version);
+    }
+}
+
+component PasswordForm inherits VerticalLayout {
+    property <string> typed;
+    property <string> repeated;
+    property <bool> sign-out-others: true;
+    property <bool> differs: root.typed != "" && root.repeated != "" && root.typed != root.repeated;
+
+    function submit() {
+        if root.typed == "" || root.typed != root.repeated || AccountView.busy {
+            return;
+        }
+        Actions.change-password({ password: root.typed, sign-out-others: root.sign-out-others });
+        root.typed = "";
+        root.repeated = "";
+    }
+
+    spacing: Space.xl;
+
+    DialogNote {
+        text: @tr("Choose a new password. Use at least 8 characters, with a lower-case letter, an upper-case letter, a number and a symbol.");
+    }
+
+    TextField {
+        icon: IconSet.KeyRound;
+        secret: true;
+        above-modal: true;
+        enabled: !AccountView.busy;
+        placeholder: @tr("New password");
+        label: @tr("New password");
+        reveal-label: @tr("Show the new password");
+        conceal-label: @tr("Hide the new password");
+        text <=> root.typed;
+        init => {
+            self.focus-input();
+        }
+        accepted => {
+            root.submit();
+        }
+    }
+
+    TextField {
+        icon: IconSet.KeyRound;
+        secret: true;
+        above-modal: true;
+        enabled: !AccountView.busy;
+        placeholder: @tr("Repeat the new password");
+        label: @tr("Repeat the new password");
+        reveal-label: @tr("Show the repeated password");
+        conceal-label: @tr("Hide the repeated password");
+        text <=> root.repeated;
+        accepted => {
+            root.submit();
+        }
+    }
+
+    if root.differs: Text {
+        text: @tr("The passwords don't match.");
+        font-size: Fonts.body-small;
+        color: AppStyle.danger;
+        wrap: word-wrap;
+        accessible-live-region: AccessibleLiveness.polite;
+    }
+
+    CheckRow {
+        label: @tr("Sign out of your other sessions");
+        enabled: !AccountView.busy;
+        checked <=> root.sign-out-others;
+    }
+
+    HorizontalLayout {
+        spacing: Space.lg;
+
+        AppButton {
+            horizontal-stretch: 1;
+            above-modal: true;
+            text: @tr("Back");
+            icon: IconSet.ArrowLeft;
+            filled: false;
+            enabled: !AccountView.busy;
+            clicked => {
+                Actions.show-account-overview();
+            }
+        }
+
+        AppButton {
+            horizontal-stretch: 1;
+            above-modal: true;
+            text: @tr("Change password");
+            icon: IconSet.Check;
+            enabled: AccountView.busy || (root.typed != "" && root.typed == root.repeated);
+            busy: AccountView.activity == AccountActivity.changing-password;
+            clicked => {
+                root.submit();
+            }
+        }
+    }
+}
+
+component DeactivationConfirm inherits VerticalLayout {
+    property <bool> erase;
+
+    spacing: Space.xl;
+
+    Verdict {
+        icon: IconSet.UserRoundX;
+        tint: AppStyle.danger-muted;
+        surface: AppStyle.danger-background;
+        title: @tr("Deactivate your account?");
+    }
+
+    DialogNote {
+        text: @tr("You can't sign in to it again, and nobody can take your user ID. Your homeserver signs out all your sessions, and this device erases its copy of your messages and keys. This can't be undone.");
+    }
+
+    CheckRow {
+        label: @tr("Also erase my messages for people who join rooms later");
+        enabled: !AccountView.busy;
+        checked <=> root.erase;
+    }
+
+    HorizontalLayout {
+        spacing: Space.lg;
+
+        AppButton {
+            horizontal-stretch: 1;
+            above-modal: true;
+            text: @tr("Back");
+            icon: IconSet.ArrowLeft;
+            filled: false;
+            enabled: !AccountView.busy;
+            clicked => {
+                Actions.show-account-overview();
+            }
+        }
+
+        AppButton {
+            horizontal-stretch: 1;
+            above-modal: true;
+            text: @tr("Deactivate");
+            icon: IconSet.UserRoundX;
+            tint: AppStyle.call-decline;
+            busy: AccountView.activity == AccountActivity.deactivating;
+            clicked => {
+                Actions.deactivate-account({ erase: root.erase });
+            }
+        }
+    }
+}
+
+export component AccountDialog inherits ModalHost {
+    dim-opacity: AppStyle.dialog-scrim;
+    light-dismiss: AccountView.step == AccountStep.overview;
+    label: @tr("Account");
+    dismissed => {
+        Actions.close-account();
+    }
+    opened => {
+        Reactions.close();
+        MetaTip.clear();
+    }
+
+    property <length> card-width: min(AppStyle.card-width-wide, root.width - AppStyle.card-inset);
+    property <length> card-height: card-body.preferred-height;
+
+    pure function auth-purpose(guarding: AccountActivity, subject: string) -> string {
+        if guarding == AccountActivity.signing-out {
+            return @tr("To sign out of {}, your homeserver wants to know it's you.", subject);
+        }
+        if guarding == AccountActivity.changing-password {
+            return @tr("To change your password, your homeserver wants to know it's you. Use your current password.");
+        }
+        if guarding == AccountActivity.deactivating {
+            return @tr("To deactivate your account, your homeserver wants to know it's you.");
+        }
+        return "";
+    }
+
+    scroll := ScrollView {
+        x: 0;
+        y: 0;
+        width: 100%;
+        height: 100%;
+        content-width: self.width;
+        content-height: max(self.height, root.card-height + AppStyle.card-inset);
+
+        DialogCard {
+            x: (root.width - self.width) / 2;
+            y: (scroll.content-height - self.height) / 2;
+            width: root.card-width;
+            height: root.card-height;
+
+            card-body := VerticalLayout {
+                padding: Space.xxl;
+                spacing: Space.xl;
+
+                VerificationHeader {
+                    icon: IconSet.UserRoundCog;
+                    title: @tr("Account");
+                    subtitle: SessionView.user-id;
+                    close-label: @tr("Close the account settings");
+                    close-clicked => {
+                        Actions.close-account();
+                    }
+                }
+
+                Rectangle {
+                    height: Stroke.hairline;
+                    background: AppStyle.overlay-pressed;
+                }
+
+                if AccountView.step == AccountStep.overview && AccountView.notice != UserMessageKind.none: NoticeBanner {
+                    text: UserMessages.text(AccountView.notice, AccountView.notice-detail);
+                }
+
+                if AccountView.step == AccountStep.overview: Overview { }
+
+                if AccountView.step == AccountStep.changing-password: PasswordForm { }
+
+                if AccountView.step == AccountStep.confirming-deactivation: DeactivationConfirm { }
+
+                if AccountView.step == AccountStep.authenticating: AuthPrompt {
+                    stage: AccountView.auth-stage;
+                    purpose: root.auth-purpose(AccountView.auth-for, AccountView.auth-subject);
+                    busy: AccountView.busy;
+                    error: AccountView.auth-error;
+                    error-detail: AccountView.auth-error-detail;
+                    submit-password(password) => {
+                        Actions.answer-auth-password(password);
+                    }
+                    continue-clicked => {
+                        Actions.continue-auth();
+                    }
+                    reopen-clicked => {
+                        Actions.reopen-auth-page();
+                    }
+                    cancel-clicked => {
+                        Actions.cancel-auth();
+                    }
+                }
+
+                if !AccountView.busy && AccountView.step != AccountStep.authenticating
+                    && AccountView.error != UserMessageKind.none: ErrorBanner {
+                    messages: [{ kind: AccountView.error, detail: AccountView.error-detail }];
+                }
+            }
+        }
+    }
+}

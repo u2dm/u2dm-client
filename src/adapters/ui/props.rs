@@ -8,11 +8,11 @@ use crate::commands::effects::VerificationActivity;
 use crate::commands::messages::{UserMessage, UserMessageKind};
 use crate::commands::ui::UiCommand;
 use crate::commands::view::{
-    AttachmentKind, CallPhase, CameraView, ChildAccess, CreateRoomStatus, DirectChat,
-    EncryptionActivity, EncryptionStep, JoinRefusal, LoginActivity, LoginStep, MicrophoneView,
-    PendingAnswer, PendingModeration, PeopleSearchStatus, ReadersStatus, RoomInfoPlacement,
-    RoomPreviewSheet, RoomScope, RosterStatus, SourceState, SpaceIndexStatus, UpgradeLink,
-    VerifyOffer,
+    AccountActivity, AccountStep, AttachmentKind, AuthStage, CallPhase, CameraView, ChildAccess,
+    CreateRoomStatus, DirectChat, EncryptionActivity, EncryptionStep, JoinRefusal, LoginActivity,
+    LoginStep, MicrophoneView, PendingAnswer, PendingModeration, PeopleSearchStatus, ReadersStatus,
+    RoomInfoPlacement, RoomPreviewSheet, RoomScope, RosterStatus, SourceState, SpaceIndexStatus,
+    UpgradeLink, VerifyOffer,
 };
 use crate::domain::auth::LoginMethod;
 use crate::domain::call::video::ScreenRefusal;
