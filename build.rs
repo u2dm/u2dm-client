@@ -49,6 +49,16 @@ const ENUM_COVERAGE: &[EnumCoverage] = &[
         falls_through: &["no-portal"],
     },
     EnumCoverage {
+        slint_enum: "CallMic",
+        branches_in: "ui/messages.slint",
+        falls_through: &["off"],
+    },
+    EnumCoverage {
+        slint_enum: "CallCamera",
+        branches_in: "ui/messages.slint",
+        falls_through: &["off"],
+    },
+    EnumCoverage {
         slint_enum: "UserMessageKind",
         branches_in: "ui/messages.slint",
         falls_through: &["none"],

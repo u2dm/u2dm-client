@@ -289,6 +289,34 @@ export struct TextSplice {
     caret: int,
 }
 
+export struct ReplyDraft {
+    event-id: string,
+    sender: string,
+    preview: string,
+}
+
+export struct EditedMessage {
+    event-id: string,
+    local-id: string,
+    unique-id: string,
+    timeline-token: int,
+    caption: bool,
+    restored: bool,
+    original: string,
+    preview: string,
+}
+
+export struct ComposerDraft {
+    held: bool,
+    room-id: string,
+    text: string,
+    caret: int,
+    reply: ReplyDraft,
+    edited: EditedMessage,
+    stashed-text: string,
+    stashed-reply: ReplyDraft,
+}
+
 export struct MentionWord {
     start: int,
     query: string,

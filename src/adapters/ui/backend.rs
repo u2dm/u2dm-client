@@ -82,6 +82,7 @@ pub trait UiBackend: Sized + 'static {
     type PackRow: PackRowFields<Self> + Clone + From<PackRowDto> + 'static;
     type PackCell: PackCellFields<Self> + Clone + 'static;
     type PackTab: PackTabFields<Self> + Clone + From<PackTabDto> + 'static;
+    type Draft: Clone + 'static;
 
     fn models() -> Rc<Models<Self>>;
     fn attach_models(window: &Self::Window, models: &Models<Self>);

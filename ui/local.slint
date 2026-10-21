@@ -1,7 +1,7 @@
 import { Delivery, LoginPhase, MessageKind, PollPhase, ReactionSend, RoomInfoPlacement, Shield } from "./enums.slint";
 import { AccountView, AttachmentView, CreateRoomView, DirectoryView, EncryptionView, InvitePeopleView, InviteView, LeaveSpaceView, LoginView, LogoutView, ReadersView, RemovalView, RoomInfoView, RoomLogView, RoomMenuView, RoomPreviewView, RoomView, SourceView, UserInfoView, VerificationView, VideoView, WindowView } from "./views.slint";
 import { Actions } from "./actions.slint";
-import { MessageEntry, ReactionEntry } from "./types.slint";
+import { EditedMessage, MessageEntry, ReactionEntry, ReplyDraft } from "./types.slint";
 import { MessagePreview } from "./messages.slint";
 import { Metrics } from "./theme.slint";
 
@@ -13,23 +13,6 @@ export struct AnchorRect {
     y: length,
     width: length,
     height: length,
-}
-
-export struct ReplyDraft {
-    event-id: string,
-    sender: string,
-    preview: string,
-}
-
-export struct EditedMessage {
-    event-id: string,
-    local-id: string,
-    unique-id: string,
-    timeline-token: int,
-    caption: bool,
-    restored: bool,
-    original: string,
-    preview: string,
 }
 
 global TimelineRows {
@@ -589,7 +572,6 @@ export global LocalState {
     }
 
     public function forget-room() {
-        Composer.clear();
         TextSelection.clear();
         Reactions.close();
         MessageMenu.close();

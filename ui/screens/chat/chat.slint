@@ -196,6 +196,7 @@ export component ChatScreen inherits Rectangle {
         height: root.height;
         visible: !SpaceIndexView.visible;
         compact: root.compact && root.has-room;
+        under-room-list: root.shows-room-list;
         overlay-width: root.width;
         room-info-pane-fits: root.room-info-pane-fits;
         room-info-pane-shown: root.room-info-pane-shown;
@@ -210,6 +211,7 @@ export component ChatScreen inherits Rectangle {
         height: root.height;
         subrail-width: root.subrail-width;
         above-modal: Shell.nav-on-top;
+        shows-call-strip: CallView.active;
         room-selected => {
             root.close-nav();
         }

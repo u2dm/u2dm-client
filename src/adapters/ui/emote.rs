@@ -1,4 +1,5 @@
-use std::collections::VecDeque;
+use std::collections::{HashMap, VecDeque};
+use std::mem;
 use std::sync::Arc;
 
 use super::session::with_session;
@@ -22,6 +23,7 @@ const EMOTE_HEIGHT: &str = "32";
 pub struct EmoteBindings {
     room: String,
     bound: VecDeque<Emote>,
+    other_rooms: HashMap<String, VecDeque<Emote>>,
 }
 
 pub fn bound_in(text: &str) -> Vec<Emote> {
@@ -110,8 +112,12 @@ impl EmoteBindings {
 
     pub fn follow_room(&mut self, room_id: &str) {
         if self.room != room_id {
-            room_id.clone_into(&mut self.room);
-            self.bound.clear();
+            let entered = self.other_rooms.remove(room_id).unwrap_or_default();
+            let left_room = mem::replace(&mut self.room, room_id.to_owned());
+            let left_bound = mem::replace(&mut self.bound, entered);
+            if !left_bound.is_empty() {
+                self.other_rooms.insert(left_room, left_bound);
+            }
         }
     }
 

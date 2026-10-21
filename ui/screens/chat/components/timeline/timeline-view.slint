@@ -23,7 +23,7 @@ import { Avatar } from "../../../../components/avatar.slint";
 import { RoomInfoPane } from "../room-info.slint";
 import { CallPill } from "../call/call-pill.slint";
 import { CallBand } from "../call/call-band.slint";
-import { CallBar } from "../call/call-bar.slint";
+import { CallStrip } from "../call/call-strip.slint";
 import { CallOffer } from "../../../../enums.slint";
 import { CallWords } from "../../../../messages.slint";
 import { AppButton } from "../../../../components/button.slint";
@@ -36,6 +36,7 @@ export component TimelineView inherits Rectangle {
     in-out property <string> input-message: "";
 
     in property <bool> compact: false;
+    in property <bool> under-room-list: false;
     in property <length> overlay-width;
     in property <bool> room-info-pane-fits: false;
     in property <bool> room-info-pane-shown: false;
@@ -50,10 +51,9 @@ export component TimelineView inherits Rectangle {
     property <length> pinned-height: root.has-pins ? Metrics.pinned-bar + Space.md : 0px;
     property <length> now-playing-height: AudioView.visible ? Metrics.now-playing-bar : 0px;
     property <bool> shows-band: CallView.active && CallView.active-room-id == root.room-id;
-    property <bool> shows-bar: CallView.active && CallView.active-room-id != root.room-id;
+    property <bool> shows-strip: CallView.active && CallView.active-room-id != root.room-id;
     property <bool> call-maximized: root.shows-band && Shell.call-maximized;
     property <length> band-height: CallView.active-video ? Metrics.call-band-video : Metrics.call-band;
-    property <length> call-height: root.shows-band ? root.band-height : root.shows-bar ? Metrics.call-bar : 0px;
     property <bool> has-room: RoomView.selected-room-name != "";
     property <bool> is-loading: RoomView.timeline-status == TimelineState.loading
         || RoomView.timeline-status == TimelineState.loading-unread
@@ -74,7 +74,6 @@ export component TimelineView inherits Rectangle {
     }
 
     changed room-id => {
-        root.input-message = "";
         LocalState.forget-room();
         if !RoomSearch.opened(root.room-id) {
             RoomSearch.opened-room = "";
@@ -109,6 +108,12 @@ export component TimelineView inherits Rectangle {
         color: AppStyle.foreground-muted;
         horizontal-alignment: center;
         vertical-alignment: center;
+    }
+
+    if !root.has-room && root.shows-strip && !root.under-room-list: CallStrip {
+        x: 0;
+        y: 0;
+        width: root.width;
     }
 
     if root.has-room: room-header := Rectangle {
@@ -267,6 +272,10 @@ export component TimelineView inherits Rectangle {
         property <bool> swipe-within-reach: ReplySwipe.within-reach;
         property <int> menu-returns: RoomMenu.focus-returns;
         property <bool> opened-from-search: RoomSearch.opened(root.room-id) && Shell.background-reachable;
+        property <length> room-above-composer: self.height - root.header-height - input.height;
+        property <length> call-height: root.shows-band
+            ? (root.call-maximized ? self.room-above-composer : min(root.band-height, self.room-above-composer))
+            : root.shows-strip ? strip.height : 0px;
 
         x: 0;
         y: 0;
@@ -421,7 +430,7 @@ export component TimelineView inherits Rectangle {
             height: parent.height - root.header-height;
             visible: !root.call-maximized;
             available-width: parent.width;
-            top-inset: root.call-height + root.pinned-height + root.now-playing-height;
+            top-inset: stage.call-height + root.pinned-height + root.now-playing-height;
             bottom-inset: input.height + root.spacing;
             composer-top: parent.height - input.height;
         }
@@ -430,18 +439,22 @@ export component TimelineView inherits Rectangle {
             x: 0;
             y: root.header-height;
             width: parent.width;
-            height: root.call-maximized ? parent.height - root.header-height - input.height : root.band-height;
+            height: stage.call-height;
         }
 
-        if root.shows-bar: CallBar {
+        strip := CallStrip {
             x: 0;
             y: root.header-height;
             width: parent.width;
+            visible: root.shows-strip;
+            returned => {
+                stage.refocus-composer();
+            }
         }
 
         if root.has-pins && !root.call-maximized: Rectangle {
             x: 0;
-            y: root.header-height + root.call-height;
+            y: root.header-height + stage.call-height;
             width: parent.width;
             height: root.pinned-height;
             background: root.background;
@@ -457,7 +470,7 @@ export component TimelineView inherits Rectangle {
 
         header-separator := Rectangle {
             x: 0;
-            y: root.header-height + root.call-height + root.pinned-height - self.height;
+            y: root.header-height + stage.call-height + root.pinned-height - self.height;
             width: parent.width;
             height: Stroke.hairline;
             background: AppStyle.border;
@@ -465,7 +478,7 @@ export component TimelineView inherits Rectangle {
 
         if AudioView.visible && !root.call-maximized: NowPlayingBar {
             x: 0;
-            y: root.header-height + root.call-height + root.pinned-height;
+            y: root.header-height + stage.call-height + root.pinned-height;
             width: parent.width;
         }
 

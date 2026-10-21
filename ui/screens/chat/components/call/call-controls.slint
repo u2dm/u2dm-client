@@ -1,0 +1,71 @@
+import { IconSet } from "@lucide";
+
+import { AppButton, IconButton } from "../../../../components/button.slint";
+import { CallCamera, CallMic, CallPhase, CallScreen } from "../../../../enums.slint";
+import { CallWords } from "../../../../messages.slint";
+import { Actions } from "../../../../actions.slint";
+import { Shell } from "../../../../local.slint";
+import { CallView } from "../../../../views.slint";
+import { AppStyle, Metrics } from "../../../../theme.slint";
+
+export component CallMicButton inherits IconButton {
+    property <bool> failed: CallView.mic == CallMic.failed;
+
+    size: Metrics.call-control;
+    icon: CallView.mic == CallMic.on ? IconSet.Mic : IconSet.MicOff;
+    tint: self.failed ? AppStyle.on-call-decline : AppStyle.foreground-strong;
+    fill: self.failed ? AppStyle.call-decline : AppStyle.call-tile;
+    label: CallWords.microphone(CallView.mic);
+    clicked => {
+        Actions.set-microphone({ on: CallView.mic != CallMic.on });
+    }
+}
+
+export component CallCameraButton inherits IconButton {
+    property <bool> on: CallView.camera == CallCamera.on || CallView.camera == CallCamera.starting;
+    property <bool> failed: CallView.camera == CallCamera.failed;
+
+    size: Metrics.call-control;
+    icon: self.on ? IconSet.Video : IconSet.VideoOff;
+    tint: self.failed ? AppStyle.on-call-decline : AppStyle.foreground-strong;
+    fill: self.failed ? AppStyle.call-decline : AppStyle.call-tile;
+    label: CallWords.camera(CallView.camera);
+    clicked => {
+        Actions.set-camera({ on: !self.on });
+    }
+}
+
+export component CallShareButton inherits IconButton {
+    property <bool> sharing: CallView.screen == CallScreen.on || CallView.screen == CallScreen.choosing;
+
+    size: Metrics.call-control;
+    enabled: CallView.screen != CallScreen.unavailable
+        && CallView.phase != CallPhase.joining && CallView.phase != CallPhase.connecting;
+    icon: self.sharing ? IconSet.ScreenShareOff : IconSet.ScreenShare;
+    tint: self.sharing ? AppStyle.on-call-sharing : AppStyle.foreground-strong;
+    fill: self.sharing ? AppStyle.call-sharing : AppStyle.call-tile;
+    label: CallWords.share(CallView.screen, CallView.screen-refusal);
+    clicked => {
+        Actions.share-screen({ on: !self.sharing });
+    }
+}
+
+export component CallStopSharingButton inherits AppButton {
+    height: Metrics.call-control;
+    text: CallWords.stop-sharing(CallView.screen);
+    tint: AppStyle.call-sharing;
+    clicked => {
+        Actions.share-screen({ on: false });
+    }
+}
+
+export component CallLeaveButton inherits AppButton {
+    height: Metrics.call-control;
+    text: @tr("Leave");
+    icon: IconSet.PhoneOff;
+    tint: AppStyle.call-decline;
+    clicked => {
+        Shell.call-maximized = false;
+        Actions.leave-call();
+    }
+}

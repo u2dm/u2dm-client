@@ -14,7 +14,8 @@ import { LinkButton } from "../../../../components/button.slint";
 import { ModalHost } from "../../../../components/overlay.slint";
 import { FocusRing, FocusTrail, Interaction } from "../../../../components/a11y.slint";
 import { Actions } from "../../../../actions.slint";
-import { Composer, EditedMessage, Polls, Reactions, ReplyDraft, Shell } from "../../../../local.slint";
+import { Composer, Polls, Reactions, Shell } from "../../../../local.slint";
+import { ComposerDraft, EditedMessage, ReplyDraft } from "../../../../types.slint";
 import { IdentityAlertView, RoomView, UnsentView, UpgradeView } from "../../../../views.slint";
 import { IdentityAlertKind, UpgradeLink } from "../../../../enums.slint";
 
@@ -138,6 +139,7 @@ export component MessageInput inherits Rectangle {
 
     property <string> stashed-text;
     property <ReplyDraft> stashed-reply;
+    property <string> drafted-room;
     property <int> edit-requests: Composer.edit-requests;
 
     property <length> surface-inset: Metrics.timeline-inset;
@@ -153,7 +155,13 @@ export component MessageInput inherits Rectangle {
         root.begin-edit(Composer.requested-edit, Composer.requested-edit.original);
     }
 
+    init => {
+        root.restore-draft();
+    }
+
     changed room-id => {
+        root.keep-draft();
+        root.restore-draft();
         root.report-activity();
     }
 
@@ -194,6 +202,38 @@ export component MessageInput inherits Rectangle {
 
     function report-activity() {
         Actions.composer-changed(root.room-id, root.composing, root.edits);
+    }
+
+    function keep-draft() {
+        Actions.keep-draft({
+            held: true,
+            room-id: root.drafted-room,
+            text: root.message,
+            caret: field.caret,
+            reply: Composer.reply,
+            edited: Composer.edited,
+            stashed-text: root.stashed-text,
+            stashed-reply: root.stashed-reply,
+        });
+    }
+
+    function restore-draft() {
+        root.drafted-room = root.room-id;
+        let draft = Actions.take-draft(root.room-id);
+        if draft.held {
+            root.apply-draft(draft);
+        } else {
+            root.apply-draft({ });
+        }
+    }
+
+    function apply-draft(draft: ComposerDraft) {
+        Composer.restore-reply(draft.reply);
+        Composer.edited = draft.edited;
+        root.stashed-text = draft.stashed-text;
+        root.stashed-reply = draft.stashed-reply;
+        field.replace-text(draft.text);
+        field.place-caret(draft.caret);
     }
 
     function submit() {

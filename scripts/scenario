@@ -135,6 +135,9 @@ scenario_env() {
     call-remote-sfu) echo 'U2DM_DEMO_CALLS=active,remote-sfu U2DM_DEMO_WINDOW=900x760' ;;
     call-switch-rooms) echo 'U2DM_DEMO_CALLS=active U2DM_DEMO_WINDOW=900x760' ;;
     call-compact)    echo 'U2DM_DEMO_CALLS=active U2DM_DEMO_WINDOW=420x760' ;;
+    call-strip-nav)  echo 'U2DM_DEMO_CALLS=active U2DM_DEMO_WINDOW=420x760' ;;
+    call-strip-index) echo 'U2DM_DEMO_CALLS=active U2DM_DEMO_WINDOW=900x760' ;;
+    call-minimum)    echo 'U2DM_DEMO_CALLS=active,cameras U2DM_DEMO_WINDOW=360x420' ;;
     call-crowd)      echo 'U2DM_DEMO_CALLS=active,crowd U2DM_DEMO_WINDOW=900x760' ;;
     call-video)      echo 'U2DM_DEMO_CALLS=active,cameras U2DM_DEMO_WINDOW=900x760' ;;
     call-camera)     echo 'U2DM_DEMO_CALLS=active U2DM_DEMO_WINDOW=900x760' ;;
@@ -748,6 +751,22 @@ scenario_steps() {
       echo 'sleep 2'
       echo '{"op":"join_call"}'
       echo 'sleep 3' ;;
+    call-strip-nav)
+      echo '{"op":"join_call","room_id":"!design:demo.local"}'
+      echo 'sleep 3' ;;
+    call-strip-index)
+      echo '{"op":"select_room","room_id":"!rust:demo.local"}'
+      echo 'sleep 2'
+      echo '{"op":"join_call"}'
+      echo 'sleep 2'
+      echo '{"op":"select_space","space_id":"!space-rust:demo.local"}'
+      echo '{"op":"open_space_index"}'
+      echo 'sleep 2' ;;
+    call-minimum)
+      echo '{"op":"select_room","room_id":"!design:demo.local"}'
+      echo 'sleep 2'
+      echo '{"op":"join_call"}'
+      echo 'sleep 3' ;;
     notifications)
       echo '{"op":"window_focus","focused":false}'
       echo 'sleep 15'
@@ -1067,8 +1086,11 @@ scenario_note() {
     call-unverified-session) echo 'an unverified session cannot join an encrypted call (calls, encryption)' ;;
     call-reconnect)  echo 'the media server reconnects 5 s after joining: the band says Reconnecting, then the call is live again (call-media)' ;;
     call-remote-sfu) echo 'Jordan publishes to another homeserver'"'"'s media server: two connections, every tile live (calls)' ;;
-    call-switch-rooms) echo 'join Design Team, then open Sarah'"'"'s chat: the call bar under the header leads back (call-ui)' ;;
+    call-switch-rooms) echo 'join Design Team, then open Sarah'"'"'s chat: the call strip under the header leads back (call-ui)' ;;
     call-compact)    echo 'a 420 px window in the call: tiles wrap in the band (call-ui)' ;;
+    call-strip-nav)  echo 'a 420 px window in the Design Team call with no room open: the strip tops the room list, which starts below it (call-ui)' ;;
+    call-strip-index) echo 'in the Rust Programming call, open the Rust space index: the strip sits under the index header, above the rows (call-ui, space-index)' ;;
+    call-minimum)    echo 'the Design Team video call in a 360x420 window: the band stops at the composer, its controls in view (call-ui)' ;;
     call-crowd)      echo 'nine people in the Design Team call: the tile grid scrolls (call-ui)' ;;
     call-video)      echo 'the Design Team video call with everyone'"'"'s camera on: painted demo videos fill the tiles, yours mirrored (call-ui, call-media)' ;;
     call-camera)     echo 'join the Rust Programming voice call, then switch your camera on: the band grows and your tile shows video (call-ui)' ;;
@@ -1111,7 +1133,8 @@ names() {
     calls-active call-ring call-ring-ends call-ring-elsewhere call-ring-unconfirmed call-expiry \
     call-join call-start-dm call-start-dm-declined call-keys-late call-undecryptable call-no-sfu \
     call-no-permission call-unverified-session call-reconnect call-remote-sfu call-switch-rooms \
-    call-compact call-crowd call-video call-camera call-screen-share call-share-screen \
+    call-compact call-strip-nav call-strip-index call-minimum call-crowd call-video call-camera \
+    call-screen-share call-share-screen \
     notifications notifications-focused notifications-burst \
     encryption-unverified encryption-recovery-key encryption-new-account encryption-setup-refused \
     identity-reset identity-reset-oauth room-keys \

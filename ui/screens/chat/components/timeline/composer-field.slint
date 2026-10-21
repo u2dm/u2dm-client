@@ -145,6 +145,11 @@ export component ComposerField inherits Rectangle {
         root.keep-scroll-in-range();
     }
 
+    public function place-caret(offset: int) {
+        root.caret = offset;
+        text-input.set-selection-offsets(offset, offset);
+    }
+
     public function insert-at-caret(glyph: string) {
         root.pending-insert = EmojiStore.insert(root.text, root.caret, glyph);
         root.apply-pending-insert();

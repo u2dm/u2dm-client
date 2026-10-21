@@ -6,10 +6,11 @@ import { AppButton, HeaderIconButton } from "../../../components/button.slint";
 import { RetryNotice } from "../../../components/retry-notice.slint";
 import { StatusPill } from "../../../components/status-pill.slint";
 import { SpaceBadge } from "./space-badge.slint";
+import { CallStrip } from "./call/call-strip.slint";
 import { SpaceChildEntry } from "../../../types.slint";
 import { AppStyle, Fonts, Metrics, Space, Stroke, Weight } from "../../../theme.slint";
 import { ChildAccess, SpaceIndexStatus } from "../../../enums.slint";
-import { SpaceIndexView } from "../../../views.slint";
+import { CallView, SpaceIndexView } from "../../../views.slint";
 import { Actions } from "../../../actions.slint";
 import { Shell } from "../../../local.slint";
 
@@ -264,6 +265,13 @@ export component SpaceIndexPane inherits Rectangle {
         SpaceIndexHeader {
             title: root.title(SpaceIndexView.space-name);
             above-modal: root.above-modal;
+        }
+
+        if CallView.active: CallStrip {
+            above-modal: root.above-modal;
+            returned => {
+                Shell.nav-open = false;
+            }
         }
 
         Rectangle {

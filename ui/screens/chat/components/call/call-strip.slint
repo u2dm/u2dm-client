@@ -1,0 +1,127 @@
+import { IconDisplay, IconSet } from "@lucide";
+
+import { ClickArea } from "../../../../components/a11y.slint";
+import { StateLayer } from "../../../../components/state-layer.slint";
+import { CallScreen } from "../../../../enums.slint";
+import { CallWords } from "../../../../messages.slint";
+import { Actions } from "../../../../actions.slint";
+import { CallView } from "../../../../views.slint";
+import { AppStyle, Fonts, IconSize, Metrics, Radius, Size, Space, Stroke, Weight } from "../../../../theme.slint";
+import { CallCameraButton, CallLeaveButton, CallMicButton, CallStopSharingButton } from "./call-controls.slint";
+
+component CallReturn inherits ClickArea {
+    out property <length> label-width: row.preferred-width;
+
+    ring-radius: Radius.sm;
+    label: @tr("Go back to the call in {}", CallView.active-room-name);
+
+    StateLayer {
+        border-radius: Radius.sm;
+        ink: AppStyle.call-live;
+        hovered: root.has-hover && root.enabled;
+        pressed: root.pressed && root.enabled;
+    }
+
+    row := HorizontalLayout {
+        padding-left: Space.sm;
+        padding-right: Space.sm;
+        spacing: Space.md;
+
+        IconDisplay {
+            cross-axis-self-alignment: center;
+            icon: CallView.active-video ? IconSet.Video : IconSet.Phone;
+            size: IconSize.sm;
+            stroke: AppStyle.call-live;
+        }
+
+        HorizontalLayout {
+            alignment: start;
+            spacing: Space.sm;
+
+            Text {
+                text: CallView.active-room-name;
+                font-family: Fonts.emoji;
+                font-size: Fonts.body-small;
+                font-weight: Weight.semibold;
+                color: AppStyle.call-live;
+                vertical-alignment: center;
+                overflow: elide;
+            }
+
+            Text {
+                min-width: self.preferred-width;
+                text: @tr("· {}", CallWords.phase(CallView.phase, CallView.elapsed));
+                font-size: Fonts.body-small;
+                color: AppStyle.foreground-muted;
+                vertical-alignment: center;
+            }
+        }
+    }
+}
+
+export component CallStrip inherits Rectangle {
+    in property <bool> above-modal;
+
+    callback returned();
+
+    property <length> pad: Space.md;
+    property <length> gap: Space.md;
+    property <bool> sharing: CallView.screen == CallScreen.on || CallView.screen == CallScreen.choosing;
+    property <length> controls-width: (root.sharing ? stop.preferred-width + root.gap : 0px)
+        + 2 * (Metrics.call-control + root.gap) + leave.preferred-width;
+    property <bool> stacked: root.width
+        < 2 * root.pad + min(back.label-width, Metrics.call-strip-label-min) + root.gap + root.controls-width;
+    property <length> controls-y: root.height - root.pad - Metrics.call-control;
+
+    height: root.stacked ? Metrics.call-strip-stacked : Metrics.call-strip;
+    background: AppStyle.call-live-background;
+    accessible-role: groupbox;
+    accessible-label: @tr("Call in {}", CallView.active-room-name);
+
+    back := CallReturn {
+        x: root.pad;
+        y: root.pad;
+        width: root.stacked
+            ? root.width - 2 * root.pad
+            : root.width - 2 * root.pad - root.gap - root.controls-width;
+        height: root.stacked ? Size.md : Metrics.call-control;
+        above-modal: root.above-modal;
+        clicked => {
+            Actions.select-room(CallView.active-room-id);
+            root.returned();
+        }
+    }
+
+    stop := CallStopSharingButton {
+        x: root.stacked ? root.pad : mic.x - root.gap - self.width;
+        y: root.controls-y;
+        width: self.preferred-width;
+        visible: root.sharing;
+        above-modal: root.above-modal;
+    }
+
+    mic := CallMicButton {
+        x: camera.x - root.gap - self.width;
+        y: root.controls-y;
+        above-modal: root.above-modal;
+    }
+
+    camera := CallCameraButton {
+        x: leave.x - root.gap - self.width;
+        y: root.controls-y;
+        above-modal: root.above-modal;
+    }
+
+    leave := CallLeaveButton {
+        x: root.width - root.pad - self.width;
+        y: root.controls-y;
+        width: self.preferred-width;
+        above-modal: root.above-modal;
+    }
+
+    Rectangle {
+        y: parent.height - self.height;
+        height: Stroke.hairline;
+        background: AppStyle.border;
+    }
+}

@@ -1,4 +1,4 @@
-import { CallPhase, CallRefusal, CallScreen, CallScreenRefusal, CallTileState, Delivery, EmojiArt, MediaFailure, PresenceLine, PreviewKind, RoomCallMark, ServiceKind, ShieldReason, UpgradeLink, UserMessageKind } from "./enums.slint";
+import { CallCamera, CallMic, CallPhase, CallRefusal, CallScreen, CallScreenRefusal, CallTileState, Delivery, EmojiArt, MediaFailure, PresenceLine, PreviewKind, RoomCallMark, ServiceKind, ShieldReason, UpgradeLink, UserMessageKind } from "./enums.slint";
 
 export global UserMessages {
     public pure function text(kind: UserMessageKind, detail: string) -> string {
@@ -912,6 +912,33 @@ export global CallWords {
 
     public pure function screen-of(name: string) -> string {
         return @tr("{}'s screen", name);
+    }
+
+    public pure function microphone(mic: CallMic) -> string {
+        if mic == CallMic.on {
+            return @tr("Mute your microphone");
+        }
+        if mic == CallMic.failed {
+            return @tr("Your microphone did not start, try again");
+        }
+        return @tr("Unmute your microphone");
+    }
+
+    public pure function camera(camera: CallCamera) -> string {
+        if camera == CallCamera.on || camera == CallCamera.starting {
+            return @tr("Turn your camera off");
+        }
+        if camera == CallCamera.failed {
+            return @tr("Your camera did not start, try again");
+        }
+        return @tr("Turn your camera on");
+    }
+
+    public pure function stop-sharing(screen: CallScreen) -> string {
+        if screen == CallScreen.choosing {
+            return @tr("Cancel sharing");
+        }
+        return @tr("Stop sharing");
     }
 }
 

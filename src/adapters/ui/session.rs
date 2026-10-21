@@ -1,4 +1,5 @@
 use std::cell::RefCell;
+use std::collections::HashMap;
 use std::rc::Rc;
 use std::sync::Arc;
 
@@ -34,6 +35,7 @@ pub struct UiSession<B: UiBackend> {
     pub media: MediaSession,
     pub bodies: StyledBodies,
     pub spoilers: SpoilerRows,
+    pub drafts: HashMap<String, B::Draft>,
 }
 
 impl<B: UiBackend> Default for UiSession<B> {
@@ -53,6 +55,7 @@ impl<B: UiBackend> Default for UiSession<B> {
             media: MediaSession::default(),
             bodies: StyledBodies::default(),
             spoilers: SpoilerRows::default(),
+            drafts: HashMap::new(),
         }
     }
 }

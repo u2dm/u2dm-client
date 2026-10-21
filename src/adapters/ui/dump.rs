@@ -184,7 +184,7 @@ pub struct CallDump {
     pub pill_people: i32,
     pub pill_video: bool,
     pub band: bool,
-    pub bar: bool,
+    pub strip: bool,
     pub elapsed: String,
     pub card_answerable: bool,
     pub tiles: Vec<CallTileDump>,
@@ -380,7 +380,7 @@ fn call_view<B: UiBackend>(window: &B::Window) -> CallDump {
         pill_people: window.get_int(IntProp::HerePeople),
         pill_video: window.get_bool(BoolProp::HereVideo),
         band: active && in_call_room,
-        bar: active && !in_call_room,
+        strip: active && !in_call_room,
         elapsed: window.get_string(StringProp::CallElapsed).to_string(),
         card_answerable: window.get_bool(BoolProp::RingAnswerable),
         tiles: B::models()

@@ -13,6 +13,7 @@ import {
     PollAnswerEntry,
     MentionWord,
     TextSplice,
+    ComposerDraft,
     ModerationRequest,
     LeaveSpaceRequest,
     StartCallRequest,
@@ -182,6 +183,8 @@ export global Actions {
     callback call-tile-sized(string, int, int);
     callback user-activity-changed(bool);
     callback composer-changed(string, bool, int);
+    callback keep-draft(ComposerDraft);
+    callback take-draft(string) -> ComposerDraft;
     callback paginate-backwards();
     callback paginate-forwards();
     callback jump-to-latest();

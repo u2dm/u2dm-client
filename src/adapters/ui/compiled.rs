@@ -16,7 +16,7 @@ use u2dm_ui::{
     CallMic as UiCallMic, CallOffer as UiCallOffer, CallPhase as UiCallPhase,
     CallRefusal as UiCallRefusal, CallScreen as UiCallScreen,
     CallScreenRefusal as UiCallScreenRefusal, CallTileEntry, CallTileState as UiCallTileState,
-    CallView, ChildAccess as UiChildAccess, ConnectionState,
+    CallView, ChildAccess as UiChildAccess, ComposerDraft, ConnectionState,
     CreateRoomStatus as UiCreateRoomStatus, CreateRoomView,
     DecryptionFailure as UiDecryptionFailure, Delivery as UiDelivery, DeviceTrust as UiDeviceTrust,
     DirectChat as UiDirectChat, DirectoryView, DraftVerdict as UiDraftVerdict,
@@ -106,7 +106,7 @@ use super::schema::{
 };
 use super::session::active_models;
 use super::video::{self, millis_to_duration};
-use super::{audio, emoji, emote, mention, motion, router};
+use super::{audio, drafts, emoji, emote, mention, motion, router};
 use crate::app::input::CommandSender;
 use crate::commands::effects::{Effect, VerificationActivity};
 use crate::commands::messages::{UserMessage, UserMessageKind};
@@ -649,6 +649,7 @@ impl UiBackend for CompiledBackend {
     type PackRow = PackRow;
     type PackCell = PackCell;
     type PackTab = PackTabEntry;
+    type Draft = ComposerDraft;
 
     fn models() -> Rc<Models<Self>> {
         active_models()
@@ -755,6 +756,11 @@ impl SlintUiAdapter {
         });
     }
 
+    fn bind_draft_callbacks(win: &AppWindow) {
+        actions(win).on_keep_draft(|draft| drafts::keep(draft.room_id.to_string(), draft));
+        actions(win).on_take_draft(|room_id| drafts::take(&room_id).unwrap_or_default());
+    }
+
     fn bind_mention_callbacks(win: &AppWindow, cmd_tx: &CommandSender) {
         let tx = cmd_tx.clone();
         let weak = win.as_weak();
@@ -856,6 +862,7 @@ impl SlintUiAdapter {
         actions(win).on_request_media(move |unique_id| request_media(&unique_id));
 
         Self::bind_edit_callbacks(win, cmd_tx);
+        Self::bind_draft_callbacks(win);
         Self::bind_mention_callbacks(win, cmd_tx);
         Self::bind_video_callbacks(win);
         Self::bind_audio_callbacks(win, cmd_tx);

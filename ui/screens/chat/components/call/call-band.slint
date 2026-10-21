@@ -1,12 +1,11 @@
 import { IconDisplay, IconSet } from "@lucide";
 
-import { AppButton, IconButton } from "../../../../components/button.slint";
-import { CallCamera, CallMic, CallPhase, CallScreen } from "../../../../enums.slint";
+import { IconButton } from "../../../../components/button.slint";
 import { CallWords } from "../../../../messages.slint";
-import { Actions } from "../../../../actions.slint";
 import { Shell } from "../../../../local.slint";
 import { CallView } from "../../../../views.slint";
-import { AppStyle, Fonts, IconSize, Metrics, Radius, Size, Space, Stroke, Weight } from "../../../../theme.slint";
+import { AppStyle, Fonts, IconSize, Metrics, Size, Space, Stroke, Weight } from "../../../../theme.slint";
+import { CallCameraButton, CallLeaveButton, CallMicButton, CallShareButton } from "./call-controls.slint";
 import { CallTileView } from "./call-tile.slint";
 
 component CallTiles inherits Flickable {
@@ -116,62 +115,13 @@ export component CallBand inherits Rectangle {
             alignment: center;
             spacing: Space.lg;
 
-            IconButton {
-                size: Size.xl;
-                icon: CallView.mic == CallMic.on ? IconSet.Mic : IconSet.MicOff;
-                tint: CallView.mic == CallMic.on ? AppStyle.foreground-strong : white;
-                fill: CallView.mic == CallMic.on ? AppStyle.call-tile : AppStyle.call-decline;
-                label: CallView.mic == CallMic.on
-                    ? @tr("Mute your microphone")
-                    : CallView.mic == CallMic.failed
-                        ? @tr("Your microphone did not start, try again")
-                        : @tr("Unmute your microphone");
-                clicked => {
-                    Actions.set-microphone({ on: CallView.mic != CallMic.on });
-                }
-            }
+            CallMicButton { }
 
-            IconButton {
-                property <bool> on: CallView.camera == CallCamera.on || CallView.camera == CallCamera.starting;
+            CallCameraButton { }
 
-                size: Size.xl;
-                icon: self.on ? IconSet.Video : IconSet.VideoOff;
-                tint: self.on ? AppStyle.foreground-strong : white;
-                fill: self.on ? AppStyle.call-tile : AppStyle.call-decline;
-                label: self.on
-                    ? @tr("Turn your camera off")
-                    : CallView.camera == CallCamera.failed
-                        ? @tr("Your camera did not start, try again")
-                        : @tr("Turn your camera on");
-                clicked => {
-                    Actions.set-camera({ on: !self.on });
-                }
-            }
+            CallShareButton { }
 
-            IconButton {
-                property <bool> sharing: CallView.screen == CallScreen.on || CallView.screen == CallScreen.choosing;
-
-                size: Size.xl;
-                enabled: CallView.screen != CallScreen.unavailable
-                    && CallView.phase != CallPhase.joining && CallView.phase != CallPhase.connecting;
-                icon: self.sharing ? IconSet.ScreenShareOff : IconSet.ScreenShare;
-                tint: self.sharing ? AppStyle.on-call-sharing : AppStyle.foreground-strong;
-                fill: self.sharing ? AppStyle.call-sharing : AppStyle.call-tile;
-                label: CallWords.share(CallView.screen, CallView.screen-refusal);
-                clicked => {
-                    Actions.share-screen({ on: !self.sharing });
-                }
-            }
-
-            AppButton {
-                text: @tr("Leave");
-                icon: IconSet.PhoneOff;
-                tint: AppStyle.call-decline;
-                clicked => {
-                    Shell.call-maximized = false;
-                    Actions.leave-call();
-                }
-            }
+            CallLeaveButton { }
         }
     }
 

@@ -148,6 +148,7 @@ export global AppStyle {
     out property <color> call-live: root.success;
     out property <color> call-live-background: root.success-background;
     out property <color> call-decline: Colors.tomato.darker(0.25);
+    out property <color> on-call-decline: Colors.white;
     out property <color> call-accept: Colors.mediumseagreen.darker(0.25);
     out property <color> call-band: root.nav;
     out property <color> call-tile: root.elevated;
@@ -352,7 +353,10 @@ export global Metrics {
     out property <length> incoming-call-inset: Space.xl;
     out property <length> call-band: 260px;
     out property <length> call-band-video: 380px;
-    out property <length> call-bar: Size.xl;
+    out property <length> call-control: Size.xl;
+    out property <length> call-strip: root.call-control + 2 * Space.md;
+    out property <length> call-strip-stacked: Size.md + root.call-control + Space.sm + 2 * Space.md;
+    out property <length> call-strip-label-min: 128px;
     out property <length> call-tile-min-width: 120px;
     out property <length> call-tile-roomy: 96px;
     out property <float> call-tile-aspect: 16 / 9;

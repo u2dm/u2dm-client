@@ -11,6 +11,7 @@ mod clipboard;
 mod clock;
 mod context_press;
 mod decode;
+mod drafts;
 mod dto;
 #[cfg(feature = "demo")]
 pub(crate) mod dump;

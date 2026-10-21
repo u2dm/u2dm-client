@@ -12,8 +12,8 @@ use tokio::runtime::Runtime;
 use tokio::sync::{mpsc, watch};
 
 use names::{
-    callback, draft_verdict, emoji_entry, emoji_row, emoji_store, mention_word, text_splice,
-    user_message, verification_emoji,
+    callback, composer_draft, draft_verdict, emoji_entry, emoji_row, emoji_store, mention_word,
+    text_splice, user_message, verification_emoji,
 };
 
 use super::backend::{
@@ -68,7 +68,7 @@ use super::schema::{
 };
 use super::session::active_models;
 use super::video::{self, millis_to_duration};
-use super::{audio, emoji, emote, mention, motion, router};
+use super::{audio, drafts, emoji, emote, mention, motion, router};
 use crate::app::input::CommandSender;
 use crate::commands::effects::{Effect, VerificationActivity};
 use crate::commands::messages::{UserMessage, UserMessageKind};
@@ -144,6 +144,8 @@ mod names {
         pub const SCROLL_POSITION_CHANGED: &str = "scroll-position-changed";
         pub const TIMELINE_VISIBILITY_CHANGED: &str = "timeline-visibility-changed";
         pub const COMPOSER_CHANGED: &str = "composer-changed";
+        pub const KEEP_DRAFT: &str = "keep-draft";
+        pub const TAKE_DRAFT: &str = "take-draft";
         pub const WINDOW_FOCUS_CHANGED: &str = "window-focus-changed";
         pub const USER_ACTIVITY_CHANGED: &str = "user-activity-changed";
     }
@@ -178,6 +180,11 @@ mod names {
     pub mod draft_verdict {
         pub const ACCEPTED: &str = "accepted";
         pub const SHORTEN_BY: &str = "shorten-by";
+    }
+
+    pub mod composer_draft {
+        pub const HELD: &str = "held";
+        pub const ROOM_ID: &str = "room-id";
     }
 
     pub mod mention_word {
@@ -746,6 +753,7 @@ impl UiBackend for InterpretedBackend {
     type PackRow = Value;
     type PackCell = Value;
     type PackTab = Value;
+    type Draft = Value;
 
     fn models() -> Rc<Models<Self>> {
         active_models()
@@ -930,6 +938,19 @@ impl SlintUiAdapter {
         })
     }
 
+    fn bind_draft_callbacks(&self) -> Result<()> {
+        bind_action(&self.instance, callback::KEEP_DRAFT, |args| {
+            if let (Some(fields), Some(draft)) = (struct_arg(args, 0), args.first()) {
+                drafts::keep(field(fields, composer_draft::ROOM_ID), draft.clone());
+            }
+            Value::Void
+        })?;
+
+        bind_action(&self.instance, callback::TAKE_DRAFT, |args| {
+            drafts::take(&string_arg(args, 0)).unwrap_or_else(no_draft_value)
+        })
+    }
+
     fn bind_mention_callbacks(&self, cmd_tx: &CommandSender) -> Result<()> {
         let tx = cmd_tx.clone();
         let weak = self.instance.as_weak();
@@ -1103,6 +1124,7 @@ impl SlintUiAdapter {
         })?;
 
         self.bind_edit_callbacks(cmd_tx)?;
+        self.bind_draft_callbacks()?;
         self.bind_mention_callbacks(cmd_tx)?;
         self.bind_decode_requests()?;
         self.bind_audio_callbacks(cmd_tx)?;
@@ -1379,6 +1401,13 @@ fn draft_verdict_value(verdict: &DraftVerdict) -> Value {
             num(verdict.shorten_by()),
         ),
     ]))
+}
+
+fn no_draft_value() -> Value {
+    Value::Struct(Struct::from_iter([(
+        composer_draft::HELD.to_string(),
+        Value::Bool(false),
+    )]))
 }
 
 fn text_splice_value(text: String, caret: i32) -> Value {
