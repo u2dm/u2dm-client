@@ -143,6 +143,9 @@ export global UserMessages {
         if kind == UserMessageKind.call-declined-there {
             return @tr("{} declined the call", detail);
         }
+        if kind == UserMessageKind.call-unjoinable {
+            return @tr("You can no longer join the call in {}", detail);
+        }
         if kind == UserMessageKind.room-not-found {
             return @tr("No room has the address {}", detail);
         }
@@ -791,6 +794,7 @@ export global NotificationText {
     in-out property <string> open-label: @tr("Open");
     in-out property <string> decline-label: @tr("Decline");
     in-out property <string> answer-label: @tr("Answer");
+    in-out property <string> answer-without-camera-label: @tr("Answer without camera");
 
     public pure function ring(video: bool, caller: string) -> string {
         if video {
@@ -939,6 +943,89 @@ export global CallWords {
             return @tr("Cancel sharing");
         }
         return @tr("Stop sharing");
+    }
+
+    public pure function sheet-title(direct: bool, joining: bool, video: bool, room: string, leaving: string) -> string {
+        if leaving != "" && joining {
+            return @tr("Leave {} and join {}?", leaving, room);
+        }
+        if leaving != "" && direct {
+            return @tr("Leave {} and start a call with {}?", leaving, room);
+        }
+        if leaving != "" {
+            return @tr("Leave {} and start a call in {}?", leaving, room);
+        }
+        if direct {
+            return root.direct-title(joining, video, room);
+        }
+        if joining && video {
+            return @tr("Join the video call in {}", room);
+        }
+        if joining {
+            return @tr("Join the voice call in {}", room);
+        }
+        if video {
+            return @tr("Start a video call in {}", room);
+        }
+        return @tr("Start a voice call in {}", room);
+    }
+
+    pure function direct-title(joining: bool, video: bool, partner: string) -> string {
+        if joining && video {
+            return @tr("Join the video call with {}", partner);
+        }
+        if joining {
+            return @tr("Join the voice call with {}", partner);
+        }
+        if video {
+            return @tr("Start a video call with {}", partner);
+        }
+        return @tr("Start a voice call with {}", partner);
+    }
+
+    public pure function sheet-action(joining: bool, leaving: bool) -> string {
+        if leaving && joining {
+            return @tr("Leave and join");
+        }
+        if leaving {
+            return @tr("Leave and start");
+        }
+        if joining {
+            return @tr("Join call");
+        }
+        return @tr("Start call");
+    }
+
+    public pure function microphone-choice(on: bool) -> string {
+        if on {
+            return @tr("Microphone on");
+        }
+        return @tr("Microphone off");
+    }
+
+    public pure function microphone-effect(on: bool) -> string {
+        if on {
+            return @tr("The call hears you");
+        }
+        return @tr("You join muted");
+    }
+
+    public pure function camera-choice(on: bool) -> string {
+        if on {
+            return @tr("Camera on");
+        }
+        return @tr("Camera off");
+    }
+
+    public pure function camera-effect(on: bool) -> string {
+        if on {
+            return @tr("The call sees you");
+        }
+        return @tr("Nobody sees you");
+    }
+
+    public pure function leave-and-answer(leaving: string, caller: string) -> string {
+        return @tr("Leave {} and answer {}?", leaving, caller);
     }
 }
 

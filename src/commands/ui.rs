@@ -1,6 +1,7 @@
 use strum::Display as StrumDisplay;
 
 use crate::domain::auth::LoginCredentials;
+use crate::domain::call::media::MediaChoice;
 use crate::domain::capabilities::AccountPage;
 use crate::domain::emote::{ComposerText, Emote};
 use crate::domain::encryption::{KeyPassphrase, RecoveryKey};
@@ -384,15 +385,31 @@ pub enum UiCommand {
     #[strum(to_string = "DeclineCall({0})")]
     DeclineCall(RoomId),
     SilenceRing,
+    #[strum(to_string = "OpenCallSheet({room_id})")]
+    OpenCallSheet {
+        room_id: RoomId,
+        video: bool,
+    },
+    CloseCallSheet,
     #[strum(to_string = "StartCall({room_id})")]
     StartCall {
         room_id: RoomId,
         video: bool,
+        media: MediaChoice,
+        leaving: Option<RoomId>,
     },
-    #[strum(to_string = "JoinCall({0})")]
-    JoinCall(RoomId),
-    #[strum(to_string = "AnswerCall({0})")]
-    AnswerCall(RoomId),
+    #[strum(to_string = "JoinCall({room_id})")]
+    JoinCall {
+        room_id: RoomId,
+        media: MediaChoice,
+        leaving: Option<RoomId>,
+    },
+    #[strum(to_string = "AnswerCall({room_id})")]
+    AnswerCall {
+        room_id: RoomId,
+        camera: bool,
+        leaving: Option<RoomId>,
+    },
     LeaveCall,
     #[strum(to_string = "SetMicrophone({0})")]
     SetMicrophone(bool),
@@ -449,9 +466,10 @@ impl UiCommand {
             | Self::PaginateForwards { room_id, .. }
             | Self::JumpToLatest { room_id, .. }
             | Self::DeclineCall(room_id)
+            | Self::OpenCallSheet { room_id, .. }
             | Self::StartCall { room_id, .. }
-            | Self::JoinCall(room_id)
-            | Self::AnswerCall(room_id) => Some(room_id),
+            | Self::JoinCall { room_id, .. }
+            | Self::AnswerCall { room_id, .. } => Some(room_id),
             Self::RestoreSession
             | Self::CheckServer(_)
             | Self::LoginPassword(_)
@@ -580,6 +598,7 @@ impl UiCommand {
             | Self::OpenLink { .. }
             | Self::SaveFile { .. }
             | Self::SilenceRing
+            | Self::CloseCallSheet
             | Self::LeaveCall
             | Self::SetMicrophone(_)
             | Self::SetCamera(_)

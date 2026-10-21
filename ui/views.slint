@@ -157,6 +157,7 @@ export global RoomMenuView {
     in property <bool> may-invite;
     in property <bool> is-space;
     in property <bool> may-add-children;
+    in property <bool> has-call;
     in property <string> link;
     in property <int> link-serial;
 }
@@ -429,6 +430,7 @@ export global CallView {
     in property <image> ring-avatar;
     in property <string> ring-initial;
     in property <int> ring-color-index;
+    in property <int> ring-serial;
     in property <string> here-room-id;
     in property <int> here-people;
     in property <bool> here-video;
@@ -436,6 +438,20 @@ export global CallView {
     in property <string> offer-room-id;
     in property <CallOffer> offer: CallOffer.none;
     in property <CallRefusal> refusal;
+    in property <bool> sheet-visible;
+    in property <int> sheet-serial;
+    in property <string> sheet-room-id;
+    in property <string> sheet-room-name;
+    in property <bool> sheet-direct;
+    in property <CallOffer> sheet-offer: CallOffer.none;
+    in property <CallRefusal> sheet-refusal;
+    in property <bool> sheet-video;
+    in property <int> sheet-people;
+    in property <bool> sheet-microphone;
+    in property <bool> sheet-camera;
+    in property <string> sheet-leaving-id;
+    in property <string> sheet-leaving-name;
+    in property <bool> sheet-ended;
     in property <bool> active;
     in property <string> active-room-id;
     in property <string> active-room-name;

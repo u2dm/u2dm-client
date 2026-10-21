@@ -78,6 +78,7 @@ import { InvitePeopleDialog } from "./screens/chat/components/invite-people.slin
 import { RoomLogDialog } from "./screens/chat/components/room-log.slint";
 import { ReadersDialog } from "./screens/chat/components/readers.slint";
 import { IncomingCallCard } from "./screens/chat/components/call/incoming-call.slint";
+import { CallSheet } from "./screens/chat/components/call/call-sheet.slint";
 
 export { EmojiStore }
 export { LoginPhase, ConnectionState, TimelineState, VerificationPhase, MediaState, MediaFailure }
@@ -134,7 +135,7 @@ export component AppWindow inherits Window {
     }
 
     changed call-answers => {
-        Actions.answer-call(WindowView.call-room);
+        Actions.answer-call({ room-id: WindowView.call-room, camera: false, leaving: "" });
     }
 
     changed notification-opens => {
@@ -188,6 +189,7 @@ export component AppWindow inherits Window {
     if Shell.account-open: AccountDialog { }
     if Shell.encryption-open: EncryptionDialog { }
     if Shell.logout-open: LogoutWarningDialog { }
+    if Shell.call-sheet-open: CallSheet { }
     if LoginView.step == LoginPhase.logged-in && CallView.ring-visible: IncomingCallCard {
         x: root.width - self.width - Metrics.incoming-call-inset;
         y: Metrics.header-row + Metrics.incoming-call-top;

@@ -143,6 +143,13 @@ scenario_env() {
     call-camera)     echo 'U2DM_DEMO_CALLS=active U2DM_DEMO_WINDOW=900x760' ;;
     call-screen-share) echo 'U2DM_DEMO_CALLS=active,cameras,screen-share U2DM_DEMO_WINDOW=900x760' ;;
     call-share-screen) echo 'U2DM_DEMO_CALLS=active U2DM_DEMO_WINDOW=900x760' ;;
+    call-join-sheet) echo 'U2DM_DEMO_CALLS=active U2DM_DEMO_WINDOW=900x760' ;;
+    call-start-sheet-dm) echo 'U2DM_DEMO_CALLS=answers U2DM_DEMO_AUDIO=silent U2DM_DEMO_WINDOW=900x760' ;;
+    call-video-sheet) echo 'U2DM_DEMO_CALLS=active U2DM_DEMO_WINDOW=900x760' ;;
+    call-switch-calls) echo 'U2DM_DEMO_CALLS=active U2DM_DEMO_WINDOW=900x760' ;;
+    call-sheet-ended) echo 'U2DM_DEMO_CALLS=ring,ring-ends U2DM_DEMO_AUDIO=silent U2DM_DEMO_WINDOW=900x760' ;;
+    call-answer-video) echo 'U2DM_DEMO_CALLS=ring,ring-video U2DM_DEMO_AUDIO=silent U2DM_DEMO_WINDOW=900x760' ;;
+    call-answer-switch) echo 'U2DM_DEMO_CALLS=active,ring U2DM_DEMO_AUDIO=silent U2DM_DEMO_WINDOW=900x760' ;;
     notifications)   echo 'U2DM_DEMO_NOTIFY=all U2DM_DEMO_WINDOW=900x760' ;;
     notifications-focused) echo 'U2DM_DEMO_NOTIFY=group,dm,mention U2DM_DEMO_WINDOW=900x760' ;;
     notifications-burst) echo 'U2DM_DEMO_NOTIFY=burst U2DM_DEMO_WINDOW=900x760' ;;
@@ -709,11 +716,59 @@ scenario_steps() {
     call-expiry)
       echo '{"op":"select_room","room_id":"!rust:demo.local"}'
       echo 'sleep 22' ;;
-    call-join|call-keys-late|call-undecryptable|call-reconnect|call-remote-sfu|call-crowd|call-video|call-screen-share)
+    call-join|call-keys-late|call-undecryptable|call-reconnect|call-remote-sfu|call-crowd|call-screen-share)
       echo '{"op":"select_room","room_id":"!design:demo.local"}'
       echo 'sleep 2'
       echo '{"op":"join_call"}'
       echo 'sleep 3' ;;
+    call-video)
+      echo '{"op":"select_room","room_id":"!design:demo.local"}'
+      echo 'sleep 2'
+      echo '{"op":"join_call","camera":true}'
+      echo 'sleep 3' ;;
+    call-join-sheet)
+      echo '{"op":"select_room","room_id":"!design:demo.local"}'
+      echo 'sleep 2'
+      echo '{"op":"open_call_sheet"}'
+      echo 'sleep 1' ;;
+    call-start-sheet-dm)
+      echo '{"op":"select_room","room_id":"!sarah:demo.local"}'
+      echo 'sleep 2'
+      echo '{"op":"open_call_sheet"}'
+      echo 'sleep 1' ;;
+    call-video-sheet)
+      echo '{"op":"select_room","room_id":"!linux:demo.local"}'
+      echo 'sleep 2'
+      echo '{"op":"open_call_sheet","video":true}'
+      echo 'sleep 1' ;;
+    call-switch-calls)
+      echo '{"op":"select_room","room_id":"!rust:demo.local"}'
+      echo 'sleep 2'
+      echo '{"op":"join_call"}'
+      echo 'sleep 2'
+      echo '{"op":"select_room","room_id":"!design:demo.local"}'
+      echo 'sleep 2'
+      echo '{"op":"join_call"}'
+      echo 'sleep 1'
+      echo '{"op":"open_call_sheet"}'
+      echo 'sleep 1' ;;
+    call-sheet-ended)
+      echo 'sleep 4'
+      echo '{"op":"select_room","room_id":"!sarah:demo.local"}'
+      echo 'sleep 1'
+      echo '{"op":"open_call_sheet"}'
+      echo 'sleep 9'
+      echo '{"op":"join_call"}'
+      echo 'sleep 1' ;;
+    call-answer-video)
+      echo 'sleep 4' ;;
+    call-answer-switch)
+      echo '{"op":"select_room","room_id":"!design:demo.local"}'
+      echo 'sleep 1'
+      echo '{"op":"join_call"}'
+      echo 'sleep 3'
+      echo '{"op":"answer_call","room_id":"!sarah:demo.local"}'
+      echo 'sleep 1' ;;
     call-camera)
       echo '{"op":"select_room","room_id":"!rust:demo.local"}'
       echo 'sleep 2'
@@ -1096,6 +1151,13 @@ scenario_note() {
     call-camera)     echo 'join the Rust Programming voice call, then switch your camera on: the band grows and your tile shows video (call-ui)' ;;
     call-screen-share) echo 'Nadia shares her screen in the Design Team call: it takes the spotlight, fitted, and the cameras line up in the strip below (call-ui)' ;;
     call-share-screen) echo 'join the Rust Programming call and share your screen: the share button turns to Stop, your tile says you are sharing (call-ui, call-media)' ;;
+    call-join-sheet) echo 'Join in Design Team opens the call sheet: the video call, two in it, the microphone and camera proposed off (call-ui, calls)' ;;
+    call-start-sheet-dm) echo 'Start in Sarah'"'"'s chat opens the call sheet: a voice call, the microphone proposed on, the camera off (call-ui, calls)' ;;
+    call-video-sheet) echo 'the room menu'"'"'s Video call in linux ricing: the sheet starts a video call with the camera still off (call-ui, room-menu)' ;;
+    call-switch-calls) echo 'in the Rust Programming call, Join in Design Team is refused until the sheet asks to leave Rust Programming first (calls, call-ui)' ;;
+    call-sheet-ended) echo 'the sheet for Sarah'"'"'s call stays open while she hangs up: it turns into Start, and Join says the call ended (calls)' ;;
+    call-answer-video) echo 'Sarah rings with video: the card offers Answer without camera and Answer with camera (call-ui)' ;;
+    call-answer-switch) echo 'in the Design Team call Sarah rings: an answer that did not agree to leave Design Team is refused and it keeps ringing (calls)' ;;
     notifications)   echo 'with the window unfocused, every scripted arrival notifies except the muted room; !rust is read elsewhere and withdrawn, Leo'"'"'s invite notifies, and a click on Priya'"'"'s opens her chat (notifications, directory.attention, title)' ;;
     notifications-focused) echo 'the window keeps focus: arrivals light their rooms and the title count, but nothing notifies (notifications, directory.attention)' ;;
     notifications-burst) echo 'three messages in !rust a second apart: one notification, replaced twice (notifications)' ;;
@@ -1134,7 +1196,8 @@ names() {
     call-join call-start-dm call-start-dm-declined call-keys-late call-undecryptable call-no-sfu \
     call-no-permission call-unverified-session call-reconnect call-remote-sfu call-switch-rooms \
     call-compact call-strip-nav call-strip-index call-minimum call-crowd call-video call-camera \
-    call-screen-share call-share-screen \
+    call-screen-share call-share-screen call-join-sheet call-start-sheet-dm call-video-sheet \
+    call-switch-calls call-sheet-ended call-answer-video call-answer-switch \
     notifications notifications-focused notifications-burst \
     encryption-unverified encryption-recovery-key encryption-new-account encryption-setup-refused \
     identity-reset identity-reset-oauth room-keys \
@@ -1217,7 +1280,8 @@ cmd_run() {
   jq -r '[.rows[]? | select(.mentions_you) | .event_id] | if length > 0 then "  tinted rows \(join(", "))" else empty end' "$out/timeline.json"
   jq -r 'if (.view.typing.typists|length) > 0 then "  typing in \(.view.typing.room_id): \([.view.typing.typists[].shown] | join(", "))" else empty end' "$out/state.json"
   jq -r '.view.presence | if .partner or .person then "  presence partner=\(.partner.user_id // "none"):\(.partner.line // "-") person=\(.person.user_id // "none"):\(.person.line // "-")\(if .person.status then " status=\(.person.status)" else "" end)" else empty end' "$out/state.json"
-  jq -r '.view.call | if .ring or .here or .active then "  call ring=\(.ring.room_id // "none")\(if .ring.desktop then " desktop" else "" end) here=\(.here.room_id // "none"):\(.here.people // 0) active=\(.active.room_id // "none"):\(.active.phase // "-"):\((.active.tiles // []) | length)" else empty end' "$out/state.json"
+  jq -r '.view.call | if .ring or .here or .active then "  call ring=\(.ring.room_id // "none")\(if .ring.desktop then " desktop" else "" end) here=\(.here.room_id // "none"):\(.here.people // 0) active=\(.active.room_id // "none"):\(.active.phase // "-"):\((.active.tiles // []) | length)\(if .active then " microphone=\(.active.microphone) camera=\(.active.camera)" else "" end)" else empty end' "$out/state.json"
+  jq -r '.view.call.sheet | if . then "  call sheet \(.room_id) \(.offer)\(if .refusal then ":\(.refusal)" else "" end) video=\(.video) people=\(.people) microphone=\(.microphone) camera=\(.camera) leaving=\(.leaving // "none") ended=\(.ended)" else empty end' "$out/state.json"
   jq -r 'if (.view.notifications|length) > 0 or .view.directory.attention > 0 then "  notifications [\([.view.notifications[] | "\(.room_id)#\(.serial)"] | join(", "))] attention=\(.view.directory.attention)" else empty end' "$out/state.json"
   jq -r 'if .title then "  title \(.title)" else empty end' "$out/timeline.json"
   jq -r 'if (.view.mentions.rows|length) > 0 or .view.mentions.offers_room then "  mentions in \(.view.mentions.room_id) room=\(.view.mentions.offers_room) rows=\([.view.mentions.rows[].user_id] | join(", "))" else empty end' "$out/state.json"

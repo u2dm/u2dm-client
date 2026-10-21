@@ -9,6 +9,7 @@ use crate::adapters::demo::attachments;
 use crate::adapters::ui::dump::Poke;
 use crate::adapters::ui::{link_command, matrix_link, room_address_entry};
 use crate::commands::ui::{MessageDraft, ReplyDraft, UiCommand};
+use crate::domain::call::media::MediaChoice;
 use crate::domain::capabilities::AccountPage;
 use crate::domain::departure::membership_reason;
 use crate::domain::emote::{ComposerText, Emote};
@@ -29,6 +30,10 @@ use crate::ports::notifier::NoticeAction;
 const PROBE_EMOTE_HEIGHT: &str = "32";
 
 fn signs_out_others() -> bool {
+    true
+}
+
+fn microphone_on() -> bool {
     true
 }
 
@@ -107,18 +112,41 @@ pub enum ProbeCommand {
         room_id: String,
     },
     SilenceRing,
-    StartCall {
+    OpenCallSheet {
         #[serde(default)]
         room_id: Option<String>,
         #[serde(default)]
         video: bool,
     },
+    CloseCallSheet,
+    StartCall {
+        #[serde(default)]
+        room_id: Option<String>,
+        #[serde(default)]
+        video: bool,
+        #[serde(default = "microphone_on")]
+        microphone: bool,
+        #[serde(default)]
+        camera: bool,
+        #[serde(default)]
+        leaving: Option<String>,
+    },
     JoinCall {
         #[serde(default)]
         room_id: Option<String>,
+        #[serde(default = "microphone_on")]
+        microphone: bool,
+        #[serde(default)]
+        camera: bool,
+        #[serde(default)]
+        leaving: Option<String>,
     },
     AnswerCall {
         room_id: String,
+        #[serde(default)]
+        camera: bool,
+        #[serde(default)]
+        leaving: Option<String>,
     },
     LeaveCall,
     SetMicrophone {
@@ -835,16 +863,48 @@ pub fn to_driven(command: ProbeCommand, selected: Selection<'_>) -> Result<Drive
         } => return in_space(space_id, leave_space(with_rooms)),
         ProbeCommand::DeclineCall { room_id } => UiCommand::DeclineCall(RoomId::new(room_id)),
         ProbeCommand::SilenceRing => UiCommand::SilenceRing,
-        ProbeCommand::StartCall { room_id, video } => {
-            return in_room(room_id, selected, |room_id| UiCommand::StartCall {
+        ProbeCommand::OpenCallSheet { room_id, video } => {
+            return in_room(room_id, selected, |room_id| UiCommand::OpenCallSheet {
                 room_id,
                 video,
             });
         }
-        ProbeCommand::JoinCall { room_id } => {
-            return in_room(room_id, selected, UiCommand::JoinCall);
+        ProbeCommand::CloseCallSheet => UiCommand::CloseCallSheet,
+        ProbeCommand::StartCall {
+            room_id,
+            video,
+            microphone,
+            camera,
+            leaving,
+        } => {
+            return in_room(room_id, selected, |room_id| UiCommand::StartCall {
+                room_id,
+                video,
+                media: MediaChoice { microphone, camera },
+                leaving: leaving.map(RoomId::new),
+            });
         }
-        ProbeCommand::AnswerCall { room_id } => UiCommand::AnswerCall(RoomId::new(room_id)),
+        ProbeCommand::JoinCall {
+            room_id,
+            microphone,
+            camera,
+            leaving,
+        } => {
+            return in_room(room_id, selected, |room_id| UiCommand::JoinCall {
+                room_id,
+                media: MediaChoice { microphone, camera },
+                leaving: leaving.map(RoomId::new),
+            });
+        }
+        ProbeCommand::AnswerCall {
+            room_id,
+            camera,
+            leaving,
+        } => UiCommand::AnswerCall {
+            room_id: RoomId::new(room_id),
+            camera,
+            leaving: leaving.map(RoomId::new),
+        },
         ProbeCommand::LeaveCall => UiCommand::LeaveCall,
         ProbeCommand::SetMicrophone { on } => UiCommand::SetMicrophone(on),
         ProbeCommand::SetCamera { on } => UiCommand::SetCamera(on),

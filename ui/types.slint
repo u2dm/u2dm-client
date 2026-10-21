@@ -136,9 +136,30 @@ export struct DeactivateRequest {
     erase: bool,
 }
 
+export struct CallSheetRequest {
+    room-id: string,
+    video: bool,
+}
+
 export struct StartCallRequest {
     room-id: string,
     video: bool,
+    microphone: bool,
+    camera: bool,
+    leaving: string,
+}
+
+export struct JoinCallRequest {
+    room-id: string,
+    microphone: bool,
+    camera: bool,
+    leaving: string,
+}
+
+export struct AnswerCallRequest {
+    room-id: string,
+    camera: bool,
+    leaving: string,
 }
 
 export struct MicrophoneRequest {

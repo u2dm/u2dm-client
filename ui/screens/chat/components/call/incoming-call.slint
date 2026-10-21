@@ -13,10 +13,39 @@ import { Shell } from "../../../../local.slint";
 export component IncomingCallCard inherits PickerCard {
     in property <length> available-width;
 
+    property <int> serial: CallView.ring-serial;
+    property <bool> confirming: false;
+    property <bool> with-camera: false;
+    property <bool> asks-to-leave: root.confirming && CallView.active;
+
     width: min(Metrics.incoming-call-width, root.available-width - 2 * Metrics.incoming-call-inset);
     height: card-layout.preferred-height;
     accessible-role: groupbox;
     accessible-label: CallWords.incoming(CallView.ring-video);
+
+    changed serial => {
+        root.confirming = false;
+        root.with-camera = false;
+    }
+
+    function answer(camera: bool) {
+        if CallView.active {
+            root.with-camera = camera;
+            root.confirming = true;
+            return;
+        }
+        root.accept(camera);
+    }
+
+    function accept(camera: bool) {
+        Shell.close-overlays();
+        Actions.select-room(CallView.ring-room-id);
+        Actions.answer-call({
+            room-id: CallView.ring-room-id,
+            camera: camera,
+            leaving: CallView.active ? CallView.active-room-id : "",
+        });
+    }
 
     TouchArea { }
 
@@ -87,42 +116,98 @@ export component IncomingCallCard inherits PickerCard {
             }
         }
 
-        HorizontalLayout {
+        if root.asks-to-leave: Text {
+            text: CallWords.leave-and-answer(CallView.active-room-name, CallView.ring-caller);
+            font-family: Fonts.emoji;
+            font-size: Fonts.body;
+            wrap: word-wrap;
+            color: Palette.foreground;
+            accessible-live-region: AccessibleLiveness.polite;
+        }
+
+        if root.asks-to-leave: HorizontalLayout {
             spacing: Space.md;
 
             AppButton {
                 horizontal-stretch: 1;
-                text: @tr("Decline");
-                icon: IconSet.PhoneOff;
-                tint: AppStyle.call-decline;
+                text: @tr("Cancel");
+                filled: false;
                 above-modal: true;
                 clicked => {
-                    Actions.decline-call(CallView.ring-room-id);
+                    root.confirming = false;
                 }
             }
 
-            IconButton {
-                cross-axis-self-alignment: center;
-                icon: IconSet.MessageCircle;
-                size: Size.lg;
-                above-modal: true;
-                label: @tr("Open the chat");
-                clicked => {
-                    Shell.close-overlays();
-                    Actions.select-room(CallView.ring-room-id);
-                }
-            }
-
-            if CallView.ring-answerable: AppButton {
+            AppButton {
                 horizontal-stretch: 1;
-                text: @tr("Answer");
+                text: @tr("Leave and answer");
+                icon: root.with-camera ? IconSet.Video : IconSet.Phone;
+                tint: AppStyle.call-accept;
+                above-modal: true;
+                clicked => {
+                    root.accept(root.with-camera);
+                }
+            }
+        }
+
+        if !root.asks-to-leave: VerticalLayout {
+            spacing: Space.md;
+
+            HorizontalLayout {
+                spacing: Space.md;
+
+                AppButton {
+                    horizontal-stretch: 1;
+                    text: @tr("Decline");
+                    icon: IconSet.PhoneOff;
+                    tint: AppStyle.call-decline;
+                    above-modal: true;
+                    clicked => {
+                        Actions.decline-call(CallView.ring-room-id);
+                    }
+                }
+
+                IconButton {
+                    cross-axis-self-alignment: center;
+                    icon: IconSet.MessageCircle;
+                    size: Size.lg;
+                    above-modal: true;
+                    label: @tr("Open the chat");
+                    clicked => {
+                        Shell.close-overlays();
+                        Actions.select-room(CallView.ring-room-id);
+                    }
+                }
+
+                if CallView.ring-answerable && !CallView.ring-video: AppButton {
+                    horizontal-stretch: 1;
+                    text: @tr("Answer");
+                    icon: IconSet.Phone;
+                    tint: AppStyle.call-accept;
+                    above-modal: true;
+                    clicked => {
+                        root.answer(false);
+                    }
+                }
+            }
+
+            if CallView.ring-answerable && CallView.ring-video: AppButton {
+                text: @tr("Answer without camera");
                 icon: IconSet.Phone;
                 tint: AppStyle.call-accept;
                 above-modal: true;
                 clicked => {
-                    Shell.close-overlays();
-                    Actions.select-room(CallView.ring-room-id);
-                    Actions.answer-call(CallView.ring-room-id);
+                    root.answer(false);
+                }
+            }
+
+            if CallView.ring-answerable && CallView.ring-video: AppButton {
+                text: @tr("Answer with camera");
+                icon: IconSet.Video;
+                filled: false;
+                above-modal: true;
+                clicked => {
+                    root.answer(true);
                 }
             }
         }

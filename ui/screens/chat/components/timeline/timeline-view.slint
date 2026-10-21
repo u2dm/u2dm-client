@@ -200,7 +200,7 @@ export component TimelineView inherits Rectangle {
             enabled: CallView.offer == CallOffer.start;
             label: CallView.offer == CallOffer.start ? @tr("Start a call") : CallWords.refusal(CallView.refusal);
             clicked => {
-                Actions.start-call({ room-id: root.room-id, video: false });
+                Actions.open-call-sheet({ room-id: root.room-id, video: false });
             }
         }
 
@@ -215,7 +215,7 @@ export component TimelineView inherits Rectangle {
             icon: IconSet.Phone;
             tint: AppStyle.call-accept;
             clicked => {
-                Actions.join-call(root.room-id);
+                Actions.open-call-sheet({ room-id: root.room-id, video: false });
             }
         }
 
@@ -418,6 +418,13 @@ export component TimelineView inherits Rectangle {
 
         CloseWatch {
             open: Shell.logout-open;
+            closed => {
+                stage.refocus-composer();
+            }
+        }
+
+        CloseWatch {
+            open: Shell.call-sheet-open;
             closed => {
                 stage.refocus-composer();
             }

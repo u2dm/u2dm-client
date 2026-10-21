@@ -16,7 +16,10 @@ import {
     ComposerDraft,
     ModerationRequest,
     LeaveSpaceRequest,
+    CallSheetRequest,
     StartCallRequest,
+    JoinCallRequest,
+    AnswerCallRequest,
     MicrophoneRequest,
     CameraRequest,
     ScreenShareRequest,
@@ -173,9 +176,11 @@ export global Actions {
     callback window-focus-changed(bool);
     callback decline-call(string);
     callback silence-ring();
+    callback open-call-sheet(CallSheetRequest);
+    callback close-call-sheet();
     callback start-call(StartCallRequest);
-    callback join-call(string);
-    callback answer-call(string);
+    callback join-call(JoinCallRequest);
+    callback answer-call(AnswerCallRequest);
     callback leave-call();
     callback set-microphone(MicrophoneRequest);
     callback set-camera(CameraRequest);

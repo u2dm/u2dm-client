@@ -357,9 +357,11 @@ pub(super) fn command_allowed(phase: AppPhase, cmd: &UiCommand) -> bool {
         | UiCommand::SaveFile { .. }
         | UiCommand::DeclineCall(_)
         | UiCommand::SilenceRing
+        | UiCommand::OpenCallSheet { .. }
+        | UiCommand::CloseCallSheet
         | UiCommand::StartCall { .. }
-        | UiCommand::JoinCall(_)
-        | UiCommand::AnswerCall(_)
+        | UiCommand::JoinCall { .. }
+        | UiCommand::AnswerCall { .. }
         | UiCommand::LeaveCall
         | UiCommand::SetMicrophone(_)
         | UiCommand::SetCamera(_)

@@ -71,8 +71,14 @@ enum Fetch {
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum MenuKind {
-    Room { unread: bool, notify: NotifyMode },
-    Space { may_add_children: bool },
+    Room {
+        unread: bool,
+        notify: NotifyMode,
+        has_call: bool,
+    },
+    Space {
+        may_add_children: bool,
+    },
 }
 
 #[derive(Clone, PartialEq, Eq)]
@@ -813,7 +819,11 @@ impl RoomInfo {
 
     fn menu_target(&self, menu: &MenuCard) -> RoomMenuTarget {
         match menu.kind {
-            MenuKind::Room { unread, notify } => {
+            MenuKind::Room {
+                unread,
+                notify,
+                has_call,
+            } => {
                 let (notify, notify_busy) = self.pending_notify(&menu.id, notify);
                 RoomMenuTarget {
                     room_id: menu.id.clone(),
@@ -825,6 +835,7 @@ impl RoomInfo {
                     leaving: self.leaving.contains(&menu.id),
                     may_invite: menu.may_invite,
                     may_add_children: false,
+                    has_call,
                 }
             }
             MenuKind::Space { may_add_children } => RoomMenuTarget {
@@ -837,6 +848,7 @@ impl RoomInfo {
                 leaving: false,
                 may_invite: menu.may_invite,
                 may_add_children,
+                has_call: false,
             },
         }
     }
@@ -882,6 +894,7 @@ fn menu_card_of(room: &Room) -> MenuCard {
         kind: MenuKind::Room {
             unread: room.shows_unread(),
             notify: room.notify,
+            has_call: room.call.is_some(),
         },
     }
 }

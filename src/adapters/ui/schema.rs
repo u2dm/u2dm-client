@@ -81,6 +81,10 @@ macro_rules! string_props {
         RingInitial CallView "CallView" "ring-initial" set_ring_initial get_ring_initial;
         HereRoomId CallView "CallView" "here-room-id" set_here_room_id get_here_room_id;
         OfferRoomId CallView "CallView" "offer-room-id" set_offer_room_id get_offer_room_id;
+        SheetRoomId CallView "CallView" "sheet-room-id" set_sheet_room_id get_sheet_room_id;
+        SheetRoomName CallView "CallView" "sheet-room-name" set_sheet_room_name get_sheet_room_name;
+        SheetLeavingId CallView "CallView" "sheet-leaving-id" set_sheet_leaving_id get_sheet_leaving_id;
+        SheetLeavingName CallView "CallView" "sheet-leaving-name" set_sheet_leaving_name get_sheet_leaving_name;
         ActiveRoomId CallView "CallView" "active-room-id" set_active_room_id get_active_room_id;
         ActiveRoomName CallView "CallView" "active-room-name" set_active_room_name get_active_room_name;
         CallElapsed CallView "CallView" "elapsed" set_elapsed get_elapsed;
@@ -148,6 +152,7 @@ macro_rules! string_props {
         NotificationOpenLabel NotificationText "NotificationText" "open-label" set_open_label get_open_label;
         NotificationDeclineLabel NotificationText "NotificationText" "decline-label" set_decline_label get_decline_label;
         NotificationAnswerLabel NotificationText "NotificationText" "answer-label" set_answer_label get_answer_label;
+        NotificationAnswerWithoutCameraLabel NotificationText "NotificationText" "answer-without-camera-label" set_answer_without_camera_label get_answer_without_camera_label;
         CallRoom WindowView "WindowView" "call-room" set_call_room get_call_room;
         NotificationRoom WindowView "WindowView" "notification-room" set_notification_room get_notification_room;
         ExternalLink WindowView "WindowView" "external-link" set_external_link get_external_link;
@@ -219,10 +224,18 @@ macro_rules! simple_callbacks {
         on_retry_timeline "retry-timeline" retry_timeline plain RetryTimeline;
         on_decline_call "decline-call" decline_call room DeclineCall;
         on_silence_ring "silence-ring" silence_ring plain SilenceRing;
+        on_open_call_sheet "open-call-sheet" open_call_sheet
+            request(room_id "room-id" text, video "video" flag) OpenCallSheet;
+        on_close_call_sheet "close-call-sheet" close_call_sheet plain CloseCallSheet;
         on_start_call "start-call" start_call
-            request(room_id "room-id" text, video "video" flag) StartCall;
-        on_join_call "join-call" join_call room JoinCall;
-        on_answer_call "answer-call" answer_call room AnswerCall;
+            request(room_id "room-id" text, video "video" flag, microphone "microphone" flag,
+                camera "camera" flag, leaving "leaving" text) StartCall;
+        on_join_call "join-call" join_call
+            request(room_id "room-id" text, microphone "microphone" flag, camera "camera" flag,
+                leaving "leaving" text) JoinCall;
+        on_answer_call "answer-call" answer_call
+            request(room_id "room-id" text, camera "camera" flag, leaving "leaving" text)
+            AnswerCall;
         on_leave_call "leave-call" leave_call plain LeaveCall;
         on_set_microphone "set-microphone" set_microphone request(on "on" flag) SetMicrophone;
         on_set_camera "set-camera" set_camera request(on "on" flag) SetCamera;
@@ -361,6 +374,12 @@ macro_rules! bool_props {
     ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
         SessionRefused LoginView "LoginView" "session-refused" set_session_refused get_session_refused;
         RingVisible CallView "CallView" "ring-visible" set_ring_visible get_ring_visible;
+        SheetVisible CallView "CallView" "sheet-visible" set_sheet_visible get_sheet_visible;
+        SheetDirect CallView "CallView" "sheet-direct" set_sheet_direct get_sheet_direct;
+        SheetVideo CallView "CallView" "sheet-video" set_sheet_video get_sheet_video;
+        SheetMicrophone CallView "CallView" "sheet-microphone" set_sheet_microphone get_sheet_microphone;
+        SheetCamera CallView "CallView" "sheet-camera" set_sheet_camera get_sheet_camera;
+        SheetEnded CallView "CallView" "sheet-ended" set_sheet_ended get_sheet_ended;
         RingVideo CallView "CallView" "ring-video" set_ring_video get_ring_video;
         RingDirect CallView "CallView" "ring-direct" set_ring_direct get_ring_direct;
         RingAnswerable CallView "CallView" "ring-answerable" set_ring_answerable get_ring_answerable;
@@ -455,6 +474,7 @@ macro_rules! bool_props {
         RoomMenuMayInvite RoomMenuView "RoomMenuView" "may-invite" set_may_invite get_may_invite;
         RoomMenuIsSpace RoomMenuView "RoomMenuView" "is-space" set_is_space get_is_space;
         RoomMenuMayAddChildren RoomMenuView "RoomMenuView" "may-add-children" set_may_add_children get_may_add_children;
+        RoomMenuHasCall RoomMenuView "RoomMenuView" "has-call" set_has_call get_has_call;
         UserInfoVisible UserInfoView "UserInfoView" "visible" set_visible get_visible;
         UserInfoIsSelf UserInfoView "UserInfoView" "is-self" set_is_self get_is_self;
         UserInfoReadFailed UserInfoView "UserInfoView" "read-failed" set_read_failed get_read_failed;
@@ -503,6 +523,9 @@ macro_rules! int_props {
         UnsentShortenBy UnsentView "UnsentView" "shorten-by" set_shorten_by get_shorten_by;
         TypingCount TypingView "TypingView" "count" set_count get_count;
         RingColorIndex CallView "CallView" "ring-color-index" set_ring_color_index get_ring_color_index;
+        RingSerial CallView "CallView" "ring-serial" set_ring_serial get_ring_serial;
+        SheetSerial CallView "CallView" "sheet-serial" set_sheet_serial get_sheet_serial;
+        SheetPeople CallView "CallView" "sheet-people" set_sheet_people get_sheet_people;
         HerePeople CallView "CallView" "here-people" set_here_people get_here_people;
         CallDeclines WindowView "WindowView" "call-declines" set_call_declines get_call_declines;
         CallAnswers WindowView "WindowView" "call-answers" set_call_answers get_call_answers;
@@ -672,6 +695,10 @@ macro_rules! enum_props {
             CallView "CallView" "offer" set_offer get_offer;
         CallRefusal set_call_refusal(JoinRefusal)
             CallView "CallView" "refusal" set_refusal get_refusal;
+        CallSheetOffer set_call_sheet_offer(CallOfferMark)
+            CallView "CallView" "sheet-offer" set_sheet_offer get_sheet_offer;
+        CallSheetRefusal set_call_sheet_refusal(JoinRefusal)
+            CallView "CallView" "sheet-refusal" set_sheet_refusal get_sheet_refusal;
         CallPhase set_call_phase(CallPhase)
             CallView "CallView" "phase" set_phase get_phase;
         CallMic set_call_mic(MicrophoneView)
@@ -864,6 +891,7 @@ macro_rules! user_message_kinds {
         CallCutOff                CallCutOff              "call-cut-off";
         CallNoAnswer              CallNoAnswer            "call-no-answer";
         CallDeclinedThere         CallDeclinedThere       "call-declined-there";
+        CallUnjoinable            CallUnjoinable          "call-unjoinable";
         RoomNotFound              RoomNotFound            "room-not-found";
         RoomPreviewFailed         RoomPreviewFailed       "room-preview-failed";
         RoomAddressInvalid        RoomAddressInvalid      "room-address-invalid";

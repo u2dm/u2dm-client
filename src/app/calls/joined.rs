@@ -15,7 +15,7 @@ use crate::domain::call::identity::{IdentityTable, MediaIdentity, member_spellin
 use crate::domain::call::keys::{
     KEY_LEN, KeyAction, KeyExchange, KeyHolder, MediaKey, ReceivedKey,
 };
-use crate::domain::call::media::{Decryption, MediaEvent, Microphone, SfuState};
+use crate::domain::call::media::{Decryption, MediaChoice, MediaEvent, Microphone, SfuState};
 use crate::domain::call::ring::{RingId, RingKind};
 use crate::domain::call::sfu::{GrantRequest, GrantResult, SfuId, SfuRole, SfuTarget, plan};
 use crate::domain::call::video::{Camera, FeedId, ScreenRefusal, ScreenShare, VideoKind};
@@ -177,6 +177,7 @@ pub(super) struct Joining {
     pub(super) transport: Transport,
     pub(super) leave_tx: oneshot::Sender<()>,
     pub(super) media_tx: mpsc::UnboundedSender<MediaCommand>,
+    pub(super) media: MediaChoice,
     pub(super) outgoing: Option<RingKind>,
 }
 
@@ -216,6 +217,7 @@ pub(super) fn fresh_key() -> MediaKey {
 
 impl Joined {
     pub(super) fn start(joining: Joining, members: &[CallMember]) -> (Self, Vec<Effect>) {
+        let media = joining.media;
         let mut joined = Self {
             call: joining.call,
             span: joining.span,
@@ -237,14 +239,18 @@ impl Joined {
             links: HashMap::new(),
             heard: Heard::default(),
             standings: HashMap::new(),
-            microphone: Microphone::Off,
+            microphone: if media.microphone {
+                Microphone::On
+            } else {
+                Microphone::Off
+            },
             camera: OwnCamera::Off,
             screen: OwnScreen::Off,
             outgoing_kind: joining.outgoing,
             outgoing: None,
         };
-        joined.command(MediaCommand::Microphone(true));
-        if joined.intent == CallIntent::Video {
+        joined.command(MediaCommand::Microphone(media.microphone));
+        if media.camera {
             joined.set_camera(true);
         }
         let mut effects = Vec::new();
@@ -263,6 +269,10 @@ impl Joined {
 
     pub(super) const fn intent(&self) -> CallIntent {
         self.intent
+    }
+
+    pub(super) fn room_name(&self) -> &str {
+        &self.room_name
     }
 
     pub(super) fn wake_at(&self, offset: Duration) -> Instant {
@@ -569,7 +579,9 @@ impl Joined {
         self.apply_keys(actions)
     }
 
-    pub(super) fn set_microphone(&self, on: bool) {
+    pub(super) fn set_microphone(&mut self, on: bool) {
+        tracing::info!(call = self.call, on, "switching the microphone");
+        self.microphone = if on { Microphone::On } else { Microphone::Off };
         self.command(MediaCommand::Microphone(on));
     }
 

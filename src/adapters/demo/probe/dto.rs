@@ -6,14 +6,14 @@ use crate::commands::messages::{UserMessage, UserMessageKind};
 use crate::commands::ui::Draft;
 use crate::commands::view::{
     AccountStep, AccountView, ActiveCall, AppViewState, AttachmentView, AudioView, AuthPrompt,
-    CallPhase, CallTile, CallView, CameraView, CantDecrypt, CardStatus, CopiedLink, CreateRoomView,
-    DirectoryView, EncryptionStep, EncryptionView, IdentityAlertView, InvitePeopleView, InviteView,
-    InviteeRow, InvitesSection, JoinOffer, JoinRefusal, LeaveSpaceView, LifecycleView, LoginStep,
-    LogoutView, MentionsView, MicrophoneView, NotificationsView, PackView, PaginationView,
-    PinnedView, PresenceView, ReadersView, RemovalView, RoomInfoView, RoomLogView, RoomMenuTarget,
-    RoomPreviewSheet, RoomPreviewView, RosterRow, ScreenView, SourceState, SpaceIndexRow,
-    SpaceIndexView, SpaceMatch, TileKind, TileState, Toast, TrackFile, TypingView, UnsentMessage,
-    UpgradeView, UserInfoView, VideoView,
+    CallPhase, CallSheetView, CallTile, CallView, CameraView, CantDecrypt, CardStatus, CopiedLink,
+    CreateRoomView, DirectoryView, EncryptionStep, EncryptionView, IdentityAlertView,
+    InvitePeopleView, InviteView, InviteeRow, InvitesSection, JoinOffer, JoinRefusal,
+    LeaveSpaceView, LifecycleView, LoginStep, LogoutView, MentionsView, MicrophoneView,
+    NotificationsView, PackView, PaginationView, PinnedView, PresenceView, ReadersView,
+    RemovalView, RoomInfoView, RoomLogView, RoomMenuTarget, RoomPreviewSheet, RoomPreviewView,
+    RosterRow, ScreenView, SourceState, SpaceIndexRow, SpaceIndexView, SpaceMatch, TileKind,
+    TileState, Toast, TrackFile, TypingView, UnsentMessage, UpgradeView, UserInfoView, VideoView,
 };
 use crate::domain::call::video::ScreenRefusal;
 use crate::domain::call::{CallIntent, RoomCall};
@@ -180,7 +180,26 @@ struct CallDto {
     ring: Option<RingDto>,
     here: Option<CallHereDto>,
     offer: Option<CallOfferDto>,
+    sheet: Option<CallSheetDto>,
     active: Option<ActiveCallDto>,
+}
+
+#[derive(Serialize)]
+#[allow(clippy::struct_excessive_bools)]
+struct CallSheetDto {
+    serial: i32,
+    room_id: String,
+    room_name: String,
+    direct: bool,
+    offer: &'static str,
+    refusal: Option<&'static str>,
+    video: bool,
+    people: usize,
+    microphone: bool,
+    camera: bool,
+    leaving: Option<String>,
+    leaving_name: Option<String>,
+    ended: bool,
 }
 
 #[derive(Serialize)]
@@ -397,6 +416,7 @@ struct RoomMenuDto {
     leaving: bool,
     may_invite: bool,
     may_add_children: bool,
+    has_call: bool,
 }
 
 #[derive(Serialize)]
@@ -962,12 +982,41 @@ fn call(source: &CallView) -> CallDto {
         offer: source.offer.as_ref().map(|offer| CallOfferDto {
             room_id: offer.room_id.to_string(),
             offer: offer_word(offer.offer),
-            refusal: match offer.offer {
-                JoinOffer::Refused(refusal) => Some(refusal_word(refusal)),
-                JoinOffer::Start | JoinOffer::Join | JoinOffer::InCall => None,
-            },
+            refusal: offer_refusal(offer.offer),
         }),
+        sheet: source.sheet.as_ref().map(call_sheet),
         active: source.active.as_ref().map(active_call),
+    }
+}
+
+fn call_sheet(sheet: &CallSheetView) -> CallSheetDto {
+    CallSheetDto {
+        serial: sheet.serial,
+        room_id: sheet.room_id.to_string(),
+        room_name: sheet.room_name.clone(),
+        direct: sheet.direct,
+        offer: offer_word(sheet.offer),
+        refusal: offer_refusal(sheet.offer),
+        video: sheet.video,
+        people: sheet.people,
+        microphone: sheet.proposed.microphone,
+        camera: sheet.proposed.camera,
+        leaving: sheet
+            .leaving
+            .as_ref()
+            .map(|leaving| leaving.room_id.to_string()),
+        leaving_name: sheet
+            .leaving
+            .as_ref()
+            .map(|leaving| leaving.room_name.clone()),
+        ended: sheet.ended,
+    }
+}
+
+const fn offer_refusal(offer: JoinOffer) -> Option<&'static str> {
+    match offer {
+        JoinOffer::Refused(refusal) => Some(refusal_word(refusal)),
+        JoinOffer::Start | JoinOffer::Join | JoinOffer::InCall => None,
     }
 }
 
@@ -1307,6 +1356,7 @@ fn room_menu(source: &RoomMenuTarget) -> RoomMenuDto {
         leaving: source.leaving,
         may_invite: source.may_invite,
         may_add_children: source.may_add_children,
+        has_call: source.has_call,
     }
 }
 

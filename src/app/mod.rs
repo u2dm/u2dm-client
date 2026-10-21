@@ -878,9 +878,11 @@ impl AppService {
             }
             cmd @ (UiCommand::DeclineCall(_)
             | UiCommand::SilenceRing
+            | UiCommand::OpenCallSheet { .. }
+            | UiCommand::CloseCallSheet
             | UiCommand::StartCall { .. }
-            | UiCommand::JoinCall(_)
-            | UiCommand::AnswerCall(_)
+            | UiCommand::JoinCall { .. }
+            | UiCommand::AnswerCall { .. }
             | UiCommand::LeaveCall
             | UiCommand::SetMicrophone(_)
             | UiCommand::SetCamera(_)
@@ -2983,13 +2985,30 @@ impl AppService {
         match cmd {
             UiCommand::DeclineCall(room_id) => self.calls.decline(&room_id, directory),
             UiCommand::SilenceRing => self.calls.silence(directory),
-            UiCommand::StartCall { room_id, video } => {
-                self.calls.start_call(&room_id, video, directory);
+            UiCommand::OpenCallSheet { room_id, video } => {
+                self.calls.open_sheet(&room_id, video, directory);
             }
-            UiCommand::JoinCall(room_id) => self.calls.join_call(&room_id, directory),
-            UiCommand::AnswerCall(room_id) => self.calls.answer(&room_id, directory),
+            UiCommand::CloseCallSheet => self.calls.close_sheet(directory),
+            UiCommand::StartCall {
+                room_id,
+                video,
+                media,
+                leaving,
+            } => self
+                .calls
+                .start_call(room_id, video, media, leaving, directory),
+            UiCommand::JoinCall {
+                room_id,
+                media,
+                leaving,
+            } => self.calls.join_call(room_id, media, leaving, directory),
+            UiCommand::AnswerCall {
+                room_id,
+                camera,
+                leaving,
+            } => self.calls.answer(room_id, camera, leaving, directory),
             UiCommand::LeaveCall => self.calls.leave_call(directory),
-            UiCommand::SetMicrophone(on) => self.calls.set_microphone(on),
+            UiCommand::SetMicrophone(on) => self.calls.set_microphone(on, directory),
             UiCommand::SetCamera(on) => self.calls.set_camera(on, directory),
             UiCommand::ShareScreen(on) => self.calls.set_screen_share(on, directory),
             other => tracing::warn!(command = %other, "this command is not about calls"),

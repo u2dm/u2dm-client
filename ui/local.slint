@@ -1,5 +1,5 @@
 import { Delivery, LoginPhase, MessageKind, PollPhase, ReactionSend, RoomInfoPlacement, Shield } from "./enums.slint";
-import { AccountView, AttachmentView, CreateRoomView, DirectoryView, EncryptionView, InvitePeopleView, InviteView, LeaveSpaceView, LoginView, LogoutView, ReadersView, RemovalView, RoomInfoView, RoomLogView, RoomMenuView, RoomPreviewView, RoomView, SourceView, UserInfoView, VerificationView, VideoView, WindowView } from "./views.slint";
+import { AccountView, AttachmentView, CallView, CreateRoomView, DirectoryView, EncryptionView, InvitePeopleView, InviteView, LeaveSpaceView, LoginView, LogoutView, ReadersView, RemovalView, RoomInfoView, RoomLogView, RoomMenuView, RoomPreviewView, RoomView, SourceView, UserInfoView, VerificationView, VideoView, WindowView } from "./views.slint";
 import { Actions } from "./actions.slint";
 import { EditedMessage, MessageEntry, ReactionEntry, ReplyDraft } from "./types.slint";
 import { MessagePreview } from "./messages.slint";
@@ -166,6 +166,8 @@ export global Shell {
         && LoginView.step == LoginPhase.logged-in;
     out property <bool> readers-open: ReadersView.visible
         && LoginView.step == LoginPhase.logged-in;
+    out property <bool> call-sheet-open: CallView.sheet-visible
+        && LoginView.step == LoginPhase.logged-in;
     out property <bool> modal-over-nav: root.drawer-open
         || root.verification-open
         || root.encryption-open
@@ -184,7 +186,8 @@ export global Shell {
         || root.invite-people-open
         || root.source-open
         || root.room-log-open
-        || root.readers-open;
+        || root.readers-open
+        || root.call-sheet-open;
     out property <bool> modal-open: root.nav-open || root.modal-over-nav;
     out property <bool> nav-on-top: root.nav-open && !root.modal-over-nav;
     out property <bool> background-reachable: !root.modal-open;

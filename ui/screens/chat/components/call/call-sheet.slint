@@ -1,0 +1,240 @@
+import { Palette } from "std-widgets.slint";
+import { Icon, IconDisplay, IconSet } from "@lucide";
+
+import { AppButton } from "../../../../components/button.slint";
+import { ClickArea } from "../../../../components/a11y.slint";
+import { DialogCard, ModalHost } from "../../../../components/overlay.slint";
+import { StateLayer } from "../../../../components/state-layer.slint";
+import { AppStyle, Fonts, IconSize, Metrics, Radius, Space, Weight } from "../../../../theme.slint";
+import { CallOffer } from "../../../../enums.slint";
+import { CallView, DirectoryView, SpaceIndexView } from "../../../../views.slint";
+import { CallWords } from "../../../../messages.slint";
+import { Actions } from "../../../../actions.slint";
+import { MetaTip, Reactions, Shell } from "../../../../local.slint";
+import { DialogNote } from "../verification.slint";
+
+component MediaChoiceRow inherits ClickArea {
+    in property <Icon> on-icon;
+    in property <Icon> off-icon;
+    in property <string> text;
+    in property <string> detail;
+    in-out property <bool> on;
+
+    height: Metrics.choice-row;
+    border-radius: Radius.md;
+    ring-radius: Radius.md;
+    above-modal: true;
+    accessible-role: switch;
+    accessible-checkable: true;
+    accessible-checked: root.on;
+    accessible-description: root.detail;
+    clicked => {
+        root.on = !root.on;
+    }
+
+    StateLayer {
+        border-radius: root.border-radius;
+        hovered: root.has-hover && root.enabled;
+        pressed: root.pressed && root.enabled;
+    }
+
+    HorizontalLayout {
+        padding-left: Space.md;
+        padding-right: Space.md;
+        spacing: Space.lg;
+
+        Rectangle {
+            cross-axis-self-alignment: center;
+            width: Metrics.call-control;
+            height: Metrics.call-control;
+            border-radius: self.width / 2;
+            background: AppStyle.control;
+
+            IconDisplay {
+                icon: root.on ? root.on-icon : root.off-icon;
+                size: IconSize.md;
+                stroke: AppStyle.foreground-strong;
+            }
+        }
+
+        VerticalLayout {
+            horizontal-stretch: 1;
+            alignment: center;
+            spacing: Space.xs;
+
+            Text {
+                text: root.text;
+                font-size: Fonts.label;
+                font-weight: Weight.semibold;
+                overflow: elide;
+                accessible-role: none;
+            }
+
+            Text {
+                text: root.detail;
+                font-size: Fonts.body-small;
+                color: AppStyle.foreground-muted;
+                overflow: elide;
+                accessible-role: none;
+            }
+        }
+    }
+}
+
+export component CallSheet inherits ModalHost {
+    property <length> card-width: min(AppStyle.card-width, root.width - AppStyle.card-inset);
+    property <int> serial: CallView.sheet-serial;
+    property <bool> joining: CallView.sheet-people > 0;
+    property <bool> refused: CallView.sheet-offer == CallOffer.refused;
+    property <bool> leaving: CallView.sheet-leaving-id != "";
+    property <bool> microphone: CallView.sheet-microphone;
+    property <bool> camera: CallView.sheet-camera;
+    property <string> title: CallWords.sheet-title(
+        CallView.sheet-direct,
+        root.joining,
+        CallView.sheet-video,
+        CallView.sheet-room-name,
+        CallView.sheet-leaving-name);
+
+    dim-opacity: AppStyle.dialog-scrim;
+    label: root.title;
+    dismissed => {
+        Actions.close-call-sheet();
+    }
+    opened => {
+        Reactions.close();
+        MetaTip.clear();
+    }
+
+    changed serial => {
+        root.microphone = CallView.sheet-microphone;
+        root.camera = CallView.sheet-camera;
+    }
+
+    function confirm() {
+        Shell.close-overlays();
+        if CallView.sheet-room-id != DirectoryView.selected-room-id {
+            Actions.select-room(CallView.sheet-room-id);
+        } else if SpaceIndexView.visible {
+            Actions.close-space-index();
+        }
+        if CallView.sheet-offer == CallOffer.join {
+            Actions.join-call({
+                room-id: CallView.sheet-room-id,
+                microphone: root.microphone,
+                camera: root.camera,
+                leaving: CallView.sheet-leaving-id,
+            });
+        } else {
+            Actions.start-call({
+                room-id: CallView.sheet-room-id,
+                video: CallView.sheet-video,
+                microphone: root.microphone,
+                camera: root.camera,
+                leaving: CallView.sheet-leaving-id,
+            });
+        }
+    }
+
+    DialogCard {
+        x: (root.width - self.width) / 2;
+        y: (root.height - self.height) / 2;
+        width: root.card-width;
+        height: card-body.preferred-height;
+
+        card-body := VerticalLayout {
+            padding: Space.xxl;
+            spacing: Space.xl;
+
+            VerticalLayout {
+                spacing: Space.sm;
+
+                HorizontalLayout {
+                    alignment: center;
+
+                    IconDisplay {
+                        icon: CallView.sheet-video ? IconSet.Video : IconSet.Phone;
+                        size: IconSize.lg;
+                        stroke: AppStyle.call-accept;
+                    }
+                }
+
+                Text {
+                    text: root.title;
+                    font-size: Fonts.title;
+                    font-weight: Weight.semibold;
+                    horizontal-alignment: center;
+                    wrap: word-wrap;
+                    color: Palette.foreground;
+                }
+
+                if root.joining && !root.refused: DialogNote {
+                    text: CallWords.in-call(CallView.sheet-people);
+                }
+            }
+
+            VerticalLayout {
+                spacing: Space.xs;
+
+                MediaChoiceRow {
+                    label: @tr("Microphone");
+                    on-icon: IconSet.Mic;
+                    off-icon: IconSet.MicOff;
+                    text: CallWords.microphone-choice(self.on);
+                    detail: CallWords.microphone-effect(self.on);
+                    on <=> root.microphone;
+                }
+
+                MediaChoiceRow {
+                    label: @tr("Camera");
+                    on-icon: IconSet.Video;
+                    off-icon: IconSet.VideoOff;
+                    text: CallWords.camera-choice(self.on);
+                    detail: CallWords.camera-effect(self.on);
+                    on <=> root.camera;
+                }
+            }
+
+            if root.refused: Text {
+                text: CallWords.refusal(CallView.sheet-refusal);
+                font-size: Fonts.body-small;
+                font-weight: Weight.semibold;
+                horizontal-alignment: center;
+                wrap: word-wrap;
+                color: AppStyle.danger-muted;
+                accessible-live-region: AccessibleLiveness.assertive;
+            }
+
+            if CallView.sheet-ended && !root.refused: DialogNote {
+                text: @tr("The call ended before you joined it");
+                accessible-live-region: AccessibleLiveness.polite;
+            }
+
+            HorizontalLayout {
+                spacing: Space.lg;
+
+                AppButton {
+                    horizontal-stretch: 1;
+                    above-modal: true;
+                    text: @tr("Cancel");
+                    filled: false;
+                    clicked => {
+                        Actions.close-call-sheet();
+                    }
+                }
+
+                AppButton {
+                    horizontal-stretch: 1;
+                    above-modal: true;
+                    enabled: !root.refused;
+                    text: CallWords.sheet-action(root.joining, root.leaving);
+                    icon: CallView.sheet-video ? IconSet.Video : IconSet.Phone;
+                    tint: AppStyle.call-accept;
+                    clicked => {
+                        root.confirm();
+                    }
+                }
+            }
+        }
+    }
+}

@@ -13,6 +13,7 @@ use crate::commands::ui::{
     ViewportChanged, WindowAttention, WindowFocus,
 };
 use crate::domain::auth::LoginCredentials;
+use crate::domain::call::media::MediaChoice;
 use crate::domain::capabilities::AccountPage;
 use crate::domain::departure::membership_reason;
 use crate::domain::emote::ComposerText;
@@ -123,7 +124,27 @@ pub fn login_password(tx: &Tx, username: String, password: String) {
     );
 }
 
-pub fn start_call(tx: &Tx, room_id: String, video: bool) {
+pub fn open_call_sheet(tx: &Tx, room_id: String, video: bool) {
+    if room_id.is_empty() {
+        return;
+    }
+    send_command(
+        tx,
+        UiCommand::OpenCallSheet {
+            room_id: RoomId::new(room_id),
+            video,
+        },
+    );
+}
+
+pub fn start_call(
+    tx: &Tx,
+    room_id: String,
+    video: bool,
+    microphone: bool,
+    camera: bool,
+    leaving: String,
+) {
     if room_id.is_empty() {
         return;
     }
@@ -132,6 +153,36 @@ pub fn start_call(tx: &Tx, room_id: String, video: bool) {
         UiCommand::StartCall {
             room_id: RoomId::new(room_id),
             video,
+            media: MediaChoice { microphone, camera },
+            leaving: optional_room(leaving),
+        },
+    );
+}
+
+pub fn join_call(tx: &Tx, room_id: String, microphone: bool, camera: bool, leaving: String) {
+    if room_id.is_empty() {
+        return;
+    }
+    send_command(
+        tx,
+        UiCommand::JoinCall {
+            room_id: RoomId::new(room_id),
+            media: MediaChoice { microphone, camera },
+            leaving: optional_room(leaving),
+        },
+    );
+}
+
+pub fn answer_call(tx: &Tx, room_id: String, camera: bool, leaving: String) {
+    if room_id.is_empty() {
+        return;
+    }
+    send_command(
+        tx,
+        UiCommand::AnswerCall {
+            room_id: RoomId::new(room_id),
+            camera,
+            leaving: optional_room(leaving),
         },
     );
 }

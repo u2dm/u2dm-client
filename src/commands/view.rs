@@ -7,6 +7,7 @@ use super::messages::{UserMessage, UserMessageKind};
 use super::ui::Draft;
 use crate::domain::auth::{LoginMethod, Session};
 use crate::domain::call::MemberKey;
+use crate::domain::call::media::MediaChoice;
 use crate::domain::call::video::{FeedId, ScreenRefusal};
 use crate::domain::capabilities::AccountFacts;
 use crate::domain::departure::{AdminStanding, Removal, RemovalList};
@@ -299,6 +300,26 @@ pub struct OfferView {
     pub offer: JoinOffer,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LeavingCall {
+    pub room_id: RoomId,
+    pub room_name: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CallSheetView {
+    pub serial: i32,
+    pub room_id: RoomId,
+    pub room_name: String,
+    pub direct: bool,
+    pub offer: JoinOffer,
+    pub video: bool,
+    pub people: usize,
+    pub proposed: MediaChoice,
+    pub leaving: Option<LeavingCall>,
+    pub ended: bool,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CallPhase {
     Joining,
@@ -385,6 +406,7 @@ pub struct CallView {
     pub ring: Option<RingView>,
     pub here: Option<RoomCallSummary>,
     pub offer: Option<OfferView>,
+    pub sheet: Option<CallSheetView>,
     pub active: Option<ActiveCall>,
 }
 
@@ -978,6 +1000,7 @@ pub struct RoomMenuTarget {
     pub leaving: bool,
     pub may_invite: bool,
     pub may_add_children: bool,
+    pub has_call: bool,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]

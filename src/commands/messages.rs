@@ -72,6 +72,7 @@ pub enum UserMessageKind {
     CallCutOff,
     CallNoAnswer,
     CallDeclinedThere,
+    CallUnjoinable,
     RoomNotFound,
     RoomPreviewFailed,
     RoomAddressInvalid,

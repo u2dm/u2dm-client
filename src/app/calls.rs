@@ -2,7 +2,9 @@ mod joined;
 pub(super) mod lane;
 mod media;
 mod offer;
+mod sheet;
 
+use std::fmt;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -14,6 +16,7 @@ use self::joined::{CallLoss, Effect, Joined, Joining};
 use self::lane::{LEAVE_WAIT, Lane, LaneEvent, MEMBERSHIP_LIFETIME, keep_membership};
 use self::media::MediaDriver;
 use self::offer::{Media, OfferFacts, Transports, offer};
+use self::sheet::Sheet;
 use super::event::{AppEvent, CallEvent, RingDeadline};
 use super::input::EventSender;
 use super::room_directory::RoomDirectory;
@@ -21,9 +24,12 @@ use super::show_toast;
 use super::task_group::TaskGroup;
 use crate::commands::messages::{UserMessage, UserMessageKind};
 use crate::commands::ui::WindowFocus;
-use crate::commands::view::{CallView, JoinOffer, OfferView, RingView, RoomCallSummary, Toast};
+use crate::commands::view::{
+    CallSheetView, CallView, JoinOffer, JoinRefusal, LeavingCall, OfferView, RingView,
+    RoomCallSummary, Toast,
+};
 use crate::domain::call::keys::ReceivedKey;
-use crate::domain::call::media::{MediaEvent, MediaSetup};
+use crate::domain::call::media::{MediaChoice, MediaEvent, MediaSetup};
 use crate::domain::call::ring::{
     CallSignal, OUTGOING_RING_LIFETIME_MS, OutgoingRing, Ring, RingId, RingKind,
 };
@@ -103,6 +109,34 @@ struct Ended {
     detail: String,
 }
 
+struct JoinRequest {
+    room_id: RoomId,
+    intent: CallIntent,
+    media: MediaChoice,
+    leaving: Option<RoomId>,
+}
+
+enum Blocked {
+    NotListed,
+    Refused(JoinRefusal),
+    AlreadyIn,
+    InAnotherCall(RoomId),
+}
+
+impl fmt::Display for Blocked {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::NotListed => f.write_str("the room is not listed"),
+            Self::Refused(refusal) => write!(f, "the room refuses it: {refusal:?}"),
+            Self::AlreadyIn => f.write_str("you are already in this call"),
+            Self::InAnotherCall(current) => write!(
+                f,
+                "it would leave your call in {current}, and leaving it was not agreed"
+            ),
+        }
+    }
+}
+
 pub(super) struct Calls {
     output: Arc<dyn AppOutputPort>,
     events: EventSender,
@@ -120,8 +154,10 @@ pub(super) struct Calls {
     verified: bool,
     transports: Transports,
     discovering: bool,
-    pending_join: Option<(RoomId, CallIntent)>,
+    pending_join: Option<JoinRequest>,
     joined: Option<Joined>,
+    sheet: Option<Sheet>,
+    sheet_serial: i32,
     generation: u64,
     stale_checked: bool,
     published: CallView,
@@ -152,6 +188,8 @@ impl Calls {
             discovering: false,
             pending_join: None,
             joined: None,
+            sheet: None,
+            sheet_serial: 0,
             generation: 0,
             stale_checked: false,
             published: CallView::default(),
@@ -230,11 +268,15 @@ impl Calls {
             }
             None => {}
         }
-        if let Some((room_id, intent)) = self.pending_join.take() {
+        if let Some(request) = self.pending_join.take() {
             if self.transports.first().is_some() {
-                self.join(&room_id, intent, directory);
+                self.join(request, directory);
             } else {
-                self.toast_about(UserMessageKind::CallServerUnreachable, &room_id, directory);
+                self.toast_about(
+                    UserMessageKind::CallServerUnreachable,
+                    &request.room_id,
+                    directory,
+                );
             }
         }
         self.publish(directory);
@@ -363,6 +405,7 @@ impl Calls {
             self.stop(end);
         }
         self.follow_joined(directory);
+        self.follow_sheet(directory);
         self.clear_stale_memberships(directory);
         self.publish(directory);
     }
@@ -383,6 +426,16 @@ impl Calls {
             .unwrap_or_default();
         let effects = joined.members_changed(members);
         self.run_effects(effects);
+    }
+
+    fn follow_sheet(&mut self, directory: &RoomDirectory) {
+        let Some(sheet) = &self.sheet else {
+            return;
+        };
+        if directory.room(&sheet.room_id).is_none() {
+            tracing::debug!(room_id = %sheet.room_id, "the room the call sheet asks about left the list");
+            self.sheet = None;
+        }
     }
 
     fn clear_stale_memberships(&mut self, directory: &RoomDirectory) {
@@ -518,64 +571,164 @@ impl Calls {
         self.publish(directory);
     }
 
-    pub(super) fn start_call(&mut self, room_id: &RoomId, video: bool, directory: &RoomDirectory) {
+    pub(super) fn open_sheet(&mut self, room_id: &RoomId, video: bool, directory: &RoomDirectory) {
+        let Some(room) = directory.room(room_id) else {
+            tracing::debug!(%room_id, "no listed room to offer a call in");
+            return;
+        };
+        if self.offer_for(room) == JoinOffer::InCall {
+            tracing::debug!(%room_id, "you are already in this call");
+            return;
+        }
+        tracing::debug!(%room_id, video, "asking how to join the call");
+        self.sheet_serial = self.sheet_serial.wrapping_add(1);
+        self.sheet = Some(Sheet::open(room, video, self.sheet_serial));
+        self.publish(directory);
+    }
+
+    pub(super) fn close_sheet(&mut self, directory: &RoomDirectory) {
+        if self.sheet.take().is_some() {
+            self.publish(directory);
+        }
+    }
+
+    pub(super) fn start_call(
+        &mut self,
+        room_id: RoomId,
+        video: bool,
+        media: MediaChoice,
+        leaving: Option<RoomId>,
+        directory: &RoomDirectory,
+    ) {
         let intent = if video {
             CallIntent::Video
         } else {
             CallIntent::Voice
         };
-        self.join(room_id, intent, directory);
+        self.join(
+            JoinRequest {
+                room_id,
+                intent,
+                media,
+                leaving,
+            },
+            directory,
+        );
     }
 
-    pub(super) fn join_call(&mut self, room_id: &RoomId, directory: &RoomDirectory) {
-        let intent = directory
-            .room(room_id)
-            .and_then(|room| room.call.as_ref().and_then(|call| call.intent()))
-            .unwrap_or(CallIntent::Voice);
-        self.join(room_id, intent, directory);
-    }
-
-    pub(super) fn answer(&mut self, room_id: &RoomId, directory: &RoomDirectory) {
-        let intent = self
-            .incoming
-            .as_ref()
-            .filter(|incoming| incoming.ring.room_id == *room_id)
-            .map(|incoming| incoming.ring.intent.unwrap_or(CallIntent::Voice));
-        if intent.is_some() {
-            self.stop(RingEnd::Answered);
-        }
-        self.join(room_id, intent.unwrap_or(CallIntent::Voice), directory);
-    }
-
-    fn joinable<'a>(&self, room_id: &RoomId, directory: &'a RoomDirectory) -> Option<&'a Room> {
-        let Some(room) = directory.room(room_id) else {
-            tracing::debug!(%room_id, "no listed room to join a call in");
-            return None;
-        };
-        match self.offer_for(room) {
-            JoinOffer::Refused(refusal) => {
-                tracing::info!(%room_id, ?refusal, "this call cannot be joined");
-                None
+    pub(super) fn join_call(
+        &mut self,
+        room_id: RoomId,
+        media: MediaChoice,
+        leaving: Option<RoomId>,
+        directory: &RoomDirectory,
+    ) {
+        let running = directory
+            .room(&room_id)
+            .and_then(|room| room.call.as_deref())
+            .map(|call| call.intent().unwrap_or(CallIntent::Voice));
+        let Some(intent) = running else {
+            tracing::info!(%room_id, "the call ended before you joined it");
+            if let Some(sheet) = self.sheet.as_mut().filter(|sheet| sheet.room_id == room_id) {
+                sheet.call_ended();
+                self.publish(directory);
             }
-            JoinOffer::InCall => None,
-            JoinOffer::Start | JoinOffer::Join => Some(room),
-        }
-    }
-
-    fn join(&mut self, room_id: &RoomId, intent: CallIntent, directory: &RoomDirectory) {
-        let Some(room) = self.joinable(room_id, directory) else {
             return;
         };
+        self.join(
+            JoinRequest {
+                room_id,
+                intent,
+                media,
+                leaving,
+            },
+            directory,
+        );
+    }
+
+    pub(super) fn answer(
+        &mut self,
+        room_id: RoomId,
+        camera: bool,
+        leaving: Option<RoomId>,
+        directory: &RoomDirectory,
+    ) {
+        let ringing = self
+            .incoming
+            .as_ref()
+            .filter(|incoming| incoming.ring.room_id == room_id)
+            .map(|incoming| incoming.ring.intent.unwrap_or(CallIntent::Voice));
+        let Some(intent) = ringing else {
+            tracing::debug!(%room_id, "nothing rings here to answer");
+            return;
+        };
+        self.join(
+            JoinRequest {
+                room_id,
+                intent,
+                media: MediaChoice {
+                    microphone: true,
+                    camera,
+                },
+                leaving,
+            },
+            directory,
+        );
+    }
+
+    fn admitted<'a>(
+        &self,
+        request: &JoinRequest,
+        directory: &'a RoomDirectory,
+    ) -> Result<&'a Room, Blocked> {
+        let room = directory.room(&request.room_id).ok_or(Blocked::NotListed)?;
+        match self.offer_for(room) {
+            JoinOffer::Refused(refusal) => return Err(Blocked::Refused(refusal)),
+            JoinOffer::InCall => return Err(Blocked::AlreadyIn),
+            JoinOffer::Start | JoinOffer::Join => {}
+        }
+        match &self.joined {
+            Some(joined) if request.leaving.as_ref() != Some(&joined.room_id) => {
+                Err(Blocked::InAnotherCall(joined.room_id.clone()))
+            }
+            _ => Ok(room),
+        }
+    }
+
+    fn explain_refusal(&self, blocked: &Blocked, room_id: &RoomId, directory: &RoomDirectory) {
+        tracing::info!(%room_id, reason = %blocked, "this call cannot be joined");
+        if matches!(blocked, Blocked::Refused(_)) {
+            self.toast_about(UserMessageKind::CallUnjoinable, room_id, directory);
+        }
+    }
+
+    fn wait_for_transports(&mut self, request: JoinRequest, directory: &RoomDirectory) {
+        tracing::debug!(room_id = %request.room_id, "learning the call server before joining");
+        self.pending_join = Some(request);
+        self.discover();
+        self.publish(directory);
+    }
+
+    fn join(&mut self, request: JoinRequest, directory: &RoomDirectory) {
+        let room = match self.admitted(&request, directory) {
+            Ok(room) => room,
+            Err(blocked) => {
+                self.explain_refusal(&blocked, &request.room_id, directory);
+                return;
+            }
+        };
+        self.sheet = None;
+        if self.rings_in(&request.room_id) {
+            self.stop(RingEnd::Answered);
+        }
         let Some(transport) = self.transports.first().cloned() else {
-            tracing::debug!(%room_id, "learning the call server before joining");
-            self.pending_join = Some((room_id.clone(), intent));
-            self.discover();
+            self.wait_for_transports(request, directory);
             return;
         };
         if self.joined.is_some() {
             self.end_call(None, directory);
         }
-        let Some(joining) = self.joining(room, intent, transport) else {
+        let Some(joining) = self.joining(room, &request, transport) else {
             return;
         };
         let members = room
@@ -583,7 +736,15 @@ impl Calls {
             .as_ref()
             .map(|call| call.members().to_vec())
             .unwrap_or_default();
-        tracing::info!(call = joining.call, %room_id, ?intent, encrypted = room.is_encrypted, "joining the call");
+        tracing::info!(
+            call = joining.call,
+            room_id = %request.room_id,
+            intent = ?request.intent,
+            microphone = request.media.microphone,
+            camera = request.media.camera,
+            encrypted = room.is_encrypted,
+            "joining the call"
+        );
         let (joined, effects) = Joined::start(joining, &members);
         self.joined = Some(joined);
         self.run_effects(effects);
@@ -593,7 +754,7 @@ impl Calls {
     fn joining(
         &mut self,
         room: &Room,
-        intent: CallIntent,
+        request: &JoinRequest,
         transport: Transport,
     ) -> Option<Joining> {
         let own = self.own.as_ref()?;
@@ -622,7 +783,7 @@ impl Calls {
             membership: OwnMembership {
                 device: own.device.clone(),
                 member_id: member_id.clone(),
-                intent,
+                intent: request.intent,
                 transport: transport.clone(),
                 created_ms: None,
                 lifetime_ms: u64::try_from(MEMBERSHIP_LIFETIME.as_millis()).unwrap_or(u64::MAX),
@@ -653,13 +814,14 @@ impl Calls {
             span,
             room_id: room.id.clone(),
             room_name: room.display_name.clone(),
-            intent,
+            intent: request.intent,
             encrypted: room.is_encrypted,
             me,
             member_id,
             transport,
             leave_tx,
             media_tx,
+            media: request.media,
             outgoing,
         })
     }
@@ -678,10 +840,14 @@ impl Calls {
         }
     }
 
-    pub(super) fn set_microphone(&mut self, on: bool) {
-        if let Some(joined) = &self.joined {
-            joined.set_microphone(on);
-        }
+    pub(super) fn set_microphone(&mut self, on: bool, directory: &RoomDirectory) {
+        let Some(joined) = self.joined.as_mut() else {
+            return;
+        };
+        let span = joined.span.clone();
+        let _in_call = span.enter();
+        joined.set_microphone(on);
+        self.publish(directory);
     }
 
     pub(super) fn set_camera(&mut self, on: bool, directory: &RoomDirectory) {
@@ -1056,6 +1222,7 @@ impl Calls {
         self.discovering = false;
         self.pending_join = None;
         self.joined = None;
+        self.sheet = None;
         self.stale_checked = false;
         self.published = CallView::default();
     }
@@ -1113,6 +1280,7 @@ impl Calls {
             ring: self.ring_view(directory),
             here: self.here(directory),
             offer: self.offer_view(directory),
+            sheet: self.sheet_view(directory),
             active: self.joined.as_ref().map(Joined::view),
         };
         if view == self.published {
@@ -1130,6 +1298,20 @@ impl Calls {
             room_id: room.id.clone(),
             offer: self.offer_for(room),
         })
+    }
+
+    fn sheet_view(&self, directory: &RoomDirectory) -> Option<CallSheetView> {
+        let sheet = self.sheet.as_ref()?;
+        let room = directory.room(&sheet.room_id)?;
+        let leaving = self
+            .joined
+            .as_ref()
+            .filter(|joined| joined.room_id != room.id)
+            .map(|joined| LeavingCall {
+                room_id: joined.room_id.clone(),
+                room_name: joined.room_name().to_owned(),
+            });
+        Some(sheet.view(room, self.offer_for(room), leaving))
     }
 
     fn ring_view(&self, directory: &RoomDirectory) -> Option<RingView> {

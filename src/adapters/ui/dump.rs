@@ -187,6 +187,12 @@ pub struct CallDump {
     pub strip: bool,
     pub elapsed: String,
     pub card_answerable: bool,
+    pub sheet: bool,
+    pub sheet_room_id: String,
+    pub sheet_offer: String,
+    pub sheet_microphone: bool,
+    pub sheet_camera: bool,
+    pub sheet_leaving: String,
     pub tiles: Vec<CallTileDump>,
 }
 
@@ -383,6 +389,12 @@ fn call_view<B: UiBackend>(window: &B::Window) -> CallDump {
         strip: active && !in_call_room,
         elapsed: window.get_string(StringProp::CallElapsed).to_string(),
         card_answerable: window.get_bool(BoolProp::RingAnswerable),
+        sheet: window.get_bool(BoolProp::SheetVisible),
+        sheet_room_id: window.get_string(StringProp::SheetRoomId).to_string(),
+        sheet_offer: window.get_enum(EnumProp::CallSheetOffer).to_string(),
+        sheet_microphone: window.get_bool(BoolProp::SheetMicrophone),
+        sheet_camera: window.get_bool(BoolProp::SheetCamera),
+        sheet_leaving: window.get_string(StringProp::SheetLeavingId).to_string(),
         tiles: B::models()
             .call_tiles
             .iter()

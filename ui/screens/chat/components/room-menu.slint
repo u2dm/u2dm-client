@@ -15,6 +15,7 @@ import { Metrics, Motion, Space } from "../../../theme.slint";
 
 enum RoomMenuAction {
     info,
+    video-call,
     mark-read,
     notifications,
     browse,
@@ -44,6 +45,9 @@ global RoomMenuActions {
     public pure function label(action: RoomMenuAction) -> string {
         if action == RoomMenuAction.info {
             return @tr("Room info");
+        }
+        if action == RoomMenuAction.video-call {
+            return @tr("Video call");
         }
         if action == RoomMenuAction.mark-read {
             return @tr("Mark as read");
@@ -88,6 +92,9 @@ global RoomMenuActions {
     public pure function icon(action: RoomMenuAction) -> Icon {
         if action == RoomMenuAction.info {
             return IconSet.Info;
+        }
+        if action == RoomMenuAction.video-call {
+            return IconSet.Video;
         }
         if action == RoomMenuAction.mark-read {
             return IconSet.CheckCheck;
@@ -216,6 +223,9 @@ component RoomMenuCard inherits MenuCard {
     function offer-room-actions() {
         root.offered = [];
         root.offered.push(RoomMenuAction.info);
+        if !RoomMenuView.has-call {
+            root.offered.push(RoomMenuAction.video-call);
+        }
         if RoomMenuView.unread {
             root.offered.push(RoomMenuAction.mark-read);
         }
@@ -545,6 +555,11 @@ export component RoomMenuOverlay inherits Rectangle {
         if action == RoomMenuAction.logs {
             RoomMenu.close();
             Actions.open-room-log(id);
+            return;
+        }
+        if action == RoomMenuAction.video-call {
+            RoomMenu.close();
+            Actions.open-call-sheet({ room-id: id, video: true });
             return;
         }
         if action == RoomMenuAction.invite {

@@ -11,6 +11,12 @@ pub struct MediaSetup {
     pub encrypted: bool,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct MediaChoice {
+    pub microphone: bool,
+    pub camera: bool,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(not(any(feature = "calls", feature = "demo")), allow(dead_code))]
 pub enum SfuState {

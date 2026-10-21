@@ -12,8 +12,8 @@ use super::props::{BoolProp, IntProp, StringProp, UiProps};
 use super::ringtone::{self, Tone};
 use super::{audio, call_video, video};
 use crate::commands::view::{
-    ActiveCall, AppViewState, CallPhase, CallView, JoinOffer, OfferView, RingView, RoomCallSummary,
-    ScreenView, TileKind,
+    ActiveCall, AppViewState, CallPhase, CallSheetView, CallView, JoinOffer, OfferView, RingView,
+    RoomCallSummary, ScreenView, TileKind,
 };
 use crate::domain::call::video::{FeedId, Framing};
 use crate::ports::media::MediaCache;
@@ -44,10 +44,14 @@ pub fn apply_call<B: UiBackend>(
     }
     let last_ring = last.and_then(|last| last.ring.as_ref());
     if last_ring != next.ring.as_ref() {
-        apply_ring::<B>(w, last_ring, next.ring.as_ref(), ctx.media, ctx.notifier);
+        let in_call = next.active.is_some();
+        apply_ring::<B>(w, last_ring, next.ring.as_ref(), in_call, ctx);
     }
     if last.is_none_or(|last| last.offer != next.offer) {
         apply_offer(w, next.offer.as_ref());
+    }
+    if last.is_none_or(|last| last.sheet != next.sheet) {
+        apply_sheet(w, next.sheet.as_ref());
     }
     let last_active = last.and_then(|last| last.active.as_ref());
     if last_active != next.active.as_ref() {
@@ -67,6 +71,49 @@ fn apply_offer(w: &impl UiProps, offer: Option<&OfferView>) {
         w.set_call_refusal(refusal);
     }
     w.set_call_offer(call_offer_mark(join));
+}
+
+fn apply_sheet(w: &impl UiProps, sheet: Option<&CallSheetView>) {
+    let Some(sheet) = sheet else {
+        w.set_bool(BoolProp::SheetVisible, false);
+        return;
+    };
+    w.set_string(
+        StringProp::SheetRoomId,
+        SharedString::from(sheet.room_id.as_ref()),
+    );
+    w.set_string(
+        StringProp::SheetRoomName,
+        SharedString::from(&sheet.room_name),
+    );
+    if let JoinOffer::Refused(refusal) = sheet.offer {
+        w.set_call_sheet_refusal(refusal);
+    }
+    w.set_call_sheet_offer(call_offer_mark(Some(sheet.offer)));
+    w.set_bool(BoolProp::SheetDirect, sheet.direct);
+    w.set_bool(BoolProp::SheetVideo, sheet.video);
+    w.set_int(
+        IntProp::SheetPeople,
+        i32::try_from(sheet.people).unwrap_or(i32::MAX),
+    );
+    w.set_bool(BoolProp::SheetMicrophone, sheet.proposed.microphone);
+    w.set_bool(BoolProp::SheetCamera, sheet.proposed.camera);
+    let leaving = sheet.leaving.as_ref();
+    w.set_string(
+        StringProp::SheetLeavingId,
+        leaving.map_or_else(SharedString::new, |leaving| {
+            SharedString::from(leaving.room_id.as_ref())
+        }),
+    );
+    w.set_string(
+        StringProp::SheetLeavingName,
+        leaving.map_or_else(SharedString::new, |leaving| {
+            SharedString::from(&leaving.room_name)
+        }),
+    );
+    w.set_bool(BoolProp::SheetEnded, sheet.ended);
+    w.set_int(IntProp::SheetSerial, sheet.serial);
+    w.set_bool(BoolProp::SheetVisible, true);
 }
 
 fn apply_active<B: UiBackend>(w: &B::Window, last: Option<&ActiveCall>, next: Option<&ActiveCall>) {
@@ -199,9 +246,10 @@ fn apply_ring<B: UiBackend>(
     w: &B::Window,
     last: Option<&RingView>,
     next: Option<&RingView>,
-    media: &dyn MediaCache,
-    notifier: &dyn NotifierPort,
+    in_call: bool,
+    ctx: &UiEventContext<'_, B>,
 ) {
+    let notifier = ctx.notifier;
     let Some(next) = next else {
         stop_ringing(w, last, notifier);
         return;
@@ -212,7 +260,7 @@ fn apply_ring<B: UiBackend>(
     let fresh = last.is_none_or(|last| last.serial != next.serial);
     show_card(w, next);
     if last.is_none_or(|last| fresh || last.room_avatar_mxc != next.room_avatar_mxc) {
-        show_ring_avatar(w, next, media);
+        show_ring_avatar(w, next, ctx.media);
     }
     if fresh {
         audio::pause(w);
@@ -221,7 +269,7 @@ fn apply_ring<B: UiBackend>(
     }
     let was_desktop = last.is_some_and(|last| last.desktop && !fresh);
     match (was_desktop, next.desktop) {
-        (false, true) => notifier.ring(compose_ring::<B>(w, next)),
+        (false, true) => notifier.ring(compose_ring::<B>(w, next, in_call)),
         (true, false) => notifier.stop_ringing(&next.room_id),
         _ => {}
     }
@@ -259,6 +307,10 @@ fn show_card(w: &impl UiProps, ring: &RingView) {
     w.set_bool(BoolProp::RingVideo, ring.video);
     w.set_bool(BoolProp::RingDirect, ring.direct);
     w.set_bool(BoolProp::RingAnswerable, ring.answerable);
+    w.set_int(
+        IntProp::RingSerial,
+        i32::try_from(ring.serial).unwrap_or(i32::MAX),
+    );
     w.set_bool(BoolProp::RingVisible, true);
 }
 
@@ -270,7 +322,7 @@ fn show_ring_avatar(w: &impl UiProps, ring: &RingView, media: &dyn MediaCache) {
     w.apply_ring_avatar(load_avatar_async(path.as_deref(), AvatarSlot::Ring));
 }
 
-fn compose_ring<B: UiBackend>(w: &B::Window, ring: &RingView) -> RingNotice {
+fn compose_ring<B: UiBackend>(w: &B::Window, ring: &RingView, in_call: bool) -> RingNotice {
     let caller = ring.caller.shown();
     let body = B::notification_text(
         w,
@@ -287,9 +339,13 @@ fn compose_ring<B: UiBackend>(w: &B::Window, ring: &RingView) -> RingNotice {
         decline_label: w
             .get_string(StringProp::NotificationDeclineLabel)
             .to_string(),
-        answer_label: ring.answerable.then(|| {
-            w.get_string(StringProp::NotificationAnswerLabel)
-                .to_string()
+        answer_label: (ring.answerable && !in_call).then(|| {
+            let label = if ring.video {
+                StringProp::NotificationAnswerWithoutCameraLabel
+            } else {
+                StringProp::NotificationAnswerLabel
+            };
+            w.get_string(label).to_string()
         }),
         sound: ringtone::sounding().is_none(),
     }

@@ -767,6 +767,7 @@ fn apply_room_menu(w: &(impl UiProps + ComponentHandle), menu: Option<&RoomMenuT
     w.set_bool(BoolProp::RoomMenuMayInvite, menu.may_invite);
     w.set_bool(BoolProp::RoomMenuIsSpace, menu.is_space);
     w.set_bool(BoolProp::RoomMenuMayAddChildren, menu.may_add_children);
+    w.set_bool(BoolProp::RoomMenuHasCall, menu.has_call);
     w.set_string(
         StringProp::RoomMenuRoomId,
         SharedString::from(menu.room_id.as_ref()),
