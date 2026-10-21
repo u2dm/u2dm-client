@@ -411,6 +411,9 @@ pub enum UiCommand {
         leaving: Option<RoomId>,
     },
     LeaveCall,
+    RetryFailedCall,
+    DismissFailedCall,
+    AnnounceCallAgain,
     #[strum(to_string = "SetMicrophone({0})")]
     SetMicrophone(bool),
     #[strum(to_string = "SetCamera({0})")]
@@ -600,6 +603,9 @@ impl UiCommand {
             | Self::SilenceRing
             | Self::CloseCallSheet
             | Self::LeaveCall
+            | Self::RetryFailedCall
+            | Self::DismissFailedCall
+            | Self::AnnounceCallAgain
             | Self::SetMicrophone(_)
             | Self::SetCamera(_)
             | Self::ShareScreen(_)

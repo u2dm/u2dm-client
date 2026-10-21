@@ -86,6 +86,7 @@ export component IconButton inherits Rectangle {
     in property <bool> enabled: true;
     in property <bool> above-modal: false;
     in property <bool> busy: false;
+    in property <bool> pending: false;
     in property <length> size: Size.lg;
     property <float> icon-scale: 0.53;
     in property <length> icon-size: root.size * root.icon-scale;
@@ -128,13 +129,13 @@ export component IconButton inherits Rectangle {
         }
     }
 
-    if !root.busy: IconDisplay {
+    if !root.busy && !root.pending: IconDisplay {
         icon: root.icon;
         size: root.icon-size;
         stroke: root.tint;
     }
 
-    if root.busy: HorizontalLayout {
+    if root.busy || root.pending: HorizontalLayout {
         alignment: center;
 
         DotPulse {

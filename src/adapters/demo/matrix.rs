@@ -2502,6 +2502,10 @@ impl CallSignalPort for DemoAuthed {
     }
 
     async fn announce_call(&self, room_id: &RoomId, ring: &OutgoingRing) -> Result<RingId> {
+        if calls::announcement_fails() {
+            tracing::info!(%room_id, kind = ?ring.kind, "demo: the call announcement fails");
+            return Err(unavailable("announcing the call"));
+        }
         let id = RingId::new(format!("$demo-outgoing-{}", ring.sent_ms));
         tracing::info!(%room_id, kind = ?ring.kind, membership = ring.membership_event_id, "demo: the call is announced");
         self.script_answer(room_id, &id);

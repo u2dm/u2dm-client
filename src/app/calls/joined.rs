@@ -8,8 +8,8 @@ use tracing::Span;
 
 use super::media::MediaCommand;
 use crate::commands::view::{
-    ActiveCall, CallPhase, CallTile, CameraView, CantDecrypt, MicrophoneView, ScreenView, TileKind,
-    TileState,
+    ActiveCall, CallFailure, CallNotice, CallPhase, CallTile, CameraView, CantDecrypt,
+    MicrophoneView, ScreenView, TileKind, TileState,
 };
 use crate::domain::call::identity::{IdentityTable, MediaIdentity, member_spellings, spellings};
 use crate::domain::call::keys::{
@@ -26,6 +26,8 @@ use crate::domain::call::{
 use crate::domain::member_name::NamedUser;
 use crate::domain::room::RoomId;
 use crate::util::unix_now_ms;
+
+const SHARES_MISSED_BEFORE_HINT: u8 = 2;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) enum LinkState {
@@ -138,10 +140,17 @@ impl Heard {
     }
 }
 
-pub(super) struct Outgoing {
-    pub(super) kind: RingKind,
-    pub(super) ring: Option<RingId>,
-    pub(super) answered: bool,
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum Announcement {
+    Sending,
+    Sent(RingId),
+    Failed,
+}
+
+struct Outgoing {
+    kind: RingKind,
+    announcement: Announcement,
+    answered: bool,
 }
 
 pub(super) enum Effect {
@@ -156,13 +165,6 @@ pub(super) enum Effect {
         kind: RingKind,
     },
     Standings(Vec<MemberKey>),
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) enum CallLoss {
-    ServerUnreachable,
-    MediaFailed,
-    CutOff,
 }
 
 pub(super) struct Joining {
@@ -205,8 +207,9 @@ pub(super) struct Joined {
     microphone: Microphone,
     camera: OwnCamera,
     screen: OwnScreen,
+    shares_missed: u8,
     outgoing_kind: Option<RingKind>,
-    pub(super) outgoing: Option<Outgoing>,
+    outgoing: Option<Outgoing>,
 }
 
 pub(super) fn fresh_key() -> MediaKey {
@@ -246,6 +249,7 @@ impl Joined {
             },
             camera: OwnCamera::Off,
             screen: OwnScreen::Off,
+            shares_missed: 0,
             outgoing_kind: joining.outgoing,
             outgoing: None,
         };
@@ -273,6 +277,19 @@ impl Joined {
 
     pub(super) fn room_name(&self) -> &str {
         &self.room_name
+    }
+
+    pub(super) fn media_sent(&self) -> MediaChoice {
+        MediaChoice {
+            microphone: self.microphone == Microphone::On,
+            camera: matches!(self.camera, OwnCamera::Starting | OwnCamera::On(_)),
+        }
+    }
+
+    fn has_company(&self) -> bool {
+        self.members
+            .iter()
+            .any(|member| member.user.user_id != self.me.user)
     }
 
     pub(super) fn wake_at(&self, offset: Duration) -> Instant {
@@ -387,10 +404,7 @@ impl Joined {
     }
 
     fn notice_pickup(&mut self) {
-        let someone_else = self
-            .members
-            .iter()
-            .any(|member| member.user.user_id != self.me.user);
+        let someone_else = self.has_company();
         if let Some(outgoing) = self.outgoing.as_mut().filter(|outgoing| !outgoing.answered)
             && someone_else
         {
@@ -417,14 +431,11 @@ impl Joined {
                 .members_changed(self.now(), &self.holders(), fresh_key());
             effects.extend(self.apply_keys(actions));
         }
-        let alone = !self
-            .members
-            .iter()
-            .any(|member| member.user.user_id != self.me.user);
+        let alone = !self.has_company();
         if let Some(kind) = self.outgoing_kind.take().filter(|_| alone) {
             self.outgoing = Some(Outgoing {
                 kind,
-                ring: None,
+                announcement: Announcement::Sending,
                 answered: false,
             });
             effects.push(Effect::Announce {
@@ -435,7 +446,35 @@ impl Joined {
         effects
     }
 
-    pub(super) fn granted(&mut self, sfu: &SfuId, outcome: GrantResult) -> Result<(), CallLoss> {
+    pub(super) fn announced(&mut self, ring: Option<RingId>) -> bool {
+        let Some(outgoing) = self.outgoing.as_mut() else {
+            return false;
+        };
+        let rings = outgoing.kind == RingKind::Ring && ring.is_some();
+        outgoing.announcement = ring.map_or(Announcement::Failed, Announcement::Sent);
+        rings
+    }
+
+    pub(super) fn announce_again(&mut self) -> Option<Effect> {
+        let membership_event_id = self.membership.as_ref()?.event_id.clone();
+        let outgoing = self.outgoing.as_mut().filter(|outgoing| {
+            outgoing.announcement == Announcement::Failed && !outgoing.answered
+        })?;
+        tracing::info!(call = self.call, "announcing the call again");
+        outgoing.announcement = Announcement::Sending;
+        Some(Effect::Announce {
+            membership_event_id,
+            kind: outgoing.kind,
+        })
+    }
+
+    pub(super) fn announced_as(&self, ring: &RingId) -> bool {
+        self.outgoing.as_ref().is_some_and(
+            |outgoing| matches!(&outgoing.announcement, Announcement::Sent(sent) if sent == ring),
+        )
+    }
+
+    pub(super) fn granted(&mut self, sfu: &SfuId, outcome: GrantResult) -> Result<(), CallFailure> {
         let Some(link) = self.links.get_mut(sfu) else {
             return Ok(());
         };
@@ -450,7 +489,7 @@ impl Joined {
                 let publish = link.role == SfuRole::Publish;
                 link.state = LinkState::Failed(failure.to_string());
                 if publish {
-                    Err(CallLoss::ServerUnreachable)
+                    Err(CallFailure::ServerUnreachable)
                 } else {
                     Ok(())
                 }
@@ -458,7 +497,7 @@ impl Joined {
         }
     }
 
-    pub(super) fn media_event(&mut self, event: MediaEvent) -> Result<(), CallLoss> {
+    pub(super) fn media_event(&mut self, event: MediaEvent) -> Result<(), CallFailure> {
         match event {
             MediaEvent::Sfu { sfu, state } => return self.sfu_state(&sfu, state),
             MediaEvent::Present {
@@ -507,24 +546,38 @@ impl Joined {
     }
 
     fn camera_reported(&mut self, camera: Camera) {
-        self.camera = match camera {
-            Camera::On(_) if self.camera == OwnCamera::Off => return,
-            Camera::On(feed) => OwnCamera::On(feed),
+        match camera {
+            Camera::On(feed) if self.camera == OwnCamera::Starting => {
+                self.camera = OwnCamera::On(feed);
+            }
+            Camera::On(_) => {}
+            Camera::Failed(why) if self.camera == OwnCamera::Off => {
+                tracing::debug!(call = self.call, why, "the camera you switched off failed");
+            }
             Camera::Failed(why) => {
                 tracing::warn!(call = self.call, why, "the camera did not start");
-                OwnCamera::Failed
+                self.camera = OwnCamera::Failed;
+                self.command(MediaCommand::Camera(false));
             }
-        };
+        }
     }
 
     fn screen_reported(&mut self, screen: ScreenShare) {
         self.screen = match screen {
             ScreenShare::On if self.screen != OwnScreen::Choosing => return,
-            ScreenShare::On => OwnScreen::On,
+            ScreenShare::On => {
+                self.shares_missed = 0;
+                OwnScreen::On
+            }
             ScreenShare::Off if matches!(self.screen, OwnScreen::Unavailable(_)) => return,
+            ScreenShare::Off if self.screen == OwnScreen::Choosing => {
+                self.shares_missed = self.shares_missed.saturating_add(1);
+                OwnScreen::Off
+            }
             ScreenShare::Off => OwnScreen::Off,
             ScreenShare::Failed(why) => {
                 tracing::warn!(call = self.call, why, "the screen share did not start");
+                self.shares_missed = self.shares_missed.saturating_add(1);
                 OwnScreen::Failed
             }
             ScreenShare::Unavailable(refusal) => {
@@ -538,7 +591,7 @@ impl Joined {
         };
     }
 
-    fn sfu_state(&mut self, sfu: &SfuId, state: SfuState) -> Result<(), CallLoss> {
+    fn sfu_state(&mut self, sfu: &SfuId, state: SfuState) -> Result<(), CallFailure> {
         let Some(link) = self.links.get_mut(sfu) else {
             return Ok(());
         };
@@ -551,8 +604,8 @@ impl Joined {
             SfuState::Disconnected(why) => {
                 tracing::info!(call = self.call, %sfu, why, was_up, "a call media server connection ended");
                 match (publish, was_up) {
-                    (true, true) => return Err(CallLoss::CutOff),
-                    (true, false) => return Err(CallLoss::ServerUnreachable),
+                    (true, true) => return Err(CallFailure::CutOff),
+                    (true, false) => return Err(CallFailure::ServerUnreachable),
                     (false, _) => {
                         self.heard.forget(sfu);
                         LinkState::Failed(why)
@@ -650,9 +703,18 @@ impl Joined {
     }
 
     pub(super) fn is_ringing_out(&self) -> bool {
+        self.outgoing.as_ref().is_some_and(|outgoing| {
+            outgoing.kind == RingKind::Ring
+                && !outgoing.answered
+                && outgoing.announcement != Announcement::Failed
+        })
+    }
+
+    fn unannounced(&self) -> Option<RingKind> {
         self.outgoing
             .as_ref()
-            .is_some_and(|outgoing| outgoing.kind == RingKind::Ring && !outgoing.answered)
+            .filter(|outgoing| outgoing.announcement == Announcement::Failed && !outgoing.answered)
+            .map(|outgoing| outgoing.kind)
     }
 
     fn publish_link(&self) -> Option<&Link> {
@@ -664,14 +726,41 @@ impl Joined {
     fn phase(&self) -> CallPhase {
         match self.publish_link().map(|link| &link.state) {
             Some(LinkState::Reconnecting) => CallPhase::Reconnecting,
-            Some(LinkState::Connected) if self.is_ringing_out() => CallPhase::Ringing,
+            Some(LinkState::Connected) if self.is_ringing_out() => CallPhase::Calling,
+            Some(LinkState::Connected) if !self.has_company() => CallPhase::Waiting,
             Some(LinkState::Connected) => CallPhase::Live,
             _ if self.membership.is_some() => CallPhase::Connecting,
             _ => CallPhase::Joining,
         }
     }
 
+    fn notice(&self, tiles: &[CallTile]) -> Option<CallNotice> {
+        if let Some(kind) = self.unannounced() {
+            return Some(CallNotice::NotAnnounced(kind));
+        }
+        if matches!(self.microphone, Microphone::Failed(_)) {
+            return Some(CallNotice::MicrophoneFailed);
+        }
+        if self.camera == OwnCamera::Failed {
+            return Some(CallNotice::CameraFailed);
+        }
+        self.screen_notice().or_else(|| undecryptable(tiles))
+    }
+
+    fn screen_notice(&self) -> Option<CallNotice> {
+        let missed_often = self.shares_missed >= SHARES_MISSED_BEFORE_HINT;
+        match self.screen {
+            OwnScreen::Choosing => Some(CallNotice::ChoosingScreen),
+            OwnScreen::Off | OwnScreen::Failed if missed_often => {
+                Some(CallNotice::SharingNeverStarted)
+            }
+            OwnScreen::Failed => Some(CallNotice::ScreenFailed),
+            OwnScreen::Off | OwnScreen::On | OwnScreen::Unavailable(_) => None,
+        }
+    }
+
     pub(super) fn view(&self) -> ActiveCall {
+        let tiles = self.tiles();
         ActiveCall {
             call: self.call,
             room_id: self.room_id.clone(),
@@ -698,7 +787,8 @@ impl Joined {
                 OwnScreen::Failed => ScreenView::Failed,
                 OwnScreen::Unavailable(refusal) => ScreenView::Unavailable(refusal),
             },
-            tiles: Arc::from(self.tiles()),
+            notice: self.notice(&tiles),
+            tiles: Arc::from(tiles),
         }
     }
 
@@ -845,4 +935,17 @@ impl Joined {
         }?;
         SfuId::of(transport)
     }
+}
+
+fn undecryptable(tiles: &[CallTile]) -> Option<CallNotice> {
+    let mut troubled = tiles.iter().filter_map(|tile| match tile.state {
+        TileState::CantDecrypt(why) if tile.kind == TileKind::Person => Some((tile, why)),
+        _ => None,
+    });
+    let (first, why) = troubled.next()?;
+    Some(CallNotice::CantDecrypt {
+        who: first.name.clone(),
+        why,
+        others: troubled.count(),
+    })
 }

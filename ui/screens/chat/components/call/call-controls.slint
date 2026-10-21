@@ -26,6 +26,7 @@ export component CallCameraButton inherits IconButton {
     property <bool> failed: CallView.camera == CallCamera.failed;
 
     size: Metrics.call-control;
+    pending: CallView.camera == CallCamera.starting;
     icon: self.on ? IconSet.Video : IconSet.VideoOff;
     tint: self.failed ? AppStyle.on-call-decline : AppStyle.foreground-strong;
     fill: self.failed ? AppStyle.call-decline : AppStyle.call-tile;
@@ -36,17 +37,26 @@ export component CallCameraButton inherits IconButton {
 }
 
 export component CallShareButton inherits IconButton {
+    callback explain();
+
     property <bool> sharing: CallView.screen == CallScreen.on || CallView.screen == CallScreen.choosing;
+    property <bool> unavailable: CallView.screen == CallScreen.unavailable;
 
     size: Metrics.call-control;
-    enabled: CallView.screen != CallScreen.unavailable
-        && CallView.phase != CallPhase.joining && CallView.phase != CallPhase.connecting;
+    enabled: CallView.phase != CallPhase.joining && CallView.phase != CallPhase.connecting;
+    pending: CallView.screen == CallScreen.choosing;
     icon: self.sharing ? IconSet.ScreenShareOff : IconSet.ScreenShare;
-    tint: self.sharing ? AppStyle.on-call-sharing : AppStyle.foreground-strong;
+    tint: self.unavailable ? AppStyle.foreground-disabled
+        : self.sharing ? AppStyle.on-call-sharing
+        : AppStyle.foreground-strong;
     fill: self.sharing ? AppStyle.call-sharing : AppStyle.call-tile;
     label: CallWords.share(CallView.screen, CallView.screen-refusal);
     clicked => {
-        Actions.share-screen({ on: !self.sharing });
+        if root.unavailable {
+            root.explain();
+        } else {
+            Actions.share-screen({ on: !root.sharing });
+        }
     }
 }
 

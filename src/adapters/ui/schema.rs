@@ -88,6 +88,9 @@ macro_rules! string_props {
         ActiveRoomId CallView "CallView" "active-room-id" set_active_room_id get_active_room_id;
         ActiveRoomName CallView "CallView" "active-room-name" set_active_room_name get_active_room_name;
         CallElapsed CallView "CallView" "elapsed" set_elapsed get_elapsed;
+        NoticeName CallView "CallView" "notice-name" set_notice_name get_notice_name;
+        FailureRoomId CallView "CallView" "failure-room-id" set_failure_room_id get_failure_room_id;
+        FailureDetail CallView "CallView" "failure-detail" set_failure_detail get_failure_detail;
         SpaceIndexName SpaceIndexView "SpaceIndexView" "space-name" set_space_name get_space_name;
         RoomInfoRoomId RoomInfoView "RoomInfoView" "room-id" set_room_id get_room_id;
         RoomInfoName RoomInfoView "RoomInfoView" "name" set_name get_name;
@@ -237,6 +240,9 @@ macro_rules! simple_callbacks {
             request(room_id "room-id" text, camera "camera" flag, leaving "leaving" text)
             AnswerCall;
         on_leave_call "leave-call" leave_call plain LeaveCall;
+        on_retry_failed_call "retry-failed-call" retry_failed_call plain RetryFailedCall;
+        on_dismiss_failed_call "dismiss-failed-call" dismiss_failed_call plain DismissFailedCall;
+        on_announce_call_again "announce-call-again" announce_call_again plain AnnounceCallAgain;
         on_set_microphone "set-microphone" set_microphone request(on "on" flag) SetMicrophone;
         on_set_camera "set-camera" set_camera request(on "on" flag) SetCamera;
         on_share_screen "share-screen" share_screen request(on "on" flag) ShareScreen;
@@ -388,6 +394,7 @@ macro_rules! bool_props {
         ActiveVisible CallView "CallView" "active" set_active get_active;
         ActiveEncrypted CallView "CallView" "active-encrypted" set_active_encrypted get_active_encrypted;
         ActiveVideo CallView "CallView" "active-video" set_active_video get_active_video;
+        FailureRetry CallView "CallView" "failure-retry" set_failure_retry get_failure_retry;
         VerificationVisible VerificationView "VerificationView" "visible" set_visible get_visible;
         EncryptionVisible EncryptionView "EncryptionView" "visible" set_visible get_visible;
         EncryptionVerifiedSessions EncryptionView "EncryptionView" "verified-sessions" set_verified_sessions get_verified_sessions;
@@ -527,6 +534,7 @@ macro_rules! int_props {
         SheetSerial CallView "CallView" "sheet-serial" set_sheet_serial get_sheet_serial;
         SheetPeople CallView "CallView" "sheet-people" set_sheet_people get_sheet_people;
         HerePeople CallView "CallView" "here-people" set_here_people get_here_people;
+        NoticeOthers CallView "CallView" "notice-others" set_notice_others get_notice_others;
         CallDeclines WindowView "WindowView" "call-declines" set_call_declines get_call_declines;
         CallAnswers WindowView "WindowView" "call-answers" set_call_answers get_call_answers;
         PresencePartnerMinutes PresenceView "PresenceView" "partner-minutes" set_partner_minutes get_partner_minutes;
@@ -709,6 +717,12 @@ macro_rules! enum_props {
             CallView "CallView" "screen" set_screen get_screen;
         CallScreenRefusal set_call_screen_refusal(ScreenRefusal)
             CallView "CallView" "screen-refusal" set_screen_refusal get_screen_refusal;
+        CallNotice set_call_notice(CallNoticeMark)
+            CallView "CallView" "notice" set_notice get_notice;
+        CallFailure set_call_failure(UserMessageKind)
+            CallView "CallView" "failure" set_failure get_failure;
+        RingRefusal set_ring_refusal(JoinRefusal)
+            CallView "CallView" "ring-refusal" set_ring_refusal get_ring_refusal;
     } };
 }
 pub(crate) use enum_props;
@@ -1441,13 +1455,30 @@ pub(crate) use call_refusals;
 macro_rules! call_phases {
     ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
         Joining      Joining      "joining";
-        Ringing      Ringing      "ringing";
+        Calling      Calling      "calling";
         Connecting   Connecting   "connecting";
+        Waiting      Waiting      "waiting";
         Live         Live         "live";
         Reconnecting Reconnecting "reconnecting";
     } };
 }
 pub(crate) use call_phases;
+
+macro_rules! call_notices {
+    ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
+        None                None                "none";
+        NotCalled           NotCalled           "not-called";
+        NotAnnounced        NotAnnounced        "not-announced";
+        MicrophoneFailed    MicrophoneFailed    "microphone-failed";
+        CameraFailed        CameraFailed        "camera-failed";
+        ScreenFailed        ScreenFailed        "screen-failed";
+        ChoosingScreen      ChoosingScreen      "choosing-screen";
+        SharingNeverStarted SharingNeverStarted "sharing-never-started";
+        CantDecrypt         CantDecrypt         "cant-decrypt";
+        UnverifiedDevice    UnverifiedDevice    "unverified-device";
+    } };
+}
+pub(crate) use call_notices;
 
 macro_rules! call_mics {
     ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*

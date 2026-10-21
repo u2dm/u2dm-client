@@ -5,15 +5,16 @@ use slint::{ComponentHandle, Model, SharedString, Timer, TimerMode};
 
 use super::backend::{UiBackend, UiEventContext};
 use super::decode::{AvatarSlot, load_avatar_async};
-use super::dto::{call_offer_mark, call_screen_mark};
+use super::dto::{call_failure_message, call_notice_mark, call_offer_mark, call_screen_mark};
 use super::notices::NoticeWords;
 use super::present::{avatar_color_index, avatar_initials};
 use super::props::{BoolProp, IntProp, StringProp, UiProps};
 use super::ringtone::{self, Tone};
 use super::{audio, call_video, video};
+use crate::commands::messages::UserMessageKind;
 use crate::commands::view::{
-    ActiveCall, AppViewState, CallPhase, CallSheetView, CallView, JoinOffer, OfferView, RingView,
-    RoomCallSummary, ScreenView, TileKind,
+    ActiveCall, AppViewState, CallNotice, CallPhase, CallSheetView, CallView, FailedCall,
+    JoinOffer, OfferView, RingView, RoomCallSummary, ScreenView, TileKind,
 };
 use crate::domain::call::video::{FeedId, Framing};
 use crate::ports::media::MediaCache;
@@ -57,6 +58,39 @@ pub fn apply_call<B: UiBackend>(
     if last_active != next.active.as_ref() {
         apply_active::<B>(w, last_active, next.active.as_ref());
     }
+    if last.is_none_or(|last| last.failed != next.failed) {
+        apply_failed(w, next.failed.as_ref());
+    }
+}
+
+fn apply_failed(w: &impl UiProps, failed: Option<&FailedCall>) {
+    let Some(failed) = failed else {
+        w.set_call_failure(UserMessageKind::None);
+        return;
+    };
+    w.set_string(
+        StringProp::FailureRoomId,
+        SharedString::from(failed.room_id.as_ref()),
+    );
+    w.set_string(
+        StringProp::FailureDetail,
+        SharedString::from(&failed.room_name),
+    );
+    w.set_bool(BoolProp::FailureRetry, failed.retry);
+    w.set_call_failure(call_failure_message(failed.failure));
+}
+
+fn apply_notice(w: &impl UiProps, notice: Option<&CallNotice>) {
+    let (name, others) = match notice {
+        Some(CallNotice::CantDecrypt { who, others, .. }) => (who.shown(), *others),
+        _ => (String::new(), 0),
+    };
+    w.set_string(StringProp::NoticeName, SharedString::from(name));
+    w.set_int(
+        IntProp::NoticeOthers,
+        i32::try_from(others).unwrap_or(i32::MAX),
+    );
+    w.set_call_notice(call_notice_mark(notice));
 }
 
 fn apply_offer(w: &impl UiProps, offer: Option<&OfferView>) {
@@ -119,6 +153,7 @@ fn apply_sheet(w: &impl UiProps, sheet: Option<&CallSheetView>) {
 fn apply_active<B: UiBackend>(w: &B::Window, last: Option<&ActiveCall>, next: Option<&ActiveCall>) {
     let Some(active) = next else {
         w.set_bool(BoolProp::ActiveVisible, false);
+        apply_notice(w, None);
         B::models().call_tiles.set_vec(Vec::new());
         call_video::follow::<B>(w, &[]);
         stop_elapsed(w);
@@ -147,6 +182,7 @@ fn apply_active<B: UiBackend>(w: &B::Window, last: Option<&ActiveCall>, next: Op
     if let ScreenView::Unavailable(refusal) = active.screen {
         w.set_call_screen_refusal(refusal);
     }
+    apply_notice(w, active.notice.as_ref());
     if last.is_none_or(|last| last.tiles != active.tiles) {
         let models = B::models();
         let mut tiles: Vec<B::CallTile> = active.tiles.iter().map(B::convert_call_tile).collect();
@@ -180,7 +216,7 @@ fn follow_ringback<W: UiProps + ComponentHandle + 'static>(
     last: Option<CallPhase>,
     next: CallPhase,
 ) {
-    match (last == Some(CallPhase::Ringing), next == CallPhase::Ringing) {
+    match (last == Some(CallPhase::Calling), next == CallPhase::Calling) {
         (false, true) => {
             ringtone::play(&w.as_weak(), Tone::Ringback);
         }
@@ -307,6 +343,9 @@ fn show_card(w: &impl UiProps, ring: &RingView) {
     w.set_bool(BoolProp::RingVideo, ring.video);
     w.set_bool(BoolProp::RingDirect, ring.direct);
     w.set_bool(BoolProp::RingAnswerable, ring.answerable);
+    if let Some(refusal) = ring.refusal {
+        w.set_ring_refusal(refusal);
+    }
     w.set_int(
         IntProp::RingSerial,
         i32::try_from(ring.serial).unwrap_or(i32::MAX),

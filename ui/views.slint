@@ -13,7 +13,7 @@ import {
     CallTileEntry,
     UserDeviceEntry,
 } from "./types.slint";
-import { AccountActivity, AccountStep, AttachmentKind, AudioKind, AuthStage, CallCamera, CallMic, CallOffer, CallPhase, CallRefusal, CallScreen, CallScreenRefusal, ChildAccess, ConnectionState, CreateRoomStatus, DirectChat, EncryptionActivity, EncryptionStanding, EncryptionStep, IdentityAlertKind, IdentityTrust, InviteAnswer, InviteKind, LoginActivity, LoginMethodKind, LoginPhase, MemberRole, Moderation, NotifyMode, PackSurface, PeopleSearchStatus, PresenceLine, PreviewKind, ReadersStatus, RecoveryStatus, RemovalKind, RoomInfoPlacement, RoomKind, RoomMembership, RoomPreviewStatus, RoomScope, RosterStatus, ServiceKind, SourceEncryption, SourceStatus, SpaceIndexStatus, TimelineState, UpgradeLink, UserMessageKind, VerificationActivity, VerificationPhase, VerifyOffer } from "./enums.slint";
+import { AccountActivity, AccountStep, AttachmentKind, AudioKind, AuthStage, CallCamera, CallMic, CallNotice, CallOffer, CallPhase, CallRefusal, CallScreen, CallScreenRefusal, ChildAccess, ConnectionState, CreateRoomStatus, DirectChat, EncryptionActivity, EncryptionStanding, EncryptionStep, IdentityAlertKind, IdentityTrust, InviteAnswer, InviteKind, LoginActivity, LoginMethodKind, LoginPhase, MemberRole, Moderation, NotifyMode, PackSurface, PeopleSearchStatus, PresenceLine, PreviewKind, ReadersStatus, RecoveryStatus, RemovalKind, RoomInfoPlacement, RoomKind, RoomMembership, RoomPreviewStatus, RoomScope, RosterStatus, ServiceKind, SourceEncryption, SourceStatus, SpaceIndexStatus, TimelineState, UpgradeLink, UserMessageKind, VerificationActivity, VerificationPhase, VerifyOffer } from "./enums.slint";
 
 export global LoginView {
     in property <LoginPhase> step: LoginPhase.loading;
@@ -426,6 +426,7 @@ export global CallView {
     in property <bool> ring-video;
     in property <bool> ring-direct;
     in property <bool> ring-answerable;
+    in property <CallRefusal> ring-refusal;
     in property <bool> ring-has-avatar;
     in property <image> ring-avatar;
     in property <string> ring-initial;
@@ -462,8 +463,16 @@ export global CallView {
     in property <CallCamera> camera: CallCamera.off;
     in property <CallScreen> screen: CallScreen.off;
     in property <CallScreenRefusal> screen-refusal;
+    in property <CallNotice> notice: CallNotice.none;
+    in property <string> notice-name;
+    in property <int> notice-others;
     in property <string> elapsed;
     in property <[CallTileEntry]> tiles;
+    in property <UserMessageKind> failure: UserMessageKind.none;
+    in property <string> failure-room-id;
+    in property <string> failure-detail;
+    in property <bool> failure-retry;
+    out property <bool> failed: root.failure != UserMessageKind.none;
 }
 
 export global EncryptionView {

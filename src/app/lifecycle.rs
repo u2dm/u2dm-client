@@ -363,6 +363,9 @@ pub(super) fn command_allowed(phase: AppPhase, cmd: &UiCommand) -> bool {
         | UiCommand::JoinCall { .. }
         | UiCommand::AnswerCall { .. }
         | UiCommand::LeaveCall
+        | UiCommand::RetryFailedCall
+        | UiCommand::DismissFailedCall
+        | UiCommand::AnnounceCallAgain
         | UiCommand::SetMicrophone(_)
         | UiCommand::SetCamera(_)
         | UiCommand::ShareScreen(_)

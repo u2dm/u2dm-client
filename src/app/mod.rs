@@ -884,6 +884,9 @@ impl AppService {
             | UiCommand::JoinCall { .. }
             | UiCommand::AnswerCall { .. }
             | UiCommand::LeaveCall
+            | UiCommand::RetryFailedCall
+            | UiCommand::DismissFailedCall
+            | UiCommand::AnnounceCallAgain
             | UiCommand::SetMicrophone(_)
             | UiCommand::SetCamera(_)
             | UiCommand::ShareScreen(_)) => {
@@ -3008,6 +3011,9 @@ impl AppService {
                 leaving,
             } => self.calls.answer(room_id, camera, leaving, directory),
             UiCommand::LeaveCall => self.calls.leave_call(directory),
+            UiCommand::RetryFailedCall => self.calls.retry_failed(directory),
+            UiCommand::DismissFailedCall => self.calls.dismiss_failed(directory),
+            UiCommand::AnnounceCallAgain => self.calls.announce_again(directory),
             UiCommand::SetMicrophone(on) => self.calls.set_microphone(on, directory),
             UiCommand::SetCamera(on) => self.calls.set_camera(on, directory),
             UiCommand::ShareScreen(on) => self.calls.set_screen_share(on, directory),

@@ -51,7 +51,8 @@ export component TimelineView inherits Rectangle {
     property <length> pinned-height: root.has-pins ? Metrics.pinned-bar + Space.md : 0px;
     property <length> now-playing-height: AudioView.visible ? Metrics.now-playing-bar : 0px;
     property <bool> shows-band: CallView.active && CallView.active-room-id == root.room-id;
-    property <bool> shows-strip: CallView.active && CallView.active-room-id != root.room-id;
+    property <bool> shows-strip: (CallView.active && CallView.active-room-id != root.room-id)
+        || CallView.failed;
     property <bool> call-maximized: root.shows-band && Shell.call-maximized;
     property <length> band-height: CallView.active-video ? Metrics.call-band-video : Metrics.call-band;
     property <bool> has-room: RoomView.selected-room-name != "";
@@ -197,7 +198,7 @@ export component TimelineView inherits Rectangle {
             x: room-header.width - room-header.menu-slot - room-header.pane-slot - room-header.call-slot - self.width;
             y: (parent.height - self.height) / 2;
             icon: IconSet.Phone;
-            enabled: CallView.offer == CallOffer.start;
+            tint: CallView.offer == CallOffer.start ? AppStyle.foreground-strong : AppStyle.foreground-disabled;
             label: CallView.offer == CallOffer.start ? @tr("Start a call") : CallWords.refusal(CallView.refusal);
             clicked => {
                 Actions.open-call-sheet({ room-id: root.room-id, video: false });
@@ -210,10 +211,10 @@ export component TimelineView inherits Rectangle {
             width: self.preferred-width;
             height: self.preferred-height;
             visible: parent.offers-join;
-            enabled: CallView.offer == CallOffer.join;
             text: @tr("Join");
             icon: IconSet.Phone;
-            tint: AppStyle.call-accept;
+            filled: CallView.offer == CallOffer.join;
+            tint: CallView.offer == CallOffer.join ? AppStyle.call-accept : AppStyle.foreground-muted;
             clicked => {
                 Actions.open-call-sheet({ room-id: root.room-id, video: false });
             }

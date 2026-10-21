@@ -34,6 +34,11 @@ const ENUM_COVERAGE: &[EnumCoverage] = &[
         falls_through: &["live"],
     },
     EnumCoverage {
+        slint_enum: "CallNotice",
+        branches_in: "ui/messages.slint",
+        falls_through: &["none"],
+    },
+    EnumCoverage {
         slint_enum: "CallRefusal",
         branches_in: "ui/messages.slint",
         falls_through: &["session-unverified"],
@@ -308,6 +313,7 @@ const ENUM_TABLES: &[(&str, &str)] = &[
     ("CallScreen", "call_screens"),
     ("CallScreenRefusal", "call_screen_refusals"),
     ("CallTileState", "call_tile_marks"),
+    ("CallNotice", "call_notices"),
     ("RosterStatus", "roster_statuses"),
     ("RoomInfoPlacement", "room_info_placements"),
     ("LogLevel", "log_levels"),

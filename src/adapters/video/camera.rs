@@ -113,6 +113,12 @@ impl Capture {
         }
     }
 
+    pub fn is_running(&self) -> bool {
+        self.thread
+            .as_ref()
+            .is_some_and(|thread| !thread.is_finished())
+    }
+
     pub fn stop(&mut self) {
         self.running.store(false, Ordering::Release);
         if let Some(thread) = self.thread.take()

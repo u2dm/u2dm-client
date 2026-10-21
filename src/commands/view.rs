@@ -8,6 +8,7 @@ use super::ui::Draft;
 use crate::domain::auth::{LoginMethod, Session};
 use crate::domain::call::MemberKey;
 use crate::domain::call::media::MediaChoice;
+use crate::domain::call::ring::RingKind;
 use crate::domain::call::video::{FeedId, ScreenRefusal};
 use crate::domain::capabilities::AccountFacts;
 use crate::domain::departure::{AdminStanding, Removal, RemovalList};
@@ -267,6 +268,7 @@ pub struct RingView {
     pub video: bool,
     pub desktop: bool,
     pub answerable: bool,
+    pub refusal: Option<JoinRefusal>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -323,10 +325,42 @@ pub struct CallSheetView {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CallPhase {
     Joining,
-    Ringing,
+    Calling,
     Connecting,
+    Waiting,
     Live,
     Reconnecting,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CallNotice {
+    NotAnnounced(RingKind),
+    MicrophoneFailed,
+    CameraFailed,
+    ScreenFailed,
+    ChoosingScreen,
+    SharingNeverStarted,
+    CantDecrypt {
+        who: NamedUser,
+        why: CantDecrypt,
+        others: usize,
+    },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CallFailure {
+    ServerUnreachable,
+    JoinFailed,
+    MediaFailed,
+    CutOff,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FailedCall {
+    pub room_id: RoomId,
+    pub room_name: String,
+    pub failure: CallFailure,
+    pub retry: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -398,6 +432,7 @@ pub struct ActiveCall {
     pub microphone: MicrophoneView,
     pub camera: CameraView,
     pub screen: ScreenView,
+    pub notice: Option<CallNotice>,
     pub tiles: Arc<[CallTile]>,
 }
 
@@ -408,6 +443,7 @@ pub struct CallView {
     pub offer: Option<OfferView>,
     pub sheet: Option<CallSheetView>,
     pub active: Option<ActiveCall>,
+    pub failed: Option<FailedCall>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

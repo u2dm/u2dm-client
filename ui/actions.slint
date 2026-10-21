@@ -182,6 +182,9 @@ export global Actions {
     callback join-call(JoinCallRequest);
     callback answer-call(AnswerCallRequest);
     callback leave-call();
+    callback retry-failed-call();
+    callback dismiss-failed-call();
+    callback announce-call-again();
     callback set-microphone(MicrophoneRequest);
     callback set-camera(CameraRequest);
     callback share-screen(ScreenShareRequest);

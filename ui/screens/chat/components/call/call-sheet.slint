@@ -1,11 +1,11 @@
 import { Palette } from "std-widgets.slint";
 import { Icon, IconDisplay, IconSet } from "@lucide";
 
-import { AppButton } from "../../../../components/button.slint";
+import { AppButton, LinkButton } from "../../../../components/button.slint";
 import { ClickArea } from "../../../../components/a11y.slint";
 import { DialogCard, ModalHost } from "../../../../components/overlay.slint";
 import { StateLayer } from "../../../../components/state-layer.slint";
-import { AppStyle, Fonts, IconSize, Metrics, Radius, Space, Weight } from "../../../../theme.slint";
+import { AppStyle, Fonts, IconSize, Metrics, Radius, Size, Space, Weight } from "../../../../theme.slint";
 import { CallOffer } from "../../../../enums.slint";
 import { CallView, DirectoryView, SpaceIndexView } from "../../../../views.slint";
 import { CallWords } from "../../../../messages.slint";
@@ -86,6 +86,7 @@ export component CallSheet inherits ModalHost {
     property <int> serial: CallView.sheet-serial;
     property <bool> joining: CallView.sheet-people > 0;
     property <bool> refused: CallView.sheet-offer == CallOffer.refused;
+    property <string> remedy: CallWords.refusal-action(CallView.sheet-refusal);
     property <bool> leaving: CallView.sheet-leaving-id != "";
     property <bool> microphone: CallView.sheet-microphone;
     property <bool> camera: CallView.sheet-camera;
@@ -203,6 +204,22 @@ export component CallSheet inherits ModalHost {
                 wrap: word-wrap;
                 color: AppStyle.danger-muted;
                 accessible-live-region: AccessibleLiveness.assertive;
+            }
+
+            if root.refused && root.remedy != "": HorizontalLayout {
+                alignment: center;
+
+                LinkButton {
+                    min-height: Size.sm;
+                    above-modal: true;
+                    text: root.remedy;
+                    label: root.remedy;
+                    pad: 2 * Space.sm;
+                    clicked => {
+                        Actions.close-call-sheet();
+                        Actions.open-encryption();
+                    }
+                }
             }
 
             if CallView.sheet-ended && !root.refused: DialogNote {

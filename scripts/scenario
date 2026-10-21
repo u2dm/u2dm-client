@@ -150,6 +150,11 @@ scenario_env() {
     call-sheet-ended) echo 'U2DM_DEMO_CALLS=ring,ring-ends U2DM_DEMO_AUDIO=silent U2DM_DEMO_WINDOW=900x760' ;;
     call-answer-video) echo 'U2DM_DEMO_CALLS=ring,ring-video U2DM_DEMO_AUDIO=silent U2DM_DEMO_WINDOW=900x760' ;;
     call-answer-switch) echo 'U2DM_DEMO_CALLS=active,ring U2DM_DEMO_AUDIO=silent U2DM_DEMO_WINDOW=900x760' ;;
+    call-alone)      echo 'U2DM_DEMO_CALLS=active U2DM_DEMO_WINDOW=900x760' ;;
+    call-announce-fails) echo 'U2DM_DEMO_CALLS=announce-fails,answers U2DM_DEMO_AUDIO=silent U2DM_DEMO_WINDOW=900x760' ;;
+    call-cut-off)    echo 'U2DM_DEMO_CALLS=active,cut-off U2DM_DEMO_WINDOW=900x760' ;;
+    call-camera-lost) echo 'U2DM_DEMO_CALLS=active,camera-lost U2DM_DEMO_WINDOW=900x760' ;;
+    call-share-cancelled) echo 'U2DM_DEMO_CALLS=active,share-cancelled U2DM_DEMO_WINDOW=900x760' ;;
     notifications)   echo 'U2DM_DEMO_NOTIFY=all U2DM_DEMO_WINDOW=900x760' ;;
     notifications-focused) echo 'U2DM_DEMO_NOTIFY=group,dm,mention U2DM_DEMO_WINDOW=900x760' ;;
     notifications-burst) echo 'U2DM_DEMO_NOTIFY=burst U2DM_DEMO_WINDOW=900x760' ;;
@@ -788,8 +793,44 @@ scenario_steps() {
       echo 'sleep 2'
       echo '{"op":"start_call"}'
       echo 'sleep 5' ;;
-    call-no-sfu|call-unverified-session)
+    call-no-sfu)
       echo '{"op":"select_room","room_id":"!design:demo.local"}'
+      echo 'sleep 2' ;;
+    call-unverified-session)
+      echo '{"op":"select_room","room_id":"!design:demo.local"}'
+      echo 'sleep 2'
+      echo '{"op":"open_call_sheet"}'
+      echo 'sleep 1' ;;
+    call-alone)
+      echo '{"op":"select_room","room_id":"!matrixhq:demo.local"}'
+      echo 'sleep 2'
+      echo '{"op":"start_call"}'
+      echo 'sleep 3' ;;
+    call-announce-fails)
+      echo '{"op":"select_room","room_id":"!sarah:demo.local"}'
+      echo 'sleep 2'
+      echo '{"op":"start_call"}'
+      echo 'sleep 3' ;;
+    call-cut-off)
+      echo '{"op":"select_room","room_id":"!design:demo.local"}'
+      echo 'sleep 2'
+      echo '{"op":"join_call"}'
+      echo 'sleep 7' ;;
+    call-camera-lost)
+      echo '{"op":"select_room","room_id":"!rust:demo.local"}'
+      echo 'sleep 2'
+      echo '{"op":"join_call"}'
+      echo 'sleep 2'
+      echo '{"op":"set_camera","on":true}'
+      echo 'sleep 5' ;;
+    call-share-cancelled)
+      echo '{"op":"select_room","room_id":"!rust:demo.local"}'
+      echo 'sleep 2'
+      echo '{"op":"join_call"}'
+      echo 'sleep 2'
+      echo '{"op":"share_screen","on":true}'
+      echo 'sleep 2'
+      echo '{"op":"share_screen","on":true}'
       echo 'sleep 2' ;;
     call-no-permission)
       echo '{"op":"select_room","room_id":"!rust:demo.local"}'
@@ -1138,7 +1179,7 @@ scenario_note() {
     call-undecryptable) echo 'Jordan'"'"'s device is not cross-signed: his tile cannot decrypt and says why (calls, call-ui)' ;;
     call-no-sfu)     echo 'the homeserver has no call server: Join is disabled and says so (calls, call-ui)' ;;
     call-no-permission) echo 'you may not join calls in Rust Programming: Join is disabled and says so (calls)' ;;
-    call-unverified-session) echo 'an unverified session cannot join an encrypted call (calls, encryption)' ;;
+    call-unverified-session) echo 'an unverified session cannot join an encrypted call: the dimmed Join still opens the sheet, which says why and offers Verify session (calls, call-ui, encryption)' ;;
     call-reconnect)  echo 'the media server reconnects 5 s after joining: the band says Reconnecting, then the call is live again (call-media)' ;;
     call-remote-sfu) echo 'Jordan publishes to another homeserver'"'"'s media server: two connections, every tile live (calls)' ;;
     call-switch-rooms) echo 'join Design Team, then open Sarah'"'"'s chat: the call strip under the header leads back (call-ui)' ;;
@@ -1158,6 +1199,11 @@ scenario_note() {
     call-sheet-ended) echo 'the sheet for Sarah'"'"'s call stays open while she hangs up: it turns into Start, and Join says the call ended (calls)' ;;
     call-answer-video) echo 'Sarah rings with video: the card offers Answer without camera and Answer with camera (call-ui)' ;;
     call-answer-switch) echo 'in the Design Team call Sarah rings: an answer that did not agree to leave Design Team is refused and it keeps ringing (calls)' ;;
+    call-alone)      echo 'start a call in Matrix HQ, where nobody else is: the band says Waiting for others instead of a clock (calls, call-ui)' ;;
+    call-announce-fails) echo 'start a call in Sarah'"'"'s chat whose ring fails to send: no ringback, the band says it could not call her and offers Try again (calls, call-ui)' ;;
+    call-cut-off)    echo 'the media server drops the Design Team call 5 s in: the band gives way to a strip that keeps the failure with Try again (calls, call-ui)' ;;
+    call-camera-lost) echo 'in the Rust Programming call your camera stops 3 s after starting: the camera button turns red and the status row offers Try again (call-ui, call-media)' ;;
+    call-share-cancelled) echo 'the picker for your screen share closes twice without a choice: the second time the status row says sharing did not start and offers the room logs (call-ui)' ;;
     notifications)   echo 'with the window unfocused, every scripted arrival notifies except the muted room; !rust is read elsewhere and withdrawn, Leo'"'"'s invite notifies, and a click on Priya'"'"'s opens her chat (notifications, directory.attention, title)' ;;
     notifications-focused) echo 'the window keeps focus: arrivals light their rooms and the title count, but nothing notifies (notifications, directory.attention)' ;;
     notifications-burst) echo 'three messages in !rust a second apart: one notification, replaced twice (notifications)' ;;
@@ -1198,6 +1244,7 @@ names() {
     call-compact call-strip-nav call-strip-index call-minimum call-crowd call-video call-camera \
     call-screen-share call-share-screen call-join-sheet call-start-sheet-dm call-video-sheet \
     call-switch-calls call-sheet-ended call-answer-video call-answer-switch \
+    call-alone call-announce-fails call-cut-off call-camera-lost call-share-cancelled \
     notifications notifications-focused notifications-burst \
     encryption-unverified encryption-recovery-key encryption-new-account encryption-setup-refused \
     identity-reset identity-reset-oauth room-keys \

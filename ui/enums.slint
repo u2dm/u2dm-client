@@ -445,10 +445,24 @@ export enum CallRefusal {
 
 export enum CallPhase {
     joining,
-    ringing,
+    calling,
     connecting,
+    waiting,
     live,
     reconnecting,
+}
+
+export enum CallNotice {
+    none,
+    not-called,
+    not-announced,
+    microphone-failed,
+    camera-failed,
+    screen-failed,
+    choosing-screen,
+    sharing-never-started,
+    cant-decrypt,
+    unverified-device,
 }
 
 export enum CallMic {

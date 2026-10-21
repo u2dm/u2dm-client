@@ -71,6 +71,10 @@ pub(super) async fn start(
 }
 
 impl OwnCamera {
+    pub(super) fn is_capturing(&self) -> bool {
+        self.capture.as_ref().is_some_and(Capture::is_running)
+    }
+
     pub(super) async fn stop(mut self, room: Option<&Room>) {
         if let Some(capture) = self.capture.take() {
             release(capture).await;

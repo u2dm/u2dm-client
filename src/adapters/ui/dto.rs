@@ -19,16 +19,17 @@ use super::present::{
 };
 use super::richtext::{self, Cover, InlineContent, InlineLine, InlinePiece, RoomWord, Spoilers};
 use super::schema::{
-    call_offers, call_screens, call_tile_marks, define_ui_enum, define_ui_names, emoji_arts,
-    media_failures, media_states, member_row_kinds, pack_surfaces, room_call_marks, room_row_kinds,
-    spoiler_states, variant_named,
+    call_notices, call_offers, call_screens, call_tile_marks, define_ui_enum, define_ui_names,
+    emoji_arts, media_failures, media_states, member_row_kinds, pack_surfaces, room_call_marks,
+    room_row_kinds, spoiler_states, variant_named,
 };
 use super::spoilers::{keep_covered_body, spoilers_on};
 use crate::commands::messages::UserMessageKind;
 use crate::commands::view::{
-    CallTile, CantDecrypt, ChildAccess, InviteeRow, InviteeState, JoinOffer, RoomCard, RosterRow,
-    ScreenView, SpaceIndexRow, SpaceMatch, TileKind, TileState,
+    CallFailure, CallNotice, CallTile, CantDecrypt, ChildAccess, InviteeRow, InviteeState,
+    JoinOffer, RoomCard, RosterRow, ScreenView, SpaceIndexRow, SpaceMatch, TileKind, TileState,
 };
+use crate::domain::call::ring::RingKind;
 use crate::domain::departure::{Removal, RemovalKind};
 use crate::domain::image_pack::{ImagePack, ImageUsage, PackId, PackImage, PackOrigin, PackTitle};
 use crate::domain::invite::{Invite, InviteKind};
@@ -61,6 +62,7 @@ room_call_marks!(define_ui_enum RoomCallMark;);
 call_offers!(define_ui_enum CallOfferMark;);
 call_screens!(define_ui_enum CallScreenMark;);
 call_tile_marks!(define_ui_enum CallTileMark;);
+call_notices!(define_ui_enum CallNoticeMark;);
 emoji_arts!(define_ui_enum EmojiArt;);
 spoiler_states!(define_ui_enum SpoilerState;);
 pack_surfaces!(define_ui_enum PackSurface;);
@@ -1824,6 +1826,36 @@ pub const fn call_screen_mark(screen: ScreenView) -> CallScreenMark {
         ScreenView::On => CallScreenMark::On,
         ScreenView::Failed => CallScreenMark::Failed,
         ScreenView::Unavailable(_) => CallScreenMark::Unavailable,
+    }
+}
+
+pub const fn call_notice_mark(notice: Option<&CallNotice>) -> CallNoticeMark {
+    match notice {
+        None => CallNoticeMark::None,
+        Some(CallNotice::NotAnnounced(RingKind::Ring)) => CallNoticeMark::NotCalled,
+        Some(CallNotice::NotAnnounced(RingKind::Notify)) => CallNoticeMark::NotAnnounced,
+        Some(CallNotice::MicrophoneFailed) => CallNoticeMark::MicrophoneFailed,
+        Some(CallNotice::CameraFailed) => CallNoticeMark::CameraFailed,
+        Some(CallNotice::ScreenFailed) => CallNoticeMark::ScreenFailed,
+        Some(CallNotice::ChoosingScreen) => CallNoticeMark::ChoosingScreen,
+        Some(CallNotice::SharingNeverStarted) => CallNoticeMark::SharingNeverStarted,
+        Some(CallNotice::CantDecrypt {
+            why: CantDecrypt::NoKey,
+            ..
+        }) => CallNoticeMark::CantDecrypt,
+        Some(CallNotice::CantDecrypt {
+            why: CantDecrypt::NotCrossSigned,
+            ..
+        }) => CallNoticeMark::UnverifiedDevice,
+    }
+}
+
+pub const fn call_failure_message(failure: CallFailure) -> UserMessageKind {
+    match failure {
+        CallFailure::ServerUnreachable => UserMessageKind::CallServerUnreachable,
+        CallFailure::JoinFailed => UserMessageKind::CallJoinFailed,
+        CallFailure::MediaFailed => UserMessageKind::CallMediaFailed,
+        CallFailure::CutOff => UserMessageKind::CallCutOff,
     }
 }
 

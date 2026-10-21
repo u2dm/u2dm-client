@@ -1,7 +1,7 @@
 import { Palette } from "std-widgets.slint";
 import { IconDisplay, IconSet } from "@lucide";
 
-import { AppButton, IconButton } from "../../../../components/button.slint";
+import { AppButton, IconButton, LinkButton } from "../../../../components/button.slint";
 import { PickerCard } from "../../../../components/overlay.slint";
 import { Avatar } from "../../../../components/avatar.slint";
 import { AppStyle, Fonts, Glyph, IconSize, Metrics, Size, Space, Weight } from "../../../../theme.slint";
@@ -17,6 +17,7 @@ export component IncomingCallCard inherits PickerCard {
     property <bool> confirming: false;
     property <bool> with-camera: false;
     property <bool> asks-to-leave: root.confirming && CallView.active;
+    property <string> remedy: CallWords.refusal-action(CallView.ring-refusal);
 
     width: min(Metrics.incoming-call-width, root.available-width - 2 * Metrics.incoming-call-inset);
     height: card-layout.preferred-height;
@@ -112,6 +113,31 @@ export component IncomingCallCard inherits PickerCard {
                 label: @tr("Stop ringing");
                 clicked => {
                     Actions.silence-ring();
+                }
+            }
+        }
+
+        if !CallView.ring-answerable: HorizontalLayout {
+            spacing: Space.md;
+
+            Text {
+                horizontal-stretch: 1;
+                text: CallWords.refusal(CallView.ring-refusal);
+                font-size: Fonts.body-small;
+                color: AppStyle.danger-muted;
+                vertical-alignment: center;
+                wrap: word-wrap;
+                accessible-live-region: AccessibleLiveness.polite;
+            }
+
+            if root.remedy != "": LinkButton {
+                min-height: Size.sm;
+                above-modal: true;
+                text: root.remedy;
+                label: root.remedy;
+                pad: 2 * Space.sm;
+                clicked => {
+                    Actions.open-encryption();
                 }
             }
         }

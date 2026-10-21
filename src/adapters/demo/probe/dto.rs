@@ -6,15 +6,17 @@ use crate::commands::messages::{UserMessage, UserMessageKind};
 use crate::commands::ui::Draft;
 use crate::commands::view::{
     AccountStep, AccountView, ActiveCall, AppViewState, AttachmentView, AudioView, AuthPrompt,
-    CallPhase, CallSheetView, CallTile, CallView, CameraView, CantDecrypt, CardStatus, CopiedLink,
-    CreateRoomView, DirectoryView, EncryptionStep, EncryptionView, IdentityAlertView,
-    InvitePeopleView, InviteView, InviteeRow, InvitesSection, JoinOffer, JoinRefusal,
-    LeaveSpaceView, LifecycleView, LoginStep, LogoutView, MentionsView, MicrophoneView,
-    NotificationsView, PackView, PaginationView, PinnedView, PresenceView, ReadersView,
-    RemovalView, RoomInfoView, RoomLogView, RoomMenuTarget, RoomPreviewSheet, RoomPreviewView,
-    RosterRow, ScreenView, SourceState, SpaceIndexRow, SpaceIndexView, SpaceMatch, TileKind,
-    TileState, Toast, TrackFile, TypingView, UnsentMessage, UpgradeView, UserInfoView, VideoView,
+    CallFailure, CallNotice, CallPhase, CallSheetView, CallTile, CallView, CameraView, CantDecrypt,
+    CardStatus, CopiedLink, CreateRoomView, DirectoryView, EncryptionStep, EncryptionView,
+    IdentityAlertView, InvitePeopleView, InviteView, InviteeRow, InvitesSection, JoinOffer,
+    JoinRefusal, LeaveSpaceView, LifecycleView, LoginStep, LogoutView, MentionsView,
+    MicrophoneView, NotificationsView, PackView, PaginationView, PinnedView, PresenceView,
+    ReadersView, RemovalView, RoomInfoView, RoomLogView, RoomMenuTarget, RoomPreviewSheet,
+    RoomPreviewView, RosterRow, ScreenView, SourceState, SpaceIndexRow, SpaceIndexView, SpaceMatch,
+    TileKind, TileState, Toast, TrackFile, TypingView, UnsentMessage, UpgradeView, UserInfoView,
+    VideoView,
 };
+use crate::domain::call::ring::RingKind;
 use crate::domain::call::video::ScreenRefusal;
 use crate::domain::call::{CallIntent, RoomCall};
 use crate::domain::capabilities::{AVATAR_FIELD, AccountApi, AccountFacts, DISPLAY_NAME_FIELD};
@@ -182,6 +184,22 @@ struct CallDto {
     offer: Option<CallOfferDto>,
     sheet: Option<CallSheetDto>,
     active: Option<ActiveCallDto>,
+    failed: Option<FailedCallDto>,
+}
+
+#[derive(Serialize)]
+struct FailedCallDto {
+    room_id: String,
+    room_name: String,
+    failure: &'static str,
+    retry: bool,
+}
+
+#[derive(Serialize)]
+struct CallNoticeDto {
+    kind: &'static str,
+    who: Option<String>,
+    others: usize,
 }
 
 #[derive(Serialize)]
@@ -221,6 +239,7 @@ struct ActiveCallDto {
     camera: &'static str,
     screen: &'static str,
     screen_refusal: Option<&'static str>,
+    notice: Option<CallNoticeDto>,
     tiles: Vec<CallTileDto>,
 }
 
@@ -248,6 +267,7 @@ struct RingDto {
     video: bool,
     desktop: bool,
     answerable: bool,
+    refusal: Option<&'static str>,
 }
 
 #[derive(Serialize)]
@@ -972,6 +992,7 @@ fn call(source: &CallView) -> CallDto {
             video: ring.video,
             desktop: ring.desktop,
             answerable: ring.answerable,
+            refusal: ring.refusal.map(refusal_word),
         }),
         here: source.here.as_ref().map(|here| CallHereDto {
             room_id: here.room_id.to_string(),
@@ -986,6 +1007,17 @@ fn call(source: &CallView) -> CallDto {
         }),
         sheet: source.sheet.as_ref().map(call_sheet),
         active: source.active.as_ref().map(active_call),
+        failed: source.failed.as_ref().map(|failed| FailedCallDto {
+            room_id: failed.room_id.to_string(),
+            room_name: failed.room_name.clone(),
+            failure: match failed.failure {
+                CallFailure::ServerUnreachable => "server-unreachable",
+                CallFailure::JoinFailed => "join-failed",
+                CallFailure::MediaFailed => "media-failed",
+                CallFailure::CutOff => "cut-off",
+            },
+            retry: failed.retry,
+        }),
     }
 }
 
@@ -1045,8 +1077,9 @@ fn active_call(active: &ActiveCall) -> ActiveCallDto {
         room_id: active.room_id.to_string(),
         phase: match active.phase {
             CallPhase::Joining => "joining",
-            CallPhase::Ringing => "ringing",
+            CallPhase::Calling => "calling",
             CallPhase::Connecting => "connecting",
+            CallPhase::Waiting => "waiting",
             CallPhase::Live => "live",
             CallPhase::Reconnecting => "reconnecting",
         },
@@ -1076,8 +1109,30 @@ fn active_call(active: &ActiveCall) -> ActiveCallDto {
             ScreenView::Unavailable(ScreenRefusal::NoPortal) => Some("no-portal"),
             _ => None,
         },
+        notice: active.notice.as_ref().map(call_notice),
         tiles: active.tiles.iter().map(call_tile).collect(),
     }
+}
+
+fn call_notice(notice: &CallNotice) -> CallNoticeDto {
+    let (kind, who, others) = match notice {
+        CallNotice::NotAnnounced(RingKind::Ring) => ("not-called", None, 0),
+        CallNotice::NotAnnounced(RingKind::Notify) => ("not-announced", None, 0),
+        CallNotice::MicrophoneFailed => ("microphone-failed", None, 0),
+        CallNotice::CameraFailed => ("camera-failed", None, 0),
+        CallNotice::ScreenFailed => ("screen-failed", None, 0),
+        CallNotice::ChoosingScreen => ("choosing-screen", None, 0),
+        CallNotice::SharingNeverStarted => ("sharing-never-started", None, 0),
+        CallNotice::CantDecrypt { who, why, others } => (
+            match why {
+                CantDecrypt::NoKey => "cant-decrypt",
+                CantDecrypt::NotCrossSigned => "unverified-device",
+            },
+            Some(who.shown()),
+            *others,
+        ),
+    };
+    CallNoticeDto { kind, who, others }
 }
 
 fn call_tile(tile: &CallTile) -> CallTileDto {

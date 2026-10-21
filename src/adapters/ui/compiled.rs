@@ -13,8 +13,8 @@ use u2dm_ui::{
     AccountActivity as UiAccountActivity, AccountStep as UiAccountStep, AccountView, Actions,
     AppWindow, AttachmentKind as UiAttachmentKind, AttachmentView, AudioKind as UiAudioKind,
     AudioView, AuthStage as UiAuthStage, BodyLine, BodyPiece, CallCamera as UiCallCamera,
-    CallMic as UiCallMic, CallOffer as UiCallOffer, CallPhase as UiCallPhase,
-    CallRefusal as UiCallRefusal, CallScreen as UiCallScreen,
+    CallMic as UiCallMic, CallNotice as UiCallNotice, CallOffer as UiCallOffer,
+    CallPhase as UiCallPhase, CallRefusal as UiCallRefusal, CallScreen as UiCallScreen,
     CallScreenRefusal as UiCallScreenRefusal, CallTileEntry, CallTileState as UiCallTileState,
     CallView, ChildAccess as UiChildAccess, ComposerDraft, ConnectionState,
     CreateRoomStatus as UiCreateRoomStatus, CreateRoomView,
@@ -62,11 +62,11 @@ use super::decode::{
     AvatarSlot, request_avatar, request_custom_emoji, request_media, request_pack_cell,
 };
 use super::dto::{
-    BodyLineDto, BodyPieceDto, CallOfferMark, CallScreenMark, CallTileDto, CallTileMark, EmojiArt,
-    InviteeDto, LogLineDto, MediaFailureKind, MediaState, MemberRowDto, MemberRowKind, MessageDto,
-    PackCellDto, PackRowDto, PackSurface, PackTabDto, PollAnswerDto, ReactionDto, ReactorAvatarDto,
-    RoomCallMark, RoomDto, RoomRowKind, SpaceChildDto, SpaceDto, SpoilerState, UserDeviceDto,
-    pack_surface_named,
+    BodyLineDto, BodyPieceDto, CallNoticeMark, CallOfferMark, CallScreenMark, CallTileDto,
+    CallTileMark, EmojiArt, InviteeDto, LogLineDto, MediaFailureKind, MediaState, MemberRowDto,
+    MemberRowKind, MessageDto, PackCellDto, PackRowDto, PackSurface, PackTabDto, PollAnswerDto,
+    ReactionDto, ReactorAvatarDto, RoomCallMark, RoomDto, RoomRowKind, SpaceChildDto, SpaceDto,
+    SpoilerState, UserDeviceDto, pack_surface_named,
 };
 #[cfg(feature = "demo")]
 use super::dump;
@@ -85,8 +85,8 @@ use super::props::{BoolProp, IntProp, StringProp, UiProps};
 use super::router::{DraftVerdict, EditedRow, EditedText};
 use super::schema::{
     account_activities, account_steps, attachment_kinds, audio_kinds, auth_stages,
-    body_line_fields, body_piece_fields, bool_props, call_cameras, call_mics, call_offers,
-    call_phases, call_refusals, call_screen_refusals, call_screens, call_tile_fields,
+    body_line_fields, body_piece_fields, bool_props, call_cameras, call_mics, call_notices,
+    call_offers, call_phases, call_refusals, call_screen_refusals, call_screens, call_tile_fields,
     call_tile_marks, child_accesses, connection_states, create_room_statuses, decryption_failures,
     deliveries, device_trusts, direct_chats, emoji_arts, encryption_activities,
     encryption_standings, encryption_steps, enum_props, identity_alert_kinds, identity_trusts,
@@ -479,6 +479,7 @@ call_cameras!(impl_slint_enum CameraView UiCallCamera;);
 call_screens!(impl_slint_enum CallScreenMark UiCallScreen;);
 call_screen_refusals!(impl_slint_enum ScreenRefusal UiCallScreenRefusal;);
 call_tile_marks!(impl_slint_enum CallTileMark UiCallTileState;);
+call_notices!(impl_slint_enum CallNoticeMark UiCallNotice;);
 roster_statuses!(impl_slint_enum RosterStatus UiRosterStatus;);
 room_info_placements!(impl_slint_enum RoomInfoPlacement UiRoomInfoPlacement;);
 room_memberships!(impl_slint_enum RoomMembership UiRoomMembership;);

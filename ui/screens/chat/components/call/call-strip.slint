@@ -1,9 +1,10 @@
 import { IconDisplay, IconSet } from "@lucide";
 
+import { AppButton, IconButton } from "../../../../components/button.slint";
 import { ClickArea } from "../../../../components/a11y.slint";
 import { StateLayer } from "../../../../components/state-layer.slint";
 import { CallScreen } from "../../../../enums.slint";
-import { CallWords } from "../../../../messages.slint";
+import { CallWords, UserMessages } from "../../../../messages.slint";
 import { Actions } from "../../../../actions.slint";
 import { CallView } from "../../../../views.slint";
 import { AppStyle, Fonts, IconSize, Metrics, Radius, Size, Space, Stroke, Weight } from "../../../../theme.slint";
@@ -11,6 +12,8 @@ import { CallCameraButton, CallLeaveButton, CallMicButton, CallStopSharingButton
 
 component CallReturn inherits ClickArea {
     out property <length> label-width: row.preferred-width;
+
+    property <string> brief: CallWords.brief(CallView.notice);
 
     ring-radius: Radius.sm;
     label: @tr("Go back to the call in {}", CallView.active-room-name);
@@ -50,11 +53,40 @@ component CallReturn inherits ClickArea {
 
             Text {
                 min-width: self.preferred-width;
-                text: @tr("· {}", CallWords.phase(CallView.phase, CallView.elapsed));
+                text: @tr("· {}", root.brief != "" ? root.brief : CallWords.phase(CallView.phase, CallView.elapsed));
                 font-size: Fonts.body-small;
-                color: AppStyle.foreground-muted;
+                color: root.brief != "" ? AppStyle.danger-muted : AppStyle.foreground-muted;
                 vertical-alignment: center;
             }
+        }
+    }
+}
+
+component FailedCallLabel inherits Rectangle {
+    out property <length> label-width: row.preferred-width;
+    out property <string> text: UserMessages.text(CallView.failure, CallView.failure-detail);
+
+    row := HorizontalLayout {
+        padding-left: Space.sm;
+        padding-right: Space.sm;
+        spacing: Space.md;
+
+        IconDisplay {
+            cross-axis-self-alignment: center;
+            icon: IconSet.CircleAlert;
+            size: IconSize.sm;
+            stroke: AppStyle.danger-muted;
+        }
+
+        Text {
+            text: root.text;
+            font-family: Fonts.emoji;
+            font-size: Fonts.body-small;
+            font-weight: Weight.semibold;
+            color: AppStyle.danger-muted;
+            vertical-alignment: center;
+            overflow: elide;
+            accessible-live-region: AccessibleLiveness.polite;
         }
     }
 }
@@ -66,25 +98,32 @@ export component CallStrip inherits Rectangle {
 
     property <length> pad: Space.md;
     property <length> gap: Space.md;
+    property <bool> failed: !CallView.active && CallView.failed;
     property <bool> sharing: CallView.screen == CallScreen.on || CallView.screen == CallScreen.choosing;
-    property <length> controls-width: (root.sharing ? stop.preferred-width + root.gap : 0px)
-        + 2 * (Metrics.call-control + root.gap) + leave.preferred-width;
+    property <length> controls-width: root.failed
+        ? (CallView.failure-retry ? retry.preferred-width + root.gap : 0px) + dismiss.width
+        : (root.sharing ? stop.preferred-width + root.gap : 0px)
+            + 2 * (Metrics.call-control + root.gap) + leave.preferred-width;
+    property <length> label-width: root.failed ? failure.label-width : back.label-width;
     property <bool> stacked: root.width
-        < 2 * root.pad + min(back.label-width, Metrics.call-strip-label-min) + root.gap + root.controls-width;
+        < 2 * root.pad + min(root.label-width, Metrics.call-strip-label-min) + root.gap + root.controls-width;
+    property <length> label-span: root.stacked
+        ? root.width - 2 * root.pad
+        : root.width - 2 * root.pad - root.gap - root.controls-width;
+    property <length> label-height: root.stacked ? Size.md : Metrics.call-control;
     property <length> controls-y: root.height - root.pad - Metrics.call-control;
 
     height: root.stacked ? Metrics.call-strip-stacked : Metrics.call-strip;
-    background: AppStyle.call-live-background;
+    background: root.failed ? AppStyle.danger-background : AppStyle.call-live-background;
     accessible-role: groupbox;
-    accessible-label: @tr("Call in {}", CallView.active-room-name);
+    accessible-label: root.failed ? failure.text : @tr("Call in {}", CallView.active-room-name);
 
     back := CallReturn {
         x: root.pad;
         y: root.pad;
-        width: root.stacked
-            ? root.width - 2 * root.pad
-            : root.width - 2 * root.pad - root.gap - root.controls-width;
-        height: root.stacked ? Size.md : Metrics.call-control;
+        width: root.label-span;
+        height: root.label-height;
+        visible: !root.failed;
         above-modal: root.above-modal;
         clicked => {
             Actions.select-room(CallView.active-room-id);
@@ -92,23 +131,33 @@ export component CallStrip inherits Rectangle {
         }
     }
 
+    failure := FailedCallLabel {
+        x: root.pad;
+        y: root.pad;
+        width: root.label-span;
+        height: root.label-height;
+        visible: root.failed;
+    }
+
     stop := CallStopSharingButton {
         x: root.stacked ? root.pad : mic.x - root.gap - self.width;
         y: root.controls-y;
         width: self.preferred-width;
-        visible: root.sharing;
+        visible: !root.failed && root.sharing;
         above-modal: root.above-modal;
     }
 
     mic := CallMicButton {
         x: camera.x - root.gap - self.width;
         y: root.controls-y;
+        visible: !root.failed;
         above-modal: root.above-modal;
     }
 
     camera := CallCameraButton {
         x: leave.x - root.gap - self.width;
         y: root.controls-y;
+        visible: !root.failed;
         above-modal: root.above-modal;
     }
 
@@ -116,7 +165,37 @@ export component CallStrip inherits Rectangle {
         x: root.width - root.pad - self.width;
         y: root.controls-y;
         width: self.preferred-width;
+        visible: !root.failed;
         above-modal: root.above-modal;
+    }
+
+    retry := AppButton {
+        x: dismiss.x - root.gap - self.width;
+        y: root.controls-y;
+        width: self.preferred-width;
+        height: Metrics.call-control;
+        visible: root.failed && CallView.failure-retry;
+        above-modal: root.above-modal;
+        text: @tr("Try again");
+        icon: IconSet.RotateCw;
+        tint: AppStyle.call-accept;
+        clicked => {
+            Actions.retry-failed-call();
+        }
+    }
+
+    dismiss := IconButton {
+        x: root.width - root.pad - self.width;
+        y: root.controls-y;
+        size: Metrics.call-control;
+        visible: root.failed;
+        above-modal: root.above-modal;
+        icon: IconSet.X;
+        tint: AppStyle.foreground-strong;
+        label: @tr("Dismiss");
+        clicked => {
+            Actions.dismiss-failed-call();
+        }
     }
 
     Rectangle {

@@ -10,7 +10,8 @@ use tokio::task::JoinHandle;
 use tokio::time::sleep;
 
 use super::calls::{
-    self, PICKER_TIME, RECONNECT_AFTER, RECONNECT_FOR, SHARE_ENDS_AFTER, SPEAKING_TURN, UNTRUSTED,
+    self, CAMERA_LOST_AFTER, CUT_OFF_AFTER, PICKER_TIME, RECONNECT_AFTER, RECONNECT_FOR,
+    SHARE_ENDS_AFTER, SPEAKING_TURN, UNTRUSTED,
 };
 use super::data;
 use crate::domain::call::identity::{MediaIdentity, spellings};
@@ -290,6 +291,29 @@ impl DemoMediaSession {
         }));
     }
 
+    fn spawn_cut_off(&mut self, sfu: SfuId) {
+        let events_tx = self.events_tx.clone();
+        self.tasks.push(tokio::spawn(async move {
+            sleep(CUT_OFF_AFTER).await;
+            tracing::info!(%sfu, "demo: the media server drops your connection");
+            drop(events_tx.send(MediaEvent::Sfu {
+                sfu,
+                state: SfuState::Disconnected("demo: the media server dropped you".into()),
+            }));
+        }));
+    }
+
+    fn spawn_camera_loss(&mut self) {
+        let events_tx = self.events_tx.clone();
+        self.tasks.push(tokio::spawn(async move {
+            sleep(CAMERA_LOST_AFTER).await;
+            tracing::info!("demo: your camera stops sending pictures");
+            drop(events_tx.send(MediaEvent::Camera(Camera::Failed(
+                "demo: the camera stopped sending pictures".into(),
+            ))));
+        }));
+    }
+
     fn spawn_speaking(&mut self, sfu: SfuId) {
         let events_tx = self.events_tx.clone();
         let room_id = self.room_id.clone();
@@ -360,6 +384,9 @@ impl MediaSession for DemoMediaSession {
             if calls::scenario().reconnecting {
                 self.spawn_reconnect(sfu.clone());
             }
+            if calls::cuts_off() {
+                self.spawn_cut_off(sfu.clone());
+            }
             if calls::scenario().speaking {
                 self.spawn_speaking(sfu);
             }
@@ -394,7 +421,11 @@ impl MediaSession for DemoMediaSession {
             (false, false) => Camera::On(FeedId::new(calls::OWN_CAMERA_FEED)),
         };
         tracing::info!(%camera, "demo: the camera switches");
+        let started = matches!(camera, Camera::On(_));
         self.emit(MediaEvent::Camera(camera));
+        if started && calls::loses_camera() {
+            self.spawn_camera_loss();
+        }
     }
 
     async fn set_screen_share(&mut self, on: bool) {

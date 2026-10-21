@@ -1,0 +1,75 @@
+import { IconDisplay, IconSet } from "@lucide";
+
+import { LinkButton } from "../../../../components/button.slint";
+import { DotPulse } from "../../../../components/dot-pulse.slint";
+import { CallNotice } from "../../../../enums.slint";
+import { CallWords } from "../../../../messages.slint";
+import { Actions } from "../../../../actions.slint";
+import { CallView } from "../../../../views.slint";
+import { AppStyle, Fonts, IconSize, Size, Space } from "../../../../theme.slint";
+
+export component CallStatus inherits HorizontalLayout {
+    property <CallNotice> notice: CallView.notice;
+    property <bool> noticed: root.notice != CallNotice.none;
+    property <bool> pending: root.notice == CallNotice.choosing-screen;
+    property <bool> about-others: root.notice == CallNotice.cant-decrypt
+        || root.notice == CallNotice.unverified-device;
+    property <bool> undiagnosed: root.notice == CallNotice.sharing-never-started;
+    property <bool> trouble: root.noticed && !root.pending && !root.about-others && !root.undiagnosed;
+    property <string> action: CallWords.notice-action(root.notice);
+
+    function act() {
+        if root.notice == CallNotice.choosing-screen {
+            Actions.share-screen({ on: false });
+        } else if root.notice == CallNotice.sharing-never-started {
+            Actions.open-room-log(CallView.active-room-id);
+        } else if root.notice == CallNotice.not-called || root.notice == CallNotice.not-announced {
+            Actions.announce-call-again();
+        } else if root.notice == CallNotice.microphone-failed {
+            Actions.set-microphone({ on: true });
+        } else if root.notice == CallNotice.camera-failed {
+            Actions.set-camera({ on: true });
+        } else if root.notice == CallNotice.screen-failed {
+            Actions.share-screen({ on: true });
+        }
+    }
+
+    min-height: Size.sm;
+    alignment: center;
+    spacing: Space.md;
+
+    if root.pending: DotPulse {
+        tint: AppStyle.foreground-muted;
+        dot-size: Space.sm;
+    }
+
+    if !root.pending: IconDisplay {
+        cross-axis-self-alignment: center;
+        icon: root.trouble ? IconSet.CircleAlert : root.about-others ? IconSet.ShieldAlert : IconSet.Info;
+        size: IconSize.sm;
+        stroke: root.trouble ? AppStyle.danger-muted : AppStyle.foreground-faint;
+    }
+
+    Text {
+        text: root.noticed
+            ? CallWords.notice(root.notice, CallView.active-room-name, CallView.notice-name, CallView.notice-others)
+            : CallWords.share(CallView.screen, CallView.screen-refusal);
+        font-family: Fonts.emoji;
+        font-size: Fonts.body-small;
+        color: root.trouble ? AppStyle.danger-muted : AppStyle.foreground-muted;
+        vertical-alignment: center;
+        wrap: word-wrap;
+        accessible-live-region: AccessibleLiveness.polite;
+    }
+
+    if root.action != "": LinkButton {
+        min-height: Size.sm;
+        text: root.action;
+        label: CallWords.notice-action-label(root.notice, CallView.active-room-name);
+        font-size: Fonts.body-small;
+        pad: 2 * Space.sm;
+        clicked => {
+            root.act();
+        }
+    }
+}

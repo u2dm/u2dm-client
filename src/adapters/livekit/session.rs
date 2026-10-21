@@ -119,9 +119,10 @@ impl LiveKitSession {
     }
 
     async fn start_camera(&mut self) {
-        if self.camera.is_some() {
+        if self.camera.as_ref().is_some_and(OwnCamera::is_capturing) {
             return;
         }
+        self.stop_camera().await;
         let Some(room) = self
             .publishing()
             .map(|connection| Arc::clone(&connection.room))

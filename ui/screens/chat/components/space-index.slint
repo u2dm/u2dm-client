@@ -267,7 +267,7 @@ export component SpaceIndexPane inherits Rectangle {
             above-modal: root.above-modal;
         }
 
-        if CallView.active: CallStrip {
+        if CallView.active || CallView.failed: CallStrip {
             above-modal: root.above-modal;
             returned => {
                 Shell.nav-open = false;

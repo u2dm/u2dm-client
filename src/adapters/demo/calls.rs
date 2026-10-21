@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::env;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Duration;
 
@@ -110,6 +111,11 @@ pub const CATALOG: Scenarios = Scenarios {
             note: "",
         },
         Flag {
+            value: "cut-off",
+            effect: "the media server drops your first call 5s after connecting",
+            note: "the call is kept as failed, and Try again joins it for good",
+        },
+        Flag {
             value: "reconnecting",
             effect: "5s after connecting the media server reconnects for 3s",
             note: "",
@@ -133,6 +139,11 @@ pub const CATALOG: Scenarios = Scenarios {
             value: "declines",
             effect: "Sarah declines a call you start in her chat 3s after it rings",
             note: "",
+        },
+        Flag {
+            value: "announce-fails",
+            effect: "the first call you start is not announced: its ring or room notification fails to send",
+            note: "Try again sends it; with answers, Sarah then picks up",
         },
         Flag {
             value: "speaking",
@@ -163,6 +174,11 @@ pub const CATALOG: Scenarios = Scenarios {
             value: "camera-fails",
             effect: "your camera is busy, so turning it on fails",
             note: "",
+        },
+        Flag {
+            value: "camera-lost",
+            effect: "your camera stops sending pictures 3s after it first starts",
+            note: "Try again starts it for good",
         },
         Flag {
             value: "screen-share",
@@ -237,6 +253,8 @@ pub const KEYS_LATE_BY: Duration = Duration::from_secs(4);
 pub const RECONNECT_AFTER: Duration = Duration::from_secs(5);
 pub const RECONNECT_FOR: Duration = Duration::from_secs(3);
 pub const SPEAKING_TURN: Duration = Duration::from_secs(2);
+pub const CUT_OFF_AFTER: Duration = Duration::from_secs(5);
+pub const CAMERA_LOST_AFTER: Duration = Duration::from_secs(3);
 pub const UNTRUSTED: &str = JORDAN;
 const DEMO_KEY: [u8; 16] = [7; 16];
 
@@ -259,17 +277,20 @@ pub struct Scenario {
     pub delayed_unsupported: bool,
     pub grant_fails: bool,
     pub connect_fails: bool,
+    cut_off: bool,
     pub reconnecting: bool,
     pub keys_late: bool,
     pub undecryptable: bool,
     pub answers: bool,
     pub declines: bool,
+    announce_fails: bool,
     pub speaking: bool,
     crowd: bool,
     remote_sfu: bool,
     cameras: bool,
     pub no_camera: bool,
     pub camera_fails: bool,
+    camera_lost: bool,
     screen_share: bool,
     screen_share_ends: bool,
     pub no_screen_capture: bool,
@@ -312,17 +333,20 @@ fn apply(scenario: &mut Scenario, flag: &str) {
         "delayed-unsupported" => scenario.delayed_unsupported = true,
         "grant-fails" => scenario.grant_fails = true,
         "connect-fails" => scenario.connect_fails = true,
+        "cut-off" => scenario.cut_off = true,
         "reconnecting" => scenario.reconnecting = true,
         "keys-late" => scenario.keys_late = true,
         "undecryptable" => scenario.undecryptable = true,
         "answers" => scenario.answers = true,
         "declines" => scenario.declines = true,
+        "announce-fails" => scenario.announce_fails = true,
         "speaking" => scenario.speaking = true,
         "crowd" => scenario.crowd = true,
         "remote-sfu" => scenario.remote_sfu = true,
         "cameras" => scenario.cameras = true,
         "no-camera" => scenario.no_camera = true,
         "camera-fails" => scenario.camera_fails = true,
+        "camera-lost" => scenario.camera_lost = true,
         "screen-share" => scenario.screen_share = true,
         "screen-share-ends" => scenario.screen_share_ends = true,
         "no-screen-capture" => scenario.no_screen_capture = true,
@@ -844,4 +868,19 @@ pub async fn pause() {
     if scenario().slow {
         sleep(SLOW_ANSWER).await;
     }
+}
+
+pub fn announcement_fails() -> bool {
+    static FAILED: AtomicBool = AtomicBool::new(false);
+    scenario().announce_fails && !FAILED.swap(true, Ordering::AcqRel)
+}
+
+pub fn cuts_off() -> bool {
+    static CUT: AtomicBool = AtomicBool::new(false);
+    scenario().cut_off && !CUT.swap(true, Ordering::AcqRel)
+}
+
+pub fn loses_camera() -> bool {
+    static LOST: AtomicBool = AtomicBool::new(false);
+    scenario().camera_lost && !LOST.swap(true, Ordering::AcqRel)
 }

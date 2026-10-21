@@ -186,7 +186,12 @@ pub struct CallDump {
     pub band: bool,
     pub strip: bool,
     pub elapsed: String,
+    pub notice: String,
+    pub failure: String,
+    pub failure_room_id: String,
+    pub failure_retry: bool,
     pub card_answerable: bool,
+    pub card_refusal: String,
     pub sheet: bool,
     pub sheet_room_id: String,
     pub sheet_offer: String,
@@ -376,6 +381,9 @@ fn call_view<B: UiBackend>(window: &B::Window) -> CallDump {
     let selected = window.get_string(StringProp::SelectedRoomId);
     let active = window.get_bool(BoolProp::ActiveVisible);
     let in_call_room = window.get_string(StringProp::ActiveRoomId) == selected;
+    let failure = window.get_enum(EnumProp::CallFailure).to_string();
+    let failed = failure != "none";
+    let answerable = window.get_bool(BoolProp::RingAnswerable);
     CallDump {
         card: window.get_bool(BoolProp::RingVisible),
         card_room_id: window.get_string(StringProp::RingRoomId).to_string(),
@@ -386,9 +394,18 @@ fn call_view<B: UiBackend>(window: &B::Window) -> CallDump {
         pill_people: window.get_int(IntProp::HerePeople),
         pill_video: window.get_bool(BoolProp::HereVideo),
         band: active && in_call_room,
-        strip: active && !in_call_room,
+        strip: (active && !in_call_room) || failed,
         elapsed: window.get_string(StringProp::CallElapsed).to_string(),
-        card_answerable: window.get_bool(BoolProp::RingAnswerable),
+        notice: window.get_enum(EnumProp::CallNotice).to_string(),
+        failure,
+        failure_room_id: window.get_string(StringProp::FailureRoomId).to_string(),
+        failure_retry: window.get_bool(BoolProp::FailureRetry),
+        card_answerable: answerable,
+        card_refusal: if answerable {
+            String::new()
+        } else {
+            window.get_enum(EnumProp::RingRefusal).to_string()
+        },
         sheet: window.get_bool(BoolProp::SheetVisible),
         sheet_room_id: window.get_string(StringProp::SheetRoomId).to_string(),
         sheet_offer: window.get_enum(EnumProp::CallSheetOffer).to_string(),

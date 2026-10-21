@@ -1,4 +1,4 @@
-import { CallCamera, CallMic, CallPhase, CallRefusal, CallScreen, CallScreenRefusal, CallTileState, Delivery, EmojiArt, MediaFailure, PresenceLine, PreviewKind, RoomCallMark, ServiceKind, ShieldReason, UpgradeLink, UserMessageKind } from "./enums.slint";
+import { CallCamera, CallMic, CallNotice, CallPhase, CallRefusal, CallScreen, CallScreenRefusal, CallTileState, Delivery, EmojiArt, MediaFailure, PresenceLine, PreviewKind, RoomCallMark, ServiceKind, ShieldReason, UpgradeLink, UserMessageKind } from "./enums.slint";
 
 export global UserMessages {
     public pure function text(kind: UserMessageKind, detail: string) -> string {
@@ -848,16 +848,112 @@ export global CallWords {
         if phase == CallPhase.joining {
             return @tr("Joining the call…");
         }
-        if phase == CallPhase.ringing {
-            return @tr("Ringing…");
+        if phase == CallPhase.calling {
+            return @tr("Calling…");
         }
         if phase == CallPhase.connecting {
             return @tr("Connecting…");
+        }
+        if phase == CallPhase.waiting {
+            return @tr("Waiting for others");
         }
         if phase == CallPhase.reconnecting {
             return @tr("Reconnecting…");
         }
         return elapsed;
+    }
+
+    public pure function notice(notice: CallNotice, room: string, name: string, others: int) -> string {
+        if notice == CallNotice.not-called {
+            return @tr("Could not call {}", room);
+        }
+        if notice == CallNotice.not-announced {
+            return @tr("Could not tell the room about the call");
+        }
+        if notice == CallNotice.microphone-failed {
+            return @tr("Your microphone did not start");
+        }
+        if notice == CallNotice.camera-failed {
+            return @tr("Your camera did not start");
+        }
+        if notice == CallNotice.screen-failed {
+            return @tr("Your screen share did not start");
+        }
+        if notice == CallNotice.choosing-screen {
+            return @tr("Choose a screen or window in your desktop's dialog");
+        }
+        if notice == CallNotice.sharing-never-started {
+            return @tr("Screen sharing did not start");
+        }
+        if others > 0 && (notice == CallNotice.cant-decrypt || notice == CallNotice.unverified-device) {
+            return @tr("Can't decrypt {} and {n} other person" | "Can't decrypt {} and {n} other people" % others, name);
+        }
+        if notice == CallNotice.cant-decrypt {
+            return @tr("Can't decrypt {}", name);
+        }
+        if notice == CallNotice.unverified-device {
+            return @tr("Can't decrypt {}: their device isn't verified by its owner", name);
+        }
+        return "";
+    }
+
+    public pure function notice-action(notice: CallNotice) -> string {
+        if notice == CallNotice.choosing-screen {
+            return @tr("Cancel");
+        }
+        if notice == CallNotice.sharing-never-started {
+            return @tr("Room logs");
+        }
+        if notice == CallNotice.not-called || notice == CallNotice.not-announced
+            || notice == CallNotice.microphone-failed || notice == CallNotice.camera-failed
+            || notice == CallNotice.screen-failed {
+            return @tr("Try again");
+        }
+        return "";
+    }
+
+    public pure function notice-action-label(notice: CallNotice, room: string) -> string {
+        if notice == CallNotice.not-called {
+            return @tr("Call {} again", room);
+        }
+        if notice == CallNotice.not-announced {
+            return @tr("Tell the room about the call again");
+        }
+        if notice == CallNotice.microphone-failed {
+            return root.microphone(CallMic.failed);
+        }
+        if notice == CallNotice.camera-failed {
+            return root.camera(CallCamera.failed);
+        }
+        if notice == CallNotice.screen-failed {
+            return root.share(CallScreen.failed, CallScreenRefusal.no-portal);
+        }
+        if notice == CallNotice.choosing-screen {
+            return root.share(CallScreen.choosing, CallScreenRefusal.no-portal);
+        }
+        if notice == CallNotice.sharing-never-started {
+            return @tr("Show the room logs of {}", room);
+        }
+        return "";
+    }
+
+    public pure function brief(notice: CallNotice) -> string {
+        if notice == CallNotice.not-called {
+            return @tr("Could not call");
+        }
+        if notice == CallNotice.not-announced {
+            return @tr("Not announced");
+        }
+        if notice == CallNotice.microphone-failed {
+            return @tr("Microphone failed");
+        }
+        if notice == CallNotice.camera-failed {
+            return @tr("Camera failed");
+        }
+        if notice == CallNotice.screen-failed {
+            return @tr("Sharing failed");
+        }
+        return "";
     }
 
     public pure function tile(state: CallTileState) -> string {
@@ -893,6 +989,13 @@ export global CallWords {
             return @tr("You may not join calls in this room");
         }
         return @tr("Verify this session to join encrypted calls");
+    }
+
+    public pure function refusal-action(refusal: CallRefusal) -> string {
+        if refusal == CallRefusal.session-unverified {
+            return @tr("Verify session");
+        }
+        return "";
     }
 
     public pure function share(screen: CallScreen, refusal: CallScreenRefusal) -> string {

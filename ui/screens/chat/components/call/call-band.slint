@@ -1,11 +1,13 @@
 import { IconDisplay, IconSet } from "@lucide";
 
 import { IconButton } from "../../../../components/button.slint";
+import { CallNotice, CallScreen } from "../../../../enums.slint";
 import { CallWords } from "../../../../messages.slint";
 import { Shell } from "../../../../local.slint";
 import { CallView } from "../../../../views.slint";
 import { AppStyle, Fonts, IconSize, Metrics, Size, Space, Stroke, Weight } from "../../../../theme.slint";
 import { CallCameraButton, CallLeaveButton, CallMicButton, CallShareButton } from "./call-controls.slint";
+import { CallStatus } from "./call-status.slint";
 import { CallTileView } from "./call-tile.slint";
 
 component CallTiles inherits Flickable {
@@ -66,6 +68,10 @@ component CallTiles inherits Flickable {
 }
 
 export component CallBand inherits Rectangle {
+    property <bool> explains-share;
+    property <bool> has-status: CallView.notice != CallNotice.none
+        || (root.explains-share && CallView.screen == CallScreen.unavailable);
+
     background: AppStyle.call-band;
     accessible-role: groupbox;
     accessible-label: @tr("Call in {}", CallView.active-room-name);
@@ -119,10 +125,16 @@ export component CallBand inherits Rectangle {
 
             CallCameraButton { }
 
-            CallShareButton { }
+            CallShareButton {
+                explain => {
+                    root.explains-share = !root.explains-share;
+                }
+            }
 
             CallLeaveButton { }
         }
+
+        if root.has-status: CallStatus { }
     }
 
     Rectangle {
