@@ -17,6 +17,7 @@ import { MessageMeta } from "./message-meta.slint";
 import { ContextPress } from "../context-press.slint";
 import { Avatar } from "../../../../components/avatar.slint";
 import { ClickArea } from "../../../../components/a11y.slint";
+import { StateLayer } from "../../../../components/state-layer.slint";
 import {
     AnchorRect,
     Composer,
@@ -67,9 +68,14 @@ component BubbleReply inherits ClickArea {
 
     Rectangle {
         border-radius: root.border-radius;
-        background: root.pressed
-            ? AppStyle.overlay-pressed
-            : (root.has-hover ? AppStyle.overlay-hover : AppStyle.overlay-subtle);
+        background: AppStyle.well;
+    }
+
+    StateLayer {
+        border-radius: root.border-radius;
+        ink: Palette.background;
+        hovered: root.has-hover;
+        pressed: root.pressed;
     }
 
     ReplyQuote {
@@ -79,6 +85,8 @@ component BubbleReply inherits ClickArea {
         padding-bottom: Space.md;
         sender: root.msg.reply-sender;
         preview: MessagePreview.label(root.msg.reply-kind, root.msg.reply-body);
+        accent: root.msg.is-own ? AppStyle.link-own : Palette.accent-background;
+        muted: root.msg.is-own ? AppStyle.overlay-foreground-muted-own : AppStyle.overlay-foreground-muted;
     }
 }
 
@@ -117,7 +125,7 @@ component BubbleFooter inherits HorizontalLayout {
         alignment: end;
         msg: root.msg;
         timeline-row: root.timeline-row;
-        tint: AppStyle.overlay-foreground-muted;
+        tint: root.is-own ? AppStyle.overlay-foreground-muted-own : AppStyle.overlay-foreground-muted;
     }
 }
 
@@ -158,8 +166,8 @@ export component MessageBubble inherits VerticalLayout {
     in property <bool> focus-lit;
 
     property <color> bubble-color: root.is-own
-        ? AppStyle.own-bubble
-        : (root.msg.mentions-you ? AppStyle.mention-bubble : Palette.alternate-background);
+        ? AppStyle.bubble-own
+        : (root.msg.mentions-you ? AppStyle.bubble-mention : AppStyle.bubble);
     property <length> bubble-max-width: max(
         Metrics.bubble-max / 2,
         min(Metrics.bubble-max, root.available-width - Metrics.bubble-gutter),
@@ -311,7 +319,7 @@ export component MessageBubble inherits VerticalLayout {
             row := HorizontalLayout {
                 x: -message-row.swipe-pull;
                 animate x {
-                    duration: ReplySwipe.settling ? Motion.normal : 0ms;
+                    duration: ReplySwipe.settling ? Motion.travel(Motion.normal) : 0ms;
                     easing: ease-out;
                 }
 
@@ -462,7 +470,6 @@ export component MessageBubble inherits VerticalLayout {
             width: bubble.width;
             flex-wrap: FlexboxLayoutWrap.no-wrap;
             reactions: root.msg.reactions;
-            is-own: root.is-own;
             can-react: root.has-remote-id;
             event-id: root.msg.event-id;
             detail-anchor() => {

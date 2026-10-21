@@ -16,7 +16,7 @@ import { SpaceBadge } from "./space-badge.slint";
 import { RoomEntry } from "../../../types.slint";
 import { HeaderIconButton } from "../../../components/button.slint";
 import { RetryNotice } from "../../../components/retry-notice.slint";
-import { PillSearchField } from "../../../components/search-field.slint";
+import { SearchField } from "../../../components/search-field.slint";
 import { ContextPress } from "./context-press.slint";
 import { AppStyle, Fonts, IconSize, Metrics, Motion, Opacity, Size, Space, Stroke, Weight } from "../../../theme.slint";
 import { InviteKind, RemovalKind, RoomCallMark, RoomRowKind, RoomScope, ServiceKind } from "../../../enums.slint";
@@ -42,9 +42,10 @@ component SidebarSearch inherits FocusScope {
         return reject;
     }
 
-    field := PillSearchField {
+    field := SearchField {
         width: 100%;
         height: 100%;
+        shows-icon: false;
         placeholder: @tr("Search");
         label: DirectoryView.room-scope == RoomScope.direct
             ? @tr("Search direct messages")
@@ -383,7 +384,7 @@ component SelectionCorner inherits Path {
     height: root.width;
     viewbox-width: root.side;
     viewbox-height: root.side;
-    fill: Palette.background;
+    fill: AppStyle.canvas;
     commands: root.below
         ? "M 0 0 L \{root.side} 0 L \{root.side} \{root.side} L \{root.radius} \{root.side} A \{root.radius} \{root.radius} 0 0 0 0 \{root.overlap} Z"
         : "M 0 \{root.radius} A \{root.radius} \{root.radius} 0 0 0 \{root.radius} 0 L \{root.side} 0 L \{root.side} \{root.side} L 0 \{root.side} Z";
@@ -459,10 +460,10 @@ component RoomRow inherits ListItemArea {
 
     pure function fill(selected: bool, hovered: bool) -> color {
         if selected {
-            return Palette.background;
+            return AppStyle.canvas;
         }
         if hovered {
-            return AppStyle.surface-raised;
+            return AppStyle.nav-hover;
         }
         return transparent;
     }
@@ -597,7 +598,7 @@ component RoomRow inherits ListItemArea {
             if root.entry.invite-kind == InviteKind.space: SpaceBadge {
                 x: parent.width - self.width + Space.xs;
                 y: parent.height - self.height + Space.xs;
-                cutout: Palette.alternate-background;
+                cutout: AppStyle.nav;
             }
         }
 
@@ -629,7 +630,7 @@ component RoomRow inherits ListItemArea {
             if root.entry.invite-kind == InviteKind.space: SpaceBadge {
                 x: parent.width - self.width + Space.xs;
                 y: parent.height - self.height + Space.xs;
-                cutout: Palette.alternate-background;
+                cutout: AppStyle.nav;
             }
         }
 
@@ -660,7 +661,7 @@ component RoomRow inherits ListItemArea {
             SpaceBadge {
                 x: parent.width - self.width + Space.xs;
                 y: parent.height - self.height + Space.xs;
-                cutout: Palette.alternate-background;
+                cutout: AppStyle.nav;
             }
         }
 
@@ -866,7 +867,7 @@ export component Sidebar inherits Rectangle {
         && DirectoryView.room-scope != RoomScope.space
         && DirectoryView.rooms.length == 0;
 
-    background: Palette.alternate-background;
+    background: AppStyle.nav;
 
     function open-row(row: RoomEntry) {
         if row.kind == RoomRowKind.invites-folded {

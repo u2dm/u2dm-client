@@ -68,7 +68,7 @@ use super::schema::{
 };
 use super::session::active_models;
 use super::video::{self, millis_to_duration};
-use super::{audio, emoji, emote, mention, router};
+use super::{audio, emoji, emote, mention, motion, router};
 use crate::app::input::CommandSender;
 use crate::commands::effects::{Effect, VerificationActivity};
 use crate::commands::messages::{UserMessage, UserMessageKind};
@@ -100,6 +100,7 @@ use crate::domain::timeline::{SourceEncryption, TimelineStatus};
 use crate::domain::user_info::{DeviceTrust, IdentityTrust, RoomMembership};
 use crate::domain::verification::VerificationEmoji as DomainVerificationEmoji;
 use crate::error::{AppError, Result};
+use crate::ports::appearance::AppearancePort;
 use crate::ports::call::CallVideoPort;
 use crate::ports::handoff::HandoffPort;
 use crate::ports::media::MediaCache;
@@ -1193,6 +1194,10 @@ impl SlintUiAdapter {
             handoff,
             call_video,
         );
+    }
+
+    pub fn follow_motion(&self, appearance: &dyn AppearancePort) {
+        motion::follow_motion::<InterpretedBackend>(&self.instance, appearance);
     }
 
     pub fn run(&self) -> Result<()> {

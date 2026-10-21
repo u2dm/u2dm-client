@@ -1,0 +1,16 @@
+import { Palette } from "std-widgets.slint";
+
+import { AppStyle, Motion } from "../theme.slint";
+
+export component StateLayer inherits Rectangle {
+    in property <bool> hovered;
+    in property <bool> pressed;
+    in property <color> ink: Palette.foreground;
+
+    background: AppStyle.state-layer(root.ink, root.hovered, root.pressed);
+
+    animate background {
+        duration: Motion.fast;
+        easing: ease-out;
+    }
+}

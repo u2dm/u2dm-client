@@ -145,7 +145,7 @@ export component InviteDialog inherits ModalHost {
         SheetCloseChip {
             x: parent.width - self.width - Space.md;
             y: Space.md;
-            surface: AppStyle.card;
+            surface: AppStyle.elevated;
             label: @tr("Close the invitation");
             above-modal: true;
             clicked => {

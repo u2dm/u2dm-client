@@ -1,4 +1,4 @@
-import { ListView, Palette, Spinner } from "std-widgets.slint";
+import { ListView, Spinner } from "std-widgets.slint";
 import { IconSet } from "@lucide";
 
 import { Avatar } from "../../../components/avatar.slint";
@@ -7,7 +7,7 @@ import { RetryNotice } from "../../../components/retry-notice.slint";
 import { StatusPill } from "../../../components/status-pill.slint";
 import { SpaceBadge } from "./space-badge.slint";
 import { SpaceChildEntry } from "../../../types.slint";
-import { AppStyle, Fonts, Metrics, Space, Weight } from "../../../theme.slint";
+import { AppStyle, Fonts, Metrics, Space, Stroke, Weight } from "../../../theme.slint";
 import { ChildAccess, SpaceIndexStatus } from "../../../enums.slint";
 import { SpaceIndexView } from "../../../views.slint";
 import { Actions } from "../../../actions.slint";
@@ -186,7 +186,13 @@ component SpaceIndexHeader inherits Rectangle {
     in property <bool> above-modal;
 
     height: Metrics.header-row;
-    background: Palette.alternate-background;
+    background: AppStyle.canvas;
+
+    Rectangle {
+        y: parent.height - self.height;
+        height: Stroke.hairline;
+        background: AppStyle.border;
+    }
 
     HorizontalLayout {
         padding-left: Space.lg;
@@ -250,7 +256,7 @@ export component SpaceIndexPane inherits Rectangle {
         root.page-if-wanted();
     }
 
-    background: Palette.background;
+    background: AppStyle.canvas;
     accessible-role: AccessibleRole.groupbox;
     accessible-label: root.title(SpaceIndexView.space-name);
 

@@ -4,6 +4,7 @@ import { IconDisplay, IconSet, Icon } from "@lucide";
 import { Avatar } from "../../../components/avatar.slint";
 import { ClickArea } from "../../../components/a11y.slint";
 import { ModalHost } from "../../../components/overlay.slint";
+import { StateLayer } from "../../../components/state-layer.slint";
 import { AppStyle, Fonts, Glyph, IconSize, Metrics, Motion, Radius, Size, Space, Stroke, Weight } from "../../../theme.slint";
 import { ConnectionState, EncryptionStanding } from "../../../enums.slint";
 import { EncryptionView, SessionView } from "../../../views.slint";
@@ -19,7 +20,12 @@ component DrawerRow inherits Rectangle {
     callback clicked();
 
     height: Metrics.drawer-row;
-    background: touch.has-hover ? AppStyle.overlay-hover : transparent;
+
+    StateLayer {
+        ink: root.tint;
+        hovered: touch.has-hover;
+        pressed: touch.pressed;
+    }
 
     touch := ClickArea {
         above-modal: true;
@@ -114,10 +120,10 @@ export component Drawer inherits Rectangle {
             width: root.panel-width;
             height: 100%;
             x: self.entered ? 0 : -root.panel-width - Space.xxl;
-            background: Palette.alternate-background;
+            background: AppStyle.elevated;
             clip: true;
             animate x {
-                duration: Motion.slow;
+                duration: Motion.travel(Motion.slow);
                 easing: ease-in-out;
             }
 
@@ -216,9 +222,9 @@ export component Drawer inherits Rectangle {
                 width: 100%;
                 height: root.accounts-height;
                 clip: true;
-                background: AppStyle.surface-panel;
+                background: AppStyle.overlay-subtle;
                 animate height {
-                    duration: Motion.slow;
+                    duration: Motion.travel(Motion.slow);
                     easing: ease-in-out;
                 }
 

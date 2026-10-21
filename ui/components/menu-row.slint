@@ -3,6 +3,7 @@ import { IconDisplay, Icon } from "@lucide";
 
 import { ClickArea } from "./a11y.slint";
 import { DotPulse } from "./dot-pulse.slint";
+import { StateLayer } from "./state-layer.slint";
 import { AppStyle, Fonts, IconSize, Opacity, Radius, Space } from "../theme.slint";
 
 export component MenuRow inherits Rectangle {
@@ -25,8 +26,14 @@ export component MenuRow inherits Rectangle {
     property <bool> has-trailing: root.trailing.paths.length > 0;
 
     border-radius: Radius.sm;
-    background: touch.has-hover || root.highlighted ? AppStyle.overlay-hover : transparent;
     opacity: root.enabled || root.busy ? 1.0 : Opacity.disabled;
+
+    StateLayer {
+        border-radius: root.border-radius;
+        ink: root.text-color;
+        hovered: (touch.has-hover && root.enabled) || root.highlighted;
+        pressed: touch.pressed && root.enabled;
+    }
 
     touch := ClickArea {
         enabled: root.enabled;

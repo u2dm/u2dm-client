@@ -1,6 +1,6 @@
 import { Palette, Spinner } from "std-widgets.slint";
 import { LinkButton } from "./button.slint";
-import { Fonts, Size, Space } from "../theme.slint";
+import { AppStyle, Fonts, Size, Space } from "../theme.slint";
 
 export component StatusPill inherits Rectangle {
     in property <string> text;
@@ -14,7 +14,7 @@ export component StatusPill inherits Rectangle {
     width: pill-layout.preferred-width;
     height: pill-layout.preferred-height;
     border-radius: self.height / 2;
-    background: Palette.alternate-background;
+    background: AppStyle.elevated;
 
     pill-layout := HorizontalLayout {
         padding-left: Space.xl;

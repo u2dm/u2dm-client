@@ -2,6 +2,7 @@ import { Palette } from "std-widgets.slint";
 import { IconDisplay, Icon } from "@lucide";
 
 import { ClickArea } from "./a11y.slint";
+import { StateLayer } from "./state-layer.slint";
 import { AppStyle, Fonts, IconSize, Metrics, Opacity, Radius, Size, Space, Stroke, Weight } from "../theme.slint";
 
 export component ChoiceRow inherits ClickArea {
@@ -14,11 +15,16 @@ export component ChoiceRow inherits ClickArea {
     opacity: root.enabled ? 1 : Opacity.disabled;
     border-radius: Radius.md;
     ring-radius: Radius.md;
-    background: root.has-hover && root.enabled ? AppStyle.overlay-hover : transparent;
     label: root.detail == "" ? root.text : @tr("{}, {}", root.text, root.detail);
     accessible-role: radio-button;
     accessible-checkable: true;
     accessible-checked: root.checked;
+
+    StateLayer {
+        border-radius: root.border-radius;
+        hovered: root.has-hover && root.enabled;
+        pressed: root.pressed && root.enabled;
+    }
 
     HorizontalLayout {
         padding-left: Space.md;

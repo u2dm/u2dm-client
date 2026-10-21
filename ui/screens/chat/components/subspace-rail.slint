@@ -3,7 +3,7 @@ import { Icon, IconSet } from "@lucide";
 
 import { RailTileFace } from "./rail-tile.slint";
 import { ContextPress } from "./context-press.slint";
-import { AppStyle, Metrics, Radius, Size, Space, Stroke, Weight } from "../../../theme.slint";
+import { AppStyle, Metrics, Radius, Size, Space, Weight } from "../../../theme.slint";
 import { Interaction, ListItemArea } from "../../../components/a11y.slint";
 import { IconButton } from "../../../components/button.slint";
 import { DirectoryView } from "../../../views.slint";
@@ -99,13 +99,7 @@ export component SubspaceRail inherits Rectangle {
     property <length> row-height: Metrics.rail-row;
     property <length> switch-band: Metrics.header-row;
 
-    background: Palette.alternate-background;
-
-    Rectangle {
-        x: parent.width - Stroke.hairline;
-        width: Stroke.hairline;
-        background: AppStyle.overlay-hover;
-    }
+    background: AppStyle.nav;
 
     if root.offers-tabs: IconButton {
         x: (root.width - self.width) / 2;

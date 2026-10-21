@@ -9,10 +9,10 @@ import { EditBar, ReplyBar } from "./reply-bar.slint";
 import { IdentityBanner } from "./identity-banner.slint";
 import { UpgradeBanner } from "./upgrade-banner.slint";
 import { ReplyQuote } from "./reply-quote.slint";
-import { AppStyle, Metrics, Space } from "../../../../theme.slint";
+import { AppStyle, Metrics, Space, Stroke } from "../../../../theme.slint";
 import { LinkButton } from "../../../../components/button.slint";
 import { ModalHost } from "../../../../components/overlay.slint";
-import { Interaction } from "../../../../components/a11y.slint";
+import { FocusRing, FocusTrail, Interaction } from "../../../../components/a11y.slint";
 import { Actions } from "../../../../actions.slint";
 import { Composer, EditedMessage, Polls, Reactions, ReplyDraft, Shell } from "../../../../local.slint";
 import { IdentityAlertView, RoomView, UnsentView, UpgradeView } from "../../../../views.slint";
@@ -143,6 +143,7 @@ export component MessageInput inherits Rectangle {
     property <length> surface-inset: Metrics.timeline-inset;
     property <bool> composing: root.writable && root.message != "";
     property <int> edits: field.edits;
+    property <bool> field-focused: field.input-focused;
     property <int> shorten-by: 0;
 
     background: AppStyle.composer-gradient;
@@ -179,6 +180,12 @@ export component MessageInput inherits Rectangle {
 
     changed message => {
         root.shorten-by = 0;
+    }
+
+    changed field-focused => {
+        if !self.field-focused {
+            FocusTrail.leave();
+        }
     }
 
     changed edits => {
@@ -427,6 +434,15 @@ export component MessageInput inherits Rectangle {
         }
     }
 
+    Rectangle {
+        x: field.x;
+        y: field.y;
+        width: field.width;
+        height: field.height;
+        border-radius: field.border-radius;
+        background: AppStyle.canvas;
+    }
+
     field := ComposerField {
         x: root.surface-inset;
         y: 0;
@@ -522,5 +538,14 @@ export component MessageInput inherits Rectangle {
             saving: Composer.editing;
             shorten-by: root.shorten-by;
         }
+    }
+
+    if root.field-focused: FocusRing {
+        x: field.x;
+        y: field.y;
+        width: field.width;
+        height: field.height;
+        radius: field.border-radius;
+        thickness: Stroke.hairline;
     }
 }

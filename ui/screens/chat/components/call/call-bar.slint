@@ -60,7 +60,6 @@ export component CallBar inherits Rectangle {
         IconButton {
             cross-axis-self-alignment: center;
             size: Size.md;
-            radius: Radius.md;
             icon: CallView.mic == CallMic.on ? IconSet.Mic : IconSet.MicOff;
             tint: CallView.mic == CallMic.on ? AppStyle.foreground-strong : AppStyle.call-decline;
             label: CallView.mic == CallMic.on ? @tr("Mute your microphone") : @tr("Unmute your microphone");
@@ -72,7 +71,6 @@ export component CallBar inherits Rectangle {
         IconButton {
             cross-axis-self-alignment: center;
             size: Size.md;
-            radius: Radius.md;
             icon: IconSet.PhoneOff;
             tint: AppStyle.call-decline;
             label: @tr("Leave the call");

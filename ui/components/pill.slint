@@ -1,17 +1,21 @@
 import { ClickArea } from "./a11y.slint";
+import { StateLayer } from "./state-layer.slint";
 import { Space } from "../theme.slint";
 
 export component Pill inherits ClickArea {
     in property <color> fill;
-    in property <float> hover-lift: 0;
     in property <length> pad: Space.md;
 
     width: content.preferred-width;
     border-radius: self.height / 2;
     ring-radius: self.height / 2;
-    background: root.has-hover
-        ? root.fill.transparentize(-root.hover-lift)
-        : root.fill;
+    background: root.fill;
+
+    StateLayer {
+        border-radius: root.border-radius;
+        hovered: root.has-hover && root.enabled;
+        pressed: root.pressed && root.enabled;
+    }
 
     content := VerticalLayout {
         alignment: center;

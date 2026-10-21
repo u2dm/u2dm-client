@@ -1,4 +1,3 @@
-import { Palette } from "std-widgets.slint";
 import { IconSet } from "@lucide";
 
 import { TimelineContent } from "./timeline-content.slint";
@@ -30,8 +29,7 @@ import { CallWords } from "../../../../messages.slint";
 import { AppButton } from "../../../../components/button.slint";
 
 component RoomHeaderButton inherits HeaderIconButton {
-    radius: root.size / 2;
-    fill: Palette.alternate-background;
+    fill: AppStyle.control;
 }
 
 export component TimelineView inherits Rectangle {
@@ -67,7 +65,7 @@ export component TimelineView inherits Rectangle {
         || RoomView.timeline-status == TimelineState.disconnected;
     property <int> link-serial: RoomView.message-link-serial;
 
-    background: Palette.background;
+    background: AppStyle.canvas;
 
     changed link-serial => {
         if RoomView.message-link != "" {

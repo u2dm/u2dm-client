@@ -18,8 +18,8 @@ component Toast inherits Rectangle {
     property <bool> is-file-saved: RoomView.toast-message == UserMessageKind.file-saved;
 
     height: toast-layout.preferred-height;
-    border-radius: Radius.sm;
-    background: Palette.alternate-background;
+    border-radius: Radius.md;
+    background: AppStyle.elevated;
 
     toast-layout := HorizontalLayout {
         padding: Space.lg;
@@ -28,7 +28,7 @@ component Toast inherits Rectangle {
 
         Text {
             text: UserMessages.text(RoomView.toast-message, RoomView.toast-detail);
-            color: root.is-file-saved ? Palette.foreground : AppStyle.danger;
+            color: root.is-file-saved ? Palette.foreground : AppStyle.danger-muted;
             wrap: word-wrap;
             vertical-alignment: center;
             accessible-live-region: root.is-file-saved ? AccessibleLiveness.polite : AccessibleLiveness.assertive;
@@ -36,7 +36,6 @@ component Toast inherits Rectangle {
 
         IconButton {
             size: Size.target-min;
-            radius: Radius.sm;
             icon-size: IconSize.sm;
             icon: IconSet.X;
             label: @tr("Dismiss");

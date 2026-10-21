@@ -1,5 +1,5 @@
 import { Palette } from "std-widgets.slint";
-import { FocusRing, Interaction } from "./a11y.slint";
+import { FocusRing, FocusTrail, Interaction } from "./a11y.slint";
 import { AppStyle, Metrics } from "../theme.slint";
 
 export enum ScrubCommit {
@@ -85,6 +85,9 @@ export component ScrubBar inherits Rectangle {
         width: 0;
         enabled: root.actionable;
         focus-on-tab-navigation: root.actionable;
+        focus-lost(reason) => {
+            FocusTrail.leave();
+        }
         key-pressed(event) => {
             if event.text == Key.RightArrow {
                 root.nudge(root.step-ms);
@@ -123,6 +126,6 @@ export component ScrubBar inherits Rectangle {
     if focus.has-focus: FocusRing {
         width: 100%;
         height: 100%;
-        border-radius: self.height / 2;
+        radius: self.height / 2;
     }
 }

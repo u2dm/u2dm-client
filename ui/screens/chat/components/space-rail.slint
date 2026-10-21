@@ -5,6 +5,7 @@ import { SpaceEntry } from "../../../types.slint";
 import { RailTileFace } from "./rail-tile.slint";
 import { ContextPress } from "./context-press.slint";
 import { ClickArea, Interaction, ListItemArea } from "../../../components/a11y.slint";
+import { StateLayer } from "../../../components/state-layer.slint";
 import { DirectoryView } from "../../../views.slint";
 import { RoomScope } from "../../../enums.slint";
 import { Actions } from "../../../actions.slint";
@@ -80,7 +81,7 @@ component SpaceTile inherits ListItemArea {
             background: Palette.accent-background;
 
             animate height {
-                duration: Motion.normal;
+                duration: Motion.travel(Motion.normal);
                 easing: ease-out;
             }
         }
@@ -131,7 +132,7 @@ export component SpaceRail inherits Rectangle {
     property <SpaceEntry> drag-entry;
     property <bool> drag-selected;
 
-    background: AppStyle.surface-rail;
+    background: AppStyle.nav;
 
     function begin-drag(idx: int, entry: SpaceEntry, selected: bool) {
         root.drag-from = idx;
@@ -182,19 +183,18 @@ export component SpaceRail inherits Rectangle {
             Shell.drawer-open = true;
         }
 
-        Rectangle {
+        StateLayer {
             width: Size.xl;
             height: Size.xl;
-            border-radius: Radius.md;
-            background: menu-touch.has-hover
-                ? AppStyle.overlay-hover
-                : transparent;
+            border-radius: self.width / 2;
+            hovered: menu-touch.has-hover;
+            pressed: menu-touch.pressed;
+        }
 
-            IconDisplay {
-                icon: IconSet.Menu;
-                size: IconSize.md;
-                stroke: AppStyle.foreground-strong;
-            }
+        IconDisplay {
+            icon: IconSet.Menu;
+            size: IconSize.md;
+            stroke: AppStyle.foreground-strong;
         }
     }
 
@@ -265,7 +265,7 @@ export component SpaceRail inherits Rectangle {
             entry: space;
             selected: DirectoryView.selected-space-id == space.id;
             animate y {
-                duration: Motion.fast;
+                duration: Motion.travel(Motion.fast);
                 easing: ease-out;
             }
             changed pressed => {

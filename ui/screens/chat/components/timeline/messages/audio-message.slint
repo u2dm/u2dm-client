@@ -152,7 +152,7 @@ export component AudioMessage inherits HorizontalLayout {
         Text {
             text: root.details;
             font-size: Fonts.caption;
-            color: AppStyle.overlay-foreground-muted;
+            color: root.msg.is-own ? AppStyle.overlay-foreground-muted-own : AppStyle.overlay-foreground-muted;
         }
     }
 
@@ -185,7 +185,7 @@ export component AudioMessage inherits HorizontalLayout {
         Text {
             text: root.details;
             font-size: Fonts.body-small;
-            color: AppStyle.overlay-foreground-muted;
+            color: root.msg.is-own ? AppStyle.overlay-foreground-muted-own : AppStyle.overlay-foreground-muted;
         }
     }
 }

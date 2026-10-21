@@ -138,7 +138,7 @@ export component TextMessage inherits Rectangle {
         emoji-size: root.emoji-size;
         icon-size: root.msg.emote-only ? IconSize.lg : IconSize.xs;
         text-color: root.text-color;
-        link-color: root.msg.is-own ? AppStyle.own-link : AppStyle.link;
+        link-color: root.msg.is-own ? AppStyle.link-own : AppStyle.link;
         link-clicked(url) => {
             root.follow-link(url);
         }
@@ -160,7 +160,7 @@ export component TextMessage inherits Rectangle {
             default-font-family: Fonts.emoji;
             default-font-size: Fonts.body;
             default-color: root.text-color;
-            link-color: root.msg.is-own ? AppStyle.own-link : AppStyle.link;
+            link-color: root.msg.is-own ? AppStyle.link-own : AppStyle.link;
             link-clicked(url) => {
                 root.follow-link(url);
             }

@@ -1,7 +1,7 @@
 import { Palette } from "std-widgets.slint";
 
 import { Shell } from "../local.slint";
-import { Radius, Stroke } from "../theme.slint";
+import { Metrics, Motion, Radius, Stroke } from "../theme.slint";
 
 export global Interaction {
     public pure function actionable(enabled: bool, above-modal: bool) -> bool {
@@ -30,11 +30,127 @@ export global Interaction {
     }
 }
 
+export global FocusTrail {
+    in-out property <length> x;
+    in-out property <length> y;
+    in-out property <length> width;
+    in-out property <length> height;
+    in-out property <length> radius;
+    in-out property <bool> live;
+    in-out property <bool> seeded;
+    in-out property <duration> left-at;
+
+    public function arrive(x: length, y: length, width: length, height: length, radius: length) {
+        root.x = x;
+        root.y = y;
+        root.width = width;
+        root.height = height;
+        root.radius = radius;
+        root.live = true;
+        root.seeded = true;
+    }
+
+    public function leave() {
+        root.live = false;
+        root.left-at = animation-tick();
+    }
+
+    public function hands-over() -> bool {
+        return root.seeded && (root.live || animation-tick() - root.left-at < Motion.slow);
+    }
+}
+
 export component FocusRing inherits Rectangle {
-    background: transparent;
-    border-width: Stroke.emphasis;
-    border-color: Palette.accent-background;
-    border-radius: Radius.sm;
+    in property <length> thickness: Stroke.emphasis;
+    in property <length> radius: Radius.sm;
+
+    property <bool> travels;
+    property <bool> landed;
+    property <bool> moving;
+    property <length> from-left;
+    property <length> from-top;
+    property <length> from-right;
+    property <length> from-bottom;
+    property <length> from-radius;
+    property <bool> rightward: root.from-left + root.from-right < root.width;
+    property <bool> downward: root.from-top + root.from-bottom < root.height;
+    property <duration> lead: Motion.travel(root.travels ? Motion.ring-lead : Motion.slow);
+    property <duration> trail: Motion.travel(root.travels ? Motion.ring-trail : Motion.slow);
+    property <length> left: root.landed ? 0 : root.from-left;
+    property <length> top: root.landed ? 0 : root.from-top;
+    property <length> right: root.landed ? root.width : root.from-right;
+    property <length> bottom: root.landed ? root.height : root.from-bottom;
+    property <length> corner: root.landed ? root.radius : root.from-radius;
+    property <float> shown: root.landed || root.travels ? 1 : 0;
+    property <bool> start-evaluated;
+    property <easing> flow: cubic-bezier(0.32, 0.72, 0, 1);
+
+    animate left {
+        duration: !root.moving ? 0ms : root.rightward ? root.trail : root.lead;
+        easing: root.flow;
+    }
+    animate right {
+        duration: !root.moving ? 0ms : root.rightward ? root.lead : root.trail;
+        easing: root.flow;
+    }
+    animate top {
+        duration: !root.moving ? 0ms : root.downward ? root.trail : root.lead;
+        easing: root.flow;
+    }
+    animate bottom {
+        duration: !root.moving ? 0ms : root.downward ? root.lead : root.trail;
+        easing: root.flow;
+    }
+    animate corner {
+        duration: !root.moving ? 0ms : root.lead;
+        easing: root.flow;
+    }
+    animate shown {
+        duration: root.travels ? 0ms : Motion.fast;
+        easing: ease-out;
+    }
+
+    init => {
+        root.travels = FocusTrail.hands-over();
+        if root.travels {
+            root.from-left = FocusTrail.x - root.absolute-position.x;
+            root.from-top = FocusTrail.y - root.absolute-position.y;
+            root.from-right = root.from-left + FocusTrail.width;
+            root.from-bottom = root.from-top + FocusTrail.height;
+            root.from-radius = FocusTrail.radius;
+        } else {
+            root.from-left = -Metrics.ring-bloom;
+            root.from-top = -Metrics.ring-bloom;
+            root.from-right = root.width + Metrics.ring-bloom;
+            root.from-bottom = root.height + Metrics.ring-bloom;
+            root.from-radius = root.radius + Metrics.ring-bloom;
+        }
+        root.start-evaluated = root.left < root.right && root.top < root.bottom && root.corner >= 0 && root.shown >= 0;
+        root.moving = true;
+        root.landed = true;
+        FocusTrail.arrive(root.absolute-position.x, root.absolute-position.y, root.width, root.height, root.radius);
+        settle.running = true;
+    }
+
+    settle := Timer {
+        interval: max(root.lead, root.trail, 1ms);
+        running: false;
+        triggered => {
+            root.moving = false;
+            self.running = false;
+        }
+    }
+
+    Rectangle {
+        x: root.left;
+        y: root.top;
+        width: root.right - root.left;
+        height: root.bottom - root.top;
+        border-radius: root.corner;
+        border-width: root.thickness;
+        border-color: Palette.accent-background;
+        opacity: root.shown;
+    }
 }
 
 export component ClickArea inherits Rectangle {
@@ -78,6 +194,9 @@ export component ClickArea inherits Rectangle {
         width: 0;
         enabled: root.enabled && root.focusable;
         focus-on-tab-navigation: root.actionable && root.focusable;
+        focus-lost(reason) => {
+            FocusTrail.leave();
+        }
         key-pressed(event) => {
             if root.enabled && Interaction.activates(event.text) {
                 root.clicked();
@@ -112,7 +231,7 @@ export component ClickArea inherits Rectangle {
         y: root.ring-inset;
         width: root.width - root.ring-inset * 2;
         height: root.height - root.ring-inset * 2;
-        border-radius: root.ring-radius;
+        radius: root.ring-radius;
     }
 }
 
@@ -143,6 +262,10 @@ export component RovingKeys inherits FocusScope {
     height: 0;
     focus-on-click: false;
     accessible-role: button;
+
+    focus-lost(reason) => {
+        FocusTrail.leave();
+    }
 
     focus-gained(reason) => {
         if root.cursor < 0 && (root.ring-on-any-focus || reason == FocusReason.tab-navigation) {

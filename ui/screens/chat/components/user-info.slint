@@ -615,7 +615,7 @@ export component UserInfoDialog inherits ModalHost {
         SheetCloseChip {
             x: parent.width - self.width - Space.md;
             y: Space.md;
-            surface: AppStyle.card;
+            surface: AppStyle.elevated;
             label: @tr("Close the profile");
             above-modal: true;
             clicked => {

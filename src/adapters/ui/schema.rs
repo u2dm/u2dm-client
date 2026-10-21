@@ -441,6 +441,7 @@ macro_rules! bool_props {
         WindowFocused WindowView "WindowView" "focused" set_focused get_focused;
         WindowActive WindowView "WindowView" "active" set_active get_active;
         ReplySwipeArmed ReplySwipe "ReplySwipe" "armed" set_armed get_armed;
+        ReducedMotion Motion "Motion" "reduced" set_reduced get_reduced;
         RoomInfoIsDirect RoomInfoView "RoomInfoView" "is-direct" set_is_direct get_is_direct;
         RoomInfoTopicHasLinks RoomInfoView "RoomInfoView" "topic-has-links" set_topic_has_links get_topic_has_links;
         RoomInfoNotifyBusy RoomInfoView "RoomInfoView" "notify-busy" set_notify_busy get_notify_busy;

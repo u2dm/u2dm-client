@@ -53,7 +53,7 @@ export component FileMessage inherits HorizontalLayout {
             if root.msg.size != "": Text {
                 text: root.msg.size;
                 font-size: Fonts.body-small;
-                color: AppStyle.overlay-foreground-muted;
+                color: root.msg.is-own ? AppStyle.overlay-foreground-muted-own : AppStyle.overlay-foreground-muted;
                 overflow: elide;
             }
         }

@@ -4,6 +4,8 @@ use std::sync::Arc;
 use tokio::runtime::Handle;
 
 #[cfg(feature = "matrix")]
+use crate::adapters::appearance;
+#[cfg(feature = "matrix")]
 use crate::adapters::browser::DesktopBrowser;
 #[cfg(feature = "matrix")]
 use crate::adapters::call_media;
@@ -20,6 +22,7 @@ use crate::adapters::notifier;
 #[cfg(feature = "matrix")]
 use crate::adapters::storage::SecureStorage;
 use crate::config::AppConfig;
+use crate::ports::appearance::AppearancePort;
 use crate::ports::browser::BrowserPort;
 use crate::ports::call::{CallMediaPort, CallVideoPort};
 use crate::ports::handoff::HandoffPort;
@@ -41,6 +44,7 @@ pub struct Backend {
     pub browser: Arc<dyn BrowserPort>,
     pub notifier: Arc<dyn NotifierPort>,
     pub handoff: Arc<dyn HandoffPort>,
+    pub appearance: Arc<dyn AppearancePort>,
     pub call_media: Option<Arc<dyn CallMediaPort>>,
     pub call_video: Option<Arc<dyn CallVideoPort>>,
 }
@@ -91,6 +95,7 @@ impl Backend {
             browser: demo::browser(),
             notifier: demo::notifier(),
             handoff: demo::handoff(),
+            appearance: demo::appearance(),
             call_media: Some(call_media),
             call_video: Some(call_video),
         }
@@ -116,6 +121,7 @@ impl Backend {
             browser: Arc::new(DesktopBrowser::new()),
             notifier: notifier::desktop(),
             handoff,
+            appearance: appearance::desktop(),
             call_media: calls.media,
             call_video: calls.video,
         }

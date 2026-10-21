@@ -9,7 +9,7 @@ export component UpgradeBanner inherits Rectangle {
     property <bool> joining: UpgradeView.successor == UpgradeLink.joining;
 
     height: layout.preferred-height;
-    background: AppStyle.overlay-subtle;
+    background: AppStyle.well;
 
     layout := HorizontalLayout {
         padding-left: Space.lg;

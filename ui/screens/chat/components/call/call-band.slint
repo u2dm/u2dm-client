@@ -118,7 +118,6 @@ export component CallBand inherits Rectangle {
 
             IconButton {
                 size: Size.xl;
-                radius: self.size / 2;
                 icon: CallView.mic == CallMic.on ? IconSet.Mic : IconSet.MicOff;
                 tint: CallView.mic == CallMic.on ? AppStyle.foreground-strong : white;
                 fill: CallView.mic == CallMic.on ? AppStyle.call-tile : AppStyle.call-decline;
@@ -136,7 +135,6 @@ export component CallBand inherits Rectangle {
                 property <bool> on: CallView.camera == CallCamera.on || CallView.camera == CallCamera.starting;
 
                 size: Size.xl;
-                radius: self.size / 2;
                 icon: self.on ? IconSet.Video : IconSet.VideoOff;
                 tint: self.on ? AppStyle.foreground-strong : white;
                 fill: self.on ? AppStyle.call-tile : AppStyle.call-decline;
@@ -154,7 +152,6 @@ export component CallBand inherits Rectangle {
                 property <bool> sharing: CallView.screen == CallScreen.on || CallView.screen == CallScreen.choosing;
 
                 size: Size.xl;
-                radius: self.size / 2;
                 enabled: CallView.screen != CallScreen.unavailable
                     && CallView.phase != CallPhase.joining && CallView.phase != CallPhase.connecting;
                 icon: self.sharing ? IconSet.ScreenShareOff : IconSet.ScreenShare;

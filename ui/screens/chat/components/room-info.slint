@@ -13,9 +13,9 @@ import { ActionTile } from "./action-tile.slint";
 import { DetailLine } from "./detail-line.slint";
 import { CopyLinkTile, SheetCloseChip, SheetCover, TilePrompt, TileRow } from "./sheet.slint";
 import { MemberRow } from "./member-row.slint";
-import { PillSearchField } from "../../../components/search-field.slint";
+import { SearchField } from "../../../components/search-field.slint";
 import { NotifyModes } from "./notify-modes.slint";
-import { AppStyle, Fonts, IconSize, Metrics, Radius, Size, Space, Stroke, Weight } from "../../../theme.slint";
+import { AppStyle, Fonts, IconSize, Metrics, Radius, Size, Space, Weight } from "../../../theme.slint";
 import { RosterStatus, UserMessageKind } from "../../../enums.slint";
 import { RoomInfoView } from "../../../views.slint";
 import { Shell } from "../../../local.slint";
@@ -454,8 +454,9 @@ component MemberSection inherits VerticalLayout {
         padding-left: Space.xl;
         padding-right: Space.xl;
 
-        search := PillSearchField {
+        search := SearchField {
             placeholder: @tr("Search members");
+            shows-icon: false;
             above-modal: root.above-modal;
             enabled: Interaction.actionable(true, root.above-modal);
             edited(text) => {
@@ -509,7 +510,7 @@ component MemberSection inherits VerticalLayout {
 
 component RoomInfoSheet inherits Rectangle {
     in property <bool> above-modal;
-    in property <brush> surface: AppStyle.card;
+    in property <brush> surface: AppStyle.elevated;
     out property <bool> notify-picker-open: false;
     out property <length> picker-x;
     out property <length> picker-y;
@@ -820,16 +821,10 @@ export component RoomInfoPane inherits RoomInfoSheet {
     in property <length> overlay-width;
     in property <length> overlay-height;
 
-    background: Palette.alternate-background;
-    surface: Palette.alternate-background;
+    background: AppStyle.pane;
+    surface: AppStyle.pane;
     dismissed => {
         Shell.room-info-pane-open = false;
-    }
-
-    Rectangle {
-        x: 0;
-        width: Stroke.hairline;
-        background: AppStyle.border;
     }
 
     if root.notify-picker-open: NotifyPickerHost {

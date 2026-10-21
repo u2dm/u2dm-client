@@ -70,6 +70,7 @@ scenario_env() {
     room-search)     echo 'U2DM_DEMO_WINDOW=900x760' ;;
     room-search-open) echo 'U2DM_DEMO_WINDOW=900x760' ;;
     subspace-tabs)   echo 'U2DM_DEMO_WINDOW=900x760' ;;
+    reduced-motion)  echo 'U2DM_DEMO_MOTION=reduced U2DM_DEMO_WINDOW=900x760' ;;
     mentions)        echo 'U2DM_DEMO_ROOM_INFO=slow' ;;
     room-mention)    echo 'U2DM_DEMO_WINDOW=900x760' ;;
     display-names)   echo 'U2DM_DEMO_NAMES=all' ;;
@@ -909,6 +910,11 @@ scenario_steps() {
       echo 'sleep 1'
       echo '{"op":"select_subspace","subspace_id":"!space-rust-web:demo.local"}'
       echo 'sleep 2' ;;
+    reduced-motion)
+      echo '{"op":"select_room","room_id":"!rust:demo.local"}'
+      echo 'sleep 1'
+      echo '{"op":"select_space","space_id":"!space-rust:demo.local"}'
+      echo 'sleep 1' ;;
     mentions)
       echo '{"op":"select_room","room_id":"!design:demo.local"}'
       echo 'sleep 1'
@@ -997,6 +1003,7 @@ scenario_note() {
     readers)         echo 'in !rust, the 123 readers of an older message load slowly, then the 121 readers of your newest message page in fifty at a time' ;;
     room-search)     echo 'in All Rooms, "design" lists the Design Team room, then the Design space' ;;
     room-search-open) echo '"web" matches only the Web space under Rust (Web Accessibility is too deep to open); opening it selects Rust and its Web subspace' ;;
+    reduced-motion)  echo 'the desktop asks for reduced motion: the log says the UI follows it with reduced=true, and the rail marker, the drawer and every other movement jump while fades run (target/visual-system/motion.sh measures the marker)' ;;
     subspace-tabs)   echo 'Rust lists its sub-spaces as tabs above its rooms (All in Rust, Web, Infra) instead of a second rail; picking Web lists its rooms and names it in the header (directory.space_name, subspace_id, listed_space)' ;;
     mentions)        echo 'in !design the roster loads slowly, then "pr" suggests Priya, "" puts the recent speakers first, and "ro" offers @room' ;;
     room-mention)    echo 'in !matrixhq, Vera'"'"'s announcement mentions the room: its @room is bold and its bubble tinted (mentions_you)' ;;
@@ -1095,7 +1102,7 @@ names() {
     user-ignore user-moderation \
     user-moderation-failures user-tags custom-emoji spoilers message-types message-link message-source message-pins message-pin-failures message-delete \
     message-delete-failures read-only-room announcement-room powers-revoked \
-    readers room-search room-search-open subspace-tabs mentions room-mention display-names \
+    readers room-search room-search-open subspace-tabs reduced-motion mentions room-mention display-names \
     message-shields identity-alerts identity-held-sends invites-folded invites invite-failures room-upgrades room-upgrade-failures room-state \
     removals removal-failures leave-space leave-space-failures moderation-reasons \
     room-links room-finder room-link-failures \

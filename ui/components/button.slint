@@ -2,8 +2,9 @@ import { Palette } from "std-widgets.slint";
 import { IconDisplay, Icon } from "@lucide";
 
 import { ClickArea } from "./a11y.slint";
-import { AppStyle, Fonts, IconSize, Motion, Opacity, Radius, Size, Space, Stroke, Weight } from "../theme.slint";
+import { AppStyle, Fonts, IconSize, Metrics, Opacity, Radius, Size, Space, Weight } from "../theme.slint";
 import { DotPulse } from "./dot-pulse.slint";
+import { StateLayer } from "./state-layer.slint";
 
 export component AppButton inherits Rectangle {
     in property <string> text;
@@ -18,50 +19,27 @@ export component AppButton inherits Rectangle {
     callback clicked();
 
     property <bool> interactive: root.enabled && !root.busy;
-    property <bool> highlighted: touch.has-hover && root.interactive;
     property <bool> has-icon: root.icon.paths.length > 0;
-
-    pure function label-tint() -> color {
-        if !root.enabled {
-            return AppStyle.foreground-disabled;
-        }
-        return root.filled ? Palette.accent-foreground : root.tint;
-    }
-
-    pure function fill() -> brush {
-        if !root.enabled {
-            return AppStyle.overlay-subtle;
-        }
-        if root.filled {
-            if touch.pressed {
-                return root.tint.darker(0.2);
-            }
-            return root.highlighted ? root.tint.brighter(0.15) : root.tint;
-        }
-        if touch.pressed {
-            return AppStyle.overlay-pressed;
-        }
-        return root.highlighted ? AppStyle.overlay-hover : transparent;
-    }
-
-    property <color> label-color: root.label-tint();
+    property <color> label-color: root.filled ? Palette.accent-foreground : root.tint;
 
     height: AppStyle.control-height;
     border-radius: Radius.md;
-    border-width: root.filled ? 0 : Stroke.hairline;
-    border-color: root.filled ? transparent : AppStyle.border;
-    background: root.fill();
+    background: root.filled ? root.tint : AppStyle.control;
+    opacity: root.enabled ? 1 : Opacity.disabled;
 
-    animate background {
-        duration: Motion.fast;
-        easing: ease-out;
+    StateLayer {
+        border-radius: root.border-radius;
+        ink: root.label-color;
+        hovered: touch.has-hover && root.interactive;
+        pressed: touch.pressed && root.interactive;
     }
 
     touch := ClickArea {
         enabled: root.interactive;
         above-modal: root.above-modal;
         label: root.text;
-        ring-radius: Radius.md;
+        ring-inset: -Metrics.ring-outset;
+        ring-radius: Radius.md + Metrics.ring-outset;
         clicked => {
             root.clicked();
         }
@@ -107,16 +85,20 @@ export component IconButton inherits Rectangle {
     in property <string> label;
     in property <bool> enabled: true;
     in property <bool> above-modal: false;
+    in property <bool> busy: false;
     in property <length> size: Size.lg;
     property <float> icon-scale: 0.53;
     in property <length> icon-size: root.size * root.icon-scale;
-    in property <length> radius: Radius.md;
+    in property <length> radius: root.size / 2;
     in property <color> tint: AppStyle.foreground-muted;
     in property <brush> fill: transparent;
     out property <bool> has-focus: touch.has-focus;
     out property <bool> has-hover: touch.has-hover;
 
     callback clicked();
+
+    property <bool> interactive: root.enabled && !root.busy;
+    property <length> ring-outset: root.fill == transparent ? 0 : Metrics.ring-outset;
 
     public function take-focus() {
         touch.take-focus();
@@ -125,35 +107,46 @@ export component IconButton inherits Rectangle {
     width: root.size;
     height: root.size;
     border-radius: root.radius;
-    opacity: root.enabled ? 1.0 : Opacity.disabled;
+    opacity: root.enabled ? 1 : Opacity.disabled;
     background: root.fill;
 
-    Rectangle {
+    StateLayer {
         border-radius: root.radius;
-        background: touch.has-hover && root.enabled ? AppStyle.overlay-hover : transparent;
+        ink: root.tint;
+        hovered: touch.has-hover && root.interactive;
+        pressed: touch.pressed && root.interactive;
     }
 
     touch := ClickArea {
-        enabled: root.enabled;
+        enabled: root.interactive;
         above-modal: root.above-modal;
         label: root.label;
-        ring-radius: root.radius;
+        ring-inset: -root.ring-outset;
+        ring-radius: root.radius + root.ring-outset;
         clicked => {
             root.clicked();
         }
     }
 
-    IconDisplay {
+    if !root.busy: IconDisplay {
         icon: root.icon;
         size: root.icon-size;
         stroke: root.tint;
+    }
+
+    if root.busy: HorizontalLayout {
+        alignment: center;
+
+        DotPulse {
+            dot-size: Space.sm;
+            tint: root.tint;
+        }
     }
 }
 
 export component HeaderIconButton inherits IconButton {
     in property <bool> active;
 
-    radius: Radius.sm;
     icon-size: IconSize.md;
     tint: root.active ? Palette.accent-background : AppStyle.foreground-strong;
 }
@@ -165,6 +158,14 @@ export component LinkButton inherits ClickArea {
     in property <length> pad;
 
     width: caption.preferred-width + root.pad;
+    opacity: root.enabled ? 1 : Opacity.disabled;
+
+    StateLayer {
+        border-radius: root.ring-radius;
+        ink: root.tint;
+        hovered: root.has-hover && root.enabled;
+        pressed: root.pressed && root.enabled;
+    }
 
     caption := Text {
         text: root.text;

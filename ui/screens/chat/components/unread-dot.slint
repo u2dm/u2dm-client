@@ -1,7 +1,7 @@
 import { Palette } from "std-widgets.slint";
 import { IconDisplay, IconSet } from "@lucide";
 
-import { IconSize, Metrics, Size, Space, Stroke } from "../../../theme.slint";
+import { AppStyle, IconSize, Metrics, Size, Space, Stroke } from "../../../theme.slint";
 
 export component UnreadDot inherits Rectangle {
     in property <bool> alert;
@@ -16,7 +16,7 @@ export component UnreadDot inherits Rectangle {
         ? Palette.accent-background
         : Palette.foreground;
     border-width: root.ringed || root.mention ? Stroke.emphasis : 0;
-    border-color: Palette.alternate-background;
+    border-color: AppStyle.nav;
 
     if root.mention: IconDisplay {
         x: (parent.width - self.width) / 2;

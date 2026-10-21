@@ -53,7 +53,7 @@ export component LocationMessage inherits HorizontalLayout {
             if root.can-open: Text {
                 text: @tr("Open in OpenStreetMap");
                 font-size: Fonts.body-small;
-                color: root.msg.is-own ? AppStyle.own-link : AppStyle.link;
+                color: root.msg.is-own ? AppStyle.link-own : AppStyle.link;
                 overflow: elide;
             }
         }

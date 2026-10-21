@@ -21,6 +21,7 @@ mod finger_direction;
 mod focus;
 mod handoff;
 mod mention;
+mod motion;
 mod multiplex;
 mod notices;
 mod output;

@@ -154,7 +154,6 @@ component MediaFailurePanel inherits VerticalLayout {
             height: root.action-height;
             pad: root.cramped ? Space.sm : Space.lg;
             fill: AppStyle.overlay-hover;
-            hover-lift: 0.25;
             label: root.external-label;
             clicked => {
                 Actions.open-media(root.msg.event-id);
@@ -223,7 +222,7 @@ export component MediaFrame inherits VerticalLayout {
         Rectangle {
             width: root.display-width;
             height: root.display-height;
-            background: root.ready ? transparent : Palette.alternate-background;
+            background: root.ready ? transparent : AppStyle.bubble;
             clip: true;
 
             media-click := ClickArea {

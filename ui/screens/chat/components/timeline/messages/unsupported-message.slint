@@ -3,10 +3,11 @@ import { AppStyle, Fonts, Radius, Space } from "../../../../../theme.slint";
 
 export component UnsupportedMessage inherits Rectangle {
     in property <MessageEntry> msg;
+    property <color> muted: root.msg.is-own ? AppStyle.overlay-foreground-muted-own : AppStyle.overlay-foreground-muted;
 
     height: layout.preferred-height;
     border-radius: Radius.xs;
-    background: AppStyle.overlay-hover;
+    background: AppStyle.well;
 
     layout := HorizontalLayout {
         padding: Space.md;
@@ -28,7 +29,7 @@ export component UnsupportedMessage inherits Rectangle {
                 text: @tr("Unsupported message type: {}", root.msg.unsupported-kind);
                 font-size: Fonts.label;
                 font-italic: true;
-                color: AppStyle.foreground-muted;
+                color: root.muted;
                 vertical-alignment: center;
                 wrap: word-wrap;
             }
@@ -37,7 +38,7 @@ export component UnsupportedMessage inherits Rectangle {
                 text: root.msg.body;
                 font-size: Fonts.label;
                 font-italic: true;
-                color: AppStyle.foreground-muted;
+                color: root.muted;
                 vertical-alignment: center;
                 wrap: word-wrap;
             }

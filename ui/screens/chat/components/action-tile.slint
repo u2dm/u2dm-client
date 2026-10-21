@@ -3,6 +3,7 @@ import { IconDisplay, Icon } from "@lucide";
 
 import { ClickArea } from "../../../components/a11y.slint";
 import { DotPulse } from "../../../components/dot-pulse.slint";
+import { StateLayer } from "../../../components/state-layer.slint";
 import { AppStyle, Fonts, IconSize, Opacity, Radius, Space, Weight } from "../../../theme.slint";
 
 export component ActionTile inherits ClickArea {
@@ -15,22 +16,19 @@ export component ActionTile inherits ClickArea {
         return root.destructive ? AppStyle.danger : Palette.foreground;
     }
 
-    pure function fill() -> brush {
-        if root.destructive {
-            return root.has-hover || root.pressed ? AppStyle.danger-border : AppStyle.danger-background;
-        }
-        if root.pressed {
-            return AppStyle.overlay-pressed;
-        }
-        return root.has-hover ? AppStyle.overlay-hover : AppStyle.overlay-subtle;
-    }
-
     above-modal: true;
     label: root.text;
     ring-radius: Radius.md;
     border-radius: Radius.md;
-    background: root.fill();
+    background: root.destructive ? AppStyle.danger-background : AppStyle.control;
     opacity: root.enabled || root.busy ? 1.0 : Opacity.disabled;
+
+    StateLayer {
+        border-radius: root.border-radius;
+        ink: root.tint();
+        hovered: root.has-hover && root.enabled;
+        pressed: root.pressed && root.enabled;
+    }
 
     VerticalLayout {
         alignment: center;

@@ -167,6 +167,7 @@ fn run(room_logs: Arc<RoomLogs>) -> Result<()> {
         backend.handoff.as_ref(),
         backend.call_video,
     );
+    ui.follow_motion(backend.appearance.as_ref());
     drop(cmd_tx.send(UiCommand::RestoreSession));
     if let Some(link) = link {
         open_external_link(&cmd_tx, link);

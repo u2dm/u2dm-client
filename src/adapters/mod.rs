@@ -1,3 +1,5 @@
+#[cfg(feature = "matrix")]
+pub mod appearance;
 pub mod body_emoji;
 #[cfg(feature = "matrix")]
 pub mod browser;

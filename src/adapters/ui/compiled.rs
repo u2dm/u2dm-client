@@ -29,8 +29,8 @@ use u2dm_ui::{
     LoginActivity as UiLoginActivity, LoginMethodKind as UiLoginMethodKind, LoginPhase, LoginView,
     LogoutView, MediaFailure as UiMediaFailure, MediaState as UiMediaState, MemberEntry,
     MemberRole as UiMemberRole, MemberRowKind as UiMemberRowKind, MentionWord, MentionsView,
-    MessageEntry, MessageKind as UiMessageKind, Moderation as UiModeration, NotificationText,
-    NotifyMode as UiNotifyMode, PackCell, PackOrigin as UiPackOrigin, PackRow,
+    MessageEntry, MessageKind as UiMessageKind, Moderation as UiModeration, Motion,
+    NotificationText, NotifyMode as UiNotifyMode, PackCell, PackOrigin as UiPackOrigin, PackRow,
     PackSurface as UiPackSurface, PackTabEntry, PackView,
     PeopleSearchStatus as UiPeopleSearchStatus, PollAnswerEntry, PollPhase as UiPollPhase,
     PresenceLine as UiPresenceLine, PresenceView, PreviewKind as UiPreviewKind, ReactionEntry,
@@ -106,7 +106,7 @@ use super::schema::{
 };
 use super::session::active_models;
 use super::video::{self, millis_to_duration};
-use super::{audio, emoji, emote, mention, router};
+use super::{audio, emoji, emote, mention, motion, router};
 use crate::app::input::CommandSender;
 use crate::commands::effects::{Effect, VerificationActivity};
 use crate::commands::messages::{UserMessage, UserMessageKind};
@@ -138,6 +138,7 @@ use crate::domain::timeline::{SourceEncryption, TimelineStatus};
 use crate::domain::user_info::{DeviceTrust, IdentityTrust, RoomMembership};
 use crate::domain::verification::VerificationEmoji as DomainVerificationEmoji;
 use crate::error::Result;
+use crate::ports::appearance::AppearancePort;
 use crate::ports::call::CallVideoPort;
 use crate::ports::handoff::HandoffPort;
 use crate::ports::media::MediaCache;
@@ -952,6 +953,10 @@ impl SlintUiAdapter {
             handoff,
             call_video,
         );
+    }
+
+    pub fn follow_motion(&self, appearance: &dyn AppearancePort) {
+        motion::follow_motion::<CompiledBackend>(&self.window, appearance);
     }
 
     pub fn run(&self) -> Result<()> {

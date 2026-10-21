@@ -13,9 +13,13 @@ export component NowPlayingBar inherits Rectangle {
     property <bool> in-this-room: AudioView.room-id == DirectoryView.selected-room-id;
 
     height: Metrics.now-playing-bar;
-    background: AppStyle.surface-raised;
+    background: AppStyle.canvas;
     accessible-role: groupbox;
     accessible-label: @tr("Now playing");
+
+    Rectangle {
+        background: AppStyle.control;
+    }
 
     HorizontalLayout {
         padding-left: Space.sm;
@@ -25,7 +29,6 @@ export component NowPlayingBar inherits Rectangle {
         IconButton {
             cross-axis-self-alignment: center;
             size: Size.md;
-            radius: Radius.md;
             icon-size: IconSize.md;
             enabled: !AudioView.loading;
             tint: Palette.accent-background;
@@ -92,7 +95,6 @@ export component NowPlayingBar inherits Rectangle {
         IconButton {
             cross-axis-self-alignment: center;
             size: Size.md;
-            radius: Radius.md;
             icon-size: IconSize.sm;
             icon: IconSet.X;
             label: @tr("Close the player");

@@ -21,6 +21,7 @@ mod logout;
 mod matrix;
 mod media;
 mod message_menu;
+mod motion;
 mod msgtypes;
 mod names;
 pub mod notifications;
@@ -51,6 +52,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use super::ui::SlintUiAdapter;
+use crate::ports::appearance::AppearancePort;
 use crate::ports::browser::BrowserPort;
 use crate::ports::call::{CallMediaPort, CallVideoPort};
 use crate::ports::handoff::HandoffPort;
@@ -107,6 +109,10 @@ pub fn call_media() -> (Arc<dyn CallMediaPort>, Arc<dyn CallVideoPort>) {
 
 pub fn handoff() -> Arc<dyn HandoffPort> {
     handoff::port()
+}
+
+pub fn appearance() -> Arc<dyn AppearancePort> {
+    motion::port()
 }
 
 pub fn handoff_socket() -> Option<PathBuf> {

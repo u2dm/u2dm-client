@@ -6,7 +6,7 @@ import { ReactionKeys } from "../../../../messages.slint";
 import { Avatar } from "../../../../components/avatar.slint";
 import { Pill } from "../../../../components/pill.slint";
 import { AnchorRect, Reactions } from "../../../../local.slint";
-import { AppStyle, Fonts, Glyph, IconSize, Metrics, Opacity, Space, Stroke, Weight } from "../../../../theme.slint";
+import { AppStyle, Fonts, Glyph, IconSize, Metrics, Opacity, Space, Weight } from "../../../../theme.slint";
 import { CustomEmojiImage } from "./custom-emoji.slint";
 
 export component ReactionGlyph inherits HorizontalLayout {
@@ -57,18 +57,10 @@ component ReactionChip inherits Pill {
     property <bool> shows-faces: root.entry.avatars.length > 0;
     property <bool> failed: root.entry.send == ReactionSend.failed;
 
-    property <color> mine-fill: AppStyle.chip-fill-mine;
-    property <color> other-fill: root.is-own
-        ? AppStyle.chip-fill
-        : AppStyle.overlay-hover;
-
     height: Metrics.reaction-chip;
-    border-width: root.entry.mine || root.failed ? Stroke.hairline : 0;
-    border-color: root.failed ? AppStyle.danger-border : AppStyle.accent-border;
     fill: root.failed
         ? AppStyle.danger-background
-        : root.entry.mine ? root.mine-fill : root.other-fill;
-    hover-lift: !root.enabled ? 0 : root.entry.mine ? 0.15 : 0.25;
+        : root.entry.mine ? AppStyle.chip-fill-mine : (root.is-own ? AppStyle.chip-fill : AppStyle.overlay-hover);
     hovers-when-disabled: true;
     opacity: root.entry.send == ReactionSend.sending ? Opacity.pending : 1;
 
@@ -87,9 +79,7 @@ component ReactionChip inherits Pill {
         text: root.entry.overflow ? "+" + root.entry.count : root.entry.count;
         font-size: Fonts.body-small;
         font-weight: Weight.semibold;
-        color: root.entry.mine
-            ? Palette.accent-background
-            : AppStyle.foreground-strong;
+        color: Palette.foreground;
         vertical-alignment: center;
     }
 }

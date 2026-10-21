@@ -4,6 +4,7 @@ import { ClickArea } from "../../../../../components/a11y.slint";
 import { SendState } from "../../../../../enums.slint";
 import { AppStyle, IconSize, Metrics } from "../../../../../theme.slint";
 import { UploadProgress } from "./media-frame.slint";
+import { StateLayer } from "../../../../../components/state-layer.slint";
 
 export component MediaButton inherits ClickArea {
     in property <Icon> icon;
@@ -20,8 +21,16 @@ export component MediaButton inherits ClickArea {
     width: Metrics.media-button;
     height: Metrics.media-button;
     border-radius: self.height / 2;
-    ring-radius: self.height / 2;
+    ring-inset: -Metrics.ring-outset;
+    ring-radius: self.height / 2 + Metrics.ring-outset;
     background: root.msg.is-own ? AppStyle.media-button-own : AppStyle.media-button;
+
+    StateLayer {
+        border-radius: root.border-radius;
+        ink: root.glyph;
+        hovered: root.has-hover && root.enabled;
+        pressed: root.pressed && root.enabled;
+    }
 
     if !root.spinning: IconDisplay {
         x: (parent.width - self.width) / 2;

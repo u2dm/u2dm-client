@@ -5,10 +5,11 @@ import { AttachmentKind, UserMessageKind } from "../../../../enums.slint";
 import { AttachmentView, DirectoryView } from "../../../../views.slint";
 import { Actions } from "../../../../actions.slint";
 import { Composer, Reactions, ReplyDraft, Shell } from "../../../../local.slint";
-import { AppStyle, Fonts, IconSize, Metrics, Radius, Space, Weight } from "../../../../theme.slint";
+import { AppStyle, Fonts, IconSize, Metrics, Radius, Space, Stroke, Weight } from "../../../../theme.slint";
 import { ErrorBanner } from "../../../../components/banner.slint";
 import { CheckRow } from "../../../../components/check-row.slint";
 import { DialogCard, ModalHost } from "../../../../components/overlay.slint";
+import { FocusRing, FocusTrail } from "../../../../components/a11y.slint";
 import { ComposerField } from "./composer-field.slint";
 import { EmotePopup } from "./emote-popup.slint";
 import { MentionPopup } from "./mention-popup.slint";
@@ -152,6 +153,13 @@ export component AttachmentDialog inherits ModalHost {
     property <length> picker-headroom: field.absolute-position.y - 2 * Space.md;
     property <length> field-x: field.absolute-position.x - root.absolute-position.x;
     property <length> field-y: field.absolute-position.y - root.absolute-position.y;
+    property <bool> field-focused: field.input-focused;
+
+    changed field-focused => {
+        if !self.field-focused {
+            FocusTrail.leave();
+        }
+    }
 
     pure function heading() -> string {
         if root.as-document || AttachmentView.kind == AttachmentKind.file {
@@ -250,7 +258,6 @@ export component AttachmentDialog inherits ModalHost {
                 }
 
                 field := ComposerField {
-                    background: AppStyle.page;
                     above-modal: true;
                     text <=> root.caption;
                     placeholder: @tr("Add a caption...");
@@ -290,6 +297,15 @@ export component AttachmentDialog inherits ModalHost {
                 }
             }
         }
+    }
+
+    if root.field-focused: FocusRing {
+        x: root.field-x;
+        y: root.field-y;
+        width: field.width;
+        height: field.height;
+        radius: field.border-radius;
+        thickness: Stroke.hairline;
     }
 
     mentions := MentionPopup {

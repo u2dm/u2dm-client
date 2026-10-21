@@ -16,7 +16,7 @@ import {
 } from "../../../../local.slint";
 import { Actions } from "../../../../actions.slint";
 import { RoomView } from "../../../../views.slint";
-import { Fonts, Glyph, IconSize, Metrics, Motion, Size, Space, Weight } from "../../../../theme.slint";
+import { AppStyle, Fonts, Glyph, IconSize, Metrics, Motion, Size, Space, Weight } from "../../../../theme.slint";
 
 enum RowAction {
     edit,
@@ -47,7 +47,7 @@ export component RowActions inherits Rectangle {
     property <length> pill-height: Size.target-min + 2 * Space.xs;
     property <length> pill-gap: Space.sm;
     property <length> pill-overlap: Space.sm;
-    property <color> pill-fill: Palette.alternate-background;
+    property <color> pill-fill: AppStyle.elevated;
     property <color> pill-foreground: Palette.accent-background;
 
     out property <bool> hovered: root.has-actions

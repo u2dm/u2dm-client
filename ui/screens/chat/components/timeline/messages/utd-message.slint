@@ -5,6 +5,7 @@ import { AppStyle, Fonts, IconSize, Radius, Space } from "../../../../../theme.s
 
 export component UtdMessage inherits Rectangle {
     in property <MessageEntry> msg;
+    property <color> muted: root.msg.is-own ? AppStyle.overlay-foreground-muted-own : AppStyle.overlay-foreground-muted;
 
     property <DecryptionFailure> failure: root.msg.decryption-failure;
     property <bool> refused: root.failure == DecryptionFailure.unsigned-device
@@ -43,7 +44,7 @@ export component UtdMessage inherits Rectangle {
 
     height: layout.preferred-height;
     border-radius: Radius.xs;
-    background: AppStyle.overlay-hover;
+    background: AppStyle.well;
 
     layout := HorizontalLayout {
         padding: Space.md;
@@ -55,14 +56,14 @@ export component UtdMessage inherits Rectangle {
         IconDisplay {
             icon: root.refused ? IconSet.ShieldAlert : IconSet.LockKeyhole;
             size: IconSize.sm;
-            stroke: AppStyle.overlay-foreground-muted;
+            stroke: root.muted;
         }
 
         Text {
             text: root.reason();
             font-size: Fonts.label;
             font-italic: true;
-            color: AppStyle.overlay-foreground-muted;
+            color: root.muted;
             vertical-alignment: center;
             wrap: word-wrap;
         }

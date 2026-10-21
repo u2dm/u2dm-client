@@ -7,6 +7,7 @@ import { Actions } from "../../../../../actions.slint";
 import { Polls, ReactionPopup, Reactions } from "../../../../../local.slint";
 import { RoomView } from "../../../../../views.slint";
 import { AppStyle, Fonts, IconSize, Metrics, Radius, Space, Stroke, Weight } from "../../../../../theme.slint";
+import { StateLayer } from "../../../../../components/state-layer.slint";
 
 component RadioArea inherits ClickArea {
     accessible-role: radio-button;
@@ -61,6 +62,10 @@ global PollColors {
     public pure function mark(is-own: bool) -> color {
         return is-own ? AppStyle.poll-mark-own : AppStyle.poll-mark;
     }
+
+    public pure function muted(is-own: bool) -> color {
+        return is-own ? AppStyle.overlay-foreground-muted-own : AppStyle.overlay-foreground-muted;
+    }
 }
 
 component PollMark inherits Rectangle {
@@ -73,7 +78,7 @@ component PollMark inherits Rectangle {
     height: Metrics.poll-indicator;
     border-radius: root.multiple ? Radius.xs : self.width / 2;
     border-width: root.checked || !root.shown ? 0 : Stroke.emphasis;
-    border-color: AppStyle.overlay-foreground-muted;
+    border-color: PollColors.muted(root.is-own);
     background: !root.checked ? transparent : PollColors.mark(root.is-own);
 
     if root.checked: IconDisplay {
@@ -88,6 +93,7 @@ component PollMark inherits Rectangle {
 component PollTally inherits HorizontalLayout {
     in property <PollAnswerEntry> answer;
     in property <bool> reveals;
+    in property <bool> is-own;
     in property <color> fill;
 
     padding-left: Metrics.poll-indicator + Space.md;
@@ -114,7 +120,7 @@ component PollTally inherits HorizontalLayout {
         text: root.reveals ? root.answer.count : "";
         font-size: Fonts.caption;
         font-weight: root.answer.leading ? Weight.bold : Weight.regular;
-        color: AppStyle.overlay-foreground-muted;
+        color: PollColors.muted(root.is-own);
         horizontal-alignment: right;
         vertical-alignment: center;
         overflow: elide;
@@ -199,6 +205,7 @@ component PollAnswerRow inherits Rectangle {
         PollTally {
             answer: root.answer;
             reveals: root.reveals;
+            is-own: root.is-own;
             fill: root.fill;
         }
     }
@@ -211,14 +218,21 @@ component PollFooterButton inherits ClickArea {
     in property <bool> destructive;
     in property <bool> is-own;
 
+    property <color> caption-color: root.destructive ? AppStyle.poll-end-text : PollColors.mark(root.is-own);
+
     width: max(caption.preferred-width, other-caption.preferred-width) + 2 * Space.md;
     height: Metrics.poll-footer;
     border-radius: self.height / 2;
     ring-radius: self.height / 2;
     label: caption.text;
-    background: root.destructive
-        ? AppStyle.poll-end-fill
-        : (self.has-hover ? AppStyle.overlay-hover : transparent);
+    background: root.destructive ? AppStyle.poll-end-fill : transparent;
+
+    StateLayer {
+        border-radius: root.border-radius;
+        ink: root.caption-color;
+        hovered: root.has-hover && root.enabled;
+        pressed: root.pressed && root.enabled;
+    }
 
     other-caption := Text {
         visible: false;
@@ -232,9 +246,7 @@ component PollFooterButton inherits ClickArea {
         text: root.flipped ? root.flipped-text : root.text;
         font-size: Fonts.caption;
         font-weight: Weight.semibold;
-        color: root.destructive
-            ? AppStyle.poll-end-text
-            : PollColors.mark(root.is-own);
+        color: root.caption-color;
         horizontal-alignment: center;
         vertical-alignment: center;
     }
@@ -377,7 +389,7 @@ export component PollMessage inherits Rectangle {
                 ? @tr("Choose any number of answers")
                 : @tr("Choose up to {n} answer" | "Choose up to {n} answers" % root.msg.poll-choices);
             font-size: Fonts.caption;
-            color: AppStyle.overlay-foreground-muted;
+            color: PollColors.muted(root.msg.is-own);
             wrap: word-wrap;
         }
 
@@ -404,7 +416,7 @@ export component PollMessage inherits Rectangle {
             Text {
                 text: root.confirming-end ? @tr("End the poll for everyone?") : root.summary();
                 font-size: Fonts.caption;
-                color: AppStyle.overlay-foreground-muted;
+                color: PollColors.muted(root.msg.is-own);
                 vertical-alignment: center;
                 overflow: elide;
                 horizontal-stretch: 1;

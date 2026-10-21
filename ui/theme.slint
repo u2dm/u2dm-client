@@ -32,9 +32,12 @@ export global Radius {
 }
 
 export global Motion {
+    in property <bool> reduced: false;
     out property <duration> fast: 120ms;
     out property <duration> normal: 150ms;
     out property <duration> slow: 200ms;
+    out property <duration> ring-lead: 150ms;
+    out property <duration> ring-trail: 260ms;
     out property <duration> close-delay: 160ms;
     out property <duration> reveal-delay: 350ms;
     out property <duration> submenu-delay: 200ms;
@@ -42,6 +45,10 @@ export global Motion {
     out property <duration> scroll-settle: 60ms;
     out property <duration> scroll-judge: 250ms;
     out property <duration> scrollbar-linger: 1000ms;
+
+    public pure function travel(span: duration) -> duration {
+        return root.reduced ? 0ms : span;
+    }
 }
 
 export global Glyph {
@@ -70,6 +77,8 @@ export global Opacity {
     out property <float> pending: 0.55;
     out property <float> scrim: 0.45;
     out property <float> scrim-strong: 0.65;
+    out property <float> hover-layer: 0.08;
+    out property <float> press-layer: 0.12;
 }
 
 export global Tracking {
@@ -101,8 +110,17 @@ export global AppStyle {
     out property <bool> dark: Palette.color-scheme == ColorScheme.dark;
     out property <float> dialog-scrim: root.dark ? Opacity.scrim-strong : Opacity.scrim;
 
-    out property <brush> page: root.dark ? Palette.background : Palette.alternate-background;
-    out property <brush> card: root.dark ? Palette.alternate-background : Palette.background;
+    out property <color> canvas: Palette.background;
+    out property <color> nav: Palette.alternate-background;
+    out property <color> nav-hover: Palette.background.mix(Palette.alternate-background, 0.5);
+    out property <color> pane: root.nav;
+    out property <color> bubble: Palette.alternate-background;
+    out property <color> bubble-own: Palette.accent-background.mix(Palette.background, 0.6);
+    out property <color> bubble-mention: Colors.goldenrod.mix(root.bubble, 0.14);
+    out property <color> control: Palette.foreground.transparentize(1 - Opacity.hover-layer);
+    out property <color> well: Palette.background.transparentize(0.6);
+    out property <color> elevated: root.dark ? Palette.foreground.mix(Palette.background, 0.12) : Colors.white;
+    out property <color> elevated-edge: root.dark ? root.canvas : root.border;
 
     out property <color> foreground-strong: Palette.foreground.mix(Palette.background, 0.7);
     out property <color> foreground-muted: Palette.foreground.mix(Palette.background, 0.62);
@@ -110,15 +128,12 @@ export global AppStyle {
     out property <color> foreground-disabled: Palette.foreground.mix(Palette.background, 0.32);
 
     out property <color> link: Palette.accent-background;
-    out property <color> own-link: Palette.foreground;
+    out property <color> link-own: Palette.foreground;
 
     out property <color> border: Palette.foreground.mix(Palette.background, 0.12);
-    out property <color> accent-background-soft: Palette.accent-background.mix(Palette.background, 0.15);
+    out property <color> accent-background-soft: Palette.accent-background.transparentize(0.85);
     out property <color> accent-divider: Palette.accent-background.mix(Palette.background, 0.3);
     out property <color> accent-surface: Palette.accent-background.mix(Palette.background, 0.55);
-    out property <color> own-bubble: Palette.accent-background.mix(Palette.background, 0.6);
-    out property <color> mention-bubble: Colors.goldenrod.mix(Palette.alternate-background, 0.14);
-    out property <color> accent-border: Palette.accent-background.mix(Palette.background, 0.65);
     out property <color> accent-on-surface: Palette.accent-background.mix(Palette.background, 0.8);
     out property <color> on-accent-strong: Palette.accent-foreground.mix(Palette.accent-background, 0.15);
     out property <color> on-accent-muted: Palette.accent-foreground.mix(Palette.accent-background, 0.75);
@@ -134,8 +149,8 @@ export global AppStyle {
     out property <color> call-live-background: root.success-background;
     out property <color> call-decline: Colors.tomato.darker(0.25);
     out property <color> call-accept: Colors.mediumseagreen.darker(0.25);
-    out property <color> call-band: Palette.alternate-background;
-    out property <color> call-tile: root.surface-raised;
+    out property <color> call-band: root.nav;
+    out property <color> call-tile: root.elevated;
     out property <color> call-speaking: Palette.accent-background;
     out property <color> call-sharing: Palette.accent-background;
     out property <color> on-call-sharing: Palette.accent-foreground;
@@ -146,14 +161,10 @@ export global AppStyle {
     out property <color> status-pending: Colors.goldenrod;
     out property <color> status-error: Colors.tomato;
 
-    out property <color> surface-raised: Palette.background.mix(Palette.alternate-background, 0.5);
-    out property <color> surface-panel: Palette.background.mix(Palette.alternate-background, 0.6);
-    out property <color> surface-rail: Palette.alternate-background.mix(Palette.background, 0.35);
-
     out property <color> media-button: Palette.accent-background;
     out property <color> on-media-button: Palette.accent-foreground;
     out property <color> media-button-own: root.dark ? Palette.foreground : Palette.background;
-    out property <color> on-media-button-own: root.dark ? root.own-bubble : Palette.accent-background;
+    out property <color> on-media-button-own: root.dark ? root.bubble-own : Palette.accent-background;
     out property <color> audio-wave-played: Palette.accent-background;
     out property <color> audio-wave-played-own: Palette.foreground;
     out property <color> delivery-read: Palette.foreground;
@@ -167,7 +178,7 @@ export global AppStyle {
     out property <color> poll-mark-own: root.audio-wave-played-own;
     out property <color> poll-mark-faded: Palette.foreground.transparentize(0.55);
     out property <color> poll-check: Palette.accent-foreground;
-    out property <color> poll-check-own: root.own-bubble;
+    out property <color> poll-check-own: root.bubble-own;
     out property <color> poll-bar-rest: root.scrub-track;
     out property <color> poll-end-fill: root.delivery-failed;
     out property <color> poll-end-text: root.delivery-failed-glyph;
@@ -175,12 +186,13 @@ export global AppStyle {
     out property <color> chip-fill: Palette.background.transparentize(0.78);
     out property <color> chip-fill-mine: Palette.accent-background.transparentize(0.72);
 
-    out property <color> overlay-pressed: Palette.foreground.transparentize(0.88);
-    out property <color> overlay-hover: Palette.foreground.transparentize(0.92);
+    out property <color> overlay-pressed: Palette.foreground.transparentize(1 - Opacity.press-layer);
+    out property <color> overlay-hover: Palette.foreground.transparentize(1 - Opacity.hover-layer);
     out property <color> overlay-subtle: Palette.foreground.transparentize(0.955);
     out property <color> overlay-foreground-muted: Palette.foreground.transparentize(0.38);
+    out property <color> overlay-foreground-muted-own: Palette.foreground.transparentize(0.25);
     out property <color> notice-text: root.overlay-foreground-muted;
-    out property <color> notice-text-own: Palette.foreground.transparentize(0.25);
+    out property <color> notice-text-own: root.overlay-foreground-muted-own;
     out property <color> overlay-media-scrim: Palette.background.transparentize(0.3);
     out property <color> overlay-sticker-scrim: Palette.background.transparentize(0.15);
 
@@ -196,6 +208,16 @@ export global AppStyle {
     out property <length> card-padding: 32px;
     out property <length> card-padding-dense: Space.xxl;
     out property <length> control-height: 48px;
+
+    public pure function state-layer(ink: color, hovered: bool, pressed: bool) -> color {
+        if pressed {
+            return ink.transparentize(1 - Opacity.press-layer);
+        }
+        if hovered {
+            return ink.transparentize(1 - Opacity.hover-layer);
+        }
+        return ink.transparentize(1);
+    }
 }
 
 export global Metrics {
@@ -205,6 +227,8 @@ export global Metrics {
     out property <length> reply-bar: 44px;
     out property <length> timeline-gap: Space.md;
     out property <length> timeline-inset: Space.lg;
+    out property <length> ring-outset: Stroke.emphasis + Space.xs;
+    out property <length> ring-bloom: Space.md;
 
     out property <length> space-rail: 72px;
     out property <length> subspace-rail: 68px;
