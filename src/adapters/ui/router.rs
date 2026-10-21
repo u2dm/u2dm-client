@@ -199,6 +199,10 @@ pub fn share_screen(tx: &Tx, on: bool) {
     send_command(tx, UiCommand::ShareScreen(on));
 }
 
+pub fn show_self_view(tx: &Tx, on: bool) {
+    send_command(tx, UiCommand::ShowSelfView(on));
+}
+
 pub fn use_recovery_key(tx: &Tx, key: String) {
     if key.trim().is_empty() {
         return;

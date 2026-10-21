@@ -1,120 +1,205 @@
 import { IconDisplay, IconSet } from "@lucide";
 
-import { IconButton } from "../../../../components/button.slint";
+import { IconButton, LinkButton } from "../../../../components/button.slint";
+import { Actions } from "../../../../actions.slint";
 import { CallNotice, CallScreen } from "../../../../enums.slint";
 import { CallWords } from "../../../../messages.slint";
-import { Shell } from "../../../../local.slint";
+import { CallPanel, CallSize } from "../../../../local.slint";
 import { CallView } from "../../../../views.slint";
-import { AppStyle, Fonts, IconSize, Metrics, Size, Space, Stroke, Weight } from "../../../../theme.slint";
+import { AppStyle, Fonts, IconSize, Metrics, Motion, Size, Space, Stroke, Weight } from "../../../../theme.slint";
 import { CallCameraButton, CallLeaveButton, CallMicButton, CallShareButton } from "./call-controls.slint";
+import { CallStage } from "./call-stage.slint";
 import { CallStatus } from "./call-status.slint";
-import { CallTileView } from "./call-tile.slint";
 
-component CallTiles inherits Flickable {
-    property <length> gap: Space.sm;
-    property <int> count: max(1, CallView.tiles.length);
-    property <float> aspect: Metrics.call-tile-aspect;
-    property <int> guess: clamp(
-        round(sqrt(root.count * root.width / max(1px, root.height) / root.aspect)), 1, root.count);
-    property <int> fewer: max(1, root.guess - 1);
-    property <int> more: min(root.count, root.guess + 1);
-    property <int> best: root.width-for(root.guess) >= root.width-for(root.fewer)
-        ? (root.width-for(root.guess) >= root.width-for(root.more) ? root.guess : root.more)
-        : (root.width-for(root.fewer) >= root.width-for(root.more) ? root.fewer : root.more);
-    property <bool> crowded: root.width-for(root.best) < Metrics.call-tile-min-width;
-    property <int> columns: root.crowded
-        ? clamp(floor((root.width + root.gap) / (Metrics.call-tile-min-width + root.gap)), 1, root.count)
-        : root.best;
-    property <length> tile-width: root.crowded ? min(Metrics.call-tile-min-width, root.width) : root.width-for(root.best);
-    property <length> tile-height: root.tile-width / root.aspect;
-    property <int> rows: ceil(CallView.tiles.length / root.columns);
-    property <length> grid-height: root.rows * (root.tile-height + root.gap) - root.gap;
-    property <length> row-width: min(root.columns, root.count) * root.tile-width + (min(root.columns, root.count) - 1) * root.gap;
-    property <length> top: max(0px, (root.height - root.grid-height) / 2);
-    property <int> last-row-count: CallView.tiles.length - (root.rows - 1) * root.columns;
-    property <length> last-row-indent: (root.columns - root.last-row-count) * (root.tile-width + root.gap) / 2;
-    property <bool> spotlight: CallView.tiles[0].screen;
-    property <int> strip-count: CallView.tiles.length - 1;
-    property <length> strip-height: root.strip-count > 0 ? min(Metrics.call-strip-max, root.height * Metrics.call-strip-share) : 0px;
-    property <length> strip-tile-width: root.strip-count > 0
-        ? min(root.strip-height * root.aspect, (root.width - (root.strip-count - 1) * root.gap) / root.strip-count)
-        : 0px;
-    property <length> strip-tile-height: root.strip-tile-width / root.aspect;
-    property <length> strip-left: (root.width - root.strip-count * root.strip-tile-width - max(0, root.strip-count - 1) * root.gap) / 2;
-    property <length> strip-top: root.height - root.strip-height + (root.strip-height - root.strip-tile-height) / 2;
-    property <length> spot-height: root.height - (root.strip-count > 0 ? root.strip-height + root.gap : 0px);
+component SharingLine inherits HorizontalLayout {
+    spacing: Space.md;
 
-    pure function width-for(columns: int) -> length {
-        min(
-            (root.width - (columns - 1) * root.gap) / columns,
-            (root.height - (ceil(root.count / columns) - 1) * root.gap) / ceil(root.count / columns) * root.aspect)
+    IconDisplay {
+        cross-axis-self-alignment: center;
+        icon: IconSet.ScreenShare;
+        size: IconSize.sm;
+        stroke: AppStyle.call-sharing;
+        accessible-role: none;
     }
 
-    content-height: root.spotlight ? root.height : max(root.height, root.grid-height);
-    interactive: self.content-height > self.height;
+    Text {
+        horizontal-stretch: 1;
+        text: @tr("You are sharing your screen");
+        font-size: Fonts.body-small;
+        font-weight: Weight.semibold;
+        color: AppStyle.foreground-strong;
+        vertical-alignment: center;
+        overflow: elide;
+    }
 
-    for tile[i] in CallView.tiles: CallTileView {
-        x: !root.spotlight
-            ? (root.width - root.row-width) / 2 + mod(i, root.columns) * (root.tile-width + root.gap)
-                + (floor(i / root.columns) == root.rows - 1 ? root.last-row-indent : 0px)
-            : i == 0 ? 0px : root.strip-left + (i - 1) * (root.strip-tile-width + root.gap);
-        y: !root.spotlight
-            ? root.top + floor(i / root.columns) * (root.tile-height + root.gap)
-            : i == 0 ? 0px : root.strip-top;
-        width: !root.spotlight ? root.tile-width : i == 0 ? root.width : root.strip-tile-width;
-        height: !root.spotlight ? root.tile-height : i == 0 ? root.spot-height : root.strip-tile-height;
-        tile: tile;
+    LinkButton {
+        min-height: Size.sm;
+        text: CallWords.stop-sharing(CallScreen.on);
+        label: CallWords.share(CallScreen.on, CallView.screen-refusal);
+        font-size: Fonts.body-small;
+        pad: 2 * Space.sm;
+        clicked => {
+            Actions.share-screen({ on: false });
+        }
     }
 }
 
 export component CallBand inherits Rectangle {
+    in property <CallSize> size;
+    in property <bool> stage-fits;
+
+    out property <length> natural-height: layout.preferred-height;
+    out property <length> menu-x: menu-button.absolute-position.x;
+    out property <length> menu-y: menu-button.absolute-position.y;
+    out property <length> menu-size: menu-button.height;
+
+    property <bool> compact: root.size == CallSize.compact;
+    property <bool> forced-full: root.size == CallSize.full && CallPanel.chosen == CallSize.stage;
+    property <bool> offers-chat: !root.compact && !root.forced-full;
     property <bool> explains-share;
+    property <bool> tells-share-ended;
+    property <int> ended-share-serial: CallView.ended-share-serial;
     property <bool> has-status: CallView.notice != CallNotice.none
-        || (root.explains-share && CallView.screen == CallScreen.unavailable);
+        || (root.explains-share && CallView.screen == CallScreen.unavailable)
+        || (root.tells-share-ended && !root.compact);
+    property <string> people: CallWords.people(CallView.people-first, CallView.people-second, CallView.people-more);
+    property <string> phase: CallWords.phase(CallView.phase, CallView.elapsed);
+    property <bool> stage-shows-share: CallView.stage.length > 0 && CallView.stage[0].screen;
+    property <string> share-to-view: root.compact && root.stage-shows-share
+        ? CallView.stage[0].name
+        : CallView.offered-share;
+
+    public function focus-menu() {
+        menu-button.take-focus();
+    }
+
+    function view-share() {
+        if !root.compact || !root.stage-shows-share {
+            Actions.view-call-share();
+        }
+        if root.compact {
+            CallPanel.chosen = CallSize.stage;
+        }
+    }
+
+    changed ended-share-serial => {
+        if root.ended-share-serial != 0 {
+            root.tells-share-ended = true;
+            ended-timer.running = false;
+            ended-timer.running = true;
+        }
+    }
+
+    ended-timer := Timer {
+        interval: Motion.notice-hold;
+        running: false;
+        triggered => {
+            root.tells-share-ended = false;
+            self.running = false;
+        }
+    }
 
     background: AppStyle.call-band;
     accessible-role: groupbox;
     accessible-label: @tr("Call in {}", CallView.active-room-name);
 
-    VerticalLayout {
+    layout := VerticalLayout {
         padding: Space.md;
         spacing: Space.sm;
 
-        HorizontalLayout {
-            spacing: Space.sm;
+        Rectangle {
+            height: Size.md;
 
-            if CallView.active-encrypted: IconDisplay {
-                cross-axis-self-alignment: center;
-                icon: IconSet.Lock;
-                size: IconSize.xs;
-                stroke: AppStyle.foreground-muted;
-                accessible-role: image;
-                accessible-label: @tr("The call is end-to-end encrypted");
-            }
-
-            Text {
-                horizontal-stretch: 1;
-                text: CallWords.phase(CallView.phase, CallView.elapsed);
-                font-size: Fonts.body-small;
-                font-weight: Weight.semibold;
-                color: AppStyle.foreground-muted;
-                vertical-alignment: center;
-                overflow: elide;
-                accessible-live-region: AccessibleLiveness.polite;
-            }
-
-            IconButton {
+            chat-toggle := IconButton {
+                x: parent.width - self.width;
+                y: (parent.height - self.height) / 2;
                 size: Size.md;
-                icon: Shell.call-maximized ? IconSet.Minimize2 : IconSet.Maximize2;
-                label: Shell.call-maximized ? @tr("Show the chat") : @tr("Hide the chat");
+                visible: root.offers-chat;
+                icon: root.size == CallSize.full ? IconSet.Minimize2 : IconSet.Maximize2;
+                label: root.size == CallSize.full ? @tr("Show the chat") : @tr("Hide the chat");
                 clicked => {
-                    Shell.call-maximized = !Shell.call-maximized;
+                    CallPanel.chosen = root.size == CallSize.full
+                        ? (root.stage-fits ? CallSize.stage : CallSize.compact)
+                        : CallSize.full;
+                }
+            }
+
+            size-toggle := IconButton {
+                x: (root.offers-chat ? chat-toggle.x - Space.sm : parent.width) - self.width;
+                y: (parent.height - self.height) / 2;
+                size: Size.md;
+                icon: root.compact ? IconSet.ChevronDown
+                    : root.forced-full ? IconSet.Minimize2
+                    : IconSet.ChevronUp;
+                label: root.compact ? @tr("Expand the call")
+                    : root.forced-full ? @tr("Show the chat")
+                    : @tr("Collapse the call");
+                clicked => {
+                    CallPanel.chosen = root.compact ? CallSize.stage : CallSize.compact;
+                }
+            }
+
+            menu-button := IconButton {
+                x: size-toggle.x - Space.sm - self.width;
+                y: (parent.height - self.height) / 2;
+                size: Size.md;
+                visible: !root.compact;
+                icon: IconSet.LayoutDashboard;
+                label: @tr("Call layout");
+                clicked => {
+                    CallPanel.menu-open = true;
+                }
+            }
+
+            view-share := LinkButton {
+                x: (root.compact ? size-toggle.x : menu-button.x) - Space.sm - self.width;
+                y: (parent.height - self.height) / 2;
+                height: Size.sm;
+                visible: root.share-to-view != "";
+                text: CallWords.view-share(root.share-to-view);
+                label: self.text;
+                font-size: Fonts.body-small;
+                pad: 2 * Space.sm;
+                clicked => {
+                    root.view-share();
+                }
+            }
+
+            HorizontalLayout {
+                x: 0;
+                width: (view-share.visible ? view-share.x : root.compact ? size-toggle.x : menu-button.x) - Space.sm;
+                spacing: Space.sm;
+
+                if CallView.active-encrypted: IconDisplay {
+                    cross-axis-self-alignment: center;
+                    icon: IconSet.Lock;
+                    size: IconSize.xs;
+                    stroke: AppStyle.foreground-muted;
+                    accessible-role: image;
+                    accessible-label: @tr("The call is end-to-end encrypted");
+                }
+
+                Text {
+                    horizontal-stretch: 1;
+                    text: root.people == "" ? root.phase : @tr("{} · {}", root.phase, root.people);
+                    font-family: Fonts.emoji;
+                    font-size: Fonts.body-small;
+                    font-weight: Weight.semibold;
+                    color: AppStyle.foreground-muted;
+                    vertical-alignment: center;
+                    overflow: elide;
+                    accessible-live-region: AccessibleLiveness.polite;
                 }
             }
         }
 
-        CallTiles {
+        if CallView.screen == CallScreen.on: SharingLine { }
+
+        if !root.compact: CallStage {
             vertical-stretch: 1;
+            preferred-height: 0;
+            fits-videos: CallPanel.fits-videos;
+            hides-strip: CallPanel.hides-strip;
         }
 
         HorizontalLayout {
@@ -134,7 +219,10 @@ export component CallBand inherits Rectangle {
             CallLeaveButton { }
         }
 
-        if root.has-status: CallStatus { }
+        if root.has-status: CallStatus {
+            explains-share: root.explains-share && CallView.screen == CallScreen.unavailable;
+            tells-share-ended: root.tells-share-ended && !root.compact;
+        }
     }
 
     Rectangle {

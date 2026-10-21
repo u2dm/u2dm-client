@@ -161,6 +161,15 @@ pub enum ProbeCommand {
     ShareScreen {
         on: bool,
     },
+    FocusCallTile {
+        key: String,
+    },
+    ShowCallFocus,
+    ShowCallGallery,
+    ViewCallShare,
+    ShowSelfView {
+        on: bool,
+    },
     JoinSuccessor {
         #[serde(default)]
         room_id: Option<String>,
@@ -915,6 +924,11 @@ pub fn to_driven(command: ProbeCommand, selected: Selection<'_>) -> Result<Drive
         ProbeCommand::SetMicrophone { on } => UiCommand::SetMicrophone(on),
         ProbeCommand::SetCamera { on } => UiCommand::SetCamera(on),
         ProbeCommand::ShareScreen { on } => UiCommand::ShareScreen(on),
+        ProbeCommand::FocusCallTile { key } => UiCommand::FocusCallTile(key),
+        ProbeCommand::ShowCallFocus => UiCommand::ShowCallFocus,
+        ProbeCommand::ShowCallGallery => UiCommand::ShowCallGallery,
+        ProbeCommand::ViewCallShare => UiCommand::ViewCallShare,
+        ProbeCommand::ShowSelfView { on } => UiCommand::ShowSelfView(on),
         ProbeCommand::JoinSuccessor { room_id } => {
             return in_room(room_id, selected, UiCommand::JoinSuccessor);
         }

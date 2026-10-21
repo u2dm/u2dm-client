@@ -454,10 +454,12 @@ export global CallView {
     in property <string> sheet-leaving-name;
     in property <bool> sheet-ended;
     in property <bool> active;
+    in property <int> active-call;
     in property <string> active-room-id;
     in property <string> active-room-name;
     in property <bool> active-encrypted;
     in property <bool> active-video;
+    in property <bool> video-call;
     in property <CallPhase> phase;
     in property <CallMic> mic: CallMic.on;
     in property <CallCamera> camera: CallCamera.off;
@@ -467,7 +469,15 @@ export global CallView {
     in property <string> notice-name;
     in property <int> notice-others;
     in property <string> elapsed;
+    in property <[CallTileEntry]> stage;
     in property <[CallTileEntry]> tiles;
+    in property <bool> self-view: true;
+    in property <string> offered-share;
+    in property <string> ended-share;
+    in property <int> ended-share-serial;
+    in property <string> people-first;
+    in property <string> people-second;
+    in property <int> people-more;
     in property <UserMessageKind> failure: UserMessageKind.none;
     in property <string> failure-room-id;
     in property <string> failure-detail;

@@ -1021,6 +1021,27 @@ export global CallWords {
         return @tr("{}'s screen", name);
     }
 
+    public pure function focus-on(title: string) -> string {
+        return @tr("Focus on {}", title);
+    }
+
+    public pure function view-share(name: string) -> string {
+        return @tr("View {}'s screen", name);
+    }
+
+    public pure function people(first: string, second: string, more: int) -> string {
+        if first == "" {
+            return "";
+        }
+        if second == "" {
+            return @tr("{} and you", first);
+        }
+        if more > 0 {
+            return @tr("{}, {} and {n} other" | "{}, {} and {n} others" % more, first, second);
+        }
+        return @tr("{}, {} and you", first, second);
+    }
+
     public pure function microphone(mic: CallMic) -> string {
         if mic == CallMic.on {
             return @tr("Mute your microphone");

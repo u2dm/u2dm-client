@@ -228,6 +228,7 @@ struct CallOfferDto {
 }
 
 #[derive(Serialize)]
+#[allow(clippy::struct_excessive_bools)]
 struct ActiveCallDto {
     call: u64,
     room_id: String,
@@ -240,11 +241,23 @@ struct ActiveCallDto {
     screen: &'static str,
     screen_refusal: Option<&'static str>,
     notice: Option<CallNoticeDto>,
+    stage: Option<CallTileDto>,
     tiles: Vec<CallTileDto>,
+    self_view: bool,
+    offered_share: Option<String>,
+    ended_share: Option<EndedShareDto>,
+    people: Vec<String>,
+}
+
+#[derive(Serialize)]
+struct EndedShareDto {
+    serial: u64,
+    who: String,
 }
 
 #[derive(Serialize)]
 struct CallTileDto {
+    key: String,
     member: String,
     name: String,
     own: bool,
@@ -1110,7 +1123,15 @@ fn active_call(active: &ActiveCall) -> ActiveCallDto {
             _ => None,
         },
         notice: active.notice.as_ref().map(call_notice),
+        stage: active.stage.as_ref().map(call_tile),
         tiles: active.tiles.iter().map(call_tile).collect(),
+        self_view: active.self_view,
+        offered_share: active.offered_share.as_ref().map(NamedUser::shown),
+        ended_share: active.ended_share.as_ref().map(|ended| EndedShareDto {
+            serial: ended.serial,
+            who: ended.who.shown(),
+        }),
+        people: active.people.iter().map(NamedUser::shown).collect(),
     }
 }
 
@@ -1137,6 +1158,7 @@ fn call_notice(notice: &CallNotice) -> CallNoticeDto {
 
 fn call_tile(tile: &CallTile) -> CallTileDto {
     CallTileDto {
+        key: tile.key().to_string(),
         member: tile.member.to_string(),
         name: tile.name.shown(),
         own: tile.own,

@@ -19,7 +19,7 @@ use super::session::with_session;
 use super::splice_model::SpliceModel;
 use super::spoilers::forget_spoiler_rows;
 use crate::commands::view::{
-    DirectoryView, InviteeRow, InvitesSection, RosterRow, SpaceIndexRow, SpaceMatch,
+    CallTile, DirectoryView, InviteeRow, InvitesSection, RosterRow, SpaceIndexRow, SpaceMatch,
 };
 use crate::domain::departure::Removal;
 use crate::domain::image_pack::PackOrigin;
@@ -819,6 +819,44 @@ pub fn apply_reader_rows<T: Clone + PartialEq + 'static>(
         &|reader| reader.user_id.as_str(),
         convert,
         get_id,
+    );
+}
+
+struct KeyedTile<'a> {
+    key: String,
+    tile: &'a CallTile,
+}
+
+impl SameItem for KeyedTile<'_> {
+    fn same_item(&self, other: &Self) -> bool {
+        self.tile == other.tile
+    }
+}
+
+fn keyed_tiles(tiles: &[CallTile]) -> Vec<KeyedTile<'_>> {
+    tiles
+        .iter()
+        .map(|tile| KeyedTile {
+            key: tile.key().to_string(),
+            tile,
+        })
+        .collect()
+}
+
+pub fn apply_call_tiles<T: Clone + PartialEq + 'static>(
+    model: &VecModel<T>,
+    tiles: &[CallTile],
+    previous: &[CallTile],
+    convert: &dyn Fn(&CallTile) -> T,
+    get_key: &dyn Fn(&T) -> &str,
+) {
+    apply_reconcile(
+        model,
+        &keyed_tiles(tiles),
+        &keyed_tiles(previous),
+        &|keyed| keyed.key.as_str(),
+        &|keyed| convert(keyed.tile),
+        get_key,
     );
 }
 

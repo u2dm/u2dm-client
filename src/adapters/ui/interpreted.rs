@@ -138,7 +138,8 @@ mod names {
         pub const SEEK_AUDIO: &str = "seek-audio";
         pub const BROWSE_PACKS: &str = "browse-packs";
         pub const REVEAL_SPOILERS: &str = "reveal-spoilers";
-        pub const CALL_TILE_SIZED: &str = "call-tile-sized";
+        pub const CALL_TILE_SEEN: &str = "call-tile-seen";
+        pub const CALL_MEDIA_SHOWN: &str = "call-media-shown";
         pub const EMOTE_AT: &str = "emote-at";
         pub const PLACE_EMOTE: &str = "place-emote";
         pub const SCROLL_POSITION_CHANGED: &str = "scroll-position-changed";
@@ -793,17 +794,31 @@ impl UiBackend for InterpretedBackend {
         }
     }
 
-    fn bind_call_tile_sized(window: &ComponentInstance, sized: impl Fn(&str, i32, i32) + 'static) {
-        let bound = bind_action(window, callback::CALL_TILE_SIZED, move |args| {
-            sized(
+    fn bind_call_tile_seen(
+        window: &ComponentInstance,
+        seen: impl Fn(&str, i32, i32, bool) + 'static,
+    ) {
+        let bound = bind_action(window, callback::CALL_TILE_SEEN, move |args| {
+            seen(
                 &string_arg(args, 0),
                 int_arg(args, 1).unwrap_or_default(),
                 int_arg(args, 2).unwrap_or_default(),
+                bool_arg(args, 3),
             );
             Value::Void
         });
         if let Err(e) = bound {
-            tracing::warn!("failed to bind the call tile size callback: {e}");
+            tracing::warn!("failed to bind the call tile callback: {e}");
+        }
+    }
+
+    fn bind_call_media_shown(window: &ComponentInstance, shown: impl Fn(bool) + 'static) {
+        let bound = bind_action(window, callback::CALL_MEDIA_SHOWN, move |args| {
+            shown(bool_arg(args, 0));
+            Value::Void
+        });
+        if let Err(e) = bound {
+            tracing::warn!("failed to bind the call media callback: {e}");
         }
     }
 

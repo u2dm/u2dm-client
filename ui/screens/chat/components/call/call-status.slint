@@ -9,6 +9,9 @@ import { CallView } from "../../../../views.slint";
 import { AppStyle, Fonts, IconSize, Size, Space } from "../../../../theme.slint";
 
 export component CallStatus inherits HorizontalLayout {
+    in property <bool> explains-share;
+    in property <bool> tells-share-ended;
+
     property <CallNotice> notice: CallView.notice;
     property <bool> noticed: root.notice != CallNotice.none;
     property <bool> pending: root.notice == CallNotice.choosing-screen;
@@ -53,7 +56,9 @@ export component CallStatus inherits HorizontalLayout {
     Text {
         text: root.noticed
             ? CallWords.notice(root.notice, CallView.active-room-name, CallView.notice-name, CallView.notice-others)
-            : CallWords.share(CallView.screen, CallView.screen-refusal);
+            : root.explains-share
+            ? CallWords.share(CallView.screen, CallView.screen-refusal)
+            : @tr("{} stopped sharing their screen", CallView.ended-share);
         font-family: Fonts.emoji;
         font-size: Fonts.body-small;
         color: root.trouble ? AppStyle.danger-muted : AppStyle.foreground-muted;

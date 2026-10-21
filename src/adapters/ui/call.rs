@@ -1,22 +1,26 @@
 use std::cell::RefCell;
+use std::slice;
 use std::time::Duration;
 
-use slint::{ComponentHandle, Model, SharedString, Timer, TimerMode};
+use slint::{ComponentHandle, SharedString, Timer, TimerMode};
 
 use super::backend::{UiBackend, UiEventContext};
 use super::decode::{AvatarSlot, load_avatar_async};
 use super::dto::{call_failure_message, call_notice_mark, call_offer_mark, call_screen_mark};
+use super::fields::CallTileFields;
 use super::notices::NoticeWords;
 use super::present::{avatar_color_index, avatar_initials};
 use super::props::{BoolProp, IntProp, StringProp, UiProps};
+use super::reconcile::apply_call_tiles;
 use super::ringtone::{self, Tone};
 use super::{audio, call_video, video};
 use crate::commands::messages::UserMessageKind;
 use crate::commands::view::{
-    ActiveCall, AppViewState, CallNotice, CallPhase, CallSheetView, CallView, FailedCall,
+    ActiveCall, AppViewState, CallNotice, CallPhase, CallSheetView, CallTile, CallView, FailedCall,
     JoinOffer, OfferView, RingView, RoomCallSummary, ScreenView, TileKind,
 };
 use crate::domain::call::video::{FeedId, Framing};
+use crate::domain::member_name::NamedUser;
 use crate::ports::media::MediaCache;
 use crate::ports::notifier::{NotifierPort, RingNotice};
 use crate::util::unix_now_ms;
@@ -153,8 +157,12 @@ fn apply_sheet(w: &impl UiProps, sheet: Option<&CallSheetView>) {
 fn apply_active<B: UiBackend>(w: &B::Window, last: Option<&ActiveCall>, next: Option<&ActiveCall>) {
     let Some(active) = next else {
         w.set_bool(BoolProp::ActiveVisible, false);
+        w.set_int(IntProp::ActiveCall, 0);
+        w.set_int(IntProp::EndedShareSerial, 0);
         apply_notice(w, None);
-        B::models().call_tiles.set_vec(Vec::new());
+        let models = B::models();
+        models.call_stage.set_vec(Vec::new());
+        models.call_tiles.set_vec(Vec::new());
         call_video::follow::<B>(w, &[]);
         stop_elapsed(w);
         ringtone::stop_if(Tone::Ringback);
@@ -172,8 +180,13 @@ fn apply_active<B: UiBackend>(w: &B::Window, last: Option<&ActiveCall>, next: Op
         StringProp::ActiveRoomName,
         SharedString::from(&active.room_name),
     );
+    w.set_int(
+        IntProp::ActiveCall,
+        i32::try_from(active.call).unwrap_or(i32::MAX),
+    );
     w.set_bool(BoolProp::ActiveEncrypted, active.encrypted);
-    let shows_video = active.video || active.tiles.iter().any(|tile| tile.video.is_some());
+    w.set_bool(BoolProp::VideoCall, active.video);
+    let shows_video = active.video || shown_tiles(active).any(|tile| tile.video.is_some());
     w.set_bool(BoolProp::ActiveVideo, shows_video);
     w.set_call_phase(active.phase);
     w.set_call_mic(active.microphone);
@@ -183,25 +196,87 @@ fn apply_active<B: UiBackend>(w: &B::Window, last: Option<&ActiveCall>, next: Op
         w.set_call_screen_refusal(refusal);
     }
     apply_notice(w, active.notice.as_ref());
-    if last.is_none_or(|last| last.tiles != active.tiles) {
-        let models = B::models();
-        let mut tiles: Vec<B::CallTile> = active.tiles.iter().map(B::convert_call_tile).collect();
-        call_video::fill::<B>(&mut tiles);
-        if models.call_tiles.iter().ne(tiles.iter().cloned()) {
-            models.call_tiles.set_vec(tiles);
-        }
-        let feeds: Vec<(FeedId, Framing)> = active
-            .tiles
-            .iter()
-            .filter_map(|tile| Some((tile.video.clone()?, framing(tile.kind))))
-            .collect();
-        call_video::follow::<B>(w, &feeds);
-    }
+    apply_stage::<B>(w, last, active);
     if last.is_none_or(|last| last.live_since_ms != active.live_since_ms) {
         follow_elapsed(w, active.live_since_ms);
     }
     w.set_bool(BoolProp::ActiveVisible, true);
     follow_ringback(w, last.map(|last| last.phase), active.phase);
+}
+
+fn shown_tiles(active: &ActiveCall) -> impl Iterator<Item = &CallTile> {
+    active.stage.iter().chain(active.tiles.iter())
+}
+
+fn apply_stage<B: UiBackend>(w: &B::Window, last: Option<&ActiveCall>, active: &ActiveCall) {
+    w.set_bool(BoolProp::SelfView, active.self_view);
+    w.set_string(
+        StringProp::OfferedShare,
+        active
+            .offered_share
+            .as_ref()
+            .map_or_else(SharedString::new, |who| SharedString::from(who.shown())),
+    );
+    let (ended_who, ended_serial) =
+        active
+            .ended_share
+            .as_ref()
+            .map_or((SharedString::new(), 0), |ended| {
+                (
+                    SharedString::from(ended.who.shown()),
+                    i32::try_from(ended.serial).unwrap_or(i32::MAX),
+                )
+            });
+    w.set_string(StringProp::EndedShare, ended_who);
+    w.set_int(IntProp::EndedShareSerial, ended_serial);
+    apply_people(w, &active.people);
+    let unchanged =
+        last.is_some_and(|last| last.stage == active.stage && last.tiles == active.tiles);
+    if unchanged {
+        return;
+    }
+    let models = B::models();
+    let convert = |tile: &CallTile| {
+        let mut row = B::convert_call_tile(tile);
+        if let Some(frame) = call_video::last_frame(row.feed()) {
+            row.set_frame(frame);
+            row.set_has_frame(true);
+        }
+        row
+    };
+    let last_stage = last.and_then(|last| last.stage.as_ref());
+    apply_call_tiles(
+        &models.call_stage,
+        active.stage.as_slice(),
+        last_stage.map_or(&[], slice::from_ref),
+        &convert,
+        &|row| row.key(),
+    );
+    apply_call_tiles(
+        &models.call_tiles,
+        &active.tiles,
+        last.map_or(&[] as &[CallTile], |last| last.tiles.as_ref()),
+        &convert,
+        &|row| row.key(),
+    );
+    let feeds: Vec<(FeedId, Framing)> = shown_tiles(active)
+        .filter_map(|tile| Some((tile.video.clone()?, framing(tile.kind))))
+        .collect();
+    call_video::follow::<B>(w, &feeds);
+}
+
+fn apply_people(w: &impl UiProps, people: &[NamedUser]) {
+    let shown = |index: usize| {
+        people.get(index).map_or_else(SharedString::new, |person| {
+            SharedString::from(person.shown())
+        })
+    };
+    w.set_string(StringProp::PeopleFirst, shown(0));
+    w.set_string(StringProp::PeopleSecond, shown(1));
+    w.set_int(
+        IntProp::PeopleMore,
+        i32::try_from(people.len().saturating_sub(2)).unwrap_or(i32::MAX),
+    );
 }
 
 const fn framing(kind: TileKind) -> Framing {

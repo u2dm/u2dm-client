@@ -23,6 +23,7 @@ import {
     MicrophoneRequest,
     CameraRequest,
     ScreenShareRequest,
+    SelfViewRequest,
     RenameSessionRequest,
     ChangePasswordRequest,
     DeactivateRequest,
@@ -188,7 +189,13 @@ export global Actions {
     callback set-microphone(MicrophoneRequest);
     callback set-camera(CameraRequest);
     callback share-screen(ScreenShareRequest);
-    callback call-tile-sized(string, int, int);
+    callback focus-call-tile(string);
+    callback show-call-focus();
+    callback show-call-gallery();
+    callback view-call-share();
+    callback show-self-view(SelfViewRequest);
+    callback call-tile-seen(string, int, int, bool);
+    callback call-media-shown(bool);
     callback user-activity-changed(bool);
     callback composer-changed(string, bool, int);
     callback keep-draft(ComposerDraft);

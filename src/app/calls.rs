@@ -3,6 +3,7 @@ pub(super) mod lane;
 mod media;
 mod offer;
 mod sheet;
+mod stage;
 
 use std::fmt;
 use std::sync::Arc;
@@ -935,6 +936,36 @@ impl Calls {
         self.publish(directory);
     }
 
+    pub(super) fn focus_call_tile(&mut self, key: &str, directory: &RoomDirectory) {
+        self.arrange_stage(directory, |joined| joined.focus_tile(key));
+    }
+
+    pub(super) fn show_call_focus(&mut self, directory: &RoomDirectory) {
+        self.arrange_stage(directory, Joined::focus_any_tile);
+    }
+
+    pub(super) fn show_call_gallery(&mut self, directory: &RoomDirectory) {
+        self.arrange_stage(directory, Joined::show_gallery);
+    }
+
+    pub(super) fn view_call_share(&mut self, directory: &RoomDirectory) {
+        self.arrange_stage(directory, Joined::view_share);
+    }
+
+    pub(super) fn show_self_view(&mut self, on: bool, directory: &RoomDirectory) {
+        self.arrange_stage(directory, |joined| joined.show_self_view(on));
+    }
+
+    fn arrange_stage(&mut self, directory: &RoomDirectory, arrange: impl FnOnce(&mut Joined)) {
+        let Some(joined) = self.joined.as_mut() else {
+            return;
+        };
+        let span = joined.span.clone();
+        let _in_call = span.enter();
+        arrange(joined);
+        self.publish(directory);
+    }
+
     pub(super) fn hang_up(&mut self) {
         if let Some(mut joined) = self.joined.take() {
             tracing::info!(call = joined.call, room_id = %joined.room_id, "hanging up");
@@ -1323,6 +1354,9 @@ impl Calls {
     }
 
     fn publish(&mut self, directory: &RoomDirectory) {
+        if let Some(joined) = self.joined.as_mut() {
+            joined.settle_stage();
+        }
         let view = CallView {
             ring: self.ring_view(directory),
             here: self.here(directory),

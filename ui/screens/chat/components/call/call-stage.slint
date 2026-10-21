@@ -1,0 +1,178 @@
+import { IconSet } from "@lucide";
+
+import { IconButton } from "../../../../components/button.slint";
+import { CallView } from "../../../../views.slint";
+import { AppStyle, Metrics, Size, Space } from "../../../../theme.slint";
+import { CallTileView } from "./call-tile.slint";
+
+export component CallStage inherits Rectangle {
+    in property <bool> fits-videos;
+    in property <bool> hides-strip;
+
+    property <length> gap: Space.sm;
+    property <float> aspect: Metrics.call-tile-aspect;
+    property <bool> focused: CallView.stage.length > 0;
+    property <int> count: CallView.tiles.length;
+
+    property <int> grid-count: max(1, root.count);
+    property <int> guess: clamp(
+        round(sqrt(root.grid-count * root.width / max(1px, root.height) / root.aspect)), 1, root.grid-count);
+    property <int> fewer: max(1, root.guess - 1);
+    property <int> more: min(root.grid-count, root.guess + 1);
+    property <int> best: root.width-for(root.guess) >= root.width-for(root.fewer)
+        ? (root.width-for(root.guess) >= root.width-for(root.more) ? root.guess : root.more)
+        : (root.width-for(root.fewer) >= root.width-for(root.more) ? root.fewer : root.more);
+    property <bool> crowded: root.width-for(root.best) < Metrics.call-tile-min-width;
+    property <int> columns: root.crowded
+        ? clamp(floor((root.width + root.gap) / (Metrics.call-tile-min-width + root.gap)), 1, root.grid-count)
+        : root.best;
+    property <length> tile-width: root.crowded ? min(Metrics.call-tile-min-width, root.width) : root.width-for(root.best);
+    property <length> tile-height: root.tile-width / root.aspect;
+    property <int> rows: ceil(root.count / root.columns);
+    property <length> grid-height: root.rows * (root.tile-height + root.gap) - root.gap;
+    property <length> row-width: min(root.columns, root.grid-count) * root.tile-width
+        + (min(root.columns, root.grid-count) - 1) * root.gap;
+    property <length> grid-top: max(0px, (root.height - root.grid-height) / 2);
+    property <int> last-row-count: root.count - (root.rows - 1) * root.columns;
+    property <length> last-row-indent: (root.columns - root.last-row-count) * (root.tile-width + root.gap) / 2;
+
+    property <bool> has-strip: root.focused && root.count > 0 && !root.hides-strip;
+    property <length> film-height: clamp(
+        root.height * Metrics.call-filmstrip-share,
+        Metrics.call-tile-min-width / root.aspect,
+        Metrics.call-filmstrip-max);
+    property <length> main-over-strip: min(root.width, (root.height - root.film-height - root.gap) * root.aspect);
+    property <length> main-beside-rail: min(root.width - Metrics.call-rail - root.gap, root.height * root.aspect);
+    property <bool> rail: root.has-strip && root.main-beside-rail > root.main-over-strip;
+    property <length> main-width: root.rail ? root.width - Metrics.call-rail - root.gap : root.width;
+    property <length> main-height: root.has-strip && !root.rail ? root.height - root.film-height - root.gap : root.height;
+
+    property <length> film-width: root.rail ? Metrics.call-rail : root.film-height * root.aspect;
+    property <length> film-tile-height: root.rail ? Metrics.call-rail / root.aspect : root.film-height;
+    property <length> film-pitch: (root.rail ? root.film-tile-height : root.film-width) + root.gap;
+    property <length> film-length: root.count * root.film-pitch - root.gap;
+    property <length> pitch: root.focused ? root.film-pitch : root.tile-height + root.gap;
+    property <bool> across: root.focused && !root.rail;
+    property <length> scroll-room: root.across ? films.width : films.height;
+    property <length> film-lead: max(0px, (root.scroll-room - root.film-length) / 2);
+    property <length> scrolled: root.across ? -films.content-x : -films.content-y;
+    property <length> scroll-span: root.across
+        ? films.content-width - films.width
+        : films.content-height - films.height;
+    property <bool> scrolls-back: films.visible && root.scrolled > 0;
+    property <bool> scrolls-on: films.visible && root.scrolled < root.scroll-span;
+
+    pure function width-for(columns: int) -> length {
+        min(
+            (root.width - (columns - 1) * root.gap) / columns,
+            (root.height - (ceil(root.grid-count / columns) - 1) * root.gap) / ceil(root.grid-count / columns) * root.aspect)
+    }
+
+    function scroll-to(offset: length) {
+        let clamped = clamp(offset, 0px, max(0px, root.scroll-span));
+        if root.across {
+            films.content-x = -clamped;
+        } else {
+            films.content-y = -clamped;
+        }
+    }
+
+    function page(forward: bool) {
+        let step = max(root.pitch, root.scroll-room - root.pitch);
+        root.scroll-to(root.scrolled + (forward ? step : -step));
+    }
+
+    function reveal(start: length, size: length) {
+        if start < root.scrolled {
+            root.scroll-to(start);
+        } else if start + size > root.scrolled + root.scroll-room {
+            root.scroll-to(start + size - root.scroll-room);
+        }
+    }
+
+    changed focused => {
+        films.content-x = 0;
+        films.content-y = 0;
+    }
+    changed rail => {
+        films.content-x = 0;
+        films.content-y = 0;
+    }
+    changed scroll-span => {
+        root.scroll-to(root.scrolled);
+    }
+
+    for tile in CallView.stage: CallTileView {
+        property <bool> boxed: !tile.screen && !root.fits-videos;
+        property <length> box-width: self.boxed ? min(root.main-width, root.main-height * root.aspect) : root.main-width;
+
+        x: (root.main-width - self.box-width) / 2;
+        y: (root.main-height - self.height) / 2;
+        width: self.box-width;
+        height: self.boxed ? self.box-width / root.aspect : root.main-height;
+        tile: tile;
+        fits-video: root.fits-videos;
+    }
+
+    films := Flickable {
+        x: root.rail ? root.width - Metrics.call-rail : 0;
+        y: root.focused && !root.rail ? root.height - root.film-height : 0;
+        width: root.rail ? Metrics.call-rail : root.width;
+        height: !root.focused || root.rail ? root.height : root.film-height;
+        visible: !root.focused || root.has-strip;
+        content-width: root.across ? max(self.width, root.film-length) : self.width;
+        content-height: !root.focused ? max(self.height, root.grid-height)
+            : root.rail ? max(self.height, root.film-length)
+            : self.height;
+        interactive: root.scroll-span > 0;
+
+        for tile[i] in CallView.tiles: CallTileView {
+            x: !root.focused
+                ? (root.width - root.row-width) / 2 + mod(i, root.columns) * (root.tile-width + root.gap)
+                    + (floor(i / root.columns) == root.rows - 1 ? root.last-row-indent : 0px)
+                : root.rail ? 0px : root.film-lead + i * root.film-pitch;
+            y: !root.focused
+                ? root.grid-top + floor(i / root.columns) * (root.tile-height + root.gap)
+                : root.rail ? root.film-lead + i * root.film-pitch : 0px;
+            width: !root.focused ? root.tile-width : root.film-width;
+            height: !root.focused ? root.tile-height : root.film-tile-height;
+            tile: tile;
+            selectable: true;
+            fits-video: root.fits-videos;
+            shown: films.visible
+                && self.x + self.width > -films.content-x && self.x < films.width - films.content-x
+                && self.y + self.height > -films.content-y && self.y < films.height - films.content-y;
+            took-focus => {
+                root.reveal(root.across ? self.x : self.y, root.across ? self.width : self.height);
+            }
+        }
+    }
+
+    if root.scrolls-back: IconButton {
+        x: root.across ? films.x + Space.sm : films.x + (films.width - self.width) / 2;
+        y: root.across ? films.y + (films.height - self.height) / 2 : films.y + Space.sm;
+        size: Size.md;
+        fill: AppStyle.elevated;
+        tint: AppStyle.foreground-strong;
+        icon: root.across ? IconSet.ChevronLeft : IconSet.ChevronUp;
+        label: @tr("Show the earlier people in the call");
+        clicked => {
+            root.page(false);
+        }
+    }
+
+    if root.scrolls-on: IconButton {
+        x: root.across ? films.x + films.width - self.width - Space.sm : films.x + (films.width - self.width) / 2;
+        y: root.across
+            ? films.y + (films.height - self.height) / 2
+            : films.y + films.height - self.height - Space.sm;
+        size: Size.md;
+        fill: AppStyle.elevated;
+        tint: AppStyle.foreground-strong;
+        icon: root.across ? IconSet.ChevronRight : IconSet.ChevronDown;
+        label: @tr("Show more people in the call");
+        clicked => {
+            root.page(true);
+        }
+    }
+}

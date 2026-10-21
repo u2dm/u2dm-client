@@ -88,7 +88,8 @@ pub trait UiBackend: Sized + 'static {
     fn attach_models(window: &Self::Window, models: &Models<Self>);
     fn bind_browse_packs(window: &Self::Window, browse: impl Fn(PackSurface, &str, i32) + 'static);
     fn bind_reveal_spoilers(window: &Self::Window, reveal: impl Fn(&str) + 'static);
-    fn bind_call_tile_sized(window: &Self::Window, sized: impl Fn(&str, i32, i32) + 'static);
+    fn bind_call_tile_seen(window: &Self::Window, seen: impl Fn(&str, i32, i32, bool) + 'static);
+    fn bind_call_media_shown(window: &Self::Window, shown: impl Fn(bool) + 'static);
     fn notification_text(window: &Self::Window, words: &NoticeWords<'_>) -> SharedString;
 
     fn convert_message(
@@ -221,7 +222,18 @@ pub fn spawn_event_handler<B: UiBackend>(
 ) {
     begin_session::<B>(window);
     call_video::install(call_video);
-    B::bind_call_tile_sized(window, call_video::sized);
+    let seeing = window.as_weak();
+    B::bind_call_tile_seen(window, move |feed, width, height, shown| {
+        if let Some(window) = seeing.upgrade() {
+            call_video::seen::<B>(&window, feed, width, height, shown);
+        }
+    });
+    let showing = window.as_weak();
+    B::bind_call_media_shown(window, move |shown| {
+        if let Some(window) = showing.upgrade() {
+            call_video::media_shown::<B>(&window, shown);
+        }
+    });
     follow_activations::<B>(window, notifier.as_ref());
     follow_handoffs::<B>(window, handoff);
 

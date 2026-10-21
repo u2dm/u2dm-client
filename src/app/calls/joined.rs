@@ -7,6 +7,7 @@ use tokio::time::Instant;
 use tracing::Span;
 
 use super::media::MediaCommand;
+use super::stage::Stage;
 use crate::commands::view::{
     ActiveCall, CallFailure, CallNotice, CallPhase, CallTile, CameraView, CantDecrypt,
     MicrophoneView, ScreenView, TileKind, TileState,
@@ -210,6 +211,7 @@ pub(super) struct Joined {
     shares_missed: u8,
     outgoing_kind: Option<RingKind>,
     outgoing: Option<Outgoing>,
+    stage: Stage,
 }
 
 pub(super) fn fresh_key() -> MediaKey {
@@ -252,6 +254,7 @@ impl Joined {
             shares_missed: 0,
             outgoing_kind: joining.outgoing,
             outgoing: None,
+            stage: Stage::default(),
         };
         joined.command(MediaCommand::Microphone(media.microphone));
         if media.camera {
@@ -759,8 +762,42 @@ impl Joined {
         }
     }
 
+    pub(super) fn settle_stage(&mut self) {
+        let tiles = self.tiles();
+        self.stage.settle(&tiles);
+    }
+
+    pub(super) fn focus_tile(&mut self, key: &str) {
+        let tiles = self.tiles();
+        if !self.stage.focus(key, &tiles) {
+            tracing::debug!(tile = key, "no call tile to focus");
+        }
+    }
+
+    pub(super) fn focus_any_tile(&mut self) {
+        let tiles = self.tiles();
+        self.stage.focus_any(&tiles);
+    }
+
+    pub(super) fn show_gallery(&mut self) {
+        tracing::info!(call = self.call, "showing the call as a gallery");
+        self.stage.gallery();
+    }
+
+    pub(super) fn view_share(&mut self) {
+        let tiles = self.tiles();
+        self.stage.view_share(&tiles);
+    }
+
+    pub(super) fn show_self_view(&mut self, on: bool) {
+        tracing::info!(call = self.call, on, "switching the self-view");
+        self.stage.show_self(on);
+    }
+
     pub(super) fn view(&self) -> ActiveCall {
         let tiles = self.tiles();
+        let notice = self.notice(&tiles);
+        let arranged = self.stage.arrange(tiles);
         ActiveCall {
             call: self.call,
             room_id: self.room_id.clone(),
@@ -787,9 +824,24 @@ impl Joined {
                 OwnScreen::Failed => ScreenView::Failed,
                 OwnScreen::Unavailable(refusal) => ScreenView::Unavailable(refusal),
             },
-            notice: self.notice(&tiles),
-            tiles: Arc::from(tiles),
+            notice,
+            stage: arranged.stage,
+            tiles: Arc::from(arranged.tiles),
+            self_view: self.stage.self_view(),
+            offered_share: arranged.offered_share,
+            ended_share: self.stage.ended_share().cloned(),
+            people: Arc::from(self.people()),
         }
+    }
+
+    fn people(&self) -> Vec<NamedUser> {
+        let mut seen = HashSet::new();
+        self.members
+            .iter()
+            .filter(|member| member.user.user_id != self.me.user)
+            .filter(|member| seen.insert(member.user.user_id.as_str()))
+            .map(|member| member.user.clone())
+            .collect()
     }
 
     fn tiles(&self) -> Vec<CallTile> {

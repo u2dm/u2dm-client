@@ -420,6 +420,13 @@ pub enum UiCommand {
     SetCamera(bool),
     #[strum(to_string = "ShareScreen({0})")]
     ShareScreen(bool),
+    #[strum(to_string = "FocusCallTile({0})")]
+    FocusCallTile(String),
+    ShowCallFocus,
+    ShowCallGallery,
+    ViewCallShare,
+    #[strum(to_string = "ShowSelfView({0})")]
+    ShowSelfView(bool),
     DismissToast,
     Logout,
     ConfirmLogout,
@@ -609,6 +616,11 @@ impl UiCommand {
             | Self::SetMicrophone(_)
             | Self::SetCamera(_)
             | Self::ShareScreen(_)
+            | Self::FocusCallTile(_)
+            | Self::ShowCallFocus
+            | Self::ShowCallGallery
+            | Self::ViewCallShare
+            | Self::ShowSelfView(_)
             | Self::DismissToast
             | Self::Logout
             | Self::ConfirmLogout

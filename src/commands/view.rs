@@ -1,4 +1,5 @@
 use std::collections::BTreeSet;
+use std::fmt;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
@@ -378,10 +379,26 @@ pub enum TileState {
     Unreachable,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum TileKind {
     Person,
     Screen,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct TileKey {
+    pub member: MemberKey,
+    pub kind: TileKind,
+}
+
+impl fmt::Display for TileKey {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let kind = match self.kind {
+            TileKind::Person => "person",
+            TileKind::Screen => "screen",
+        };
+        write!(f, "{} {kind}", self.member)
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -394,6 +411,25 @@ pub struct CallTile {
     pub muted: bool,
     pub speaking: bool,
     pub video: Option<FeedId>,
+}
+
+impl CallTile {
+    pub fn key(&self) -> TileKey {
+        TileKey {
+            member: self.member.clone(),
+            kind: self.kind,
+        }
+    }
+
+    pub const fn is_self_view(&self) -> bool {
+        self.own && matches!(self.kind, TileKind::Person)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EndedShare {
+    pub serial: u64,
+    pub who: NamedUser,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -433,7 +469,12 @@ pub struct ActiveCall {
     pub camera: CameraView,
     pub screen: ScreenView,
     pub notice: Option<CallNotice>,
+    pub stage: Option<CallTile>,
     pub tiles: Arc<[CallTile]>,
+    pub self_view: bool,
+    pub offered_share: Option<NamedUser>,
+    pub ended_share: Option<EndedShare>,
+    pub people: Arc<[NamedUser]>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]

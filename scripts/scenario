@@ -155,6 +155,13 @@ scenario_env() {
     call-cut-off)    echo 'U2DM_DEMO_CALLS=active,cut-off U2DM_DEMO_WINDOW=900x760' ;;
     call-camera-lost) echo 'U2DM_DEMO_CALLS=active,camera-lost U2DM_DEMO_WINDOW=900x760' ;;
     call-share-cancelled) echo 'U2DM_DEMO_CALLS=active,share-cancelled U2DM_DEMO_WINDOW=900x760' ;;
+    call-voice-panel) echo 'U2DM_DEMO_CALLS=active,speaking U2DM_DEMO_WINDOW=900x760' ;;
+    call-one-to-one) echo 'U2DM_DEMO_CALLS=ring,ring-video,cameras U2DM_DEMO_AUDIO=silent U2DM_DEMO_WINDOW=900x760' ;;
+    call-two-shares) echo 'U2DM_DEMO_CALLS=active,cameras,screen-share,second-share U2DM_DEMO_WINDOW=900x760' ;;
+    call-share-restarts) echo 'U2DM_DEMO_CALLS=active,cameras,screen-share,screen-share-ends,screen-share-restarts U2DM_DEMO_WINDOW=900x760' ;;
+    call-pinned-leaves) echo 'U2DM_DEMO_CALLS=active,cameras,member-leaves U2DM_DEMO_WINDOW=900x760' ;;
+    call-portrait) echo 'U2DM_DEMO_CALLS=active,cameras,portrait U2DM_DEMO_WINDOW=900x760' ;;
+    call-camera-toggles) echo 'U2DM_DEMO_CALLS=active,cameras,camera-toggles U2DM_DEMO_WINDOW=900x760' ;;
     notifications)   echo 'U2DM_DEMO_NOTIFY=all U2DM_DEMO_WINDOW=900x760' ;;
     notifications-focused) echo 'U2DM_DEMO_NOTIFY=group,dm,mention U2DM_DEMO_WINDOW=900x760' ;;
     notifications-burst) echo 'U2DM_DEMO_NOTIFY=burst U2DM_DEMO_WINDOW=900x760' ;;
@@ -863,6 +870,47 @@ scenario_steps() {
       echo 'sleep 2'
       echo '{"op":"join_call"}'
       echo 'sleep 3' ;;
+    call-voice-panel)
+      echo '{"op":"select_room","room_id":"!rust:demo.local"}'
+      echo 'sleep 2'
+      echo '{"op":"join_call"}'
+      echo 'sleep 3' ;;
+    call-one-to-one)
+      echo 'sleep 4'
+      echo '{"op":"select_room","room_id":"!sarah:demo.local"}'
+      echo '{"op":"answer_call","room_id":"!sarah:demo.local","camera":true}'
+      echo 'sleep 3' ;;
+    call-two-shares)
+      echo '{"op":"select_room","room_id":"!design:demo.local"}'
+      echo 'sleep 2'
+      echo '{"op":"join_call"}'
+      echo 'sleep 6' ;;
+    call-share-restarts)
+      echo '{"op":"select_room","room_id":"!design:demo.local"}'
+      echo 'sleep 2'
+      echo '{"op":"join_call"}'
+      echo 'sleep 8' ;;
+    call-pinned-leaves)
+      echo '{"op":"select_room","room_id":"!design:demo.local"}'
+      echo 'sleep 2'
+      echo '{"op":"join_call"}'
+      echo 'sleep 3'
+      echo '{"op":"focus_call_tile","key":"@jordan:matrix.org (DEMOCALLDEVICE) person"}'
+      echo 'sleep 12' ;;
+    call-portrait)
+      echo '{"op":"select_room","room_id":"!design:demo.local"}'
+      echo 'sleep 2'
+      echo '{"op":"join_call"}'
+      echo 'sleep 2'
+      echo '{"op":"focus_call_tile","key":"@jordan:matrix.org (DEMOCALLDEVICE) person"}'
+      echo 'sleep 2' ;;
+    call-camera-toggles)
+      echo '{"op":"select_room","room_id":"!design:demo.local"}'
+      echo 'sleep 2'
+      echo '{"op":"join_call"}'
+      echo 'sleep 2'
+      echo '{"op":"focus_call_tile","key":"@nadia:matrix.org (DEMOCALLDEVICE) person"}'
+      echo 'sleep 6' ;;
     notifications)
       echo '{"op":"window_focus","focused":false}'
       echo 'sleep 15'
@@ -1186,12 +1234,12 @@ scenario_note() {
     call-compact)    echo 'a 420 px window in the call: tiles wrap in the band (call-ui)' ;;
     call-strip-nav)  echo 'a 420 px window in the Design Team call with no room open: the strip tops the room list, which starts below it (call-ui)' ;;
     call-strip-index) echo 'in the Rust Programming call, open the Rust space index: the strip sits under the index header, above the rows (call-ui, space-index)' ;;
-    call-minimum)    echo 'the Design Team video call in a 360x420 window: the band stops at the composer, its controls in view (call-ui)' ;;
+    call-minimum)    echo 'the Design Team video call in a 360x420 window: no room for a stage beside the chat, so the call takes the column, the composer hidden, with Show the chat (call-ui)' ;;
     call-crowd)      echo 'nine people in the Design Team call: the tile grid scrolls (call-ui)' ;;
     call-video)      echo 'the Design Team video call with everyone'"'"'s camera on: painted demo videos fill the tiles, yours mirrored (call-ui, call-media)' ;;
-    call-camera)     echo 'join the Rust Programming voice call, then switch your camera on: the band grows and your tile shows video (call-ui)' ;;
-    call-screen-share) echo 'Nadia shares her screen in the Design Team call: it takes the spotlight, fitted, and the cameras line up in the strip below (call-ui)' ;;
-    call-share-screen) echo 'join the Rust Programming call and share your screen: the share button turns to Stop, your tile says you are sharing (call-ui, call-media)' ;;
+    call-camera)     echo 'join the Rust Programming voice call, then switch your camera on: the compact panel keeps its size, and Expand the call shows your tile with video (call-ui)' ;;
+    call-screen-share) echo 'Nadia shares her screen in the Design Team call: it takes the stage, fitted and named under the picture, and the cameras line up in the rail beside it (call-ui)' ;;
+    call-share-screen) echo 'join the Rust Programming call and share your screen: the panel says you are sharing with Stop sharing, and your tile is still You (call-ui, call-media)' ;;
     call-join-sheet) echo 'Join in Design Team opens the call sheet: the video call, two in it, the microphone and camera proposed off (call-ui, calls)' ;;
     call-start-sheet-dm) echo 'Start in Sarah'"'"'s chat opens the call sheet: a voice call, the microphone proposed on, the camera off (call-ui, calls)' ;;
     call-video-sheet) echo 'the room menu'"'"'s Video call in linux ricing: the sheet starts a video call with the camera still off (call-ui, room-menu)' ;;
@@ -1204,6 +1252,13 @@ scenario_note() {
     call-cut-off)    echo 'the media server drops the Design Team call 5 s in: the band gives way to a strip that keeps the failure with Try again (calls, call-ui)' ;;
     call-camera-lost) echo 'in the Rust Programming call your camera stops 3 s after starting: the camera button turns red and the status row offers Try again (call-ui, call-media)' ;;
     call-share-cancelled) echo 'the picker for your screen share closes twice without a choice: the second time the status row says sharing did not start and offers the room logs (call-ui)' ;;
+    call-voice-panel) echo 'join the Rust Programming voice call: a compact panel over the chat names Marcus and Kai beside the clock, with the controls and no tiles (call-ui)' ;;
+    call-one-to-one) echo 'answer Sarah'"'"'s video ring with your camera: her camera takes the stage and yours sits small in the rail (call-ui)' ;;
+    call-two-shares) echo 'Nadia'"'"'s screen takes the Design Team stage; 4 s later Jordan shares too: his screen waits in the rail and the header offers View Jordan'"'"'s screen (call-ui)' ;;
+    call-share-restarts) echo 'Nadia stops sharing 6 s after you join: the stage goes back to the gallery and the status row says she stopped; 4 s later her share takes the stage again (call-ui)' ;;
+    call-pinned-leaves) echo 'focus Jordan in the Design Team call; he leaves 15 s after sync and the stage falls back to the rule, which in a call of two focuses Nadia (calls, call-ui)' ;;
+    call-portrait) echo 'focus Jordan, whose camera is portrait: it fills the stage cropped until the layout menu'"'"'s Fit whole videos (call-ui)' ;;
+    call-camera-toggles) echo 'focus Nadia, whose camera goes off and on every 5 s: the stage keeps her, on her avatar while it is off (call-ui)' ;;
     notifications)   echo 'with the window unfocused, every scripted arrival notifies except the muted room; !rust is read elsewhere and withdrawn, Leo'"'"'s invite notifies, and a click on Priya'"'"'s opens her chat (notifications, directory.attention, title)' ;;
     notifications-focused) echo 'the window keeps focus: arrivals light their rooms and the title count, but nothing notifies (notifications, directory.attention)' ;;
     notifications-burst) echo 'three messages in !rust a second apart: one notification, replaced twice (notifications)' ;;
@@ -1245,6 +1300,8 @@ names() {
     call-screen-share call-share-screen call-join-sheet call-start-sheet-dm call-video-sheet \
     call-switch-calls call-sheet-ended call-answer-video call-answer-switch \
     call-alone call-announce-fails call-cut-off call-camera-lost call-share-cancelled \
+    call-voice-panel call-one-to-one call-two-shares call-share-restarts call-pinned-leaves \
+    call-portrait call-camera-toggles \
     notifications notifications-focused notifications-burst \
     encryption-unverified encryption-recovery-key encryption-new-account encryption-setup-refused \
     identity-reset identity-reset-oauth room-keys \

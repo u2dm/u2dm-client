@@ -25,6 +25,7 @@ use crate::ports::call::{CallMediaPort, CallVideoPort, FrameSink, MediaSession, 
 
 const DEMO_FPS: u64 = 10;
 const SOURCE: FrameSize = FrameSize::new(1280, 720);
+const PORTRAIT_SOURCE: FrameSize = FrameSize::new(720, 1280);
 const SCREEN_SOURCE: FrameSize = FrameSize::new(2560, 1440);
 const BAR_STEP: u64 = 6;
 const BAR_SHARE: u32 = 12;
@@ -53,7 +54,12 @@ impl CallVideoPort for DemoCallMedia {
             let running = Arc::clone(&running);
             let size = Arc::clone(&size);
             let hue = hue_of(feed);
-            move || paint(&running, &size, framing, hue, &sink)
+            let source = match framing {
+                Framing::Contain => SCREEN_SOURCE,
+                Framing::Cover if calls::is_portrait(feed) => PORTRAIT_SOURCE,
+                Framing::Cover => SOURCE,
+            };
+            move || paint(&running, &size, source, framing, hue, &sink)
         });
         if let Err(e) = spawned {
             tracing::warn!("demo: no thread for a video: {e}");
@@ -94,15 +100,12 @@ impl CallVideoPort for DemoCallMedia {
 fn paint(
     running: &AtomicBool,
     size: &Mutex<FrameSize>,
+    source: FrameSize,
     framing: Framing,
     hue: [u8; 3],
     sink: &FrameSink,
 ) {
     let mut frame_number = 0_u64;
-    let source = match framing {
-        Framing::Cover => SOURCE,
-        Framing::Contain => SCREEN_SOURCE,
-    };
     while running.load(Ordering::Acquire) {
         let wanted = size.lock().map_or(source, |size| *size);
         let painted = Painted {

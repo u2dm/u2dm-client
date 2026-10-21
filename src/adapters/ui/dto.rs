@@ -608,6 +608,7 @@ pub struct InviteeDto {
 
 #[allow(clippy::struct_excessive_bools)]
 pub struct CallTileDto {
+    pub key: SharedString,
     pub member: SharedString,
     pub name: SharedString,
     pub initial: SharedString,
@@ -1789,6 +1790,7 @@ pub fn own_session_to_dto(session: &OwnSession) -> UserDeviceDto {
 
 pub fn call_tile_to_dto(tile: &CallTile) -> CallTileDto {
     CallTileDto {
+        key: SharedString::from(tile.key().to_string()),
         member: SharedString::from(tile.member.to_string()),
         name: SharedString::from(tile.name.shown()),
         initial: SharedString::from(name_initials(&tile.name.name, &tile.name.user_id)),

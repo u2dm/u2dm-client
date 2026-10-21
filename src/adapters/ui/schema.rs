@@ -91,6 +91,10 @@ macro_rules! string_props {
         NoticeName CallView "CallView" "notice-name" set_notice_name get_notice_name;
         FailureRoomId CallView "CallView" "failure-room-id" set_failure_room_id get_failure_room_id;
         FailureDetail CallView "CallView" "failure-detail" set_failure_detail get_failure_detail;
+        OfferedShare CallView "CallView" "offered-share" set_offered_share get_offered_share;
+        EndedShare CallView "CallView" "ended-share" set_ended_share get_ended_share;
+        PeopleFirst CallView "CallView" "people-first" set_people_first get_people_first;
+        PeopleSecond CallView "CallView" "people-second" set_people_second get_people_second;
         SpaceIndexName SpaceIndexView "SpaceIndexView" "space-name" set_space_name get_space_name;
         RoomInfoRoomId RoomInfoView "RoomInfoView" "room-id" set_room_id get_room_id;
         RoomInfoName RoomInfoView "RoomInfoView" "name" set_name get_name;
@@ -246,6 +250,11 @@ macro_rules! simple_callbacks {
         on_set_microphone "set-microphone" set_microphone request(on "on" flag) SetMicrophone;
         on_set_camera "set-camera" set_camera request(on "on" flag) SetCamera;
         on_share_screen "share-screen" share_screen request(on "on" flag) ShareScreen;
+        on_focus_call_tile "focus-call-tile" focus_call_tile pass FocusCallTile;
+        on_show_call_focus "show-call-focus" show_call_focus plain ShowCallFocus;
+        on_show_call_gallery "show-call-gallery" show_call_gallery plain ShowCallGallery;
+        on_view_call_share "view-call-share" view_call_share plain ViewCallShare;
+        on_show_self_view "show-self-view" show_self_view request(on "on" flag) ShowSelfView;
         on_select_room "select-room" select_room room SelectRoom;
         on_open_notification "open-notification" open_notification room OpenNotification;
         on_select_space "select-space" select_space opt_room SelectSpace;
@@ -394,6 +403,8 @@ macro_rules! bool_props {
         ActiveVisible CallView "CallView" "active" set_active get_active;
         ActiveEncrypted CallView "CallView" "active-encrypted" set_active_encrypted get_active_encrypted;
         ActiveVideo CallView "CallView" "active-video" set_active_video get_active_video;
+        VideoCall CallView "CallView" "video-call" set_video_call get_video_call;
+        SelfView CallView "CallView" "self-view" set_self_view get_self_view;
         FailureRetry CallView "CallView" "failure-retry" set_failure_retry get_failure_retry;
         VerificationVisible VerificationView "VerificationView" "visible" set_visible get_visible;
         EncryptionVisible EncryptionView "EncryptionView" "visible" set_visible get_visible;
@@ -535,6 +546,9 @@ macro_rules! int_props {
         SheetPeople CallView "CallView" "sheet-people" set_sheet_people get_sheet_people;
         HerePeople CallView "CallView" "here-people" set_here_people get_here_people;
         NoticeOthers CallView "CallView" "notice-others" set_notice_others get_notice_others;
+        ActiveCall CallView "CallView" "active-call" set_active_call get_active_call;
+        EndedShareSerial CallView "CallView" "ended-share-serial" set_ended_share_serial get_ended_share_serial;
+        PeopleMore CallView "CallView" "people-more" set_people_more get_people_more;
         CallDeclines WindowView "WindowView" "call-declines" set_call_declines get_call_declines;
         CallAnswers WindowView "WindowView" "call-answers" set_call_answers get_call_answers;
         PresencePartnerMinutes PresenceView "PresenceView" "partner-minutes" set_partner_minutes get_partner_minutes;
@@ -742,6 +756,7 @@ macro_rules! model_props {
         invitee_results Invitee VecModel InvitePeopleView "InvitePeopleView" "results" set_results;
         invitee_picks Invitee VecModel InvitePeopleView "InvitePeopleView" "picked" set_picked;
         room_log LogLine SpliceModel RoomLogView "RoomLogView" "lines" set_lines;
+        call_stage CallTile VecModel CallView "CallView" "stage" set_stage;
         call_tiles CallTile VecModel CallView "CallView" "tiles" set_tiles;
         user_devices UserDevice VecModel UserInfoView "UserInfoView" "devices" set_devices;
         account_sessions UserDevice VecModel AccountView "AccountView" "sessions" set_sessions;
@@ -2011,6 +2026,7 @@ pub(crate) use invitee_fields;
 
 macro_rules! call_tile_fields {
     ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
+        key set_key "key" text;
         member set_member "member" text;
         name set_name "name" text;
         initial set_initial "initial" text;

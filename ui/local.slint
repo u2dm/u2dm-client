@@ -123,6 +123,22 @@ export global TextSelection {
     }
 }
 
+export enum CallSize { compact, stage, full }
+
+export global CallPanel {
+    in-out property <CallSize> chosen: CallSize.compact;
+    in-out property <bool> fits-videos: false;
+    in-out property <bool> hides-strip: false;
+    in-out property <bool> menu-open: false;
+
+    public function begin(video: bool) {
+        root.chosen = video ? CallSize.stage : CallSize.compact;
+        root.fits-videos = false;
+        root.hides-strip = false;
+        root.menu-open = false;
+    }
+}
+
 export global Shell {
     in-out property <bool> drawer-open: false;
     in-out property <bool> nav-open: false;
@@ -130,7 +146,6 @@ export global Shell {
     in-out property <bool> attach-open: false;
     in-out property <bool> poll-open: false;
     in-out property <bool> room-info-pane-open: false;
-    in-out property <bool> call-maximized: false;
 
     out property <bool> verification-open: VerificationView.visible
         && LoginView.step == LoginPhase.logged-in;
@@ -198,6 +213,7 @@ export global Shell {
         root.picker-open = false;
         root.attach-open = false;
         root.poll-open = false;
+        CallPanel.menu-open = false;
     }
 }
 
@@ -561,7 +577,7 @@ export global LocalState {
         Composer.clear();
         Shell.close-overlays();
         Shell.room-info-pane-open = false;
-        Shell.call-maximized = false;
+        CallPanel.begin(false);
         RoomSearch.query = "";
         RoomSearch.opened-room = "";
         Subspaces.forget();
@@ -582,6 +598,7 @@ export global LocalState {
         MetaTip.clear();
         Polls.clear();
         Shell.poll-open = false;
+        CallPanel.menu-open = false;
     }
 
     public function close-popovers() {
@@ -589,5 +606,6 @@ export global LocalState {
         MetaTip.clear();
         Shell.picker-open = false;
         Shell.attach-open = false;
+        CallPanel.menu-open = false;
     }
 }

@@ -889,7 +889,12 @@ impl AppService {
             | UiCommand::AnnounceCallAgain
             | UiCommand::SetMicrophone(_)
             | UiCommand::SetCamera(_)
-            | UiCommand::ShareScreen(_)) => {
+            | UiCommand::ShareScreen(_)
+            | UiCommand::FocusCallTile(_)
+            | UiCommand::ShowCallFocus
+            | UiCommand::ShowCallGallery
+            | UiCommand::ViewCallShare
+            | UiCommand::ShowSelfView(_)) => {
                 self.handle_call_command(cmd);
             }
             UiCommand::DismissToast => {
@@ -3017,6 +3022,11 @@ impl AppService {
             UiCommand::SetMicrophone(on) => self.calls.set_microphone(on, directory),
             UiCommand::SetCamera(on) => self.calls.set_camera(on, directory),
             UiCommand::ShareScreen(on) => self.calls.set_screen_share(on, directory),
+            UiCommand::FocusCallTile(key) => self.calls.focus_call_tile(&key, directory),
+            UiCommand::ShowCallFocus => self.calls.show_call_focus(directory),
+            UiCommand::ShowCallGallery => self.calls.show_call_gallery(directory),
+            UiCommand::ViewCallShare => self.calls.view_call_share(directory),
+            UiCommand::ShowSelfView(on) => self.calls.show_self_view(on, directory),
             other => tracing::warn!(command = %other, "this command is not about calls"),
         }
     }

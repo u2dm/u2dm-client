@@ -89,6 +89,7 @@ export struct LogLineEntry {
 }
 
 export struct CallTileEntry {
+    key: string,
     member: string,
     name: string,
     initial: string,
@@ -171,6 +172,10 @@ export struct CameraRequest {
 }
 
 export struct ScreenShareRequest {
+    on: bool,
+}
+
+export struct SelfViewRequest {
     on: bool,
 }
 

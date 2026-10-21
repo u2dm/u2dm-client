@@ -4,7 +4,6 @@ import { AppButton, IconButton } from "../../../../components/button.slint";
 import { CallCamera, CallMic, CallPhase, CallScreen } from "../../../../enums.slint";
 import { CallWords } from "../../../../messages.slint";
 import { Actions } from "../../../../actions.slint";
-import { Shell } from "../../../../local.slint";
 import { CallView } from "../../../../views.slint";
 import { AppStyle, Metrics } from "../../../../theme.slint";
 
@@ -75,7 +74,6 @@ export component CallLeaveButton inherits AppButton {
     icon: IconSet.PhoneOff;
     tint: AppStyle.call-decline;
     clicked => {
-        Shell.call-maximized = false;
         Actions.leave-call();
     }
 }

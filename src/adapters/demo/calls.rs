@@ -183,11 +183,36 @@ pub const CATALOG: Scenarios = Scenarios {
         Flag {
             value: "screen-share",
             effect: "with active: Nadia shares her screen in the Design Team call",
-            note: "her share takes the spotlight and the others move to the strip below it",
+            note: "her share takes the stage and the others move to the strip or rail beside it",
         },
         Flag {
             value: "screen-share-ends",
             effect: "with screen-share: Nadia stops sharing 6s after you join",
+            note: "",
+        },
+        Flag {
+            value: "screen-share-restarts",
+            effect: "with screen-share-ends: Nadia shares her screen again 4s after she stopped",
+            note: "",
+        },
+        Flag {
+            value: "second-share",
+            effect: "with screen-share: Jordan shares his screen too, 4s after you join",
+            note: "two shares at once: the first keeps the stage and the call offers the second",
+        },
+        Flag {
+            value: "camera-toggles",
+            effect: "with cameras: Nadia's camera goes off 5s after you join and back on 5s later, over and over",
+            note: "",
+        },
+        Flag {
+            value: "portrait",
+            effect: "with cameras: Jordan's camera sends portrait pictures",
+            note: "",
+        },
+        Flag {
+            value: "member-leaves",
+            effect: "with active: Jordan leaves the Design Team call 15s after sync",
             note: "",
         },
         Flag {
@@ -241,6 +266,14 @@ const CAMERA_FEED_PREFIX: &str = "demo-camera-";
 const SCREEN_FEED_PREFIX: &str = "demo-screen-";
 const SCREEN_SHARER: &str = NADIA;
 const SCREEN_SHARE_ENDS_AFTER: Duration = Duration::from_secs(6);
+const SCREEN_SHARE_RESTARTS_AFTER: Duration = Duration::from_secs(4);
+const SECOND_SHARER: &str = JORDAN;
+const SECOND_SHARE_AFTER: Duration = Duration::from_secs(4);
+const CAMERA_TOGGLER: &str = NADIA;
+const CAMERA_TOGGLES_EVERY: Duration = Duration::from_secs(5);
+const PORTRAIT_CAMERA_OF: &str = JORDAN;
+const LEAVER: &str = JORDAN;
+const MEMBER_LEAVES_AFTER: Duration = Duration::from_secs(15);
 pub const PICKER_TIME: Duration = Duration::from_secs(1);
 pub const SHARE_ENDS_AFTER: Duration = Duration::from_secs(5);
 pub const OWN_CAMERA_FEED: &str = "demo-own-camera";
@@ -293,6 +326,11 @@ pub struct Scenario {
     camera_lost: bool,
     screen_share: bool,
     screen_share_ends: bool,
+    screen_share_restarts: bool,
+    second_share: bool,
+    camera_toggles: bool,
+    portrait: bool,
+    member_leaves: bool,
     pub no_screen_capture: bool,
     pub share_cancelled: bool,
     pub share_ends: bool,
@@ -349,6 +387,11 @@ fn apply(scenario: &mut Scenario, flag: &str) {
         "camera-lost" => scenario.camera_lost = true,
         "screen-share" => scenario.screen_share = true,
         "screen-share-ends" => scenario.screen_share_ends = true,
+        "screen-share-restarts" => scenario.screen_share_restarts = true,
+        "second-share" => scenario.second_share = true,
+        "camera-toggles" => scenario.camera_toggles = true,
+        "portrait" => scenario.portrait = true,
+        "member-leaves" => scenario.member_leaves = true,
         "no-screen-capture" => scenario.no_screen_capture = true,
         "share-cancelled" => scenario.share_cancelled = true,
         "share-ends" => scenario.share_ends = true,
@@ -595,6 +638,8 @@ impl CallBook {
                     send_media(&events_tx, screen);
                     end_screen_share_later(&events_tx, &id, joiner);
                 }
+                share_screen_later(&events_tx, &id, joiner);
+                toggle_camera_later(&events_tx, &id, joiner);
             }
         }
         if let Ok(mut watchers) = self.watchers.lock() {
@@ -724,6 +769,16 @@ pub fn script() -> Vec<ScriptedChange> {
             change: Box::new(|_: &CallBook| vec![Step::Rooms]),
         });
     }
+    if shaped.active && shaped.member_leaves {
+        changes.push(ScriptedChange {
+            after: MEMBER_LEAVES_AFTER,
+            change: Box::new(|book: &CallBook| {
+                tracing::info!(user = LEAVER, "demo: a member leaves the call");
+                book.leave(DESIGN, LEAVER);
+                vec![Step::Rooms]
+            }),
+        });
+    }
     if shaped.group_call {
         changes.push(ScriptedChange {
             after: RING_AFTER,
@@ -819,21 +874,65 @@ pub fn sfu_id(sfu: &str) -> Option<SfuId> {
 }
 
 fn camera_news(sfu: &SfuId, joiner: Joiner, present: bool) -> Option<MediaEvent> {
-    scenario().cameras.then(|| MediaEvent::Video {
-        sfu: sfu.clone(),
-        identity: joiner.identity(),
-        kind: VideoKind::Camera,
-        feed: present.then(|| FeedId::new(format!("{CAMERA_FEED_PREFIX}{}", joiner.user))),
-    })
+    scenario()
+        .cameras
+        .then(|| video_news(sfu, joiner, VideoKind::Camera, present))
 }
 
 fn screen_news(sfu: &SfuId, joiner: Joiner, present: bool) -> Option<MediaEvent> {
-    (scenario().screen_share && joiner.user == SCREEN_SHARER).then(|| MediaEvent::Video {
+    let shaped = scenario();
+    let shares_at_once = shaped.screen_share && joiner.user == SCREEN_SHARER;
+    let shares_later = shaped.second_share && joiner.user == SECOND_SHARER;
+    (shares_at_once || (shares_later && !present))
+        .then(|| video_news(sfu, joiner, VideoKind::Screen, present))
+}
+
+fn video_news(sfu: &SfuId, joiner: Joiner, kind: VideoKind, present: bool) -> MediaEvent {
+    let prefix = match kind {
+        VideoKind::Camera => CAMERA_FEED_PREFIX,
+        VideoKind::Screen => SCREEN_FEED_PREFIX,
+    };
+    MediaEvent::Video {
         sfu: sfu.clone(),
         identity: joiner.identity(),
-        kind: VideoKind::Screen,
-        feed: present.then(|| FeedId::new(format!("{SCREEN_FEED_PREFIX}{}", joiner.user))),
-    })
+        kind,
+        feed: present.then(|| FeedId::new(format!("{prefix}{}", joiner.user))),
+    }
+}
+
+pub fn is_portrait(feed: &FeedId) -> bool {
+    scenario().portrait && feed.as_ref() == format!("{CAMERA_FEED_PREFIX}{PORTRAIT_CAMERA_OF}")
+}
+
+fn share_screen_later(events_tx: &mpsc::UnboundedSender<MediaEvent>, sfu: &SfuId, joiner: Joiner) {
+    if !(scenario().second_share && joiner.user == SECOND_SHARER) {
+        return;
+    }
+    let events_tx = events_tx.clone();
+    let started = video_news(sfu, joiner, VideoKind::Screen, true);
+    tokio::spawn(async move {
+        sleep(SECOND_SHARE_AFTER).await;
+        tracing::info!(user = joiner.user, "demo: a second screen share starts");
+        send_media(&events_tx, started);
+    });
+}
+
+fn toggle_camera_later(events_tx: &mpsc::UnboundedSender<MediaEvent>, sfu: &SfuId, joiner: Joiner) {
+    let shaped = scenario();
+    if !(shaped.cameras && shaped.camera_toggles && joiner.user == CAMERA_TOGGLER) {
+        return;
+    }
+    let events_tx = events_tx.clone();
+    let sfu = sfu.clone();
+    tokio::spawn(async move {
+        let mut on = true;
+        while !events_tx.is_closed() {
+            sleep(CAMERA_TOGGLES_EVERY).await;
+            on = !on;
+            tracing::info!(user = joiner.user, on, "demo: a camera switches");
+            send_media(&events_tx, video_news(&sfu, joiner, VideoKind::Camera, on));
+        }
+    });
 }
 
 fn end_screen_share_later(
@@ -851,10 +950,18 @@ fn end_screen_share_later(
         kind: VideoKind::Screen,
         feed: None,
     };
+    let restarted = scenario()
+        .screen_share_restarts
+        .then(|| video_news(sfu, joiner, VideoKind::Screen, true));
     tokio::spawn(async move {
         sleep(SCREEN_SHARE_ENDS_AFTER).await;
         tracing::info!(user = joiner.user, "demo: a screen share ends");
         send_media(&events_tx, ended);
+        if let Some(restarted) = restarted {
+            sleep(SCREEN_SHARE_RESTARTS_AFTER).await;
+            tracing::info!(user = joiner.user, "demo: a screen share starts again");
+            send_media(&events_tx, restarted);
+        }
     });
 }
 

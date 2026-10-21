@@ -12,7 +12,7 @@ import { AppStyle, IconSize, Metrics, Radius, Size, Space } from "../../theme.sl
 import { IconButton } from "../../components/button.slint";
 import { CallView, DirectoryView, RoomInfoView, RoomView, SpaceIndexView, WindowView } from "../../views.slint";
 import { Actions } from "../../actions.slint";
-import { LocalState, RoomSearch, Shell, Subspaces } from "../../local.slint";
+import { CallPanel, LocalState, RoomSearch, Shell, Subspaces } from "../../local.slint";
 
 component Toast inherits Rectangle {
     property <bool> is-file-saved: RoomView.toast-message == UserMessageKind.file-saved;
@@ -55,15 +55,17 @@ export component ChatScreen inherits Rectangle {
     property <bool> shows-room-list: root.compact
         && !SpaceIndexView.visible
         && (!root.has-room || Shell.nav-open);
-    property <bool> call-covers-timeline: Shell.call-maximized
-        && CallView.active
-        && CallView.active-room-id == DirectoryView.selected-room-id;
     property <bool> timeline-visible: WindowView.focused
         && !root.window-minimized
         && !root.shows-room-list
         && !SpaceIndexView.visible
         && !Shell.modal-open
-        && !root.call-covers-timeline;
+        && !timeline.call-covers-timeline;
+    property <bool> call-media-on-screen: timeline.shows-call-media
+        && !root.window-minimized
+        && !root.shows-room-list
+        && !SpaceIndexView.visible;
+    property <int> active-call: CallView.active-call;
 
     property <length> sidebar-width: Metrics.sidebar-default;
     property <length> room-info-pane-width: Metrics.room-info-pane-default;
@@ -104,7 +106,21 @@ export component ChatScreen inherits Rectangle {
 
     init => {
         LocalState.forget-session();
+        if root.active-call != 0 {
+            CallPanel.begin(CallView.video-call);
+        }
         Actions.timeline-visibility-changed(root.timeline-visible);
+        Actions.call-media-shown(root.call-media-on-screen);
+    }
+
+    changed active-call => {
+        if self.active-call != 0 {
+            CallPanel.begin(CallView.video-call);
+        }
+    }
+
+    changed call-media-on-screen => {
+        Actions.call-media-shown(self.call-media-on-screen);
     }
 
     changed compact => {

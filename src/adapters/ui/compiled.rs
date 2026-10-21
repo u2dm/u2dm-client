@@ -672,8 +672,13 @@ impl UiBackend for CompiledBackend {
         actions(window).on_reveal_spoilers(move |unique_id| reveal(&unique_id));
     }
 
-    fn bind_call_tile_sized(window: &AppWindow, sized: impl Fn(&str, i32, i32) + 'static) {
-        actions(window).on_call_tile_sized(move |feed, width, height| sized(&feed, width, height));
+    fn bind_call_tile_seen(window: &AppWindow, seen: impl Fn(&str, i32, i32, bool) + 'static) {
+        actions(window)
+            .on_call_tile_seen(move |feed, width, height, shown| seen(&feed, width, height, shown));
+    }
+
+    fn bind_call_media_shown(window: &AppWindow, shown: impl Fn(bool) + 'static) {
+        actions(window).on_call_media_shown(shown);
     }
 
     fn notification_text(window: &AppWindow, words: &NoticeWords<'_>) -> SharedString {

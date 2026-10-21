@@ -2,10 +2,10 @@ import { IconDisplay, IconSet } from "@lucide";
 
 import { Actions } from "../../../../actions.slint";
 import { Avatar } from "../../../../components/avatar.slint";
+import { ClickArea } from "../../../../components/a11y.slint";
 import { CallTileEntry } from "../../../../types.slint";
-import { CallScreen, CallTileState } from "../../../../enums.slint";
+import { CallTileState } from "../../../../enums.slint";
 import { CallWords } from "../../../../messages.slint";
-import { CallView } from "../../../../views.slint";
 import { AppStyle, Fonts, Glyph, IconSize, Metrics, Radius, Space, Weight } from "../../../../theme.slint";
 
 component TileName inherits HorizontalLayout {
@@ -46,110 +46,139 @@ component TileName inherits HorizontalLayout {
 
 export component CallTileView inherits Rectangle {
     in property <CallTileEntry> tile;
+    in property <bool> shown: true;
+    in property <bool> selectable: false;
+    in property <bool> fits-video: false;
+    in property <bool> above-modal: false;
+
+    callback took-focus();
 
     property <string> state-text: CallWords.tile(root.tile.state);
     property <string> title: root.tile.screen ? CallWords.screen-of(root.tile.name)
-        : !root.tile.own ? root.tile.name
-        : CallView.screen == CallScreen.on ? @tr("You are sharing your screen")
-        : @tr("You");
+        : root.tile.own ? @tr("You")
+        : root.tile.name;
     property <bool> troubled: root.tile.state == CallTileState.cant-decrypt
         || root.tile.state == CallTileState.unverified-device
         || root.tile.state == CallTileState.unreachable;
     property <string> feed: root.tile.feed;
     property <bool> shows-video: root.tile.has-frame && root.tile.state == CallTileState.live;
+    property <bool> named-outside: root.tile.screen && root.shows-video;
+    property <length> picture-height: root.named-outside ? root.height - Metrics.call-tile-caption : root.height;
     property <bool> roomy: root.height >= Metrics.call-tile-roomy;
 
-    function report-size() {
+    function report() {
         if root.feed != "" {
-            Actions.call-tile-sized(root.feed, round(root.width / 1phx), round(root.height / 1phx));
+            Actions.call-tile-seen(
+                root.feed,
+                round(root.width / 1phx),
+                round(root.picture-height / 1phx),
+                root.shown);
         }
     }
 
     init => {
-        root.report-size();
+        root.report();
     }
     changed feed => {
-        root.report-size();
+        root.report();
     }
     changed width => {
-        root.report-size();
+        root.report();
     }
-    changed height => {
-        root.report-size();
+    changed picture-height => {
+        root.report();
+    }
+    changed shown => {
+        root.report();
     }
 
-    background: AppStyle.call-tile;
     border-radius: Radius.md;
-    clip: true;
     accessible-role: groupbox;
     accessible-label: root.title;
     accessible-description: !root.shows-video ? root.state-text : root.tile.screen ? @tr("Screen share") : @tr("Camera on");
 
-    if root.shows-video: Image {
-        width: parent.width;
-        height: parent.height;
-        source: root.tile.frame;
-        image-fit: root.tile.screen ? ImageFit.contain : ImageFit.cover;
-        transform-scale-x: root.tile.mirrored ? -1 : 1;
-        accessible-role: none;
-    }
+    Rectangle {
+        background: AppStyle.call-tile;
+        border-radius: root.border-radius;
+        clip: true;
 
-    if root.shows-video: Rectangle {
-        y: parent.height - self.height;
-        height: Metrics.call-tile-caption;
-        background: AppStyle.call-caption;
+        if root.shows-video: Image {
+            width: parent.width;
+            height: root.picture-height;
+            source: root.tile.frame;
+            image-fit: root.tile.screen || root.fits-video ? ImageFit.contain : ImageFit.cover;
+            transform-scale-x: root.tile.mirrored ? -1 : 1;
+            accessible-role: none;
+        }
 
-        TileName {
+        if root.shows-video && !root.named-outside: Rectangle {
+            y: parent.height - self.height;
+            height: Metrics.call-tile-caption;
+            background: AppStyle.call-caption;
+
+            TileName {
+                padding-left: Space.sm;
+                padding-right: Space.sm;
+                alignment: center;
+                tile: root.tile;
+                title: root.title;
+            }
+        }
+
+        if root.named-outside: TileName {
+            y: root.picture-height;
+            height: Metrics.call-tile-caption;
             padding-left: Space.sm;
             padding-right: Space.sm;
             alignment: center;
             tile: root.tile;
             title: root.title;
+            text-color: AppStyle.foreground-muted;
         }
-    }
 
-    if !root.shows-video: VerticalLayout {
-        padding: Space.md;
-        spacing: Space.sm;
-        alignment: center;
-
-        if root.roomy && root.tile.screen: HorizontalLayout {
+        if !root.shows-video: VerticalLayout {
+            padding: Space.md;
+            spacing: Space.sm;
             alignment: center;
 
-            IconDisplay {
-                icon: IconSet.ScreenShare;
-                size: IconSize.xl;
-                stroke: AppStyle.foreground-muted;
+            if root.roomy && root.tile.screen: HorizontalLayout {
+                alignment: center;
+
+                IconDisplay {
+                    icon: IconSet.ScreenShare;
+                    size: IconSize.xl;
+                    stroke: AppStyle.foreground-muted;
+                    accessible-role: none;
+                }
+            }
+
+            if root.roomy && !root.tile.screen: HorizontalLayout {
+                alignment: center;
+
+                Avatar {
+                    width: Metrics.call-tile-avatar;
+                    height: Metrics.call-tile-avatar;
+                    color-index: root.tile.color-index;
+                    initial: root.tile.initial;
+                    initial-size: Glyph.lg;
+                    opacity: root.tile.state == CallTileState.live ? 1 : 0.5;
+                }
+            }
+
+            TileName {
+                alignment: center;
+                tile: root.tile;
+                title: root.title;
+            }
+
+            if root.state-text != "": Text {
+                text: root.state-text;
+                font-size: Fonts.caption;
+                color: root.troubled ? AppStyle.call-decline : AppStyle.foreground-muted;
+                wrap: word-wrap;
+                horizontal-alignment: center;
                 accessible-role: none;
             }
-        }
-
-        if root.roomy && !root.tile.screen: HorizontalLayout {
-            alignment: center;
-
-            Avatar {
-                width: Metrics.call-tile-avatar;
-                height: Metrics.call-tile-avatar;
-                color-index: root.tile.color-index;
-                initial: root.tile.initial;
-                initial-size: Glyph.lg;
-                opacity: root.tile.state == CallTileState.live ? 1 : 0.5;
-            }
-        }
-
-        TileName {
-            alignment: center;
-            tile: root.tile;
-            title: root.title;
-        }
-
-        if root.state-text != "": Text {
-            text: root.state-text;
-            font-size: Fonts.caption;
-            color: root.troubled ? AppStyle.call-decline : AppStyle.foreground-muted;
-            wrap: word-wrap;
-            horizontal-alignment: center;
-            accessible-role: none;
         }
     }
 
@@ -157,5 +186,19 @@ export component CallTileView inherits Rectangle {
         border-radius: root.border-radius;
         border-width: root.tile.speaking ? Metrics.call-speaking-ring : 0;
         border-color: AppStyle.call-speaking;
+    }
+
+    if root.selectable: ClickArea {
+        above-modal: root.above-modal;
+        ring-radius: Radius.md;
+        label: CallWords.focus-on(root.title);
+        changed has-focus => {
+            if self.has-focus {
+                root.took-focus();
+            }
+        }
+        clicked => {
+            Actions.focus-call-tile(root.tile.key);
+        }
     }
 }

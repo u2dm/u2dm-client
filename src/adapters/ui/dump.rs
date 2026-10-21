@@ -198,11 +198,20 @@ pub struct CallDump {
     pub sheet_microphone: bool,
     pub sheet_camera: bool,
     pub sheet_leaving: String,
+    pub stage: Vec<CallTileDump>,
     pub tiles: Vec<CallTileDump>,
+    pub media_shown: bool,
+    pub attached: Vec<String>,
+    pub self_view: bool,
+    pub offered_share: String,
+    pub ended_share: String,
+    pub ended_share_serial: i32,
+    pub people: String,
 }
 
 #[derive(Serialize)]
 pub struct CallTileDump {
+    pub key: String,
     pub member: String,
     pub feed: String,
     pub has_frame: bool,
@@ -412,18 +421,40 @@ fn call_view<B: UiBackend>(window: &B::Window) -> CallDump {
         sheet_microphone: window.get_bool(BoolProp::SheetMicrophone),
         sheet_camera: window.get_bool(BoolProp::SheetCamera),
         sheet_leaving: window.get_string(StringProp::SheetLeavingId).to_string(),
+        stage: B::models()
+            .call_stage
+            .iter()
+            .map(|tile| call_tile::<B>(&tile))
+            .collect(),
         tiles: B::models()
             .call_tiles
             .iter()
-            .map(|tile| CallTileDump {
-                member: tile.member().to_owned(),
-                feed: tile.feed().to_owned(),
-                has_frame: tile.has_frame(),
-                frame_serial: call_video::frames_of(tile.feed()),
-                mirrored: tile.mirrored(),
-                screen: tile.screen(),
-            })
+            .map(|tile| call_tile::<B>(&tile))
             .collect(),
+        media_shown: call_video::media_is_shown(),
+        attached: call_video::attached(),
+        self_view: window.get_bool(BoolProp::SelfView),
+        offered_share: window.get_string(StringProp::OfferedShare).to_string(),
+        ended_share: window.get_string(StringProp::EndedShare).to_string(),
+        ended_share_serial: window.get_int(IntProp::EndedShareSerial),
+        people: format!(
+            "{} | {} | +{}",
+            window.get_string(StringProp::PeopleFirst),
+            window.get_string(StringProp::PeopleSecond),
+            window.get_int(IntProp::PeopleMore)
+        ),
+    }
+}
+
+fn call_tile<B: UiBackend>(tile: &B::CallTile) -> CallTileDump {
+    CallTileDump {
+        key: tile.key().to_owned(),
+        member: tile.member().to_owned(),
+        feed: tile.feed().to_owned(),
+        has_frame: tile.has_frame(),
+        frame_serial: call_video::frames_of(tile.feed()),
+        mirrored: tile.mirrored(),
+        screen: tile.screen(),
     }
 }
 
