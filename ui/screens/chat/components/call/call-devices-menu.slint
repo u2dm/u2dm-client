@@ -72,7 +72,14 @@ export component CallDevicesMenu inherits PickerCard {
     property <bool> keys-focused: keys.has-focus;
 
     public function open(by-keys: bool) {
-        root.cursor = by-keys && root.count > 0 ? 0 : -1;
+        root.open-at(CallDeviceKind.microphone, by-keys);
+    }
+
+    public function open-at(kind: CallDeviceKind, by-keys: bool) {
+        let first = kind == CallDeviceKind.camera ? root.microphones + root.speakers
+            : kind == CallDeviceKind.speaker ? root.microphones
+            : 0;
+        root.cursor = by-keys && root.count > first ? first : -1;
         keys.focus();
     }
 

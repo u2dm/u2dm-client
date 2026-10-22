@@ -14,6 +14,7 @@ use super::user_info::{DmOutcome, ReadOutcome, VerifyOutcome};
 use crate::commands::messages::{UserMessage, UserMessageKind};
 use crate::commands::view::LoginActivity;
 use crate::domain::auth::ServerInfo;
+use crate::domain::call::devices::DeviceLists;
 use crate::domain::call::media::MediaEvent;
 use crate::domain::call::ring::{CallSignal, RingId};
 use crate::domain::call::sfu::{GrantResult, SfuId};
@@ -262,6 +263,10 @@ pub(super) enum CallEvent {
         call: u64,
         standings: Vec<(MemberKey, DeviceStanding)>,
     },
+    DevicesListed {
+        listing: u64,
+        lists: DeviceLists,
+    },
 }
 
 impl CallEvent {
@@ -279,7 +284,8 @@ impl CallEvent {
             Self::Signal { .. }
             | Self::RingWindow { .. }
             | Self::Declined { .. }
-            | Self::Transports { .. } => None,
+            | Self::Transports { .. }
+            | Self::DevicesListed { .. } => None,
         }
     }
 
@@ -298,6 +304,7 @@ impl CallEvent {
             Self::KeyWake { .. } => "CallKeyWake",
             Self::KeysSent { .. } => "CallKeysSent",
             Self::Standings { .. } => "CallStandings",
+            Self::DevicesListed { .. } => "CallDevicesListed",
         }
     }
 }

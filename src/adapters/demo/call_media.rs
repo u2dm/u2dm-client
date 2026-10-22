@@ -15,13 +15,13 @@ use tokio::time::sleep;
 use tokio_util::task::AbortOnDropHandle;
 use tracing::Instrument;
 
-use super::call_devices::DemoDevices;
+use super::call_devices::{DemoDevices, plugged_in};
 use super::calls::{
     self, CAMERA_LOST_AFTER, CUT_OFF_AFTER, PICKER_TIME, RECONNECT_AFTER, RECONNECT_FOR,
     SHARE_ENDS_AFTER, SPEAKING_TURN, UNTRUSTED,
 };
 use super::data;
-use crate::domain::call::devices::{DeviceChoice, DeviceKind};
+use crate::domain::call::devices::{DeviceChoice, DeviceKind, DeviceLists};
 use crate::domain::call::identity::{MediaIdentity, spellings};
 use crate::domain::call::keys::{KeyIndex, MediaKey};
 use crate::domain::call::media::{Decryption, MediaEvent, MediaSetup, Microphone, SfuState};
@@ -203,6 +203,11 @@ impl CallMediaPort for DemoCallMedia {
         None
     }
 
+    async fn list_devices(&self) -> Result<DeviceLists> {
+        tracing::info!("demo: the call devices are listed without a call");
+        Ok(plugged_in())
+    }
+
     async fn open(
         &self,
         setup: MediaSetup,
@@ -217,6 +222,7 @@ impl CallMediaPort for DemoCallMedia {
             }
         }
         let mut devices = DemoDevices::new(setup.devices);
+        devices.shape_chosen(&events_tx);
         devices.refresh(&events_tx);
         Ok(Box::new(DemoMediaSession {
             room_id: setup.room_id,

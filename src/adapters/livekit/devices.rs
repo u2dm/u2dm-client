@@ -70,6 +70,10 @@ impl Listing {
         &self.lists
     }
 
+    pub(super) fn into_lists(self) -> DeviceLists {
+        self.lists
+    }
+
     pub(super) fn index_of(&self, kind: DeviceKind, device: Option<&MediaDevice>) -> u16 {
         let indexed = match kind {
             DeviceKind::Microphone => &self.microphones,

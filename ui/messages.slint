@@ -1272,6 +1272,26 @@ export global CallWords {
         return "";
     }
 
+    public pure function device-chosen(status: CallDeviceStatus, name: string) -> string {
+        if status == CallDeviceStatus.system-default && name != "" {
+            return @tr("System default ({})", name);
+        }
+        if status == CallDeviceStatus.missing {
+            return @tr("{} (not connected)", name);
+        }
+        if status == CallDeviceStatus.failed {
+            return @tr("{} (could not be used)", name);
+        }
+        return root.device-name(status, name);
+    }
+
+    public pure function device-change(kind: CallDeviceKind) -> string {
+        if kind == CallDeviceKind.camera {
+            return @tr("Change the camera");
+        }
+        return @tr("Change the microphone");
+    }
+
     public pure function device-label(kind: CallDeviceKind, status: CallDeviceStatus, name: string) -> string {
         let shown = root.device-name(status, name);
         let detail = root.device-detail(status, name);

@@ -2977,6 +2977,10 @@ impl AppService {
                         .decline_settled(&room_id, sent, &self.room_directory);
                 }
             }
+            CallEvent::DevicesListed { listing, lists } => {
+                self.calls
+                    .devices_listed(listing, lists, &self.room_directory);
+            }
             event => {
                 if event.call().is_some_and(|call| self.calls.is_current(call)) {
                     self.calls.call_event(event, &self.room_directory);

@@ -214,6 +214,7 @@ struct CallSheetDto {
     video: bool,
     people: usize,
     others: Vec<String>,
+    devices: Option<CallDevicesDto>,
     microphone: bool,
     camera: bool,
     leaving: Option<String>,
@@ -1088,6 +1089,7 @@ fn call_sheet(sheet: &CallSheetView) -> CallSheetDto {
         video: sheet.video,
         people: sheet.people,
         others: sheet.others.iter().map(NamedUser::shown).collect(),
+        devices: sheet.devices.as_ref().map(call_devices),
         microphone: sheet.proposed.microphone,
         camera: sheet.proposed.camera,
         leaving: sheet

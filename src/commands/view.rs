@@ -321,6 +321,7 @@ pub struct CallSheetView {
     pub video: bool,
     pub people: usize,
     pub others: Arc<[NamedUser]>,
+    pub devices: Option<CallDevices>,
     pub proposed: MediaChoice,
     pub leaving: Option<LeavingCall>,
     pub ended: bool,

@@ -17,8 +17,8 @@ use super::{audio, call_video, video};
 use crate::commands::messages::UserMessageKind;
 use crate::commands::view::{
     ActiveCall, AppViewState, CallDevices, CallNotice, CallPerson, CallPhase, CallSheetView,
-    CallTile, CallView, FailedCall, JoinOffer, OfferView, RingView, RoomCallSummary, ScreenView,
-    TileKind,
+    CallTile, CallView, DeviceNews, FailedCall, JoinOffer, OfferView, RingView, RoomCallSummary,
+    ScreenView, TileKind,
 };
 use crate::domain::call::devices::DeviceKind;
 use crate::domain::call::video::{FeedId, Framing};
@@ -63,6 +63,11 @@ pub fn apply_call<B: UiBackend>(
     let last_active = last.and_then(|last| last.active.as_ref());
     if last_active != next.active.as_ref() {
         apply_active::<B>(w, last_active, next.active.as_ref());
+    }
+    let last_devices = last.and_then(shown_devices);
+    let next_devices = shown_devices(next);
+    if last.is_none() || last_devices != next_devices {
+        apply_device_rows::<B>(w, last_devices, next_devices);
     }
     if last.is_none_or(|last| last.failed != next.failed) {
         apply_failed(w, next.failed.as_ref());
@@ -173,9 +178,6 @@ fn apply_active<B: UiBackend>(w: &B::Window, last: Option<&ActiveCall>, next: Op
         models.call_stage.set_vec(Vec::new());
         models.call_tiles.set_vec(Vec::new());
         models.call_people.set_vec(Vec::new());
-        for kind in DeviceKind::ALL {
-            device_model::<B>(&models, kind).set_vec(Vec::new());
-        }
         call_video::follow::<B>(w, &[]);
         stop_elapsed(w);
         ringtone::stop_if(Tone::Ringback);
@@ -211,7 +213,7 @@ fn apply_active<B: UiBackend>(w: &B::Window, last: Option<&ActiveCall>, next: Op
     apply_notice(w, active.notice.as_ref());
     apply_stage::<B>(w, last, active);
     apply_people::<B>(last.map(|last| last.people.as_ref()), &active.people);
-    apply_devices::<B>(w, last.map(|last| &last.devices), &active.devices);
+    apply_device_news(w, active.devices.news.as_ref());
     if last.is_none_or(|last| last.live_since_ms != active.live_since_ms) {
         follow_elapsed(w, active.live_since_ms);
     }
@@ -286,17 +288,54 @@ fn apply_stage<B: UiBackend>(w: &B::Window, last: Option<&ActiveCall>, active: &
     call_video::follow::<B>(w, &feeds);
 }
 
-fn apply_devices<B: UiBackend>(w: &B::Window, last: Option<&CallDevices>, devices: &CallDevices) {
+fn shown_devices(call: &CallView) -> Option<&CallDevices> {
+    call.active
+        .as_ref()
+        .map(|active| &active.devices)
+        .or_else(|| call.sheet.as_ref().and_then(|sheet| sheet.devices.as_ref()))
+}
+
+fn apply_device_rows<B: UiBackend>(
+    w: &B::Window,
+    last: Option<&CallDevices>,
+    next: Option<&CallDevices>,
+) {
     let models = B::models();
     for kind in DeviceKind::ALL {
-        let options = devices.options.of(kind);
-        if last.is_some_and(|last| last.options.of(kind) == options) {
+        let options = next.map(|devices| devices.options.of(kind));
+        if last.map(|last| last.options.of(kind)) == options {
             continue;
         }
-        let rows: Vec<B::CallDevice> = options.iter().map(B::convert_call_device).collect();
+        let rows: Vec<B::CallDevice> = options.map_or_else(Vec::new, |options| {
+            options.iter().map(B::convert_call_device).collect()
+        });
         device_model::<B>(&models, kind).set_vec(rows);
     }
-    let Some(news) = &devices.news else {
+    w.set_int(
+        IntProp::MicrophoneChosen,
+        chosen_index(next, DeviceKind::Microphone),
+    );
+    w.set_int(
+        IntProp::CameraChosen,
+        chosen_index(next, DeviceKind::Camera),
+    );
+}
+
+fn chosen_index(devices: Option<&CallDevices>, kind: DeviceKind) -> i32 {
+    devices
+        .and_then(|devices| {
+            devices
+                .options
+                .of(kind)
+                .iter()
+                .position(|option| option.chosen)
+        })
+        .and_then(|index| i32::try_from(index).ok())
+        .unwrap_or(-1)
+}
+
+fn apply_device_news(w: &impl UiProps, news: Option<&DeviceNews>) {
+    let Some(news) = news else {
         w.set_int(IntProp::DeviceNewsSerial, 0);
         return;
     };

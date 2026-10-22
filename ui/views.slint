@@ -481,6 +481,8 @@ export global CallView {
     in property <[CallDeviceEntry]> microphones;
     in property <[CallDeviceEntry]> speakers;
     in property <[CallDeviceEntry]> cameras;
+    in property <int> microphone-chosen: -1;
+    in property <int> camera-chosen: -1;
     in property <CallDeviceKind> device-news-kind;
     in property <CallDeviceTrouble> device-news-trouble;
     in property <string> device-news-name;

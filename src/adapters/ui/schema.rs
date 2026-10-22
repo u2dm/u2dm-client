@@ -559,6 +559,8 @@ macro_rules! int_props {
         ActiveCall CallView "CallView" "active-call" set_active_call get_active_call;
         EndedShareSerial CallView "CallView" "ended-share-serial" set_ended_share_serial get_ended_share_serial;
         PeopleMore CallView "CallView" "people-more" set_people_more get_people_more;
+        MicrophoneChosen CallView "CallView" "microphone-chosen" set_microphone_chosen get_microphone_chosen;
+        CameraChosen CallView "CallView" "camera-chosen" set_camera_chosen get_camera_chosen;
         DeviceNewsSerial CallView "CallView" "device-news-serial" set_device_news_serial get_device_news_serial;
         CallDeclines WindowView "WindowView" "call-declines" set_call_declines get_call_declines;
         CallAnswers WindowView "WindowView" "call-answers" set_call_answers get_call_answers;

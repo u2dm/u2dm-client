@@ -3,7 +3,7 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use tokio::sync::mpsc;
 
-use crate::domain::call::devices::{DeviceChoice, DeviceKind};
+use crate::domain::call::devices::{DeviceChoice, DeviceKind, DeviceLists};
 use crate::domain::call::identity::MediaIdentity;
 use crate::domain::call::keys::{KeyIndex, MediaKey};
 use crate::domain::call::media::{MediaEvent, MediaSetup};
@@ -14,6 +14,7 @@ use crate::error::Result;
 #[async_trait]
 pub trait CallMediaPort: Send + Sync {
     fn broken(&self) -> Option<String>;
+    async fn list_devices(&self) -> Result<DeviceLists>;
     async fn open(
         &self,
         setup: MediaSetup,

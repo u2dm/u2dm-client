@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use crate::commands::view::{CallSheetView, JoinOffer, LeavingCall};
+use crate::commands::view::{CallDevices, CallSheetView, JoinOffer, LeavingCall};
 use crate::domain::call::RoomCall;
 use crate::domain::call::media::MediaChoice;
 use crate::domain::room::{Room, RoomId};
@@ -34,6 +34,7 @@ impl Sheet {
         offer: JoinOffer,
         leaving: Option<LeavingCall>,
         me: Option<&str>,
+        devices: Option<CallDevices>,
     ) -> CallSheetView {
         let call = room.call.as_deref();
         CallSheetView {
@@ -53,6 +54,7 @@ impl Sheet {
                         .collect()
                 },
             ),
+            devices,
             proposed: self.proposed,
             leaving,
             ended: self.ended && call.is_none(),

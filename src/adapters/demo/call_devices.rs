@@ -66,40 +66,7 @@ impl DemoDevices {
             .lock()
             .map(|unplugged| unplugged.clone())
             .unwrap_or_default();
-        let audio = |names: &[&'static str]| -> Vec<MediaDevice> {
-            names
-                .iter()
-                .filter(|name| !unplugged.contains(*name))
-                .map(|name| MediaDevice {
-                    key: DeviceKey::new(*name),
-                    name: (*name).to_owned(),
-                })
-                .collect()
-        };
-        let cameras = if calls::scenario().no_camera {
-            Vec::new()
-        } else {
-            CAMERAS
-                .iter()
-                .filter(|camera| !unplugged.contains(camera.key))
-                .map(|camera| MediaDevice {
-                    key: DeviceKey::new(camera.key),
-                    name: camera.name.to_owned(),
-                })
-                .collect()
-        };
-        DeviceLists {
-            connected: ByKind {
-                microphone: audio(&MICROPHONES),
-                speaker: audio(&SPEAKERS),
-                camera: cameras,
-            },
-            defaults: ByKind {
-                microphone: Some(BUILT_IN.to_owned()),
-                speaker: Some(BUILT_IN.to_owned()),
-                camera: None,
-            },
-        }
+        lists_without(&unplugged)
     }
 
     pub(super) fn refresh(&mut self, events_tx: &mpsc::UnboundedSender<MediaEvent>) {
@@ -185,6 +152,14 @@ impl DemoDevices {
         }
         tracing::info!(device = %chosen.key, "demo: the camera switches to the one you chose");
         self.routes.camera = Some(chosen.key.clone());
+    }
+
+    pub(super) fn shape_chosen(&mut self, events_tx: &mpsc::UnboundedSender<MediaEvent>) {
+        for kind in DeviceKind::ALL {
+            if let Some(key) = self.choices.of(kind).key().cloned() {
+                self.shape_choice(kind, key, events_tx);
+            }
+        }
     }
 
     pub(super) fn choose(
@@ -285,6 +260,47 @@ impl DemoDevices {
         for task in &self.unplugging {
             task.abort();
         }
+    }
+}
+
+pub(super) fn plugged_in() -> DeviceLists {
+    lists_without(&HashSet::new())
+}
+
+fn lists_without(unplugged: &HashSet<&'static str>) -> DeviceLists {
+    let audio = |names: &[&'static str]| -> Vec<MediaDevice> {
+        names
+            .iter()
+            .filter(|name| !unplugged.contains(*name))
+            .map(|name| MediaDevice {
+                key: DeviceKey::new(*name),
+                name: (*name).to_owned(),
+            })
+            .collect()
+    };
+    let cameras = if calls::scenario().no_camera {
+        Vec::new()
+    } else {
+        CAMERAS
+            .iter()
+            .filter(|camera| !unplugged.contains(camera.key))
+            .map(|camera| MediaDevice {
+                key: DeviceKey::new(camera.key),
+                name: camera.name.to_owned(),
+            })
+            .collect()
+    };
+    DeviceLists {
+        connected: ByKind {
+            microphone: audio(&MICROPHONES),
+            speaker: audio(&SPEAKERS),
+            camera: cameras,
+        },
+        defaults: ByKind {
+            microphone: Some(BUILT_IN.to_owned()),
+            speaker: Some(BUILT_IN.to_owned()),
+            camera: None,
+        },
     }
 }
 

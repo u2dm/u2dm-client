@@ -15,6 +15,7 @@ use tokio::sync::{Semaphore, mpsc, oneshot};
 use tokio::time::{sleep, sleep_until, timeout};
 use tracing::{Instrument, Span};
 
+use self::devices::Devices;
 use self::joined::{Effect, Joined, Joining};
 use self::lane::{LEAVE_WAIT, Lane, LaneEvent, MEMBERSHIP_LIFETIME, keep_membership};
 use self::media::MediaDriver;
@@ -31,7 +32,9 @@ use crate::commands::view::{
     CallFailure, CallSheetView, CallView, FailedCall, JoinOffer, JoinRefusal, LeavingCall,
     OfferView, RingView, RoomCallSummary, Toast,
 };
-use crate::domain::call::devices::{DeviceChoice, DeviceChoices, DeviceKey, DeviceKind};
+use crate::domain::call::devices::{
+    DeviceChoice, DeviceChoices, DeviceKey, DeviceKind, DeviceLists,
+};
 use crate::domain::call::keys::ReceivedKey;
 use crate::domain::call::media::{MediaChoice, MediaEvent, MediaSetup};
 use crate::domain::call::ring::{
@@ -172,6 +175,8 @@ pub(super) struct Calls {
     sheet: Option<Sheet>,
     sheet_serial: i32,
     devices: DeviceChoices,
+    listed: Option<DeviceLists>,
+    listings: u64,
     generation: u64,
     stale_checked: bool,
     published: CallView,
@@ -207,6 +212,8 @@ impl Calls {
             sheet: None,
             sheet_serial: 0,
             devices: DeviceChoices::default(),
+            listed: None,
+            listings: 0,
             generation: 0,
             stale_checked: false,
             published: CallView::default(),
@@ -623,7 +630,45 @@ impl Calls {
         tracing::debug!(%room_id, video, "asking how to join the call");
         self.sheet_serial = self.sheet_serial.wrapping_add(1);
         self.sheet = Some(Sheet::open(room, video, self.sheet_serial));
+        if self.joined.is_none() {
+            self.list_devices();
+        }
         self.publish(directory);
+    }
+
+    fn list_devices(&mut self) {
+        let Some(media) = self.media.clone() else {
+            return;
+        };
+        self.listings = self.listings.wrapping_add(1);
+        let listing = self.listings;
+        let events = self.events.clone();
+        self.actions.spawn(async move {
+            match media.list_devices().await {
+                Ok(lists) => send(&events, CallEvent::DevicesListed { listing, lists }),
+                Err(e) => tracing::warn!("the call devices could not be listed: {e}"),
+            }
+        });
+    }
+
+    pub(super) fn devices_listed(
+        &mut self,
+        listing: u64,
+        lists: DeviceLists,
+        directory: &RoomDirectory,
+    ) {
+        if listing != self.listings {
+            tracing::debug!("an older listing of the call devices, dropping");
+            return;
+        }
+        self.listed = Some(lists);
+        self.publish(directory);
+    }
+
+    fn listed_devices(&self) -> Option<Devices> {
+        let mut devices = Devices::new(self.devices.clone());
+        devices.listed(self.listed.clone()?);
+        Some(devices)
     }
 
     pub(super) fn close_sheet(&mut self, directory: &RoomDirectory) {
@@ -954,11 +999,19 @@ impl Calls {
         directory: &RoomDirectory,
     ) {
         let Some(joined) = self.joined.as_mut() else {
-            if key.is_none() {
-                *self.devices.of_mut(kind) = DeviceChoice::Default;
-            } else {
-                tracing::debug!(%kind, "no call lists the device to choose");
-            }
+            let choice = match key {
+                None => Some(DeviceChoice::Default),
+                Some(_) => self
+                    .listed_devices()
+                    .and_then(|devices| devices.choice_for(kind, key)),
+            };
+            let Some(choice) = choice else {
+                tracing::debug!(%kind, "no listing names the device to choose");
+                return;
+            };
+            tracing::info!(%kind, "choosing a call device for the next call");
+            *self.devices.of_mut(kind) = choice;
+            self.publish(directory);
             return;
         };
         let span = joined.span.clone();
@@ -969,9 +1022,11 @@ impl Calls {
         self.publish(directory);
     }
 
-    pub(super) fn refresh_devices(&self) {
+    pub(super) fn refresh_devices(&mut self) {
         if let Some(joined) = &self.joined {
             joined.refresh_devices();
+        } else if self.sheet.is_some() {
+            self.list_devices();
         }
     }
 
@@ -1085,7 +1140,8 @@ impl Calls {
             CallEvent::Signal { .. }
             | CallEvent::RingWindow { .. }
             | CallEvent::Declined { .. }
-            | CallEvent::Transports { .. } => {}
+            | CallEvent::Transports { .. }
+            | CallEvent::DevicesListed { .. } => {}
         }
     }
 
@@ -1433,7 +1489,11 @@ impl Calls {
                 room_name: joined.room_name().to_owned(),
             });
         let me = self.own.as_ref().map(|own| &*own.user);
-        Some(sheet.view(room, self.offer_for(room), leaving, me))
+        let devices = self.joined.as_ref().map_or_else(
+            || self.listed_devices().map(|devices| devices.view()),
+            |joined| Some(joined.devices_view()),
+        );
+        Some(sheet.view(room, self.offer_for(room), leaving, me, devices))
     }
 
     fn failed_view(&self, directory: &RoomDirectory) -> Option<FailedCall> {

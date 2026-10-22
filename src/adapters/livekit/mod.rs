@@ -16,8 +16,10 @@ use tokio::sync::mpsc;
 use tokio::task::spawn_blocking;
 use tracing::Instrument;
 
+use self::devices::Listing;
 use self::feeds::Feeds;
 use self::session::LiveKitSession;
+use crate::domain::call::devices::DeviceLists;
 use crate::domain::call::media::{MediaEvent, MediaSetup};
 use crate::domain::call::video::{FeedId, FrameSize, Framing, ScreenShare};
 use crate::error::{AppError, Result};
@@ -62,6 +64,15 @@ impl CallVideoPort for LiveKitMedia {
 impl CallMediaPort for LiveKitMedia {
     fn broken(&self) -> Option<String> {
         self.broken.lock().ok().and_then(|broken| broken.clone())
+    }
+
+    async fn list_devices(&self) -> Result<DeviceLists> {
+        let listing = spawn_blocking(|| PlatformAudio::new().map(|audio| Listing::read(&audio)))
+            .await
+            .map_err(|e| AppError::Other(e.to_string()))?;
+        listing
+            .map(Listing::into_lists)
+            .map_err(|e| AppError::Other(format!("the audio devices did not open: {e}")))
     }
 
     async fn open(

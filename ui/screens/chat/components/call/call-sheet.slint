@@ -3,10 +3,12 @@ import { Icon, IconDisplay, IconSet } from "@lucide";
 
 import { AppButton, LinkButton } from "../../../../components/button.slint";
 import { ClickArea } from "../../../../components/a11y.slint";
-import { DialogCard, ModalHost } from "../../../../components/overlay.slint";
+import { DialogCard, ModalHost, Placement } from "../../../../components/overlay.slint";
 import { StateLayer } from "../../../../components/state-layer.slint";
 import { AppStyle, Fonts, IconSize, Metrics, Radius, Size, Space, Weight } from "../../../../theme.slint";
-import { CallOffer } from "../../../../enums.slint";
+import { CallDeviceKind, CallOffer } from "../../../../enums.slint";
+import { CallDeviceEntry } from "../../../../types.slint";
+import { CallDevicesMenu } from "./call-devices-menu.slint";
 import { CallView, DirectoryView, SpaceIndexView } from "../../../../views.slint";
 import { CallWords } from "../../../../messages.slint";
 import { Actions } from "../../../../actions.slint";
@@ -81,6 +83,57 @@ component MediaChoiceRow inherits ClickArea {
     }
 }
 
+component DeviceLine inherits Rectangle {
+    in property <CallDeviceKind> kind;
+    in property <int> index;
+
+    out property <length> change-x: change.absolute-position.x;
+    out property <length> change-y: change.absolute-position.y;
+    out property <length> change-width: change.width;
+    out property <length> change-height: change.height;
+
+    callback change(bool);
+
+    property <CallDeviceEntry> entry: root.kind == CallDeviceKind.camera
+        ? CallView.cameras[root.index]
+        : CallView.microphones[root.index];
+    property <string> shown: root.index >= 0 ? CallWords.device-chosen(root.entry.status, root.entry.name)
+        : root.kind == CallDeviceKind.camera ? @tr("No camera was found")
+        : "";
+
+    public function focus-change() {
+        change.take-focus();
+    }
+
+    HorizontalLayout {
+        padding-left: Space.md + Metrics.call-control + Space.lg;
+        padding-right: Space.md;
+        spacing: Space.md;
+
+        Text {
+            horizontal-stretch: 1;
+            text: root.shown;
+            font-family: Fonts.emoji;
+            font-size: Fonts.body-small;
+            color: AppStyle.foreground-muted;
+            vertical-alignment: center;
+            overflow: elide;
+        }
+
+        change := LinkButton {
+            min-height: Size.sm;
+            above-modal: true;
+            text: @tr("Change");
+            label: CallWords.device-change(root.kind);
+            accessible-description: root.shown;
+            pad: 2 * Space.sm;
+            clicked => {
+                root.change(self.has-focus);
+            }
+        }
+    }
+}
+
 export component CallSheet inherits ModalHost {
     property <length> card-width: min(AppStyle.card-width, root.width - AppStyle.card-inset);
     property <length> body-height: body.preferred-height;
@@ -93,6 +146,18 @@ export component CallSheet inherits ModalHost {
     property <bool> leaving: CallView.sheet-leaving-id != "";
     property <bool> microphone: CallView.sheet-microphone;
     property <bool> camera: CallView.sheet-camera;
+    property <bool> lists-devices: CallView.microphones.length > 0;
+    property <bool> devices-open;
+    property <bool> devices-by-keys;
+    property <CallDeviceKind> devices-kind: CallDeviceKind.microphone;
+    property <bool> camera-devices: root.devices-kind == CallDeviceKind.camera;
+    property <length> anchor-x: root.camera-devices ? camera-line.change-x : microphone-line.change-x;
+    property <length> anchor-y: root.camera-devices ? camera-line.change-y : microphone-line.change-y;
+    property <length> anchor-width: root.camera-devices ? camera-line.change-width : microphone-line.change-width;
+    property <length> anchor-height: root.camera-devices ? camera-line.change-height : microphone-line.change-height;
+    property <length> devices-room-above: root.anchor-y - Space.xs - Space.md;
+    property <length> devices-room-below: root.height - root.anchor-y - root.anchor-height - Space.xs - Space.md;
+    property <bool> devices-above: root.devices-room-above > root.devices-room-below;
     property <string> title: CallWords.sheet-title(
         CallView.sheet-direct,
         root.joining,
@@ -103,7 +168,11 @@ export component CallSheet inherits ModalHost {
     dim-opacity: AppStyle.dialog-scrim;
     label: root.title;
     dismissed => {
-        CallPanel.dismiss-sheet();
+        if root.devices-open {
+            root.close-devices();
+        } else {
+            CallPanel.dismiss-sheet();
+        }
     }
     opened => {
         Reactions.close();
@@ -121,6 +190,22 @@ export component CallSheet inherits ModalHost {
             root.focus-first();
         } else if !root.refused && remedy-button.has-focus {
             root.focus-first();
+        }
+    }
+
+    function open-devices(kind: CallDeviceKind, by-keys: bool) {
+        root.devices-kind = kind;
+        root.devices-by-keys = by-keys;
+        Actions.refresh-call-devices();
+        root.devices-open = true;
+    }
+
+    function close-devices() {
+        root.devices-open = false;
+        if root.camera-devices {
+            camera-line.focus-change();
+        } else {
+            microphone-line.focus-change();
         }
     }
 
@@ -228,6 +313,16 @@ export component CallSheet inherits ModalHost {
                             on <=> root.microphone;
                         }
 
+                        microphone-line := DeviceLine {
+                            height: root.lists-devices ? Size.sm : 0;
+                            visible: root.lists-devices;
+                            kind: CallDeviceKind.microphone;
+                            index: CallView.microphone-chosen;
+                            change(by-keys) => {
+                                root.open-devices(CallDeviceKind.microphone, by-keys);
+                            }
+                        }
+
                         camera-row := MediaChoiceRow {
                             label: @tr("Camera");
                             on-icon: IconSet.Video;
@@ -235,6 +330,16 @@ export component CallSheet inherits ModalHost {
                             text: CallWords.camera-choice(self.on);
                             detail: CallWords.camera-effect(self.on);
                             on <=> root.camera;
+                        }
+
+                        camera-line := DeviceLine {
+                            height: root.lists-devices ? Size.sm : 0;
+                            visible: root.lists-devices;
+                            kind: CallDeviceKind.camera;
+                            index: CallView.camera-chosen;
+                            change(by-keys) => {
+                                root.open-devices(CallDeviceKind.camera, by-keys);
+                            }
                         }
                     }
 
@@ -311,6 +416,30 @@ export component CallSheet inherits ModalHost {
                     root.confirm();
                 }
             }
+        }
+    }
+
+    if root.devices-open: ModalHost {
+        x: 0;
+        y: 0;
+        width: root.width;
+        height: root.height;
+        dim: false;
+        label: @tr("Devices");
+        dismissed => {
+            root.close-devices();
+        }
+        opened => {
+            sheet-devices.open-at(root.devices-kind, root.devices-by-keys);
+        }
+
+        sheet-devices := CallDevicesMenu {
+            x: Placement.fit(root.anchor-x + root.anchor-width - self.width, self.width, root.width, Space.md);
+            y: root.devices-above
+                ? root.anchor-y - Space.xs - self.height
+                : root.anchor-y + root.anchor-height + Space.xs;
+            room: root.devices-above ? root.devices-room-above : root.devices-room-below;
+            above-modal: true;
         }
     }
 }

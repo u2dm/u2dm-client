@@ -11,7 +11,7 @@ use super::media::MediaCommand;
 use super::people;
 use super::stage::Stage;
 use crate::commands::view::{
-    ActiveCall, CallFailure, CallNotice, CallPhase, CallTile, CameraView, CantDecrypt,
+    ActiveCall, CallDevices, CallFailure, CallNotice, CallPhase, CallTile, CameraView, CantDecrypt,
     MicrophoneView, ScreenView, TileKind, TileState,
 };
 use crate::domain::call::devices::{DeviceChoice, DeviceChoices, DeviceKey, DeviceKind};
@@ -744,6 +744,10 @@ impl Joined {
 
     pub(super) fn refresh_devices(&self) {
         self.command(MediaCommand::RefreshDevices);
+    }
+
+    pub(super) fn devices_view(&self) -> CallDevices {
+        self.devices.view()
     }
 
     pub(super) fn set_screen_share(&mut self, on: bool) {
