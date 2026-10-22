@@ -76,8 +76,6 @@ export component ChatScreen inherits FocusScope {
     property <length> room-info-pane-width: Metrics.room-info-pane-default;
     property <bool> nav-collapsed: root.sidebar-width <= Metrics.sidebar-collapsed;
     property <bool> in-space: DirectoryView.room-scope == RoomScope.space;
-    property <length> divider-width: Space.sm;
-    property <length> resize-step: Space.xl;
 
     property <length> subrail-width: Metrics.subspace-rail;
     property <length> subrail-inset: Subspaces.in-column(root.nav-collapsed) ? root.subrail-width : 0;
@@ -275,15 +273,15 @@ export component ChatScreen inherits FocusScope {
     }
 
     if !root.compact: ResizeHandle {
-        x: root.nav-width - root.divider-width / 2;
+        x: root.nav-width - Metrics.divider / 2;
         y: 0;
-        width: root.divider-width;
+        width: Metrics.divider;
         height: root.height;
         label: @tr("Sidebar width");
         value: root.sidebar-width;
         minimum: Metrics.sidebar-collapsed;
         maximum: Metrics.sidebar-max;
-        step: root.resize-step;
+        step: Metrics.resize-step;
         dragged(delta) => {
             root.drag-sidebar(delta);
         }
@@ -293,16 +291,16 @@ export component ChatScreen inherits FocusScope {
     }
 
     if root.room-info-pane-shown: ResizeHandle {
-        x: root.width - root.room-info-pane-inset - root.divider-width / 2;
+        x: root.width - root.room-info-pane-inset - Metrics.divider / 2;
         y: 0;
-        width: root.divider-width;
+        width: Metrics.divider;
         height: root.height;
         edge: ResizeEdge.left;
         label: @tr("Room info panel width");
         value: root.room-info-pane-inset;
         minimum: Metrics.room-info-pane-min;
         maximum: Metrics.room-info-pane-max;
-        step: root.resize-step;
+        step: Metrics.resize-step;
         dragged(grow) => {
             root.resize-room-info-pane(grow);
         }
@@ -320,6 +318,7 @@ export component ChatScreen inherits FocusScope {
         here: timeline.in-call-room && !root.shows-room-list && !SpaceIndexView.visible;
         stage-hidden: timeline.stage-hidden;
         stage-shown: timeline.shows-call-media;
+        stage-beside: timeline.call-split-fits;
         returned => {
             timeline.focus-composer();
         }

@@ -50,6 +50,7 @@ component ShareOffer inherits HorizontalLayout {
 export component CallBand inherits Rectangle {
     in property <CallSize> size;
     in property <bool> stage-fits;
+    in property <bool> beside-chat;
 
     out property <length> menu-x: menu-button.absolute-position.x;
     out property <length> menu-y: menu-button.absolute-position.y;
@@ -111,7 +112,9 @@ export component CallBand inherits Rectangle {
                 x: (root.offers-chat ? chat-toggle.x - Space.sm : parent.width) - self.width;
                 y: (parent.height - self.height) / 2;
                 size: Size.md;
-                icon: root.forced-full ? IconSet.Minimize2 : IconSet.PanelTopClose;
+                icon: root.forced-full ? IconSet.Minimize2
+                    : root.beside-chat ? IconSet.PanelLeftClose
+                    : IconSet.PanelTopClose;
                 label: root.forced-full ? @tr("Show the chat") : @tr("Hide the call");
                 tip: self.label;
                 tip-keys: root.forced-full ? CallKeys.binding(CallKey.chat) : "";
@@ -178,6 +181,7 @@ export component CallBand inherits Rectangle {
     Rectangle {
         y: parent.height - self.height;
         height: Stroke.hairline;
+        visible: root.size == CallSize.stage && !root.beside-chat;
         background: AppStyle.border;
     }
 }

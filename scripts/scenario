@@ -138,6 +138,7 @@ scenario_env() {
     call-dock-nav)   echo 'U2DM_DEMO_CALLS=active U2DM_DEMO_WINDOW=420x760' ;;
     call-dock-index) echo 'U2DM_DEMO_CALLS=active U2DM_DEMO_WINDOW=900x760' ;;
     call-minimum)    echo 'U2DM_DEMO_CALLS=active,cameras U2DM_DEMO_WINDOW=360x420' ;;
+    call-split)      echo 'U2DM_DEMO_CALLS=active,cameras U2DM_DEMO_WINDOW=1440x900' ;;
     call-crowd)      echo 'U2DM_DEMO_CALLS=active,crowd U2DM_DEMO_WINDOW=900x760' ;;
     call-video)      echo 'U2DM_DEMO_CALLS=active,cameras U2DM_DEMO_WINDOW=900x760' ;;
     call-camera)     echo 'U2DM_DEMO_CALLS=active U2DM_DEMO_WINDOW=900x760' ;;
@@ -868,7 +869,7 @@ scenario_steps() {
       echo '{"op":"select_space","space_id":"!space-rust:demo.local"}'
       echo '{"op":"open_space_index"}'
       echo 'sleep 2' ;;
-    call-minimum)
+    call-minimum|call-split)
       echo '{"op":"select_room","room_id":"!design:demo.local"}'
       echo 'sleep 2'
       echo '{"op":"join_call"}'
@@ -1261,7 +1262,8 @@ scenario_note() {
     call-compact)    echo 'a 420 px window in the call: tiles wrap in the band (call-ui)' ;;
     call-dock-nav)   echo 'a 420 px window in the Design Team call with no room open: the dock sits under the room list, which ends above it (call-ui)' ;;
     call-dock-index) echo 'in the Rust Programming call, open the Rust space index: the dock sits under the index, which ends above it (call-ui, space-index)' ;;
-    call-minimum)    echo 'the Design Team video call in a 360x420 window: no room for a stage beside the chat, so the call takes the column, the composer hidden, with Show the chat (call-ui)' ;;
+    call-minimum)    echo 'the Design Team video call in a 360x420 window: no room for both a stage and the chat, so the call takes the column, the composer hidden, with Show the chat (call-ui)' ;;
+    call-split)      echo 'the Design Team video call in a 1440x900 window: a 1100 px column puts the stage beside the chat, with a divider that sets its width (call-ui)' ;;
     call-crowd)      echo 'nine people in the Design Team call: the tile grid scrolls (call-ui)' ;;
     call-video)      echo 'the Design Team video call with everyone'"'"'s camera on: painted demo videos fill the tiles, yours mirrored (call-ui, call-media)' ;;
     call-camera)     echo 'join the Rust Programming voice call, then switch your camera on: the stage stays hidden, and Show the call shows your tile with video (call-ui)' ;;
@@ -1326,7 +1328,7 @@ names() {
     calls-active call-ring call-ring-ends call-ring-elsewhere call-ring-unconfirmed call-expiry \
     call-join call-start-dm call-start-dm-declined call-keys-late call-undecryptable call-no-sfu \
     call-no-permission call-unverified-session call-reconnect call-remote-sfu call-switch-rooms \
-    call-compact call-dock-nav call-dock-index call-minimum call-crowd call-video call-camera \
+    call-compact call-dock-nav call-dock-index call-minimum call-split call-crowd call-video call-camera \
     call-screen-share call-share-screen call-join-sheet call-start-sheet-dm call-video-sheet \
     call-switch-calls call-sheet-ended call-answer-video call-answer-switch \
     call-alone call-announce-fails call-cut-off call-camera-lost call-share-cancelled \

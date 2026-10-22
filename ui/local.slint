@@ -129,6 +129,8 @@ export enum CallSheetOpener { composer, header, room-menu }
 
 export global CallPanel {
     in-out property <CallSize> chosen: CallSize.hidden;
+    in-out property <float> stage-share: Metrics.call-stage-share;
+    in-out property <float> split-share: Metrics.call-split-share;
     in-out property <bool> fits-videos: false;
     in-out property <bool> hides-strip: false;
     in-out property <bool> menu-open: false;
@@ -170,6 +172,12 @@ export global CallPanel {
         root.devices-open = false;
         root.focus-stage = false;
         root.focus-tile = "";
+    }
+
+    public function forget() {
+        root.begin(false);
+        root.stage-share = Metrics.call-stage-share;
+        root.split-share = Metrics.call-split-share;
     }
 }
 
@@ -671,7 +679,7 @@ export global LocalState {
         Composer.clear();
         Shell.close-overlays();
         Shell.room-info-pane-open = false;
-        CallPanel.begin(false);
+        CallPanel.forget();
         RoomSearch.query = "";
         RoomSearch.opened-room = "";
         Subspaces.forget();

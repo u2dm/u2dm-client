@@ -1,7 +1,7 @@
 import { FocusRing, FocusTrail } from "./a11y.slint";
 import { Shell } from "../local.slint";
 
-export enum ResizeEdge { right, left }
+export enum ResizeEdge { right, left, bottom }
 
 export component ResizeHandle inherits Rectangle {
     in property <ResizeEdge> edge: ResizeEdge.right;
@@ -14,7 +14,10 @@ export component ResizeHandle inherits Rectangle {
     callback dragged(length);
     callback stepped(length);
 
-    property <float> outward: root.edge == ResizeEdge.right ? 1 : -1;
+    property <bool> vertical: root.edge == ResizeEdge.bottom;
+    property <float> outward: root.edge == ResizeEdge.left ? -1 : 1;
+    property <string> back-key: root.vertical ? Key.UpArrow : Key.LeftArrow;
+    property <string> forward-key: root.vertical ? Key.DownArrow : Key.RightArrow;
 
     accessible-role: AccessibleRole.slider;
     accessible-label: root.label;
@@ -38,11 +41,11 @@ export component ResizeHandle inherits Rectangle {
             FocusTrail.leave();
         }
         key-pressed(event) => {
-            if event.text == Key.LeftArrow {
+            if event.text == root.back-key {
                 root.stepped(-root.step * root.outward);
                 return accept;
             }
-            if event.text == Key.RightArrow {
+            if event.text == root.forward-key {
                 root.stepped(root.step * root.outward);
                 return accept;
             }
@@ -51,9 +54,9 @@ export component ResizeHandle inherits Rectangle {
     }
 
     TouchArea {
-        mouse-cursor: col-resize;
+        mouse-cursor: root.vertical ? MouseCursor.row-resize : MouseCursor.col-resize;
         moved => {
-            root.dragged((self.mouse-x - self.pressed-x) * root.outward);
+            root.dragged((root.vertical ? self.mouse-y - self.pressed-y : self.mouse-x - self.pressed-x) * root.outward);
         }
     }
 

@@ -359,6 +359,9 @@ export global Metrics {
     out property <length> call-chat-min: 160px;
     out property <length> call-stage-column: root.header-row + root.composer-row + 2 * Space.lg
         + root.call-stage-min + root.call-chat-min + root.call-dock;
+    out property <float> call-split-share: 0.6;
+    out property <length> call-split-stage-min: 640px;
+    out property <length> call-split-min: root.call-split-stage-min + root.timeline-min;
     out property <length> call-control: Size.target;
     out property <length> call-badge: Size.xxs;
     out property <length> call-dock: root.call-control + 2 * Space.md;
@@ -438,6 +441,8 @@ export global Metrics {
 
     out property <length> timeline-min: 380px;
     out property <length> compact-breakpoint: root.sidebar-default + root.timeline-min;
+    out property <length> divider: Space.sm;
+    out property <length> resize-step: Space.xl;
 
     out property <length> window-min-width: 360px;
     out property <length> window-min-height: 420px;

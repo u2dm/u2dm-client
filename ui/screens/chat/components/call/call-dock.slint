@@ -140,6 +140,7 @@ export component CallDock inherits Rectangle {
     in property <bool> here;
     in property <bool> stage-hidden;
     in property <bool> stage-shown;
+    in property <bool> stage-beside;
 
     callback returned();
 
@@ -308,7 +309,7 @@ export component CallDock inherits Rectangle {
         above-modal: root.above-modal;
         fill: AppStyle.control;
         tint: AppStyle.foreground-strong;
-        icon: IconSet.PanelTopOpen;
+        icon: root.stage-beside ? IconSet.PanelLeftOpen : IconSet.PanelTopOpen;
         label: CallView.offered-share != "" ? CallWords.view-share(CallView.offered-share) : @tr("Show the call");
         tip: self.label;
         tip-scope: TipScope.call;
