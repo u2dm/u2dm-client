@@ -100,6 +100,7 @@ component UnsentBanner inherits Rectangle {
 export component MessageInput inherits Rectangle {
     in property <string> room-id;
     in-out property <string> message: "";
+    out property <bool> input-focused: field.input-focused;
 
     in property <length> overlay-x;
     in property <length> overlay-y;

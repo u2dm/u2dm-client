@@ -2,7 +2,7 @@ import { IconDisplay, IconSet } from "@lucide";
 
 import { LinkButton } from "../../../../components/button.slint";
 import { DotPulse } from "../../../../components/dot-pulse.slint";
-import { CallDeviceTrouble, CallNotice } from "../../../../enums.slint";
+import { CallDeviceTrouble, CallNotice, CallPhase } from "../../../../enums.slint";
 import { CallWords } from "../../../../messages.slint";
 import { Actions } from "../../../../actions.slint";
 import { CallView } from "../../../../views.slint";
@@ -24,6 +24,7 @@ export component CallStatus inherits HorizontalLayout {
     property <bool> trouble: (root.noticed && !root.pending && !root.about-others && !root.undiagnosed)
         || (root.device-news && !root.unplugged);
     property <string> action: CallWords.notice-action(root.notice);
+    property <bool> share-waits: CallView.phase == CallPhase.joining || CallView.phase == CallPhase.connecting;
 
     function act() {
         if root.notice == CallNotice.choosing-screen {
@@ -64,16 +65,15 @@ export component CallStatus inherits HorizontalLayout {
         text: root.noticed
             ? CallWords.notice(root.notice, CallView.active-room-name, CallView.notice-name, CallView.notice-others)
             : root.explains-share
-            ? CallWords.share(CallView.screen, CallView.screen-refusal)
+            ? CallWords.share-state(CallView.screen, CallView.screen-refusal, root.share-waits)
             : root.device-news
             ? CallWords.device-news(CallView.device-news-trouble, CallView.device-news-kind, CallView.device-news-name)
-            : @tr("{} stopped sharing their screen", CallView.ended-share);
+            : CallWords.share-ended(CallView.ended-share);
         font-family: Fonts.emoji;
         font-size: Fonts.body-small;
         color: root.trouble ? AppStyle.danger-muted : AppStyle.foreground-muted;
         vertical-alignment: center;
         wrap: word-wrap;
-        accessible-live-region: AccessibleLiveness.polite;
     }
 
     if root.action != "": LinkButton {

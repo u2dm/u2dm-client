@@ -10,7 +10,7 @@ import { CallOffer } from "../../../../enums.slint";
 import { CallView, DirectoryView, SpaceIndexView } from "../../../../views.slint";
 import { CallWords } from "../../../../messages.slint";
 import { Actions } from "../../../../actions.slint";
-import { MetaTip, Reactions, Shell } from "../../../../local.slint";
+import { CallPanel, MetaTip, Reactions, Shell } from "../../../../local.slint";
 import { DialogNote } from "../verification.slint";
 
 component MediaChoiceRow inherits ClickArea {
@@ -100,11 +100,12 @@ export component CallSheet inherits ModalHost {
     dim-opacity: AppStyle.dialog-scrim;
     label: root.title;
     dismissed => {
-        Actions.close-call-sheet();
+        CallPanel.dismiss-sheet();
     }
     opened => {
         Reactions.close();
         MetaTip.clear();
+        microphone-row.take-focus();
     }
 
     changed serial => {
@@ -177,7 +178,7 @@ export component CallSheet inherits ModalHost {
             VerticalLayout {
                 spacing: Space.xs;
 
-                MediaChoiceRow {
+                microphone-row := MediaChoiceRow {
                     label: @tr("Microphone");
                     on-icon: IconSet.Mic;
                     off-icon: IconSet.MicOff;
@@ -236,7 +237,7 @@ export component CallSheet inherits ModalHost {
                     text: @tr("Cancel");
                     filled: false;
                     clicked => {
-                        Actions.close-call-sheet();
+                        CallPanel.dismiss-sheet();
                     }
                 }
 

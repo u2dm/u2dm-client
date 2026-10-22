@@ -410,7 +410,9 @@ fn apply_ring<B: UiBackend>(
     if last.is_none_or(|last| fresh || last.room_avatar_mxc != next.room_avatar_mxc) {
         show_ring_avatar(w, next, ctx.media);
     }
-    if fresh {
+    if next.quiet {
+        ringtone::stop_if(Tone::Incoming);
+    } else if fresh || last.is_some_and(|last| last.quiet) {
         audio::pause(w);
         video::set_playing(w, false);
         ringtone::play(&w.as_weak(), Tone::Incoming);
@@ -455,6 +457,7 @@ fn show_card(w: &impl UiProps, ring: &RingView) {
     w.set_bool(BoolProp::RingVideo, ring.video);
     w.set_bool(BoolProp::RingDirect, ring.direct);
     w.set_bool(BoolProp::RingAnswerable, ring.answerable);
+    w.set_bool(BoolProp::RingQuiet, ring.quiet);
     if let Some(refusal) = ring.refusal {
         w.set_ring_refusal(refusal);
     }

@@ -403,6 +403,7 @@ macro_rules! bool_props {
         RingVideo CallView "CallView" "ring-video" set_ring_video get_ring_video;
         RingDirect CallView "CallView" "ring-direct" set_ring_direct get_ring_direct;
         RingAnswerable CallView "CallView" "ring-answerable" set_ring_answerable get_ring_answerable;
+        RingQuiet CallView "CallView" "ring-quiet" set_ring_quiet get_ring_quiet;
         HereVideo CallView "CallView" "here-video" set_here_video get_here_video;
         HereJoined CallView "CallView" "here-joined" set_here_joined get_here_joined;
         ActiveVisible CallView "CallView" "active" set_active get_active;

@@ -1,5 +1,5 @@
 import { Palette } from "std-widgets.slint";
-import { AppStyle, Fonts, Motion, Opacity, Radius, Size, Space } from "../theme.slint";
+import { AppStyle, Fonts, Motion, Opacity, Radius, Size, Space, Weight } from "../theme.slint";
 
 export global Placement {
     public pure function fit(start: length, size: length, extent: length, edge: length) -> length {
@@ -20,19 +20,31 @@ export component PickerCard inherits Rectangle {
 
 export component TipCard inherits PickerCard {
     in property <string> text;
+    in property <string> keys;
 
-    width: tip-text.preferred-width + Space.xl;
+    width: row.preferred-width;
     height: Size.sm;
 
-    tip-text := Text {
-        x: Space.md;
-        width: parent.width - Space.xl;
-        height: parent.height;
-        text: root.text;
-        font-size: Fonts.caption;
-        color: Palette.foreground;
-        vertical-alignment: center;
-        overflow: elide;
+    row := HorizontalLayout {
+        padding-left: Space.md;
+        padding-right: Space.md;
+        spacing: Space.md;
+
+        Text {
+            text: root.text;
+            font-size: Fonts.caption;
+            color: Palette.foreground;
+            vertical-alignment: center;
+            overflow: elide;
+        }
+
+        if root.keys != "": Text {
+            text: root.keys;
+            font-size: Fonts.caption;
+            font-weight: Weight.semibold;
+            color: AppStyle.foreground-muted;
+            vertical-alignment: center;
+        }
     }
 }
 

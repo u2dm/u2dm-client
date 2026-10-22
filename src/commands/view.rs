@@ -268,6 +268,7 @@ pub struct RingView {
     pub direct: bool,
     pub caller: NamedUser,
     pub video: bool,
+    pub quiet: bool,
     pub desktop: bool,
     pub answerable: bool,
     pub refusal: Option<JoinRefusal>,

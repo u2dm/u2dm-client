@@ -5,6 +5,8 @@ import { Drawer } from "./components/drawer.slint";
 import { TimelineView } from "./components/timeline/timeline-view.slint";
 import { SpaceIndexPane } from "./components/space-index.slint";
 import { RoomMenuOverlay } from "./components/room-menu.slint";
+import { CallAnnouncer } from "./components/call/call-announcer.slint";
+import { CallKey, CallKeys } from "./components/call/call-controls.slint";
 import { ResizeEdge, ResizeHandle } from "../../components/resize-handle.slint";
 import { RoomInfoPlacement, RoomScope, UserMessageKind } from "../../enums.slint";
 import { UserMessages } from "../../messages.slint";
@@ -46,7 +48,7 @@ component Toast inherits Rectangle {
     }
 }
 
-export component ChatScreen inherits Rectangle {
+export component ChatScreen inherits FocusScope {
     in-out property <string> input-message: "";
     in property <bool> window-minimized;
 
@@ -104,7 +106,31 @@ export component ChatScreen inherits Rectangle {
 
     property <bool> has-toast: RoomView.toast-message != UserMessageKind.none;
 
+    focus-on-click: false;
+    focus-on-tab-navigation: false;
+
+    key-pressed(event) => {
+        let key = CallKeys.of(event);
+        if key == CallKey.none || Shell.modal-over-nav {
+            return reject;
+        }
+        if key == CallKey.chat {
+            if !Shell.background-reachable || CallPanel.menu-open || CallPanel.devices-open {
+                return reject;
+            }
+            return timeline.show-call-chat() ? EventResult.accept : EventResult.reject;
+        }
+        if !CallView.active {
+            return reject;
+        }
+        if !event.repeat {
+            CallKeys.press(key);
+        }
+        return accept;
+    }
+
     init => {
+        root.focus();
         LocalState.forget-session();
         if root.active-call != 0 {
             CallPanel.begin(CallView.video-call);
@@ -299,4 +325,6 @@ export component ChatScreen inherits Rectangle {
         height: root.height;
         open <=> Shell.drawer-open;
     }
+
+    CallAnnouncer { }
 }

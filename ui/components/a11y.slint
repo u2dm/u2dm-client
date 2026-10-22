@@ -166,6 +166,7 @@ export component ClickArea inherits Rectangle {
     out property <bool> has-hover: touch.has-hover;
     out property <bool> pressed: touch.pressed;
     out property <bool> has-focus: fs.has-focus;
+    out property <bool> tabbed-to: fs.has-focus && root.focus-by-tab;
     out property <length> mouse-x: touch.mouse-x;
     out property <length> mouse-y: touch.mouse-y;
 
@@ -174,6 +175,7 @@ export component ClickArea inherits Rectangle {
     callback context-menu-requested() -> EventResult;
 
     property <bool> actionable: Interaction.actionable(root.enabled, root.above-modal);
+    property <bool> focus-by-tab;
 
     public function take-focus() {
         fs.focus();
@@ -194,6 +196,9 @@ export component ClickArea inherits Rectangle {
         width: 0;
         enabled: root.enabled && root.focusable;
         focus-on-tab-navigation: root.actionable && root.focusable;
+        focus-gained(reason) => {
+            root.focus-by-tab = reason == FocusReason.tab-navigation;
+        }
         focus-lost(reason) => {
             FocusTrail.leave();
         }
@@ -233,6 +238,23 @@ export component ClickArea inherits Rectangle {
         height: root.height - root.ring-inset * 2;
         radius: root.ring-radius;
     }
+}
+
+export component Announcer inherits Text {
+    in property <bool> urgent: false;
+    out property <string> said;
+    property <bool> nudged;
+
+    public function say(words: string) {
+        root.nudged = !root.nudged;
+        root.said = root.nudged ? words + " " : words;
+    }
+
+    width: 0;
+    height: 0;
+    text: root.said;
+    color: transparent;
+    accessible-live-region: root.urgent ? AccessibleLiveness.assertive : AccessibleLiveness.polite;
 }
 
 export component ListItemArea inherits ClickArea {

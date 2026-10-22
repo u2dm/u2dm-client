@@ -344,7 +344,8 @@ impl Calls {
         if self.incoming.is_some() {
             self.stop(RingEnd::Superseded);
         }
-        tracing::info!(room_id = %ring.room_id, ring = %ring.id, video = ring.is_video(), "a call rings");
+        let quiet = directory.room(&ring.room_id).is_some_and(Room::muted);
+        tracing::info!(room_id = %ring.room_id, ring = %ring.id, video = ring.is_video(), quiet, "a call rings");
         self.serial = self.serial.wrapping_add(1);
         self.arm_windows(&ring);
         self.incoming = Some(Incoming {
@@ -1448,6 +1449,7 @@ impl Calls {
             .filter(|incoming| incoming.answering == Answering::Showing)?;
         let room = directory.room(&incoming.ring.room_id)?;
         let offer = self.offer_for(room);
+        let quiet = room.muted();
         Some(RingView {
             serial: incoming.serial,
             room_id: room.id.clone(),
@@ -1456,7 +1458,8 @@ impl Calls {
             direct: room.is_direct,
             caller: incoming.ring.caller.clone(),
             video: incoming.ring.is_video(),
-            desktop: self.focus == WindowFocus::Unfocused,
+            quiet,
+            desktop: !quiet && self.focus == WindowFocus::Unfocused,
             answerable: matches!(offer, JoinOffer::Join | JoinOffer::Start),
             refusal: match offer {
                 JoinOffer::Refused(refusal) => Some(refusal),

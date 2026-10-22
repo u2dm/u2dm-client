@@ -15,7 +15,7 @@ import { CopyNotifier } from "../../../../components/copier.slint";
 import { AudioView, CallView, DirectoryView, PresenceView, RoomView, TypingView } from "../../../../views.slint";
 import { PresenceWords, TypingLine } from "../../../../messages.slint";
 import { Actions } from "../../../../actions.slint";
-import { CallPanel, CallSize, LocalState, ReplySwipe, RoomMenu, RoomMenuOrigin, RoomMenuReturn, RoomSearch, Shell } from "../../../../local.slint";
+import { CallPanel, CallSheetOpener, CallSize, LocalState, ReplySwipe, RoomMenu, RoomMenuOrigin, RoomMenuReturn, RoomSearch, Shell } from "../../../../local.slint";
 import { StatusPill } from "../../../../components/status-pill.slint";
 import { NowPlayingBar } from "./now-playing-bar.slint";
 import { PinnedBar } from "./pinned-bar.slint";
@@ -62,6 +62,12 @@ export component TimelineView inherits Rectangle {
         : CallPanel.chosen;
     out property <bool> call-covers-timeline: root.shows-band && root.call-size == CallSize.full;
     out property <bool> shows-call-media: root.shows-band && root.call-size != CallSize.compact;
+    property <bool> call-here: CallView.here-room-id == root.room-id && CallView.here-people > 0;
+    property <bool> offers-call-here: CallView.offer-room-id == root.room-id;
+    property <bool> offers-call-start: root.offers-call-here
+        && (CallView.offer == CallOffer.start || (CallView.offer == CallOffer.refused && !root.call-here));
+    property <bool> offers-call-join: root.offers-call-here
+        && (CallView.offer == CallOffer.join || (CallView.offer == CallOffer.refused && root.call-here));
     property <bool> has-room: RoomView.selected-room-name != "";
     property <bool> is-loading: RoomView.timeline-status == TimelineState.loading
         || RoomView.timeline-status == TimelineState.loading-unread
@@ -108,6 +114,14 @@ export component TimelineView inherits Rectangle {
         nav-button.take-focus();
     }
 
+    public function show-call-chat() -> bool {
+        if !root.call-covers-timeline {
+            return false;
+        }
+        CallPanel.show-chat(root.call-stage-fits);
+        return true;
+    }
+
     notifier := CopyNotifier { }
 
     if !root.has-room: Text {
@@ -127,17 +141,13 @@ export component TimelineView inherits Rectangle {
     if root.has-room: room-header := Rectangle {
         property <length> menu-slot: Space.md + Size.lg + Space.lg;
         property <length> pane-slot: root.room-info-pane-fits ? Space.md + Size.lg : 0;
-        property <bool> shows-call: CallView.here-room-id == root.room-id && CallView.here-people > 0;
+        property <bool> shows-call: root.call-here && !root.offers-call-join;
         property <length> call-slot: self.shows-call ? call-pill.width + Space.md : 0;
-        property <bool> offers-here: CallView.offer-room-id == root.room-id;
-        property <bool> offers-start: self.offers-here
-            && (CallView.offer == CallOffer.start || (CallView.offer == CallOffer.refused && !self.shows-call));
-        property <bool> offers-join: self.offers-here
-            && (CallView.offer == CallOffer.join || (CallView.offer == CallOffer.refused && self.shows-call));
-        property <length> action-slot: self.offers-start
+        property <length> action-slot: root.offers-call-start
             ? Size.lg + Space.md
-            : self.offers-join ? join-button.preferred-width + Space.md : 0;
+            : root.offers-call-join ? join-button.preferred-width + Space.md : 0;
         property <int> menu-returns: RoomMenu.focus-returns;
+        property <int> sheet-returns: CallPanel.sheet-returns;
 
         x: 0;
         y: 0;
@@ -148,6 +158,14 @@ export component TimelineView inherits Rectangle {
         changed menu-returns => {
             if RoomMenu.returns-to(RoomMenuReturn.header, DirectoryView.selected-room-id) {
                 room-menu-button.take-focus();
+            }
+        }
+
+        changed sheet-returns => {
+            if root.offers-call-start {
+                start-button.take-focus();
+            } else if root.offers-call-join {
+                join-button.take-focus();
             }
         }
 
@@ -201,14 +219,17 @@ export component TimelineView inherits Rectangle {
             visible: parent.shows-call;
         }
 
-        if room-header.offers-start: RoomHeaderButton {
-            x: room-header.width - room-header.menu-slot - room-header.pane-slot - room-header.call-slot - self.width;
+        start-button := RoomHeaderButton {
+            x: parent.width - parent.menu-slot - parent.pane-slot - parent.call-slot - self.width;
             y: (parent.height - self.height) / 2;
+            visible: root.offers-call-start;
             icon: IconSet.Phone;
             tint: CallView.offer == CallOffer.start ? AppStyle.foreground-strong : AppStyle.foreground-disabled;
             label: CallView.offer == CallOffer.start ? @tr("Start a call") : CallWords.refusal(CallView.refusal);
+            tip: self.label;
+            tip-below: true;
             clicked => {
-                Actions.open-call-sheet({ room-id: root.room-id, video: false });
+                CallPanel.open-sheet(root.room-id, false, CallSheetOpener.header);
             }
         }
 
@@ -217,13 +238,15 @@ export component TimelineView inherits Rectangle {
             y: (parent.height - self.height) / 2;
             width: self.preferred-width;
             height: self.preferred-height;
-            visible: parent.offers-join;
-            text: @tr("Join");
-            icon: IconSet.Phone;
+            visible: root.offers-call-join;
+            text: CallWords.join-count(CallView.here-people);
+            label: CallWords.join-label(CallView.here-people);
+            description: CallView.offer == CallOffer.refused ? CallWords.refusal(CallView.refusal) : "";
+            icon: CallView.here-video ? IconSet.Video : IconSet.Phone;
             filled: CallView.offer == CallOffer.join;
             tint: CallView.offer == CallOffer.join ? AppStyle.call-accept : AppStyle.foreground-muted;
             clicked => {
-                Actions.open-call-sheet({ room-id: root.room-id, video: false });
+                CallPanel.open-sheet(root.room-id, false, CallSheetOpener.header);
             }
         }
 
@@ -280,6 +303,7 @@ export component TimelineView inherits Rectangle {
         property <bool> swipe-within-reach: ReplySwipe.within-reach;
         property <int> menu-returns: RoomMenu.focus-returns;
         property <bool> opened-from-search: RoomSearch.opened(root.room-id) && Shell.background-reachable;
+        property <bool> call-covered: root.call-covers-timeline;
         property <length> room-above-composer: self.height - root.header-height - input.height;
         property <length> stage-height: min(
             self.room-above-composer,
@@ -442,7 +466,22 @@ export component TimelineView inherits Rectangle {
         CloseWatch {
             open: Shell.call-sheet-open;
             closed => {
-                stage.refocus-composer();
+                stage.hand-back-sheet();
+            }
+        }
+
+        function hand-back-sheet() {
+            if !Shell.background-reachable {
+                return;
+            }
+            if CallPanel.sheet-dismissed && CallPanel.sheet-opener == CallSheetOpener.room-menu {
+                RoomMenu.return-focus();
+            } else if CallPanel.sheet-dismissed
+                && CallPanel.sheet-opener == CallSheetOpener.header
+                && (root.offers-call-start || root.offers-call-join) {
+                CallPanel.sheet-returns += 1;
+            } else {
+                input.focus-input();
             }
         }
 
@@ -450,6 +489,12 @@ export component TimelineView inherits Rectangle {
             open: root.call-covers-timeline;
             closed => {
                 stage.refocus-composer();
+            }
+        }
+
+        changed call-covered => {
+            if self.call-covered && input.input-focused {
+                band.focus-chat();
             }
         }
 

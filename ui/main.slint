@@ -79,6 +79,7 @@ import { RoomLogDialog } from "./screens/chat/components/room-log.slint";
 import { ReadersDialog } from "./screens/chat/components/readers.slint";
 import { IncomingCallCard } from "./screens/chat/components/call/incoming-call.slint";
 import { CallSheet } from "./screens/chat/components/call/call-sheet.slint";
+import { TipLayer } from "./components/tip.slint";
 
 export { EmojiStore }
 export { LoginPhase, ConnectionState, TimelineState, VerificationPhase, MediaState, MediaFailure }
@@ -197,4 +198,11 @@ export component AppWindow inherits Window {
     }
 
     if Shell.verification-open: VerificationDialog { }
+
+    TipLayer {
+        x: 0;
+        y: 0;
+        width: root.width;
+        height: root.height;
+    }
 }

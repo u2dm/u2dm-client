@@ -25,6 +25,8 @@ export component CallViewMenu inherits PickerCard {
             height: Metrics.call-menu-row;
             icon: IconSet.LayoutGrid;
             label: @tr("Gallery");
+            checkable: true;
+            checked: !root.focused;
             trailing: root.focused ? { } : IconSet.Check;
             clicked => {
                 Actions.show-call-gallery();
@@ -36,6 +38,8 @@ export component CallViewMenu inherits PickerCard {
             height: Metrics.call-menu-row;
             icon: IconSet.Focus;
             label: @tr("Focus");
+            checkable: true;
+            checked: root.focused;
             trailing: root.focused ? IconSet.Check : { };
             clicked => {
                 Actions.show-call-focus();

@@ -7,7 +7,7 @@ import { CopyNotice } from "../../../components/copy-notice.slint";
 import { ConfirmChoice, Confirmations, MenuCard, MenuConfirmation } from "../../../components/menu.slint";
 import { MenuRow } from "../../../components/menu-row.slint";
 import { ModalHost, Placement } from "../../../components/overlay.slint";
-import { LocalState, MessageMenu, RoomMenu, RoomMenuOrigin, Shell, SubspacePlacement, Subspaces } from "../../../local.slint";
+import { CallPanel, CallSheetOpener, LocalState, MessageMenu, RoomMenu, RoomMenuOrigin, Shell, SubspacePlacement, Subspaces } from "../../../local.slint";
 import { Actions } from "../../../actions.slint";
 import { DirectoryView, RoomMenuView, SpaceIndexView } from "../../../views.slint";
 import { NotifyMode } from "../../../enums.slint";
@@ -558,8 +558,8 @@ export component RoomMenuOverlay inherits Rectangle {
             return;
         }
         if action == RoomMenuAction.video-call {
-            RoomMenu.close();
-            Actions.open-call-sheet({ room-id: id, video: true });
+            RoomMenu.hand-over();
+            CallPanel.open-sheet(id, true, CallSheetOpener.room-menu);
             return;
         }
         if action == RoomMenuAction.invite {

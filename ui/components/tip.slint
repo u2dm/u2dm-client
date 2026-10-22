@@ -1,0 +1,104 @@
+import { Placement, TipCard } from "./overlay.slint";
+import { Tips, TipScope } from "../local.slint";
+import { Motion, Space } from "../theme.slint";
+
+export component TipSource {
+    in property <string> text;
+    in property <string> keys;
+    in property <bool> hovered;
+    in property <bool> pressed;
+    in property <bool> tabbed-to;
+    in property <bool> below;
+    in property <bool> above-modal;
+    in property <TipScope> scope: TipScope.any;
+
+    property <int> owner;
+    property <bool> lingered;
+    property <bool> spent;
+    property <bool> wanted: root.text != "" && !root.spent && ((root.hovered && root.lingered) || root.tabbed-to);
+
+    changed hovered => {
+        root.lingered = false;
+        linger.running = root.hovered;
+        if !root.hovered {
+            root.spent = false;
+        }
+    }
+
+    changed pressed => {
+        if !root.pressed && root.hovered {
+            root.spent = true;
+        }
+    }
+
+    changed wanted => {
+        root.follow();
+    }
+
+    changed text => {
+        root.follow();
+    }
+
+    changed keys => {
+        root.follow();
+    }
+
+    function follow() {
+        if root.wanted {
+            root.owner = Tips.show(
+                root.text,
+                root.keys,
+                root.absolute-position.x,
+                root.absolute-position.y,
+                root.width,
+                root.height,
+                root.below,
+                root.above-modal,
+                root.scope);
+        } else {
+            Tips.hide(root.owner);
+            root.owner = 0;
+        }
+    }
+
+    linger := Timer {
+        interval: Motion.tip-delay;
+        running: false;
+        triggered => {
+            self.running = false;
+            root.lingered = true;
+        }
+    }
+}
+
+export component TipLayer {
+    property <int> owner: Tips.owner;
+    property <bool> held;
+
+    changed owner => {
+        root.held = false;
+        hold.running = false;
+        hold.running = Tips.owner != 0;
+    }
+
+    hold := Timer {
+        interval: Motion.tip-hold;
+        running: false;
+        triggered => {
+            self.running = false;
+            root.held = true;
+        }
+    }
+
+    if Tips.showing && !root.held: TipCard {
+        property <length> above: Tips.y - self.height - Space.sm;
+        property <length> under: Tips.y + Tips.height + Space.sm;
+        property <bool> fits-above: self.above >= Space.sm;
+        property <bool> fits-under: self.under + self.height <= root.height - Space.sm;
+
+        x: Placement.fit(Tips.x + (Tips.width - self.width) / 2, self.width, root.width, Space.sm);
+        y: (Tips.below && self.fits-under) || !self.fits-above ? self.under : self.above;
+        text: Tips.text;
+        keys: Tips.keys;
+    }
+}

@@ -1,57 +1,206 @@
-import { IconSet } from "@lucide";
+import { Icon, IconDisplay, IconSet } from "@lucide";
 
-import { AppButton, IconButton } from "../../../../components/button.slint";
+import { AppButton } from "../../../../components/button.slint";
+import { ClickArea } from "../../../../components/a11y.slint";
+import { DotPulse } from "../../../../components/dot-pulse.slint";
+import { StateLayer } from "../../../../components/state-layer.slint";
+import { TipSource } from "../../../../components/tip.slint";
 import { CallCamera, CallMic, CallPhase, CallScreen } from "../../../../enums.slint";
 import { CallWords } from "../../../../messages.slint";
 import { Actions } from "../../../../actions.slint";
+import { TipScope } from "../../../../local.slint";
 import { CallView } from "../../../../views.slint";
-import { AppStyle, Metrics } from "../../../../theme.slint";
+import { AppStyle, IconSize, Metrics, Space } from "../../../../theme.slint";
 
-export component CallMicButton inherits IconButton {
-    property <bool> failed: CallView.mic == CallMic.failed;
+export enum CallToggleState { off, on, pending, failed, unavailable }
 
-    size: Metrics.call-control;
-    icon: CallView.mic == CallMic.on ? IconSet.Mic : IconSet.MicOff;
-    tint: self.failed ? AppStyle.on-call-decline : AppStyle.foreground-strong;
-    fill: self.failed ? AppStyle.call-decline : AppStyle.call-tile;
-    label: CallWords.microphone(CallView.mic);
-    clicked => {
+export enum CallKey { none, microphone, camera, chat }
+
+export global CallKeys {
+    public pure function of(event: KeyEvent) -> CallKey {
+        if event.text == Key.Escape {
+            return CallKey.chat;
+        }
+        if !event.modifiers.control || event.modifiers.shift || event.modifiers.alt || event.modifiers.meta {
+            return CallKey.none;
+        }
+        if event.text == "d" || event.text == "D" {
+            return CallKey.microphone;
+        }
+        if event.text == "e" || event.text == "E" {
+            return CallKey.camera;
+        }
+        return CallKey.none;
+    }
+
+    public pure function binding(key: CallKey) -> string {
+        if key == CallKey.microphone {
+            return @tr("Ctrl+D");
+        }
+        if key == CallKey.camera {
+            return @tr("Ctrl+E");
+        }
+        if key == CallKey.chat {
+            return @tr("Esc");
+        }
+        return "";
+    }
+
+    public function press(key: CallKey) {
+        if key == CallKey.microphone {
+            root.toggle-microphone();
+        } else if key == CallKey.camera {
+            root.toggle-camera();
+        }
+    }
+
+    public function toggle-microphone() {
         Actions.set-microphone({ on: CallView.mic != CallMic.on });
     }
-}
 
-export component CallCameraButton inherits IconButton {
-    property <bool> on: CallView.camera == CallCamera.on || CallView.camera == CallCamera.starting;
-    property <bool> failed: CallView.camera == CallCamera.failed;
-
-    size: Metrics.call-control;
-    pending: CallView.camera == CallCamera.starting;
-    icon: self.on ? IconSet.Video : IconSet.VideoOff;
-    tint: self.failed ? AppStyle.on-call-decline : AppStyle.foreground-strong;
-    fill: self.failed ? AppStyle.call-decline : AppStyle.call-tile;
-    label: CallWords.camera(CallView.camera);
-    clicked => {
-        Actions.set-camera({ on: !self.on });
+    public function toggle-camera() {
+        Actions.set-camera({ on: CallView.camera != CallCamera.on && CallView.camera != CallCamera.starting });
     }
 }
 
-export component CallShareButton inherits IconButton {
+component FailureBadge inherits Rectangle {
+    width: Metrics.call-badge;
+    height: Metrics.call-badge;
+    border-radius: self.width / 2;
+    background: AppStyle.on-call-decline;
+
+    IconDisplay {
+        icon: IconSet.CircleAlert;
+        size: IconSize.xs;
+        stroke: AppStyle.call-decline;
+        accessible-role: none;
+    }
+}
+
+export component CallToggle inherits ClickArea {
+    in property <CallToggleState> state;
+    in property <Icon> on-icon;
+    in property <Icon> off-icon;
+    in property <Icon> unavailable-icon: root.off-icon;
+    in property <color> on-fill: AppStyle.control;
+    in property <color> on-tint: AppStyle.foreground-strong;
+    in property <string> state-text;
+    in property <string> tip: root.label;
+    in property <CallKey> key: CallKey.none;
+    in property <bool> tip-below;
+
+    property <bool> checked: root.state == CallToggleState.on || root.state == CallToggleState.pending;
+    property <bool> failed: root.state == CallToggleState.failed;
+    property <bool> unavailable: root.state == CallToggleState.unavailable;
+    property <string> binding: CallKeys.binding(root.key);
+    property <color> tint: root.failed ? AppStyle.on-call-decline
+        : root.unavailable ? AppStyle.foreground-disabled
+        : root.checked ? root.on-tint
+        : AppStyle.foreground-strong;
+
+    width: Metrics.call-control;
+    height: Metrics.call-control;
+    border-radius: self.width / 2;
+    background: root.failed ? AppStyle.call-decline : root.checked ? root.on-fill : AppStyle.control;
+    ring-inset: -Metrics.ring-outset;
+    ring-radius: self.width / 2 + Metrics.ring-outset;
+    accessible-checkable: true;
+    accessible-checked: root.checked;
+    accessible-description: root.binding == "" ? root.state-text : @tr("{}. Shortcut: {}", root.state-text, root.binding);
+
+    StateLayer {
+        border-radius: root.border-radius;
+        ink: root.tint;
+        hovered: root.has-hover && root.enabled;
+        pressed: root.pressed && root.enabled;
+    }
+
+    if root.state == CallToggleState.pending: HorizontalLayout {
+        alignment: center;
+
+        DotPulse {
+            dot-size: Space.sm;
+            tint: root.tint;
+        }
+    }
+
+    if root.state != CallToggleState.pending: IconDisplay {
+        icon: root.unavailable ? root.unavailable-icon : root.checked ? root.on-icon : root.off-icon;
+        size: IconSize.lg;
+        stroke: root.tint;
+        accessible-role: none;
+    }
+
+    if root.failed: FailureBadge {
+        x: root.width - self.width;
+        y: 0;
+    }
+
+    TipSource {
+        width: root.width;
+        height: root.height;
+        text: root.tip;
+        keys: root.binding;
+        hovered: root.has-hover;
+        pressed: root.pressed;
+        tabbed-to: root.tabbed-to;
+        below: root.tip-below;
+        above-modal: root.above-modal;
+        scope: TipScope.call;
+    }
+}
+
+export component CallMicButton inherits CallToggle {
+    state: CallView.mic == CallMic.failed ? CallToggleState.failed
+        : CallView.mic == CallMic.on ? CallToggleState.on
+        : CallToggleState.off;
+    on-icon: IconSet.Mic;
+    off-icon: IconSet.MicOff;
+    key: CallKey.microphone;
+    label: CallWords.microphone(CallView.mic);
+    state-text: CallWords.microphone-state(CallView.mic);
+    clicked => {
+        CallKeys.toggle-microphone();
+    }
+}
+
+export component CallCameraButton inherits CallToggle {
+    state: CallView.camera == CallCamera.failed ? CallToggleState.failed
+        : CallView.camera == CallCamera.starting ? CallToggleState.pending
+        : CallView.camera == CallCamera.on ? CallToggleState.on
+        : CallToggleState.off;
+    on-icon: IconSet.Video;
+    off-icon: IconSet.VideoOff;
+    key: CallKey.camera;
+    label: CallWords.camera(CallView.camera);
+    state-text: CallWords.camera-state(CallView.camera);
+    clicked => {
+        CallKeys.toggle-camera();
+    }
+}
+
+export component CallShareButton inherits CallToggle {
     callback explain();
 
     property <bool> sharing: CallView.screen == CallScreen.on || CallView.screen == CallScreen.choosing;
-    property <bool> unavailable: CallView.screen == CallScreen.unavailable;
+    property <bool> waits: CallView.phase == CallPhase.joining || CallView.phase == CallPhase.connecting;
+    out property <bool> refused: CallView.screen == CallScreen.unavailable || (root.waits && !root.sharing);
 
-    size: Metrics.call-control;
-    enabled: CallView.phase != CallPhase.joining && CallView.phase != CallPhase.connecting;
-    pending: CallView.screen == CallScreen.choosing;
-    icon: self.sharing ? IconSet.ScreenShareOff : IconSet.ScreenShare;
-    tint: self.unavailable ? AppStyle.foreground-disabled
-        : self.sharing ? AppStyle.on-call-sharing
-        : AppStyle.foreground-strong;
-    fill: self.sharing ? AppStyle.call-sharing : AppStyle.call-tile;
-    label: CallWords.share(CallView.screen, CallView.screen-refusal);
+    state: root.refused ? CallToggleState.unavailable
+        : CallView.screen == CallScreen.failed ? CallToggleState.failed
+        : CallView.screen == CallScreen.choosing ? CallToggleState.pending
+        : CallView.screen == CallScreen.on ? CallToggleState.on
+        : CallToggleState.off;
+    on-icon: IconSet.ScreenShareOff;
+    off-icon: IconSet.ScreenShare;
+    unavailable-icon: IconSet.MonitorOff;
+    on-fill: AppStyle.call-sharing;
+    on-tint: AppStyle.on-call-sharing;
+    label: root.refused ? CallWords.share-refused() : CallWords.share(CallView.screen, CallView.screen-refusal);
+    state-text: CallWords.share-state(CallView.screen, CallView.screen-refusal, root.waits);
+    tip: root.refused ? root.state-text : root.label;
     clicked => {
-        if root.unavailable {
+        if root.refused {
             root.explain();
         } else {
             Actions.share-screen({ on: !root.sharing });
@@ -71,6 +220,7 @@ export component CallStopSharingButton inherits AppButton {
 export component CallLeaveButton inherits AppButton {
     height: Metrics.call-control;
     text: @tr("Leave");
+    label: @tr("Leave the call");
     icon: IconSet.PhoneOff;
     tint: AppStyle.call-decline;
     clicked => {

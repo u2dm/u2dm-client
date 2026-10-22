@@ -4,10 +4,10 @@ import { IconButton, LinkButton } from "../../../../components/button.slint";
 import { Actions } from "../../../../actions.slint";
 import { CallNotice, CallScreen } from "../../../../enums.slint";
 import { CallWords } from "../../../../messages.slint";
-import { CallPanel, CallSize } from "../../../../local.slint";
+import { CallPanel, CallSize, TipScope } from "../../../../local.slint";
 import { CallView } from "../../../../views.slint";
 import { AppStyle, Fonts, IconSize, Metrics, Motion, Size, Space, Stroke, Weight } from "../../../../theme.slint";
-import { CallCameraButton, CallLeaveButton, CallMicButton, CallShareButton } from "./call-controls.slint";
+import { CallCameraButton, CallKey, CallKeys, CallLeaveButton, CallMicButton, CallShareButton } from "./call-controls.slint";
 import { CallStage } from "./call-stage.slint";
 import { CallStatus } from "./call-status.slint";
 
@@ -65,7 +65,7 @@ export component CallBand inherits Rectangle {
     property <int> ended-share-serial: CallView.ended-share-serial;
     property <int> device-news-serial: CallView.device-news-serial;
     property <bool> has-status: CallView.notice != CallNotice.none
-        || (root.explains-share && CallView.screen == CallScreen.unavailable)
+        || (root.explains-share && share.refused)
         || root.tells-device-news
         || (root.tells-share-ended && !root.compact);
     property <string> people: CallWords.people(CallView.people-first, CallView.people-second, CallView.people-more);
@@ -81,6 +81,14 @@ export component CallBand inherits Rectangle {
 
     public function focus-devices() {
         devices-button.take-focus();
+    }
+
+    public function focus-chat() {
+        if root.offers-chat {
+            chat-toggle.take-focus();
+        } else {
+            size-toggle.take-focus();
+        }
     }
 
     function view-share() {
@@ -144,10 +152,16 @@ export component CallBand inherits Rectangle {
                 visible: root.offers-chat;
                 icon: root.size == CallSize.full ? IconSet.Minimize2 : IconSet.Maximize2;
                 label: root.size == CallSize.full ? @tr("Show the chat") : @tr("Hide the chat");
+                tip: self.label;
+                tip-keys: root.size == CallSize.full ? CallKeys.binding(CallKey.chat) : "";
+                tip-below: true;
+                tip-scope: TipScope.call;
                 clicked => {
-                    CallPanel.chosen = root.size == CallSize.full
-                        ? (root.stage-fits ? CallSize.stage : CallSize.compact)
-                        : CallSize.full;
+                    if root.size == CallSize.full {
+                        CallPanel.show-chat(root.stage-fits);
+                    } else {
+                        CallPanel.chosen = CallSize.full;
+                    }
                 }
             }
 
@@ -161,8 +175,16 @@ export component CallBand inherits Rectangle {
                 label: root.compact ? @tr("Expand the call")
                     : root.forced-full ? @tr("Show the chat")
                     : @tr("Collapse the call");
+                tip: self.label;
+                tip-keys: root.forced-full ? CallKeys.binding(CallKey.chat) : "";
+                tip-below: true;
+                tip-scope: TipScope.call;
                 clicked => {
-                    CallPanel.chosen = root.compact ? CallSize.stage : CallSize.compact;
+                    if root.forced-full {
+                        CallPanel.show-chat(root.stage-fits);
+                    } else {
+                        CallPanel.chosen = root.compact ? CallSize.stage : CallSize.compact;
+                    }
                 }
             }
 
@@ -173,6 +195,9 @@ export component CallBand inherits Rectangle {
                 visible: !root.compact;
                 icon: IconSet.LayoutDashboard;
                 label: @tr("Call layout");
+                tip: self.label;
+                tip-below: true;
+                tip-scope: TipScope.call;
                 clicked => {
                     CallPanel.menu-open = true;
                 }
@@ -184,6 +209,9 @@ export component CallBand inherits Rectangle {
                 size: Size.md;
                 icon: IconSet.Settings;
                 label: @tr("Choose your microphone, speaker and camera");
+                tip: self.label;
+                tip-below: true;
+                tip-scope: TipScope.call;
                 clicked => {
                     Actions.refresh-call-devices();
                     CallPanel.devices-open = true;
@@ -227,7 +255,6 @@ export component CallBand inherits Rectangle {
                     color: AppStyle.foreground-muted;
                     vertical-alignment: center;
                     overflow: elide;
-                    accessible-live-region: AccessibleLiveness.polite;
                 }
             }
         }
@@ -249,7 +276,7 @@ export component CallBand inherits Rectangle {
 
             CallCameraButton { }
 
-            CallShareButton {
+            share := CallShareButton {
                 explain => {
                     root.explains-share = !root.explains-share;
                 }
@@ -259,7 +286,7 @@ export component CallBand inherits Rectangle {
         }
 
         if root.has-status: CallStatus {
-            explains-share: root.explains-share && CallView.screen == CallScreen.unavailable;
+            explains-share: root.explains-share && share.refused;
             tells-device-news: root.tells-device-news;
             tells-share-ended: root.tells-share-ended && !root.compact;
         }

@@ -18,6 +18,8 @@ export component MenuRow inherits Rectangle {
     in property <bool> enabled: true;
     in property <bool> busy: false;
     in property <bool> highlighted: false;
+    in property <bool> checkable: false;
+    in property <bool> checked: false;
     in property <Icon> trailing;
     out property <bool> has-hover: touch.has-hover;
 
@@ -39,6 +41,8 @@ export component MenuRow inherits Rectangle {
         enabled: root.enabled;
         above-modal: root.above-modal;
         label: root.label;
+        accessible-checkable: root.checkable;
+        accessible-checked: root.checked;
         ring-radius: Radius.sm;
         focusable: root.focusable;
         roving-focus: root.roving-focus;

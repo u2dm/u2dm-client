@@ -1,0 +1,93 @@
+import { Announcer } from "../../../../components/a11y.slint";
+import { CallDeviceTrouble, CallNotice, CallPhase } from "../../../../enums.slint";
+import { CallWords, UserMessages } from "../../../../messages.slint";
+import { CallView } from "../../../../views.slint";
+
+export component CallAnnouncer {
+    property <bool> active: CallView.active;
+    property <CallPhase> phase: CallView.phase;
+    property <CallNotice> notice: CallView.notice;
+    property <bool> failed: CallView.failed;
+    property <int> ring: CallView.ring-visible ? CallView.ring-serial : 0;
+    property <int> device-news: CallView.device-news-serial;
+    property <int> ended-share: CallView.ended-share-serial;
+
+    width: 0;
+    height: 0;
+
+    pure function troubles(notice: CallNotice) -> bool {
+        return notice == CallNotice.not-called
+            || notice == CallNotice.not-announced
+            || notice == CallNotice.microphone-failed
+            || notice == CallNotice.camera-failed
+            || notice == CallNotice.screen-failed;
+    }
+
+    function say-phase() {
+        if root.active {
+            calm.say(CallWords.phase-said(root.phase));
+        }
+    }
+
+    changed active => {
+        root.say-phase();
+    }
+
+    changed phase => {
+        root.say-phase();
+    }
+
+    changed notice => {
+        if !root.active || root.notice == CallNotice.none {
+            return;
+        }
+        let words = CallWords.notice(root.notice, CallView.active-room-name, CallView.notice-name, CallView.notice-others);
+        if root.troubles(root.notice) {
+            urgent.say(words);
+        } else {
+            calm.say(words);
+        }
+    }
+
+    changed failed => {
+        if root.failed {
+            urgent.say(UserMessages.text(CallView.failure, CallView.failure-detail));
+        }
+    }
+
+    changed ring => {
+        if root.ring == 0 {
+            return;
+        }
+        let words = CallWords.ring-said(CallView.ring-video, CallView.ring-direct, CallView.ring-caller, CallView.ring-room-name);
+        if CallView.ring-quiet {
+            calm.say(words);
+        } else {
+            urgent.say(words);
+        }
+    }
+
+    changed device-news => {
+        if root.device-news == 0 || !root.active {
+            return;
+        }
+        let words = CallWords.device-news(CallView.device-news-trouble, CallView.device-news-kind, CallView.device-news-name);
+        if CallView.device-news-trouble == CallDeviceTrouble.disconnected {
+            calm.say(words);
+        } else {
+            urgent.say(words);
+        }
+    }
+
+    changed ended-share => {
+        if root.ended-share != 0 && root.active {
+            calm.say(CallWords.share-ended(CallView.ended-share));
+        }
+    }
+
+    calm := Announcer { }
+
+    urgent := Announcer {
+        urgent: true;
+    }
+}

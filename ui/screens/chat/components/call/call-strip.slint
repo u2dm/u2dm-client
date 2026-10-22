@@ -6,6 +6,7 @@ import { StateLayer } from "../../../../components/state-layer.slint";
 import { CallScreen } from "../../../../enums.slint";
 import { CallWords, UserMessages } from "../../../../messages.slint";
 import { Actions } from "../../../../actions.slint";
+import { TipScope } from "../../../../local.slint";
 import { CallView } from "../../../../views.slint";
 import { AppStyle, Fonts, IconSize, Metrics, Radius, Size, Space, Stroke, Weight } from "../../../../theme.slint";
 import { CallCameraButton, CallLeaveButton, CallMicButton, CallStopSharingButton } from "./call-controls.slint";
@@ -86,7 +87,6 @@ component FailedCallLabel inherits Rectangle {
             color: AppStyle.danger-muted;
             vertical-alignment: center;
             overflow: elide;
-            accessible-live-region: AccessibleLiveness.polite;
         }
     }
 }
@@ -139,14 +139,6 @@ export component CallStrip inherits Rectangle {
         visible: root.failed;
     }
 
-    stop := CallStopSharingButton {
-        x: root.stacked ? root.pad : mic.x - root.gap - self.width;
-        y: root.controls-y;
-        width: self.preferred-width;
-        visible: !root.failed && root.sharing;
-        above-modal: root.above-modal;
-    }
-
     mic := CallMicButton {
         x: camera.x - root.gap - self.width;
         y: root.controls-y;
@@ -155,9 +147,17 @@ export component CallStrip inherits Rectangle {
     }
 
     camera := CallCameraButton {
-        x: leave.x - root.gap - self.width;
+        x: (root.sharing ? stop.x : leave.x) - root.gap - self.width;
         y: root.controls-y;
         visible: !root.failed;
+        above-modal: root.above-modal;
+    }
+
+    stop := CallStopSharingButton {
+        x: leave.x - root.gap - self.width;
+        y: root.controls-y;
+        width: self.preferred-width;
+        visible: !root.failed && root.sharing;
         above-modal: root.above-modal;
     }
 
@@ -193,6 +193,8 @@ export component CallStrip inherits Rectangle {
         icon: IconSet.X;
         tint: AppStyle.foreground-strong;
         label: @tr("Dismiss");
+        tip: self.label;
+        tip-scope: TipScope.call;
         clicked => {
             Actions.dismiss-failed-call();
         }

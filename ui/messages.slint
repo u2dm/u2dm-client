@@ -834,6 +834,57 @@ export global CallWords {
         return @tr("{n} in the call" | "{n} in the call" % people);
     }
 
+    public pure function join-count(people: int) -> string {
+        return @tr("Join · {n}" | "Join · {n}" % people);
+    }
+
+    public pure function join-label(people: int) -> string {
+        return @tr("Join the call, {n} person is in it" | "Join the call, {n} people are in it" % people);
+    }
+
+    public pure function ring-said(video: bool, direct: bool, caller: string, room: string) -> string {
+        if direct && video {
+            return @tr("Incoming video call from {}", caller);
+        }
+        if direct {
+            return @tr("Incoming voice call from {}", caller);
+        }
+        if video {
+            return @tr("Incoming video call from {} in {}", caller, room);
+        }
+        return @tr("Incoming voice call from {} in {}", caller, room);
+    }
+
+    public pure function phase-said(phase: CallPhase) -> string {
+        if phase == CallPhase.joining {
+            return @tr("Joining the call");
+        }
+        if phase == CallPhase.calling {
+            return @tr("Calling");
+        }
+        if phase == CallPhase.connecting {
+            return @tr("Connecting to the call");
+        }
+        if phase == CallPhase.waiting {
+            return @tr("Connected, waiting for others");
+        }
+        if phase == CallPhase.reconnecting {
+            return @tr("Reconnecting to the call");
+        }
+        return @tr("Connected to the call");
+    }
+
+    public pure function share-ended(name: string) -> string {
+        return @tr("{} stopped sharing their screen", name);
+    }
+
+    public pure function stop-ring(quiet: bool) -> string {
+        if quiet {
+            return @tr("Dismiss the call");
+        }
+        return @tr("Stop ringing");
+    }
+
     public pure function mark(mark: RoomCallMark) -> string {
         if mark == RoomCallMark.voice {
             return @tr("voice call in progress");
@@ -1006,15 +1057,42 @@ export global CallWords {
             return @tr("Stop sharing your screen");
         }
         if screen == CallScreen.failed {
-            return @tr("Your screen share did not start, try again");
+            return @tr("Try sharing your screen again");
         }
         if screen == CallScreen.unavailable {
-            if refusal == CallScreenRefusal.not-wayland {
-                return @tr("Screen sharing needs a Wayland session");
-            }
-            return @tr("Screen sharing needs the desktop's screen-cast portal");
+            return root.share-reason(refusal);
         }
         return @tr("Share your screen");
+    }
+
+    pure function share-reason(refusal: CallScreenRefusal) -> string {
+        if refusal == CallScreenRefusal.not-wayland {
+            return @tr("Screen sharing needs a Wayland session");
+        }
+        return @tr("Screen sharing needs the desktop's screen-cast portal");
+    }
+
+    public pure function share-refused() -> string {
+        return @tr("Screen sharing is unavailable");
+    }
+
+    public pure function share-state(screen: CallScreen, refusal: CallScreenRefusal, waits: bool) -> string {
+        if screen == CallScreen.unavailable {
+            return root.share-reason(refusal);
+        }
+        if screen == CallScreen.choosing {
+            return @tr("Choose a screen or window in your desktop's dialog");
+        }
+        if screen == CallScreen.on {
+            return @tr("You are sharing your screen");
+        }
+        if waits {
+            return @tr("You can share your screen once the call connects");
+        }
+        if screen == CallScreen.failed {
+            return @tr("Your screen share did not start");
+        }
+        return @tr("You are not sharing your screen");
     }
 
     public pure function screen-of(name: string) -> string {
@@ -1047,9 +1125,19 @@ export global CallWords {
             return @tr("Mute your microphone");
         }
         if mic == CallMic.failed {
-            return @tr("Your microphone did not start, try again");
+            return @tr("Try your microphone again");
         }
         return @tr("Unmute your microphone");
+    }
+
+    public pure function microphone-state(mic: CallMic) -> string {
+        if mic == CallMic.on {
+            return @tr("Your microphone is on");
+        }
+        if mic == CallMic.failed {
+            return @tr("Your microphone did not start");
+        }
+        return @tr("Your microphone is muted");
     }
 
     public pure function camera(camera: CallCamera) -> string {
@@ -1057,9 +1145,22 @@ export global CallWords {
             return @tr("Turn your camera off");
         }
         if camera == CallCamera.failed {
-            return @tr("Your camera did not start, try again");
+            return @tr("Try your camera again");
         }
         return @tr("Turn your camera on");
+    }
+
+    public pure function camera-state(camera: CallCamera) -> string {
+        if camera == CallCamera.on {
+            return @tr("Your camera is on");
+        }
+        if camera == CallCamera.starting {
+            return @tr("Your camera is starting");
+        }
+        if camera == CallCamera.failed {
+            return @tr("Your camera did not start");
+        }
+        return @tr("Your camera is off");
     }
 
     public pure function device-kind(kind: CallDeviceKind) -> string {

@@ -125,12 +125,36 @@ export global TextSelection {
 
 export enum CallSize { compact, stage, full }
 
+export enum CallSheetOpener { composer, header, room-menu }
+
 export global CallPanel {
     in-out property <CallSize> chosen: CallSize.compact;
     in-out property <bool> fits-videos: false;
     in-out property <bool> hides-strip: false;
     in-out property <bool> menu-open: false;
     in-out property <bool> devices-open: false;
+    in-out property <CallSheetOpener> sheet-opener: CallSheetOpener.composer;
+    in-out property <bool> sheet-dismissed: false;
+    in-out property <int> sheet-returns;
+
+    public function open-sheet(room-id: string, video: bool, opener: CallSheetOpener) {
+        root.sheet-opener = opener;
+        root.sheet-dismissed = false;
+        Actions.open-call-sheet({ room-id: room-id, video: video });
+    }
+
+    public function dismiss-sheet() {
+        root.sheet-dismissed = true;
+        Actions.close-call-sheet();
+    }
+
+    public function show-chat(stage-fits: bool) {
+        if root.chosen == CallSize.full {
+            root.chosen = stage-fits ? CallSize.stage : CallSize.compact;
+        } else if root.chosen == CallSize.stage && !stage-fits {
+            root.chosen = CallSize.compact;
+        }
+    }
 
     public function begin(video: bool) {
         root.chosen = video ? CallSize.stage : CallSize.compact;
@@ -258,6 +282,57 @@ export global MetaTip {
     public function clear() {
         root.key = "";
         root.anchor = { row: -1 };
+    }
+}
+
+export enum TipScope { any, call, ring }
+
+export global Tips {
+    in-out property <int> owner;
+    in-out property <string> text;
+    in-out property <string> keys;
+    in-out property <length> x;
+    in-out property <length> y;
+    in-out property <length> width;
+    in-out property <length> height;
+    in-out property <bool> below;
+    in-out property <bool> above-modal;
+    in-out property <TipScope> scope;
+    property <int> issued;
+
+    out property <bool> in-scope: root.scope == TipScope.any
+        || (root.scope == TipScope.call && (CallView.active || CallView.failed))
+        || (root.scope == TipScope.ring && CallView.ring-visible);
+    out property <bool> showing: root.owner != 0
+        && root.text != ""
+        && root.in-scope
+        && !Shell.verification-open
+        && (root.above-modal || Shell.background-reachable);
+
+    public function show(text: string, keys: string, x: length, y: length, width: length, height: length,
+                         below: bool, above-modal: bool, scope: TipScope) -> int {
+        root.issued += 1;
+        root.owner = root.issued;
+        root.text = text;
+        root.keys = keys;
+        root.x = x;
+        root.y = y;
+        root.width = width;
+        root.height = height;
+        root.below = below;
+        root.above-modal = above-modal;
+        root.scope = scope;
+        return root.owner;
+    }
+
+    public function hide(owner: int) {
+        if owner != 0 && root.owner == owner {
+            root.owner = 0;
+        }
+    }
+
+    public function clear() {
+        root.owner = 0;
     }
 }
 
@@ -433,6 +508,11 @@ export global RoomMenu {
     }
 
     public function dismiss() {
+        root.hand-over();
+        root.focus-returns += 1;
+    }
+
+    public function hand-over() {
         if !root.by-keyboard {
             root.return-to = RoomMenuReturn.composer;
         } else if root.origin == RoomMenuOrigin.list {
@@ -446,6 +526,9 @@ export global RoomMenu {
         }
         root.return-room = root.key;
         root.close();
+    }
+
+    public function return-focus() {
         root.focus-returns += 1;
     }
 }
@@ -590,6 +673,7 @@ export global LocalState {
         RoomMenu.close();
         ReplySwipe.clear();
         MetaTip.clear();
+        Tips.clear();
         Polls.clear();
     }
 
@@ -600,6 +684,7 @@ export global LocalState {
         ReplySwipe.clear();
         MetaTip.clear();
         Polls.clear();
+        Tips.clear();
         Shell.poll-open = false;
         CallPanel.menu-open = false;
         CallPanel.devices-open = false;

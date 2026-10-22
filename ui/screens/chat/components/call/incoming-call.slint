@@ -8,7 +8,7 @@ import { AppStyle, Fonts, Glyph, IconSize, Metrics, Size, Space, Weight } from "
 import { CallView } from "../../../../views.slint";
 import { CallWords } from "../../../../messages.slint";
 import { Actions } from "../../../../actions.slint";
-import { Shell } from "../../../../local.slint";
+import { Shell, TipScope } from "../../../../local.slint";
 
 export component IncomingCallCard inherits PickerCard {
     in property <length> available-width;
@@ -84,11 +84,20 @@ export component IncomingCallCard inherits PickerCard {
                 HorizontalLayout {
                     spacing: Space.sm;
 
-                    IconDisplay {
+                    if !CallView.ring-quiet: IconDisplay {
                         cross-axis-self-alignment: center;
                         icon: CallView.ring-video ? IconSet.Video : IconSet.PhoneIncoming;
                         size: IconSize.xs;
                         stroke: AppStyle.foreground-muted;
+                    }
+
+                    if CallView.ring-quiet: IconDisplay {
+                        cross-axis-self-alignment: center;
+                        icon: IconSet.BellOff;
+                        size: IconSize.xs;
+                        stroke: AppStyle.foreground-muted;
+                        accessible-role: image;
+                        accessible-label: @tr("The room is muted, so the call rings without sound");
                     }
 
                     Text {
@@ -100,7 +109,6 @@ export component IncomingCallCard inherits PickerCard {
                         font-size: Fonts.body-small;
                         color: AppStyle.foreground-muted;
                         overflow: elide;
-                        accessible-live-region: AccessibleLiveness.assertive;
                     }
                 }
             }
@@ -110,7 +118,9 @@ export component IncomingCallCard inherits PickerCard {
                 icon: IconSet.X;
                 size: Size.md;
                 above-modal: true;
-                label: @tr("Stop ringing");
+                label: CallWords.stop-ring(CallView.ring-quiet);
+                tip: self.label;
+                tip-scope: TipScope.ring;
                 clicked => {
                     Actions.silence-ring();
                 }
@@ -199,6 +209,8 @@ export component IncomingCallCard inherits PickerCard {
                     size: Size.lg;
                     above-modal: true;
                     label: @tr("Open the chat");
+                    tip: self.label;
+                    tip-scope: TipScope.ring;
                     clicked => {
                         Shell.close-overlays();
                         Actions.select-room(CallView.ring-room-id);

@@ -5,9 +5,13 @@ import { ClickArea } from "./a11y.slint";
 import { AppStyle, Fonts, IconSize, Metrics, Opacity, Radius, Size, Space, Weight } from "../theme.slint";
 import { DotPulse } from "./dot-pulse.slint";
 import { StateLayer } from "./state-layer.slint";
+import { TipSource } from "./tip.slint";
+import { TipScope } from "../local.slint";
 
 export component AppButton inherits Rectangle {
     in property <string> text;
+    in property <string> label: root.text;
+    in property <string> description;
     in property <Icon> icon;
     in property <bool> trailing-icon: false;
     in property <bool> enabled: true;
@@ -21,6 +25,10 @@ export component AppButton inherits Rectangle {
     property <bool> interactive: root.enabled && !root.busy;
     property <bool> has-icon: root.icon.paths.length > 0;
     property <color> label-color: root.filled ? Palette.accent-foreground : root.tint;
+
+    public function take-focus() {
+        touch.take-focus();
+    }
 
     height: AppStyle.control-height;
     border-radius: Radius.md;
@@ -37,7 +45,8 @@ export component AppButton inherits Rectangle {
     touch := ClickArea {
         enabled: root.interactive;
         above-modal: root.above-modal;
-        label: root.text;
+        label: root.label;
+        accessible-description: root.description;
         ring-inset: -Metrics.ring-outset;
         ring-radius: Radius.md + Metrics.ring-outset;
         clicked => {
@@ -93,6 +102,10 @@ export component IconButton inherits Rectangle {
     in property <length> radius: root.size / 2;
     in property <color> tint: AppStyle.foreground-muted;
     in property <brush> fill: transparent;
+    in property <string> tip;
+    in property <string> tip-keys;
+    in property <bool> tip-below;
+    in property <TipScope> tip-scope: TipScope.any;
     out property <bool> has-focus: touch.has-focus;
     out property <bool> has-hover: touch.has-hover;
 
@@ -142,6 +155,19 @@ export component IconButton inherits Rectangle {
             dot-size: Space.sm;
             tint: root.tint;
         }
+    }
+
+    if root.tip != "": TipSource {
+        width: root.width;
+        height: root.height;
+        text: root.tip;
+        keys: root.tip-keys;
+        hovered: touch.has-hover;
+        pressed: touch.pressed;
+        tabbed-to: touch.tabbed-to;
+        below: root.tip-below;
+        above-modal: root.above-modal;
+        scope: root.tip-scope;
     }
 }
 

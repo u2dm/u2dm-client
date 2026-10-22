@@ -43,6 +43,8 @@ export global Motion {
     out property <duration> submenu-delay: 200ms;
     out property <duration> feedback-hold: 1500ms;
     out property <duration> notice-hold: 4000ms;
+    out property <duration> tip-delay: 500ms;
+    out property <duration> tip-hold: 5000ms;
     out property <duration> scroll-settle: 60ms;
     out property <duration> scroll-judge: 250ms;
     out property <duration> scrollbar-linger: 1000ms;
@@ -357,7 +359,8 @@ export global Metrics {
     out property <length> call-chat-min: 160px;
     out property <length> call-stage-column: root.header-row + root.composer-row + 2 * Space.lg
         + root.call-stage-min + root.call-chat-min;
-    out property <length> call-control: Size.xl;
+    out property <length> call-control: Size.target;
+    out property <length> call-badge: Size.xxs;
     out property <length> call-strip: root.call-control + 2 * Space.md;
     out property <length> call-strip-stacked: Size.md + root.call-control + Space.sm + 2 * Space.md;
     out property <length> call-strip-label-min: 128px;
