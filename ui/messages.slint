@@ -1121,7 +1121,7 @@ export global CallWords {
     }
 
     public pure function microphone(mic: CallMic) -> string {
-        if mic == CallMic.on {
+        if mic == CallMic.on || mic == CallMic.starting {
             return @tr("Mute your microphone");
         }
         if mic == CallMic.failed {
@@ -1133,6 +1133,9 @@ export global CallWords {
     public pure function microphone-state(mic: CallMic) -> string {
         if mic == CallMic.on {
             return @tr("Your microphone is on");
+        }
+        if mic == CallMic.starting {
+            return @tr("Your microphone is starting");
         }
         if mic == CallMic.failed {
             return @tr("Your microphone did not start");

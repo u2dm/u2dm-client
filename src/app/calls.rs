@@ -10,7 +10,7 @@ use std::fmt;
 use std::sync::Arc;
 use std::time::Duration;
 
-use tokio::sync::{mpsc, oneshot};
+use tokio::sync::{Semaphore, mpsc, oneshot};
 use tokio::time::{sleep, sleep_until, timeout};
 use tracing::{Instrument, Span};
 
@@ -155,6 +155,7 @@ pub(super) struct Calls {
     actions: TaskGroup,
     lane: TaskGroup,
     media_tasks: TaskGroup,
+    media_turn: Arc<Semaphore>,
     key_tasks: TaskGroup,
     own: Option<Own>,
     focus: WindowFocus,
@@ -189,6 +190,7 @@ impl Calls {
             actions: TaskGroup::new("call-actions"),
             lane: TaskGroup::new("call-lane"),
             media_tasks: TaskGroup::new("call-media"),
+            media_turn: Arc::new(Semaphore::new(1)),
             key_tasks: TaskGroup::new("call-keys"),
             own: None,
             focus: WindowFocus::default(),
@@ -808,6 +810,7 @@ impl Calls {
             },
             events: self.events.clone(),
             call,
+            turn: Arc::clone(&self.media_turn),
         };
         self.media_tasks
             .spawn(driver.run(media_rx).instrument(span.clone()));

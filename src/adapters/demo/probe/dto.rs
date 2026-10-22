@@ -1129,6 +1129,7 @@ fn active_call(active: &ActiveCall) -> ActiveCallDto {
         microphone: match active.microphone {
             MicrophoneView::On => "on",
             MicrophoneView::Off => "off",
+            MicrophoneView::Starting => "starting",
             MicrophoneView::Failed => "failed",
         },
         camera: match active.camera {

@@ -7,7 +7,7 @@ use crate::domain::call::devices::{DeviceChoice, DeviceKind};
 use crate::domain::call::identity::MediaIdentity;
 use crate::domain::call::keys::{KeyIndex, MediaKey};
 use crate::domain::call::media::{MediaEvent, MediaSetup};
-use crate::domain::call::sfu::{SfuGrant, SfuId};
+use crate::domain::call::sfu::{SfuGrant, SfuId, SfuRole};
 use crate::domain::call::video::{FeedId, FrameSize, Framing};
 use crate::error::Result;
 
@@ -21,9 +21,16 @@ pub trait CallMediaPort: Send + Sync {
     ) -> Result<Box<dyn MediaSession>>;
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ConnectedSfu {
+    pub sfu: SfuId,
+    pub role: SfuRole,
+}
+
 #[async_trait]
 pub trait MediaSession: Send {
-    async fn connect(&mut self, grant: SfuGrant) -> Result<()>;
+    fn dial(&mut self, grant: SfuGrant);
+    async fn next_connected(&mut self) -> ConnectedSfu;
     async fn disconnect(&mut self, sfu: &SfuId);
     async fn set_microphone(&mut self, on: bool);
     async fn set_camera(&mut self, on: bool);

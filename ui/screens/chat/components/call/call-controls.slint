@@ -55,7 +55,7 @@ export global CallKeys {
     }
 
     public function toggle-microphone() {
-        Actions.set-microphone({ on: CallView.mic != CallMic.on });
+        Actions.set-microphone({ on: CallView.mic != CallMic.on && CallView.mic != CallMic.starting });
     }
 
     public function toggle-camera() {
@@ -152,6 +152,7 @@ export component CallToggle inherits ClickArea {
 
 export component CallMicButton inherits CallToggle {
     state: CallView.mic == CallMic.failed ? CallToggleState.failed
+        : CallView.mic == CallMic.starting ? CallToggleState.pending
         : CallView.mic == CallMic.on ? CallToggleState.on
         : CallToggleState.off;
     on-icon: IconSet.Mic;

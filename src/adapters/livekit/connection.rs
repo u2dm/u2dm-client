@@ -32,25 +32,33 @@ pub(super) struct Connection {
     pump: JoinHandle<()>,
 }
 
-pub(super) struct Dial<'a> {
-    pub(super) grant: &'a SfuGrant,
-    pub(super) encryption: Option<&'a KeyProvider>,
+pub(super) struct Dialled {
+    room: Room,
+    events: mpsc::UnboundedReceiver<RoomEvent>,
+}
+
+pub(super) struct Wiring<'a> {
+    pub(super) sfu: SfuId,
+    pub(super) role: SfuRole,
     pub(super) own_index: &'a OwnIndex,
     pub(super) feeds: &'a Arc<Feeds>,
     pub(super) events_tx: &'a mpsc::UnboundedSender<MediaEvent>,
+    pub(super) encrypted: bool,
 }
 
-pub(super) async fn dial(dial: Dial<'_>) -> Result<Connection, String> {
-    let sfu = dial.grant.sfu.clone();
+pub(super) async fn dial(
+    grant: SfuGrant,
+    encryption: Option<KeyProvider>,
+) -> Result<Dialled, String> {
     let mut options = RoomOptions::default();
     options.auto_subscribe = true;
     options.dynacast = true;
-    options.encryption = dial.encryption.map(e2ee::options);
-    let host = super::host_of(&dial.grant.url).to_owned();
-    tracing::info!(%sfu, host, role = ?dial.grant.role, encrypted = dial.encryption.is_some(), "connecting to a call media server");
+    options.encryption = encryption.as_ref().map(e2ee::options);
+    let host = super::host_of(&grant.url).to_owned();
+    tracing::info!(sfu = %grant.sfu, host, role = ?grant.role, encrypted = encryption.is_some(), "connecting to a call media server");
     let connected = timeout(
         CONNECT_WAIT,
-        Room::connect(&dial.grant.url, dial.grant.token.expose(), options),
+        Room::connect(&grant.url, grant.token.expose(), options),
     )
     .await;
     let (room, events) = match connected {
@@ -58,38 +66,51 @@ pub(super) async fn dial(dial: Dial<'_>) -> Result<Connection, String> {
         Ok(Err(e)) => return Err(e.to_string()),
         Err(_) => return Err("the media server did not answer in time".into()),
     };
-    let room = Arc::new(room);
-    let local = room.local_participant().identity();
-    tracing::info!(%sfu, identity = %local, "connected to a call media server");
-    let pump = tokio::spawn(
-        pump_events(Pump {
-            sfu,
-            room: Arc::clone(&room),
-            events,
-            events_tx: dial.events_tx.clone(),
-            own_index: Arc::clone(dial.own_index),
-            feeds: Arc::clone(dial.feeds),
-            encrypted: dial.encryption.is_some(),
-        })
-        .in_current_span(),
-    );
-    Ok(Connection {
-        room,
-        role: dial.grant.role,
-        pump,
-    })
+    tracing::info!(sfu = %grant.sfu, identity = %room.local_participant().identity(), "connected to a call media server");
+    Ok(Dialled { room, events })
+}
+
+impl Dialled {
+    pub(super) fn start(self, wiring: Wiring<'_>) -> Connection {
+        let room = Arc::new(self.room);
+        let pump = tokio::spawn(
+            pump_events(Pump {
+                sfu: wiring.sfu,
+                room: Arc::clone(&room),
+                events: self.events,
+                events_tx: wiring.events_tx.clone(),
+                own_index: Arc::clone(wiring.own_index),
+                feeds: Arc::clone(wiring.feeds),
+                encrypted: wiring.encrypted,
+            })
+            .in_current_span(),
+        );
+        Connection {
+            room,
+            role: wiring.role,
+            pump,
+        }
+    }
+
+    pub(super) async fn close(self, sfu: &SfuId) {
+        close_room(&self.room, sfu).await;
+    }
 }
 
 impl Connection {
     pub(super) async fn close(self, sfu: &SfuId) {
-        match timeout(MEDIA_CLOSE_WAIT, self.room.close()).await {
-            Ok(Ok(())) => tracing::debug!(%sfu, "left the call media server"),
-            Ok(Err(e)) => {
-                tracing::debug!(%sfu, "the call media server connection did not close cleanly: {e}");
-            }
-            Err(_) => tracing::info!(%sfu, "the call media server did not close in time"),
-        }
+        close_room(&self.room, sfu).await;
         self.pump.abort();
+    }
+}
+
+async fn close_room(room: &Room, sfu: &SfuId) {
+    match timeout(MEDIA_CLOSE_WAIT, room.close()).await {
+        Ok(Ok(())) => tracing::debug!(%sfu, "left the call media server"),
+        Ok(Err(e)) => {
+            tracing::debug!(%sfu, "the call media server connection did not close cleanly: {e}");
+        }
+        Err(_) => tracing::info!(%sfu, "the call media server did not close in time"),
     }
 }
 

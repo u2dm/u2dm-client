@@ -1511,9 +1511,10 @@ pub(crate) use call_notices;
 
 macro_rules! call_mics {
     ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
-        On     On     "on";
-        Off    Off    "off";
-        Failed Failed "failed";
+        On       On       "on";
+        Off      Off      "off";
+        Starting Starting "starting";
+        Failed   Failed   "failed";
     } };
 }
 pub(crate) use call_mics;

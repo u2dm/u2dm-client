@@ -1,5 +1,8 @@
 use std::collections::HashMap;
+use std::future::{Future, poll_fn};
+use std::pin::Pin;
 use std::sync::Arc;
+use std::task::{Context, Poll};
 
 use async_trait::async_trait;
 use livekit::e2ee::key_provider::KeyProvider;
@@ -8,9 +11,11 @@ use livekit::options::TrackPublishOptions;
 use livekit::prelude::{LocalAudioTrack, LocalTrack, PlatformAudio, TrackSource};
 use tokio::sync::mpsc;
 use tokio::task::spawn_blocking;
+use tokio_util::task::AbortOnDropHandle;
+use tracing::Instrument;
 
 use super::camera::{self, OwnCamera};
-use super::connection::{Connection, Dial, OwnIndex, dial, use_own_index};
+use super::connection::{self, Connection, Dialled, OwnIndex, Wiring, use_own_index};
 use super::devices::{Listing, select_microphone, select_speaker};
 use super::e2ee;
 use super::feeds::Feeds;
@@ -24,16 +29,27 @@ use crate::domain::call::keys::{KeyIndex, MediaKey};
 use crate::domain::call::media::{MediaEvent, Microphone, SfuState};
 use crate::domain::call::sfu::{SfuGrant, SfuId, SfuRole};
 use crate::domain::call::video::{Camera, ScreenShare};
-use crate::error::{AppError, Result};
-use crate::ports::call::MediaSession;
+use crate::ports::call::{ConnectedSfu, MediaSession};
 
 const MICROPHONE_TRACK: &str = "microphone";
+
+struct Dialling {
+    role: SfuRole,
+    handle: AbortOnDropHandle<Result<Dialled, String>>,
+}
+
+struct Finished {
+    sfu: SfuId,
+    role: SfuRole,
+    dialled: Result<Dialled, String>,
+}
 
 pub(super) struct LiveKitSession {
     audio: PlatformAudio,
     keys: Option<KeyProvider>,
     own_keys: Vec<(KeyIndex, MediaKey)>,
     own_index: OwnIndex,
+    dialling: HashMap<SfuId, Dialling>,
     connections: HashMap<SfuId, Connection>,
     microphone: Option<LocalAudioTrack>,
     wants_microphone: bool,
@@ -62,6 +78,7 @@ impl LiveKitSession {
             keys: encrypted.then(e2ee::key_provider),
             own_keys: Vec::new(),
             own_index: OwnIndex::default(),
+            dialling: HashMap::new(),
             connections: HashMap::new(),
             microphone: None,
             wants_microphone: false,
@@ -88,6 +105,50 @@ impl LiveKitSession {
         self.connections
             .values()
             .find(|connection| connection.role == SfuRole::Publish)
+    }
+
+    fn finished_dial(&mut self, cx: &mut Context<'_>) -> Poll<Finished> {
+        let ready = self.dialling.iter_mut().find_map(|(sfu, dialling)| {
+            match Pin::new(&mut dialling.handle).poll(cx) {
+                Poll::Ready(joined) => Some((sfu.clone(), joined)),
+                Poll::Pending => None,
+            }
+        });
+        let Some((sfu, joined)) = ready else {
+            return Poll::Pending;
+        };
+        let Some(dialling) = self.dialling.remove(&sfu) else {
+            return Poll::Pending;
+        };
+        let dialled =
+            joined.unwrap_or_else(|e| Err(format!("the connection attempt stopped: {e}")));
+        Poll::Ready(Finished {
+            sfu,
+            role: dialling.role,
+            dialled,
+        })
+    }
+
+    fn adopt(&mut self, sfu: SfuId, role: SfuRole, dialled: Dialled) -> ConnectedSfu {
+        let connection = dialled.start(Wiring {
+            sfu: sfu.clone(),
+            role,
+            own_index: &self.own_index,
+            feeds: &self.feeds,
+            events_tx: &self.events_tx,
+            encrypted: self.keys.is_some(),
+        });
+        self.install_own_keys(&connection);
+        self.connections.insert(sfu.clone(), connection);
+        ConnectedSfu { sfu, role }
+    }
+
+    fn dial_failed(&self, sfu: SfuId, why: String) {
+        tracing::warn!(%sfu, "could not connect to the call media server: {why}");
+        self.emit(MediaEvent::Sfu {
+            sfu,
+            state: SfuState::Disconnected(why),
+        });
     }
 
     fn install_own_keys(&self, connection: &Connection) {
@@ -394,47 +455,41 @@ impl LiveKitSession {
 
 #[async_trait]
 impl MediaSession for LiveKitSession {
-    async fn connect(&mut self, grant: SfuGrant) -> Result<()> {
+    fn dial(&mut self, grant: SfuGrant) {
         let sfu = grant.sfu.clone();
-        if self.connections.contains_key(&sfu) {
-            return Ok(());
+        if self.connections.contains_key(&sfu) || self.dialling.contains_key(&sfu) {
+            tracing::debug!(%sfu, "already connected or connecting to this call media server");
+            return;
         }
         self.emit(MediaEvent::Sfu {
             sfu: sfu.clone(),
             state: SfuState::Connecting,
         });
-        let dialled = dial(Dial {
-            grant: &grant,
-            encryption: self.keys.as_ref(),
-            own_index: &self.own_index,
-            feeds: &self.feeds,
-            events_tx: &self.events_tx,
-        })
-        .await;
-        let connection = match dialled {
-            Ok(connection) => connection,
-            Err(why) => {
-                tracing::warn!(%sfu, "could not connect to the call media server: {why}");
-                self.emit(MediaEvent::Sfu {
-                    sfu,
-                    state: SfuState::Disconnected(why.clone()),
-                });
-                return Err(AppError::Other(why));
+        let role = grant.role;
+        let handle = tokio::spawn(connection::dial(grant, self.keys.clone()).in_current_span());
+        self.dialling.insert(
+            sfu,
+            Dialling {
+                role,
+                handle: AbortOnDropHandle::new(handle),
+            },
+        );
+    }
+
+    async fn next_connected(&mut self) -> ConnectedSfu {
+        loop {
+            let finished = poll_fn(|cx| self.finished_dial(cx)).await;
+            match finished.dialled {
+                Ok(dialled) => return self.adopt(finished.sfu, finished.role, dialled),
+                Err(why) => self.dial_failed(finished.sfu, why),
             }
-        };
-        self.install_own_keys(&connection);
-        let publishes = connection.role == SfuRole::Publish;
-        self.connections.insert(sfu, connection);
-        if publishes && self.wants_microphone {
-            self.publish_microphone().await;
         }
-        if publishes && self.wants_camera {
-            self.start_camera().await;
-        }
-        Ok(())
     }
 
     async fn disconnect(&mut self, sfu: &SfuId) {
+        if let Some(dialling) = self.dialling.remove(sfu) {
+            abandon(sfu, dialling).await;
+        }
         if let Some(connection) = self.connections.remove(sfu) {
             connection.close(sfu).await;
         }
@@ -520,15 +575,9 @@ impl MediaSession for LiveKitSession {
     }
 
     async fn close(mut self: Box<Self>) {
-        if let Some(screen) = self.screen.take() {
-            screen.stop().await;
-        }
-        if let Some(own) = self.camera.take() {
-            own.stop(None).await;
-        }
-        let connections: Vec<(SfuId, Connection)> = self.connections.drain().collect();
-        for (sfu, connection) in connections {
-            connection.close(&sfu).await;
+        let dialling: Vec<(SfuId, Dialling)> = self.dialling.drain().collect();
+        for (_, abandoned) in &dialling {
+            abandoned.handle.abort();
         }
         if let Some(track) = self.microphone.take() {
             track.mute();
@@ -536,7 +585,28 @@ impl MediaSession for LiveKitSession {
         if let Err(e) = self.audio.stop_recording() {
             tracing::debug!("the microphone did not stop: {e}");
         }
+        if let Some(screen) = self.screen.take() {
+            screen.stop().await;
+        }
+        if let Some(own) = self.camera.take() {
+            own.stop(None).await;
+        }
+        for (sfu, abandoned) in dialling {
+            abandon(&sfu, abandoned).await;
+        }
+        let connections: Vec<(SfuId, Connection)> = self.connections.drain().collect();
+        for (sfu, connection) in connections {
+            connection.close(&sfu).await;
+        }
         self.feeds.clear();
+    }
+}
+
+async fn abandon(sfu: &SfuId, dialling: Dialling) {
+    dialling.handle.abort();
+    if let Ok(Ok(dialled)) = dialling.handle.await {
+        tracing::debug!(%sfu, "closing a call media server connection nobody wants any more");
+        dialled.close(sfu).await;
     }
 }
 

@@ -474,6 +474,7 @@ pub struct CallDevices {
 pub enum MicrophoneView {
     On,
     Off,
+    Starting,
     Failed,
 }
 

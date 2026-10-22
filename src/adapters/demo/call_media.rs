@@ -1,6 +1,10 @@
 use std::collections::{HashMap, HashSet};
+use std::future::{Future, poll_fn};
+use std::pin::Pin;
+use std::result;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
+use std::task::{Context, Poll};
 use std::thread;
 use std::time::Duration;
 
@@ -8,6 +12,8 @@ use async_trait::async_trait;
 use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
 use tokio::time::sleep;
+use tokio_util::task::AbortOnDropHandle;
+use tracing::Instrument;
 
 use super::call_devices::DemoDevices;
 use super::calls::{
@@ -22,8 +28,10 @@ use crate::domain::call::media::{Decryption, MediaEvent, MediaSetup, Microphone,
 use crate::domain::call::sfu::{SfuGrant, SfuId, SfuRole};
 use crate::domain::call::video::{Camera, FeedId, FrameSize, Framing, ScreenRefusal, ScreenShare};
 use crate::domain::room::RoomId;
-use crate::error::{AppError, Result};
-use crate::ports::call::{CallMediaPort, CallVideoPort, FrameSink, MediaSession, VideoFrame};
+use crate::error::Result;
+use crate::ports::call::{
+    CallMediaPort, CallVideoPort, ConnectedSfu, FrameSink, MediaSession, VideoFrame,
+};
 
 const DEMO_FPS: u64 = 10;
 const SOURCE: FrameSize = FrameSize::new(1280, 720);
@@ -214,7 +222,9 @@ impl CallMediaPort for DemoCallMedia {
             room_id: setup.room_id,
             encrypted: setup.encrypted,
             events_tx,
-            connected: HashSet::new(),
+            dialling: HashMap::new(),
+            connected: HashMap::new(),
+            microphone_published: false,
             keyed: HashSet::new(),
             tasks: Vec::new(),
             screen: None,
@@ -223,11 +233,15 @@ impl CallMediaPort for DemoCallMedia {
     }
 }
 
+type DemoDial = AbortOnDropHandle<result::Result<SfuGrant, String>>;
+
 struct DemoMediaSession {
     room_id: RoomId,
     encrypted: bool,
     events_tx: mpsc::UnboundedSender<MediaEvent>,
-    connected: HashSet<SfuId>,
+    dialling: HashMap<SfuId, DemoDial>,
+    connected: HashMap<SfuId, SfuRole>,
+    microphone_published: bool,
     keyed: HashSet<MediaIdentity>,
     tasks: Vec<JoinHandle<()>>,
     screen: Option<JoinHandle<()>>,
@@ -349,6 +363,59 @@ impl DemoMediaSession {
         }));
     }
 
+    fn publishes(&self) -> bool {
+        self.connected
+            .values()
+            .any(|role| *role == SfuRole::Publish)
+    }
+
+    fn finished_dial(
+        &mut self,
+        cx: &mut Context<'_>,
+    ) -> Poll<(SfuId, result::Result<SfuGrant, String>)> {
+        let ready = self.dialling.iter_mut().find_map(|(sfu, dialling)| {
+            match Pin::new(dialling).poll(cx) {
+                Poll::Ready(joined) => Some((sfu.clone(), joined)),
+                Poll::Pending => None,
+            }
+        });
+        let Some((sfu, joined)) = ready else {
+            return Poll::Pending;
+        };
+        self.dialling.remove(&sfu);
+        let dialled = joined.unwrap_or_else(|e| Err(format!("demo: the connection stopped: {e}")));
+        Poll::Ready((sfu, dialled))
+    }
+
+    fn connected_to(&mut self, grant: SfuGrant) -> ConnectedSfu {
+        let SfuGrant {
+            sfu,
+            role,
+            identity,
+            ..
+        } = grant;
+        tracing::info!(%sfu, ?role, %identity, "demo: connected to a media server");
+        self.emit(MediaEvent::Sfu {
+            sfu: sfu.clone(),
+            state: SfuState::Connected,
+        });
+        calls::book().watch(self.room_id.as_ref(), sfu.as_ref(), self.events_tx.clone());
+        self.connected.insert(sfu.clone(), role);
+        self.report_waiting();
+        if role == SfuRole::Publish {
+            if calls::scenario().reconnecting {
+                self.spawn_reconnect(sfu.clone());
+            }
+            if calls::cuts_off() {
+                self.spawn_cut_off(sfu.clone());
+            }
+            if calls::scenario().speaking {
+                self.spawn_speaking(sfu.clone());
+            }
+        }
+        ConnectedSfu { sfu, role }
+    }
+
     fn report_waiting(&self) {
         if !self.encrypted {
             return;
@@ -370,51 +437,63 @@ impl DemoMediaSession {
 
 #[async_trait]
 impl MediaSession for DemoMediaSession {
-    async fn connect(&mut self, grant: SfuGrant) -> Result<()> {
-        calls::pause().await;
+    fn dial(&mut self, grant: SfuGrant) {
         let sfu = grant.sfu.clone();
-        if calls::scenario().connect_fails {
-            tracing::info!(%sfu, "demo: the media server refuses the connection");
-            self.emit(MediaEvent::Sfu {
-                sfu,
-                state: SfuState::Disconnected("demo: the media server refused".into()),
-            });
-            return Err(AppError::Other("demo: the media server refused".into()));
+        if self.connected.contains_key(&sfu) || self.dialling.contains_key(&sfu) {
+            tracing::debug!(%sfu, "demo: already connected or connecting to this media server");
+            return;
         }
-        tracing::info!(%sfu, role = ?grant.role, identity = %grant.identity, "demo: connected to a media server");
-        self.emit(MediaEvent::Sfu {
-            sfu: sfu.clone(),
-            state: SfuState::Connected,
-        });
-        calls::book().watch(self.room_id.as_ref(), sfu.as_ref(), self.events_tx.clone());
-        self.connected.insert(sfu.clone());
-        self.report_waiting();
-        if grant.role == SfuRole::Publish {
-            if calls::scenario().reconnecting {
-                self.spawn_reconnect(sfu.clone());
+        tracing::info!(%sfu, role = ?grant.role, "demo: connecting to a media server");
+        let dialled = tokio::spawn(
+            async move {
+                calls::pause().await;
+                if calls::scenario().connect_fails {
+                    return Err("demo: the media server refused".to_owned());
+                }
+                Ok(grant)
             }
-            if calls::cuts_off() {
-                self.spawn_cut_off(sfu.clone());
-            }
-            if calls::scenario().speaking {
-                self.spawn_speaking(sfu);
+            .in_current_span(),
+        );
+        self.dialling.insert(sfu, AbortOnDropHandle::new(dialled));
+    }
+
+    async fn next_connected(&mut self) -> ConnectedSfu {
+        loop {
+            let (sfu, dialled) = poll_fn(|cx| self.finished_dial(cx)).await;
+            match dialled {
+                Ok(grant) => return self.connected_to(grant),
+                Err(why) => {
+                    tracing::info!(%sfu, "demo: the media server refuses the connection");
+                    self.emit(MediaEvent::Sfu {
+                        sfu,
+                        state: SfuState::Disconnected(why),
+                    });
+                }
             }
         }
-        Ok(())
     }
 
     async fn disconnect(&mut self, sfu: &SfuId) {
         tracing::info!(%sfu, "demo: left a media server");
+        self.dialling.remove(sfu);
         self.connected.remove(sfu);
     }
 
     async fn set_microphone(&mut self, on: bool) {
-        tracing::info!(on, "demo: the microphone switches");
-        self.emit(MediaEvent::Microphone(if on {
-            Microphone::On
-        } else {
-            Microphone::Off
-        }));
+        if self.microphone_published {
+            tracing::info!(on, "demo: the microphone switches");
+            self.emit(MediaEvent::Microphone(if on {
+                Microphone::On
+            } else {
+                Microphone::Off
+            }));
+        } else if on && self.publishes() {
+            self.microphone_published = true;
+            tracing::info!("demo: published the microphone");
+            self.emit(MediaEvent::Microphone(Microphone::On));
+        } else if on {
+            tracing::info!("demo: the microphone waits for the call to connect");
+        }
     }
 
     async fn set_camera(&mut self, on: bool) {
@@ -422,6 +501,10 @@ impl MediaSession for DemoMediaSession {
         if !on {
             tracing::info!(camera = "off", "demo: the camera switches");
             self.devices.stop_camera();
+            return;
+        }
+        if !self.publishes() {
+            tracing::info!("demo: the camera waits for the call to connect");
             return;
         }
         let camera = match self.devices.start_camera() {

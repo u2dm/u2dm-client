@@ -62,6 +62,37 @@ struct Heard {
     screens: HashMap<SfuId, HashMap<MediaIdentity, FeedId>>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum OwnMicrophone {
+    Off,
+    Starting,
+    On,
+    Failed,
+}
+
+impl OwnMicrophone {
+    const fn sends(self) -> bool {
+        matches!(self, Self::Starting | Self::On)
+    }
+
+    const fn switched(self, on: bool, published: bool) -> Option<Self> {
+        match (self, on) {
+            (Self::Starting | Self::On, true) | (Self::Off, false) => None,
+            (_, true) if published => Some(Self::On),
+            (_, true) => Some(Self::Starting),
+            (_, false) => Some(Self::Off),
+        }
+    }
+
+    const fn reported(self, report: &Microphone) -> Self {
+        match (self, report) {
+            (Self::Starting, Microphone::On) => Self::On,
+            (Self::Starting | Self::On, Microphone::Failed(_)) => Self::Failed,
+            _ => self,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum OwnCamera {
     Off,
@@ -208,7 +239,8 @@ pub(super) struct Joined {
     links: HashMap<SfuId, Link>,
     heard: Heard,
     standings: HashMap<MemberKey, DeviceStanding>,
-    microphone: Microphone,
+    microphone: OwnMicrophone,
+    microphone_published: bool,
     camera: OwnCamera,
     screen: OwnScreen,
     shares_missed: u8,
@@ -249,10 +281,11 @@ impl Joined {
             heard: Heard::default(),
             standings: HashMap::new(),
             microphone: if media.microphone {
-                Microphone::On
+                OwnMicrophone::Starting
             } else {
-                Microphone::Off
+                OwnMicrophone::Off
             },
+            microphone_published: false,
             camera: OwnCamera::Off,
             screen: OwnScreen::Off,
             shares_missed: 0,
@@ -289,7 +322,7 @@ impl Joined {
 
     pub(super) fn media_sent(&self) -> MediaChoice {
         MediaChoice {
-            microphone: self.microphone == Microphone::On,
+            microphone: self.microphone.sends(),
             camera: matches!(self.camera, OwnCamera::Starting | OwnCamera::On(_)),
         }
     }
@@ -540,7 +573,7 @@ impl Joined {
             MediaEvent::Decryption { identity, state } => {
                 self.heard.decryption.insert(identity, state);
             }
-            MediaEvent::Microphone(microphone) => self.microphone = microphone,
+            MediaEvent::Microphone(microphone) => self.microphone_reported(&microphone),
             MediaEvent::Camera(camera) => self.camera_reported(camera),
             MediaEvent::Screen(screen) => self.screen_reported(screen),
             MediaEvent::Video {
@@ -556,6 +589,24 @@ impl Joined {
             }
         }
         Ok(())
+    }
+
+    fn microphone_reported(&mut self, report: &Microphone) {
+        if *report == Microphone::On {
+            self.microphone_published = true;
+        }
+        if let Microphone::Failed(why) = report {
+            if self.microphone.sends() {
+                tracing::warn!(call = self.call, why, "the microphone failed");
+            } else {
+                tracing::debug!(
+                    call = self.call,
+                    why,
+                    "the microphone you switched off failed"
+                );
+            }
+        }
+        self.microphone = self.microphone.reported(report);
     }
 
     fn camera_reported(&mut self, camera: Camera) {
@@ -646,8 +697,11 @@ impl Joined {
     }
 
     pub(super) fn set_microphone(&mut self, on: bool) {
+        let Some(switched) = self.microphone.switched(on, self.microphone_published) else {
+            return;
+        };
         tracing::info!(call = self.call, on, "switching the microphone");
-        self.microphone = if on { Microphone::On } else { Microphone::Off };
+        self.microphone = switched;
         self.command(MediaCommand::Microphone(on));
     }
 
@@ -773,7 +827,7 @@ impl Joined {
         if let Some(kind) = self.unannounced() {
             return Some(CallNotice::NotAnnounced(kind));
         }
-        if matches!(self.microphone, Microphone::Failed(_)) {
+        if self.microphone == OwnMicrophone::Failed {
             return Some(CallNotice::MicrophoneFailed);
         }
         if self.camera == OwnCamera::Failed {
@@ -839,9 +893,10 @@ impl Joined {
             encrypted: self.encrypted,
             video: self.intent == CallIntent::Video,
             microphone: match self.microphone {
-                Microphone::On => MicrophoneView::On,
-                Microphone::Off => MicrophoneView::Off,
-                Microphone::Failed(_) => MicrophoneView::Failed,
+                OwnMicrophone::Off => MicrophoneView::Off,
+                OwnMicrophone::Starting => MicrophoneView::Starting,
+                OwnMicrophone::On => MicrophoneView::On,
+                OwnMicrophone::Failed => MicrophoneView::Failed,
             },
             camera: match self.camera {
                 OwnCamera::Off => CameraView::Off,
@@ -921,7 +976,7 @@ impl Joined {
             own: true,
             kind: TileKind::Person,
             state,
-            muted: self.microphone != Microphone::On,
+            muted: self.microphone != OwnMicrophone::On,
             speaking,
             video,
         }

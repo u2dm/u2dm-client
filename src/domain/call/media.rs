@@ -38,6 +38,7 @@ pub enum Decryption {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Microphone {
+    #[cfg_attr(not(any(feature = "calls", feature = "demo")), allow(dead_code))]
     Off,
     On,
     #[cfg_attr(not(any(feature = "calls", feature = "demo")), allow(dead_code))]
