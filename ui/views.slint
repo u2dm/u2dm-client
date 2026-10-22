@@ -11,6 +11,7 @@ import {
     VerificationEmoji,
     UserMessage,
     CallTileEntry,
+    CallPersonEntry,
     CallDeviceEntry,
     UserDeviceEntry,
 } from "./types.slint";
@@ -450,6 +451,9 @@ export global CallView {
     in property <CallRefusal> sheet-refusal;
     in property <bool> sheet-video;
     in property <int> sheet-people;
+    in property <string> sheet-people-first;
+    in property <string> sheet-people-second;
+    in property <int> sheet-people-more;
     in property <bool> sheet-microphone;
     in property <bool> sheet-camera;
     in property <string> sheet-leaving-id;
@@ -473,6 +477,7 @@ export global CallView {
     in property <string> elapsed;
     in property <[CallTileEntry]> stage;
     in property <[CallTileEntry]> tiles;
+    in property <[CallPersonEntry]> people;
     in property <[CallDeviceEntry]> microphones;
     in property <[CallDeviceEntry]> speakers;
     in property <[CallDeviceEntry]> cameras;

@@ -25,19 +25,19 @@ use super::decode::{
     AvatarSlot, request_avatar, request_custom_emoji, request_media, request_pack_cell,
 };
 use super::dto::{
-    BodyLineDto, BodyPieceDto, CallDeviceDto, CallNoticeMark, CallOfferMark, CallScreenMark,
-    CallTileDto, CallTileMark, EmojiArt, InviteeDto, LogLineDto, MediaFailureKind, MediaState,
-    MemberRowDto, MemberRowKind, MessageDto, PackCellDto, PackRowDto, PackSurface, PackTabDto,
-    PollAnswerDto, ReactionDto, ReactorAvatarDto, RoomCallMark, RoomDto, RoomRowKind,
+    BodyLineDto, BodyPieceDto, CallDeviceDto, CallNoticeMark, CallOfferMark, CallPersonDto,
+    CallScreenMark, CallTileDto, CallTileMark, EmojiArt, InviteeDto, LogLineDto, MediaFailureKind,
+    MediaState, MemberRowDto, MemberRowKind, MessageDto, PackCellDto, PackRowDto, PackSurface,
+    PackTabDto, PollAnswerDto, ReactionDto, ReactorAvatarDto, RoomCallMark, RoomDto, RoomRowKind,
     SpaceChildDto, SpaceDto, SpoilerState, UserDeviceDto, pack_surface_named,
 };
 #[cfg(feature = "demo")]
 use super::dump;
 use super::fields::{
-    BodyLineFields, BodyPieceFields, CallDeviceFields, CallTileFields, InviteeFields,
-    LogLineFields, MemberRowFields, MessageFields, PackCellFields, PackRowFields, PackTabFields,
-    PollAnswerFields, ReactionFields, ReactorFields, RoomFields, SpaceChildFields, SpaceFields,
-    UserDeviceFields,
+    BodyLineFields, BodyPieceFields, CallDeviceFields, CallPersonFields, CallTileFields,
+    InviteeFields, LogLineFields, MemberRowFields, MessageFields, PackCellFields, PackRowFields,
+    PackTabFields, PollAnswerFields, ReactionFields, ReactorFields, RoomFields, SpaceChildFields,
+    SpaceFields, UserDeviceFields,
 };
 use super::notices::NoticeWords;
 use super::present::{
@@ -50,18 +50,19 @@ use super::router::{DraftVerdict, EditedRow, EditedText};
 use super::schema::{
     account_activities, account_steps, attachment_kinds, audio_kinds, auth_stages,
     body_line_fields, body_piece_fields, call_cameras, call_device_fields, call_device_kinds,
-    call_device_statuses, call_device_troubles, call_mics, call_notices, call_offers, call_phases,
-    call_refusals, call_screen_refusals, call_screens, call_tile_fields, call_tile_marks,
-    child_accesses, connection_states, create_room_statuses, decryption_failures, deliveries,
-    device_trusts, direct_chats, emoji_arts, encryption_activities, encryption_standings,
-    encryption_steps, enum_props, identity_alert_kinds, identity_trusts, invite_answers,
-    invite_kinds, invitee_fields, invitee_states, log_levels, log_line_fields, login_activities,
-    login_methods, login_phases, media_failures, media_states, member_roles, member_row_fields,
-    member_row_kinds, message_fields, message_kinds, model_props, notify_modes, pack_cell_fields,
-    pack_origins, pack_row_fields, pack_surfaces, pack_tab_fields, pending_moderations,
-    people_search_statuses, poll_answer_fields, poll_phases, presence_lines, preview_kinds,
-    reaction_fields, reaction_sends, reactor_fields, readers_statuses, recovery_statuses,
-    removal_kinds, room_accesses, room_call_marks, room_fields, room_info_placements, room_kinds,
+    call_device_statuses, call_device_troubles, call_mics, call_notices, call_offers,
+    call_person_fields, call_phases, call_refusals, call_screen_refusals, call_screens,
+    call_tile_fields, call_tile_marks, child_accesses, connection_states, create_room_statuses,
+    decryption_failures, deliveries, device_trusts, direct_chats, emoji_arts,
+    encryption_activities, encryption_standings, encryption_steps, enum_props,
+    identity_alert_kinds, identity_trusts, invite_answers, invite_kinds, invitee_fields,
+    invitee_states, log_levels, log_line_fields, login_activities, login_methods, login_phases,
+    media_failures, media_states, member_roles, member_row_fields, member_row_kinds,
+    message_fields, message_kinds, model_props, notify_modes, pack_cell_fields, pack_origins,
+    pack_row_fields, pack_surfaces, pack_tab_fields, pending_moderations, people_search_statuses,
+    poll_answer_fields, poll_phases, presence_lines, preview_kinds, reaction_fields,
+    reaction_sends, reactor_fields, readers_statuses, recovery_statuses, removal_kinds,
+    room_accesses, room_call_marks, room_fields, room_info_placements, room_kinds,
     room_memberships, room_preview_statuses, room_row_kinds, room_scopes, roster_statuses,
     send_states, service_kinds, shield_reasons, shields, simple_callbacks, source_encryptions,
     source_statuses, space_child_fields, space_fields, space_index_statuses, spoiler_states,
@@ -758,6 +759,7 @@ impl UiBackend for InterpretedBackend {
     type Invitee = Value;
     type LogLine = Value;
     type CallTile = Value;
+    type CallPerson = Value;
     type CallDevice = Value;
     type UserDevice = Value;
     type PackRow = Value;
@@ -1600,6 +1602,7 @@ member_row_fields!(impl_value MemberRowDto MemberRowFields;);
 invitee_fields!(impl_value InviteeDto InviteeFields;);
 log_line_fields!(impl_value LogLineDto LogLineFields;);
 call_tile_fields!(impl_value CallTileDto CallTileFields;);
+call_person_fields!(impl_value CallPersonDto CallPersonFields;);
 call_device_fields!(impl_value CallDeviceDto CallDeviceFields;);
 user_device_fields!(impl_value UserDeviceDto UserDeviceFields;);
 pack_cell_fields!(impl_value PackCellDto PackCellFields;);

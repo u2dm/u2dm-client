@@ -1,0 +1,216 @@
+import { ScrollView } from "std-widgets.slint";
+import { IconDisplay, IconSet } from "@lucide";
+
+import { ClickArea, RovingKeys } from "../../../../components/a11y.slint";
+import { Avatar } from "../../../../components/avatar.slint";
+import { PickerCard } from "../../../../components/overlay.slint";
+import { StateLayer } from "../../../../components/state-layer.slint";
+import { CallTileState } from "../../../../enums.slint";
+import { CallWords } from "../../../../messages.slint";
+import { CallPersonEntry } from "../../../../types.slint";
+import { CallView } from "../../../../views.slint";
+import { AppStyle, Fonts, Glyph, IconSize, Metrics, Radius, Space, Weight } from "../../../../theme.slint";
+
+component PersonRow inherits Rectangle {
+    in property <CallPersonEntry> person;
+    in property <string> detail;
+    in property <string> label;
+    in property <bool> roving-focus;
+    in property <bool> above-modal;
+
+    callback picked();
+    callback roved(length, length);
+
+    property <bool> troubled: root.person.state == CallTileState.cant-decrypt
+        || root.person.state == CallTileState.unverified-device
+        || root.person.state == CallTileState.unreachable;
+
+    height: max(Metrics.call-person-row, row.preferred-height);
+    border-radius: Radius.sm;
+
+    changed roving-focus => {
+        if self.roving-focus {
+            root.roved(self.y, self.height);
+        }
+    }
+
+    StateLayer {
+        border-radius: root.border-radius;
+        hovered: touch.has-hover && touch.enabled;
+        pressed: touch.pressed && touch.enabled;
+    }
+
+    touch := ClickArea {
+        enabled: root.person.key != "";
+        above-modal: root.above-modal;
+        label: root.label;
+        ring-radius: Radius.sm;
+        focusable: false;
+        roving-focus: root.roving-focus;
+        clicked => {
+            root.picked();
+        }
+    }
+
+    row := HorizontalLayout {
+        padding-left: Space.md;
+        padding-right: Space.md;
+        padding-top: Space.sm;
+        padding-bottom: Space.sm;
+        spacing: Space.md;
+
+        Avatar {
+            cross-axis-self-alignment: center;
+            width: Metrics.call-person-avatar;
+            height: Metrics.call-person-avatar;
+            color-index: root.person.color-index;
+            initial: root.person.initial;
+            initial-size: Glyph.xs;
+        }
+
+        VerticalLayout {
+            horizontal-stretch: 1;
+            alignment: center;
+
+            Text {
+                text: CallWords.person-name(root.person.name, root.person.you);
+                font-family: Fonts.emoji;
+                font-size: Fonts.body;
+                font-weight: Weight.semibold;
+                color: AppStyle.foreground-strong;
+                overflow: elide;
+                accessible-role: none;
+            }
+
+            if root.detail != "": Text {
+                text: root.detail;
+                font-size: Fonts.caption;
+                color: root.troubled ? AppStyle.danger-muted : AppStyle.foreground-muted;
+                wrap: word-wrap;
+                accessible-role: none;
+            }
+        }
+
+        if root.person.muted && root.person.state == CallTileState.live: IconDisplay {
+            cross-axis-self-alignment: center;
+            icon: IconSet.MicOff;
+            size: IconSize.sm;
+            stroke: AppStyle.foreground-muted;
+            accessible-role: none;
+        }
+
+        if root.person.sharing: IconDisplay {
+            cross-axis-self-alignment: center;
+            icon: IconSet.ScreenShare;
+            size: IconSize.sm;
+            stroke: AppStyle.call-sharing;
+            accessible-role: none;
+        }
+
+        if root.troubled: IconDisplay {
+            cross-axis-self-alignment: center;
+            icon: IconSet.CircleAlert;
+            size: IconSize.sm;
+            stroke: AppStyle.danger-muted;
+            accessible-role: none;
+        }
+    }
+}
+
+export component CallPeopleMenu inherits PickerCard {
+    in property <length> room;
+    in property <bool> above-modal;
+
+    callback picked(string, bool);
+
+    property <int> cursor: -1;
+    property <int> count: CallView.people.length;
+    property <bool> keys-focused: keys.has-focus;
+
+    public function open(by-keys: bool) {
+        root.cursor = by-keys && root.count > 0 ? 0 : -1;
+        keys.focus();
+    }
+
+    pure function detail-of(person: CallPersonEntry) -> string {
+        return CallWords.person-detail(person.state, person.muted, person.sharing, person.you, person.devices);
+    }
+
+    pure function label-of(person: CallPersonEntry) -> string {
+        return CallWords.person-label(person.name, person.you, root.detail-of(person));
+    }
+
+    pure function spoken-label() -> string {
+        if root.cursor < 0 || root.cursor >= root.count {
+            return @tr("People in the call");
+        }
+        return root.label-of(CallView.people[root.cursor]);
+    }
+
+    function pick-at(index: int, by-keys: bool) {
+        if index >= 0 && index < root.count && CallView.people[index].key != "" {
+            root.picked(CallView.people[index].key, by-keys);
+        }
+    }
+
+    function reveal(top: length, size: length) {
+        if top < -scroll.content-y {
+            scroll.content-y = -top;
+        } else if top + size > -scroll.content-y + scroll.visible-height {
+            scroll.content-y = -(top + size - scroll.visible-height);
+        }
+    }
+
+    width: Metrics.call-people-width;
+    height: min(rows.preferred-height + 2 * Space.sm, root.room);
+
+    TouchArea { }
+
+    keys := RovingKeys {
+        count: root.count;
+        cursor <=> root.cursor;
+        accessible-label: root.spoken-label();
+        accessible-action-default => {
+            root.pick-at(max(root.cursor, 0), true);
+        }
+        intercept(event) => {
+            if event.text == Key.Tab || event.text == Key.Backtab {
+                return accept;
+            }
+            return reject;
+        }
+        activated(index) => {
+            root.pick-at(index, true);
+        }
+    }
+
+    scroll := ScrollView {
+        x: 0;
+        y: Space.sm;
+        width: parent.width;
+        height: parent.height - 2 * Space.sm;
+        content-width: self.visible-width;
+        content-height: rows.preferred-height;
+
+        rows := VerticalLayout {
+            width: scroll.visible-width;
+            padding-left: Space.sm;
+            padding-right: Space.sm;
+            spacing: Space.xs;
+
+            for person[index] in CallView.people: PersonRow {
+                person: person;
+                detail: root.detail-of(person);
+                label: root.label-of(person);
+                above-modal: root.above-modal;
+                roving-focus: root.keys-focused && root.cursor == index;
+                roved(top, size) => {
+                    root.reveal(top, size);
+                }
+                picked => {
+                    root.pick-at(index, false);
+                }
+            }
+        }
+    }
+}

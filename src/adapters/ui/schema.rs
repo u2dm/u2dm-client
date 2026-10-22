@@ -95,6 +95,8 @@ macro_rules! string_props {
         EndedShare CallView "CallView" "ended-share" set_ended_share get_ended_share;
         PeopleFirst CallView "CallView" "people-first" set_people_first get_people_first;
         PeopleSecond CallView "CallView" "people-second" set_people_second get_people_second;
+        SheetPeopleFirst CallView "CallView" "sheet-people-first" set_sheet_people_first get_sheet_people_first;
+        SheetPeopleSecond CallView "CallView" "sheet-people-second" set_sheet_people_second get_sheet_people_second;
         DeviceNewsName CallView "CallView" "device-news-name" set_device_news_name get_device_news_name;
         SpaceIndexName SpaceIndexView "SpaceIndexView" "space-name" set_space_name get_space_name;
         RoomInfoRoomId RoomInfoView "RoomInfoView" "room-id" set_room_id get_room_id;
@@ -551,6 +553,7 @@ macro_rules! int_props {
         RingSerial CallView "CallView" "ring-serial" set_ring_serial get_ring_serial;
         SheetSerial CallView "CallView" "sheet-serial" set_sheet_serial get_sheet_serial;
         SheetPeople CallView "CallView" "sheet-people" set_sheet_people get_sheet_people;
+        SheetPeopleMore CallView "CallView" "sheet-people-more" set_sheet_people_more get_sheet_people_more;
         HerePeople CallView "CallView" "here-people" set_here_people get_here_people;
         NoticeOthers CallView "CallView" "notice-others" set_notice_others get_notice_others;
         ActiveCall CallView "CallView" "active-call" set_active_call get_active_call;
@@ -770,6 +773,7 @@ macro_rules! model_props {
         room_log LogLine SpliceModel RoomLogView "RoomLogView" "lines" set_lines;
         call_stage CallTile VecModel CallView "CallView" "stage" set_stage;
         call_tiles CallTile VecModel CallView "CallView" "tiles" set_tiles;
+        call_people CallPerson VecModel CallView "CallView" "people" set_people;
         call_microphones CallDevice VecModel CallView "CallView" "microphones" set_microphones;
         call_speakers CallDevice VecModel CallView "CallView" "speakers" set_speakers;
         call_cameras CallDevice VecModel CallView "CallView" "cameras" set_cameras;
@@ -2086,6 +2090,22 @@ macro_rules! call_tile_fields {
     } };
 }
 pub(crate) use call_tile_fields;
+
+macro_rules! call_person_fields {
+    ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
+        key set_key "key" text;
+        user_id set_user_id "user-id" text;
+        name set_name "name" text;
+        initial set_initial "initial" text;
+        color_index set_color_index "color-index" int;
+        you set_you "you" flag;
+        devices set_devices "devices" int;
+        muted set_muted "muted" flag;
+        sharing set_sharing "sharing" flag;
+        state set_state "state" enumk(CallTileMark);
+    } };
+}
+pub(crate) use call_person_fields;
 
 macro_rules! call_device_fields {
     ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*

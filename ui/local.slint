@@ -127,6 +127,8 @@ export enum CallSize { hidden, stage, full }
 
 export enum CallSheetOpener { composer, header, room-menu }
 
+export enum CallPeopleOpener { pill, dock }
+
 export global CallPanel {
     in-out property <CallSize> chosen: CallSize.hidden;
     in-out property <float> stage-share: Metrics.call-stage-share;
@@ -137,6 +139,14 @@ export global CallPanel {
     in-out property <bool> devices-open: false;
     in-out property <bool> menu-by-keys: false;
     in-out property <bool> devices-by-keys: false;
+    in-out property <bool> people-open: false;
+    in-out property <bool> people-by-keys: false;
+    in-out property <CallPeopleOpener> people-opener: CallPeopleOpener.pill;
+    in-out property <length> people-left;
+    in-out property <length> people-right;
+    in-out property <length> people-top;
+    in-out property <length> people-bottom;
+    in-out property <int> people-returns;
     in-out property <bool> focus-stage: false;
     in-out property <string> focus-tile;
     in-out property <int> band-takes-focus;
@@ -156,6 +166,23 @@ export global CallPanel {
         Actions.close-call-sheet();
     }
 
+    public function open-people(
+        opener: CallPeopleOpener,
+        by-keys: bool,
+        left: length,
+        right: length,
+        top: length,
+        bottom: length
+    ) {
+        root.people-opener = opener;
+        root.people-by-keys = by-keys;
+        root.people-left = left;
+        root.people-right = right;
+        root.people-top = top;
+        root.people-bottom = bottom;
+        root.people-open = true;
+    }
+
     public function show-chat(stage-fits: bool) {
         if root.chosen == CallSize.full {
             root.chosen = stage-fits ? CallSize.stage : CallSize.hidden;
@@ -170,6 +197,7 @@ export global CallPanel {
         root.hides-strip = false;
         root.menu-open = false;
         root.devices-open = false;
+        root.people-open = false;
         root.focus-stage = false;
         root.focus-tile = "";
     }
@@ -257,6 +285,7 @@ export global Shell {
         root.poll-open = false;
         CallPanel.menu-open = false;
         CallPanel.devices-open = false;
+        CallPanel.people-open = false;
     }
 }
 
@@ -704,6 +733,7 @@ export global LocalState {
         Shell.poll-open = false;
         CallPanel.menu-open = false;
         CallPanel.devices-open = false;
+        CallPanel.people-open = false;
     }
 
     public function close-popovers() {

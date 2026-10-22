@@ -156,6 +156,11 @@ pub const CATALOG: Scenarios = Scenarios {
             note: "",
         },
         Flag {
+            value: "second-device",
+            effect: "with active: Nadia is in the Design Team call from a second device too",
+            note: "its camera is a feed of its own; it never shares a screen",
+        },
+        Flag {
             value: "remote-sfu",
             effect: "with active: Jordan publishes to another homeserver's media server",
             note: "",
@@ -283,6 +288,7 @@ const NINA: &str = "@nina:matrix.org";
 const PRIYA: &str = "@priya:matrix.org";
 const VERA: &str = "@vera:matrix.org";
 const MEMBER_DEVICE: &str = "DEMOCALLDEVICE";
+const SECOND_DEVICE: &str = "DEMOPHONE";
 const CAMERA_FEED_PREFIX: &str = "demo-camera-";
 const SCREEN_FEED_PREFIX: &str = "demo-screen-";
 const SCREEN_SHARER: &str = NADIA;
@@ -342,6 +348,7 @@ pub struct Scenario {
     announce_fails: bool,
     pub speaking: bool,
     crowd: bool,
+    second_device: bool,
     remote_sfu: bool,
     cameras: bool,
     pub no_camera: bool,
@@ -407,6 +414,7 @@ fn apply(scenario: &mut Scenario, flag: &str) {
         "announce-fails" => scenario.announce_fails = true,
         "speaking" => scenario.speaking = true,
         "crowd" => scenario.crowd = true,
+        "second-device" => scenario.second_device = true,
         "remote-sfu" => scenario.remote_sfu = true,
         "cameras" => scenario.cameras = true,
         "no-camera" => scenario.no_camera = true,
@@ -454,6 +462,10 @@ impl Joiner {
         let member_id = format!("{}:{}", self.user, self.device);
         let [legacy, _, _] = spellings(self.user, self.device, &member_id);
         legacy
+    }
+
+    fn on_main_device(self) -> bool {
+        self.device == MEMBER_DEVICE
     }
 
     fn key(self) -> MemberKey {
@@ -548,6 +560,12 @@ impl CallBook {
                 ..Joiner::member(JORDAN, CallIntent::Video)
             };
             let mut design = vec![Joiner::member(NADIA, CallIntent::Video), jordan];
+            if shaped.second_device {
+                design.push(Joiner {
+                    device: SECOND_DEVICE,
+                    ..Joiner::member(NADIA, CallIntent::Video)
+                });
+            }
             if shaped.crowd {
                 design.extend(
                     [LEO, NINA, PRIYA, VERA, MARCUS, KAI]
@@ -914,7 +932,7 @@ fn screen_news(sfu: &SfuId, joiner: Joiner, present: bool) -> Option<MediaEvent>
     let shaped = scenario();
     let shares_at_once = shaped.screen_share && joiner.user == SCREEN_SHARER;
     let shares_later = shaped.second_share && joiner.user == SECOND_SHARER;
-    (shares_at_once || (shares_later && !present))
+    (joiner.on_main_device() && (shares_at_once || (shares_later && !present)))
         .then(|| video_news(sfu, joiner, VideoKind::Screen, present))
 }
 
@@ -927,7 +945,15 @@ fn video_news(sfu: &SfuId, joiner: Joiner, kind: VideoKind, present: bool) -> Me
         sfu: sfu.clone(),
         identity: joiner.identity(),
         kind,
-        feed: present.then(|| FeedId::new(format!("{prefix}{}", joiner.user))),
+        feed: present.then(|| FeedId::new(feed_name(prefix, joiner))),
+    }
+}
+
+fn feed_name(prefix: &str, joiner: Joiner) -> String {
+    if joiner.on_main_device() {
+        format!("{prefix}{}", joiner.user)
+    } else {
+        format!("{prefix}{}/{}", joiner.user, joiner.device)
     }
 }
 
@@ -936,7 +962,7 @@ pub fn is_portrait(feed: &FeedId) -> bool {
 }
 
 fn share_screen_later(events_tx: &mpsc::UnboundedSender<MediaEvent>, sfu: &SfuId, joiner: Joiner) {
-    if !(scenario().second_share && joiner.user == SECOND_SHARER) {
+    if !(scenario().second_share && joiner.user == SECOND_SHARER && joiner.on_main_device()) {
         return;
     }
     let events_tx = events_tx.clone();
@@ -950,7 +976,11 @@ fn share_screen_later(events_tx: &mpsc::UnboundedSender<MediaEvent>, sfu: &SfuId
 
 fn toggle_camera_later(events_tx: &mpsc::UnboundedSender<MediaEvent>, sfu: &SfuId, joiner: Joiner) {
     let shaped = scenario();
-    if !(shaped.cameras && shaped.camera_toggles && joiner.user == CAMERA_TOGGLER) {
+    if !(shaped.cameras
+        && shaped.camera_toggles
+        && joiner.user == CAMERA_TOGGLER
+        && joiner.on_main_device())
+    {
         return;
     }
     let events_tx = events_tx.clone();

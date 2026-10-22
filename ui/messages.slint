@@ -834,6 +834,19 @@ export global CallWords {
         return @tr("{n} in the call" | "{n} in the call" % people);
     }
 
+    public pure function in-call-named(first: string, second: string, more: int, people: int) -> string {
+        if first == "" {
+            return root.in-call(people);
+        }
+        if second == "" {
+            return @tr("{} is in the call", first);
+        }
+        if more > 0 {
+            return @tr("{}, {} and {n} other are in the call" | "{}, {} and {n} others are in the call" % more, first, second);
+        }
+        return @tr("{} and {} are in the call", first, second);
+    }
+
     public pure function join-count(people: int) -> string {
         return @tr("Join · {n}" | "Join · {n}" % people);
     }
@@ -1133,6 +1146,41 @@ export global CallWords {
 
     public pure function view-share(name: string) -> string {
         return @tr("View {}'s screen", name);
+    }
+
+    public pure function person-name(name: string, you: bool) -> string {
+        if you {
+            return @tr("You");
+        }
+        return name;
+    }
+
+    public pure function person-detail(state: CallTileState, muted: bool, sharing: bool, you: bool, devices: int) -> string {
+        let status = state != CallTileState.live ? root.tile(state)
+            : muted ? @tr("Muted")
+            : "";
+        let share = !sharing ? ""
+            : you ? @tr("Sharing your screen")
+            : @tr("Sharing their screen");
+        let spread = devices > 1 ? @tr("{n} device" | "{n} devices" % devices) : "";
+        return root.listed(root.listed(status, share), spread);
+    }
+
+    public pure function person-label(name: string, you: bool, detail: string) -> string {
+        if detail == "" {
+            return root.person-name(name, you);
+        }
+        return @tr("{}, {}", root.person-name(name, you), detail);
+    }
+
+    pure function listed(first: string, second: string) -> string {
+        if first == "" {
+            return second;
+        }
+        if second == "" {
+            return first;
+        }
+        return @tr("{} · {}", first, second);
     }
 
     public pure function people(first: string, second: string, more: int) -> string {

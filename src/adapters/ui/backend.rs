@@ -14,19 +14,20 @@ use super::decode::{
     set_image_ready,
 };
 use super::dto::{
-    BodyLineDto, CallDeviceDto, CallTileDto, EmojiArt, InviteeDto, LogLineDto, MediaFailureKind,
-    MediaState, MemberRowDto, MessageDto, PackBrowse, PackRowDto, PackSurface, PackTabDto, RoomDto,
-    RoomRowKind, RowBody, SpaceChildDto, SpaceDto, ThumbUpdate, UserDeviceDto, call_device_to_dto,
-    call_tile_to_dto, cell_pack, decode_failure_kind, enrich_to_update, heading_to_dto,
-    invite_to_dto, invitee_to_dto, log_line_to_dto, member_row_to_dto, mention_to_dto,
-    message_to_dto, own_session_to_dto, reader_to_dto, removal_to_dto, room_to_dto,
-    space_child_to_dto, space_match_to_dto, space_to_dto, user_device_to_dto,
+    BodyLineDto, CallDeviceDto, CallPersonDto, CallTileDto, EmojiArt, InviteeDto, LogLineDto,
+    MediaFailureKind, MediaState, MemberRowDto, MessageDto, PackBrowse, PackRowDto, PackSurface,
+    PackTabDto, RoomDto, RoomRowKind, RowBody, SpaceChildDto, SpaceDto, ThumbUpdate, UserDeviceDto,
+    call_device_to_dto, call_person_to_dto, call_tile_to_dto, cell_pack, decode_failure_kind,
+    enrich_to_update, heading_to_dto, invite_to_dto, invitee_to_dto, log_line_to_dto,
+    member_row_to_dto, mention_to_dto, message_to_dto, own_session_to_dto, reader_to_dto,
+    removal_to_dto, room_to_dto, space_child_to_dto, space_match_to_dto, space_to_dto,
+    user_device_to_dto,
 };
 use super::fields::{
-    BodyLineFields, BodyPieceFields, CallDeviceFields, CallTileFields, InviteeFields,
-    LogLineFields, MemberRowFields, MessageFields, PackCellFields, PackRowFields, PackTabFields,
-    PollAnswerFields, ReactionFields, ReactorFields, RoomFields, SpaceChildFields, SpaceFields,
-    UserDeviceFields,
+    BodyLineFields, BodyPieceFields, CallDeviceFields, CallPersonFields, CallTileFields,
+    InviteeFields, LogLineFields, MemberRowFields, MessageFields, PackCellFields, PackRowFields,
+    PackTabFields, PollAnswerFields, ReactionFields, ReactorFields, RoomFields, SpaceChildFields,
+    SpaceFields, UserDeviceFields,
 };
 use super::handoff::follow_handoffs;
 use super::multiplex::spawn_event_multiplexer;
@@ -47,7 +48,8 @@ use super::spoilers::reveal_row;
 use super::window_events::install_window_events;
 use crate::commands::effects::Effect;
 use crate::commands::view::{
-    AppViewState, CallTile, DeviceOption, InviteeRow, RosterRow, SpaceIndexRow, SpaceMatch,
+    AppViewState, CallPerson, CallTile, DeviceOption, InviteeRow, RosterRow, SpaceIndexRow,
+    SpaceMatch,
 };
 use crate::config::APP_ID;
 use crate::domain::departure::Removal;
@@ -79,6 +81,7 @@ pub trait UiBackend: Sized + 'static {
     type Invitee: InviteeFields<Self> + Clone + PartialEq + From<InviteeDto> + 'static;
     type LogLine: LogLineFields<Self> + Clone + From<LogLineDto> + 'static;
     type CallTile: CallTileFields<Self> + Clone + PartialEq + From<CallTileDto> + 'static;
+    type CallPerson: CallPersonFields<Self> + Clone + PartialEq + From<CallPersonDto> + 'static;
     type CallDevice: CallDeviceFields<Self> + Clone + PartialEq + From<CallDeviceDto> + 'static;
     type UserDevice: UserDeviceFields<Self> + Clone + PartialEq + From<UserDeviceDto> + 'static;
     type PackRow: PackRowFields<Self> + Clone + From<PackRowDto> + 'static;
@@ -152,6 +155,10 @@ pub trait UiBackend: Sized + 'static {
 
     fn convert_call_tile(tile: &CallTile) -> Self::CallTile {
         call_tile_to_dto(tile).into()
+    }
+
+    fn convert_call_person(person: &CallPerson) -> Self::CallPerson {
+        call_person_to_dto(person).into()
     }
 
     fn convert_call_device(option: &DeviceOption) -> Self::CallDevice {

@@ -320,6 +320,7 @@ pub struct CallSheetView {
     pub offer: JoinOffer,
     pub video: bool,
     pub people: usize,
+    pub others: Arc<[NamedUser]>,
     pub proposed: MediaChoice,
     pub leaving: Option<LeavingCall>,
     pub ended: bool,
@@ -434,6 +435,17 @@ pub struct EndedShare {
     pub who: NamedUser,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CallPerson {
+    pub user: NamedUser,
+    pub you: bool,
+    pub devices: usize,
+    pub muted: bool,
+    pub sharing: bool,
+    pub state: TileState,
+    pub tile: Option<TileKey>,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DeviceStatus {
     SystemDefault,
@@ -515,7 +527,8 @@ pub struct ActiveCall {
     pub self_view: bool,
     pub offered_share: Option<NamedUser>,
     pub ended_share: Option<EndedShare>,
-    pub people: Arc<[NamedUser]>,
+    pub others: Arc<[NamedUser]>,
+    pub people: Arc<[CallPerson]>,
     pub devices: CallDevices,
 }
 

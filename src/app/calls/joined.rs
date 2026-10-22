@@ -8,6 +8,7 @@ use tracing::Span;
 
 use super::devices::Devices;
 use super::media::MediaCommand;
+use super::people;
 use super::stage::Stage;
 use crate::commands::view::{
     ActiveCall, CallFailure, CallNotice, CallPhase, CallTile, CameraView, CantDecrypt,
@@ -883,6 +884,7 @@ impl Joined {
     pub(super) fn view(&self) -> ActiveCall {
         let tiles = self.tiles();
         let notice = self.notice(&tiles);
+        let people = people::of_tiles(&tiles, self.screen == OwnScreen::On, self.stage.self_view());
         let arranged = self.stage.arrange(tiles);
         ActiveCall {
             call: self.call,
@@ -918,12 +920,13 @@ impl Joined {
             self_view: self.stage.self_view(),
             offered_share: arranged.offered_share,
             ended_share: self.stage.ended_share().cloned(),
-            people: Arc::from(self.people()),
+            others: Arc::from(self.others()),
+            people: Arc::from(people),
             devices: self.devices.view(),
         }
     }
 
-    fn people(&self) -> Vec<NamedUser> {
+    fn others(&self) -> Vec<NamedUser> {
         let mut seen = HashSet::new();
         self.members
             .iter()

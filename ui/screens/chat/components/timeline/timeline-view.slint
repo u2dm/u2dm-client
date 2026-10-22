@@ -16,7 +16,7 @@ import { CopyNotifier } from "../../../../components/copier.slint";
 import { AudioView, CallView, DirectoryView, PresenceView, RoomView, TypingView } from "../../../../views.slint";
 import { PresenceWords, TypingLine } from "../../../../messages.slint";
 import { Actions } from "../../../../actions.slint";
-import { CallPanel, CallSheetOpener, CallSize, LocalState, ReplySwipe, RoomMenu, RoomMenuOrigin, RoomMenuReturn, RoomSearch, Shell } from "../../../../local.slint";
+import { CallPanel, CallPeopleOpener, CallSheetOpener, CallSize, LocalState, ReplySwipe, RoomMenu, RoomMenuOrigin, RoomMenuReturn, RoomSearch, Shell } from "../../../../local.slint";
 import { StatusPill } from "../../../../components/status-pill.slint";
 import { NowPlayingBar } from "./now-playing-bar.slint";
 import { PinnedBar } from "./pinned-bar.slint";
@@ -149,6 +149,7 @@ export component TimelineView inherits Rectangle {
             : root.offers-call-join ? join-button.preferred-width + Space.md : 0;
         property <int> menu-returns: RoomMenu.focus-returns;
         property <int> sheet-returns: CallPanel.sheet-returns;
+        property <int> people-returns: CallPanel.people-returns;
 
         x: 0;
         y: 0;
@@ -167,6 +168,12 @@ export component TimelineView inherits Rectangle {
                 start-button.take-focus();
             } else if root.offers-call-join {
                 join-button.take-focus();
+            }
+        }
+
+        changed people-returns => {
+            if CallPanel.people-opener == CallPeopleOpener.pill && self.shows-call {
+                call-pill.take-focus();
             }
         }
 
@@ -218,6 +225,16 @@ export component TimelineView inherits Rectangle {
             x: parent.width - parent.menu-slot - parent.pane-slot - self.width;
             y: (parent.height - self.height) / 2;
             visible: parent.shows-call;
+            enabled: root.in-call-room;
+            clicked => {
+                CallPanel.open-people(
+                    CallPeopleOpener.pill,
+                    self.has-focus,
+                    self.absolute-position.x,
+                    self.absolute-position.x + self.width,
+                    self.absolute-position.y,
+                    self.absolute-position.y + self.height);
+            }
         }
 
         start-button := RoomHeaderButton {

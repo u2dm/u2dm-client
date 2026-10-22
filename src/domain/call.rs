@@ -151,11 +151,15 @@ impl RoomCall {
     }
 
     pub fn people(&self) -> usize {
+        self.people_in_order().count()
+    }
+
+    pub fn people_in_order(&self) -> impl Iterator<Item = &NamedUser> {
+        let mut seen = HashSet::new();
         self.members
             .iter()
-            .map(|member| member.user.user_id.as_str())
-            .collect::<HashSet<&str>>()
-            .len()
+            .map(|member| &member.user)
+            .filter(move |user| seen.insert(user.user_id.as_str()))
     }
 
     pub fn joined_by(&self, user_id: &str) -> bool {

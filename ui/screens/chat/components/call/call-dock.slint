@@ -6,7 +6,7 @@ import { StateLayer } from "../../../../components/state-layer.slint";
 import { CallNotice, CallScreen } from "../../../../enums.slint";
 import { CallWords, UserMessages } from "../../../../messages.slint";
 import { Actions } from "../../../../actions.slint";
-import { CallPanel, CallSize, Shell, TipScope } from "../../../../local.slint";
+import { CallPanel, CallPeopleOpener, CallSize, Shell, TipScope } from "../../../../local.slint";
 import { CallView, DirectoryView, SpaceIndexView } from "../../../../views.slint";
 import { AppStyle, Fonts, IconSize, Metrics, Motion, Radius, Size, Space, Stroke, Weight } from "../../../../theme.slint";
 import { CallCameraButton, CallLeaveButton, CallMicButton, CallShareButton } from "./call-controls.slint";
@@ -98,9 +98,18 @@ component CallReturn inherits ClickArea {
     }
 }
 
-component CallHere inherits Rectangle {
+component CallHere inherits ClickArea {
     in property <bool> names-people;
     out property <length> label-width: line.preferred-width;
+
+    ring-radius: Radius.sm;
+    label: @tr("People in the call");
+
+    StateLayer {
+        border-radius: Radius.sm;
+        hovered: root.has-hover && root.enabled;
+        pressed: root.pressed && root.enabled;
+    }
 
     line := CallLine {
         names-people: root.names-people;
@@ -158,6 +167,7 @@ export component CallDock inherits Rectangle {
     property <int> ended-share-serial: CallView.ended-share-serial;
     property <int> device-news-serial: CallView.device-news-serial;
     property <int> dock-takes-focus: CallPanel.dock-takes-focus;
+    property <int> people-returns: CallPanel.people-returns;
     property <bool> has-status: !root.failed
         && (CallView.notice != CallNotice.none
             || (root.explains-share && share.refused)
@@ -217,6 +227,12 @@ export component CallDock inherits Rectangle {
 
     changed dock-takes-focus => {
         show-call.take-focus();
+    }
+
+    changed people-returns => {
+        if CallPanel.people-opener == CallPeopleOpener.dock {
+            here-line.take-focus();
+        }
     }
 
     changed ended-share-serial => {
@@ -290,7 +306,17 @@ export component CallDock inherits Rectangle {
         width: root.label-span;
         height: root.label-height;
         visible: !root.failed && root.here;
+        above-modal: root.above-modal;
         names-people: root.stage-hidden;
+        clicked => {
+            CallPanel.open-people(
+                CallPeopleOpener.dock,
+                self.has-focus,
+                self.absolute-position.x,
+                self.absolute-position.x + self.width,
+                self.absolute-position.y,
+                self.absolute-position.y + self.height);
+        }
     }
 
     failure := FailedCallLabel {

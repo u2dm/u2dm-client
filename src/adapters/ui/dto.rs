@@ -26,9 +26,9 @@ use super::schema::{
 use super::spoilers::{keep_covered_body, spoilers_on};
 use crate::commands::messages::UserMessageKind;
 use crate::commands::view::{
-    CallFailure, CallNotice, CallTile, CantDecrypt, ChildAccess, DeviceOption, DeviceStatus,
-    InviteeRow, InviteeState, JoinOffer, RoomCard, RosterRow, ScreenView, SpaceIndexRow,
-    SpaceMatch, TileKind, TileState,
+    CallFailure, CallNotice, CallPerson, CallTile, CantDecrypt, ChildAccess, DeviceOption,
+    DeviceStatus, InviteeRow, InviteeState, JoinOffer, RoomCard, RosterRow, ScreenView,
+    SpaceIndexRow, SpaceMatch, TileKind, TileState,
 };
 use crate::domain::call::ring::RingKind;
 use crate::domain::departure::{Removal, RemovalKind};
@@ -623,6 +623,19 @@ pub struct CallTileDto {
     pub frame: Option<Image>,
     pub mirrored: bool,
     pub screen: bool,
+}
+
+pub struct CallPersonDto {
+    pub key: SharedString,
+    pub user_id: SharedString,
+    pub name: SharedString,
+    pub initial: SharedString,
+    pub color_index: i32,
+    pub you: bool,
+    pub devices: i32,
+    pub muted: bool,
+    pub sharing: bool,
+    pub state: CallTileMark,
 }
 
 pub struct CallDeviceDto {
@@ -1815,6 +1828,23 @@ pub fn call_tile_to_dto(tile: &CallTile) -> CallTileDto {
         frame: None,
         mirrored: tile.own && tile.kind == TileKind::Person,
         screen: tile.kind == TileKind::Screen,
+    }
+}
+
+pub fn call_person_to_dto(person: &CallPerson) -> CallPersonDto {
+    CallPersonDto {
+        key: person.tile.as_ref().map_or_else(SharedString::new, |tile| {
+            SharedString::from(tile.to_string())
+        }),
+        user_id: SharedString::from(person.user.user_id.as_str()),
+        name: SharedString::from(person.user.shown()),
+        initial: SharedString::from(name_initials(&person.user.name, &person.user.user_id)),
+        color_index: avatar_color_index(&person.user.user_id),
+        you: person.you,
+        devices: i32::try_from(person.devices).unwrap_or(i32::MAX),
+        muted: person.muted,
+        sharing: person.sharing,
+        state: call_tile_mark(person.state),
     }
 }
 

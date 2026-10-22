@@ -1,16 +1,27 @@
 import { IconDisplay, IconSet } from "@lucide";
 
+import { ClickArea } from "../../../../components/a11y.slint";
+import { StateLayer } from "../../../../components/state-layer.slint";
+import { TipSource } from "../../../../components/tip.slint";
 import { AppStyle, Fonts, IconSize, Space, Weight } from "../../../../theme.slint";
 import { CallView } from "../../../../views.slint";
 import { CallWords } from "../../../../messages.slint";
 
-export component CallPill inherits Rectangle {
+export component CallPill inherits ClickArea {
     width: pill-layout.preferred-width;
     height: pill-layout.preferred-height;
     border-radius: self.height / 2;
+    ring-radius: self.height / 2;
     background: AppStyle.call-live-background;
-    accessible-role: text;
-    accessible-label: CallWords.in-call(CallView.here-people);
+    label: CallWords.in-call(CallView.here-people);
+    accessible-description: @tr("Shows who is in the call");
+
+    StateLayer {
+        border-radius: root.border-radius;
+        ink: AppStyle.call-live;
+        hovered: root.has-hover;
+        pressed: root.pressed;
+    }
 
     pill-layout := HorizontalLayout {
         padding-left: Space.lg;
@@ -24,6 +35,7 @@ export component CallPill inherits Rectangle {
             icon: CallView.here-video ? IconSet.Video : IconSet.Phone;
             size: IconSize.xs;
             stroke: AppStyle.call-live;
+            accessible-role: none;
         }
 
         Text {
@@ -34,5 +46,15 @@ export component CallPill inherits Rectangle {
             vertical-alignment: center;
             accessible-role: none;
         }
+    }
+
+    TipSource {
+        width: root.width;
+        height: root.height;
+        text: @tr("People in the call");
+        hovered: root.has-hover;
+        pressed: root.pressed;
+        tabbed-to: root.tabbed-to;
+        below: true;
     }
 }

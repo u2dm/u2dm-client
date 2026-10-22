@@ -9,6 +9,7 @@ import { CallAnnouncer } from "./components/call/call-announcer.slint";
 import { CallKey, CallKeys } from "./components/call/call-controls.slint";
 import { CallDevicesMenu } from "./components/call/call-devices-menu.slint";
 import { CallDock } from "./components/call/call-dock.slint";
+import { CallPeopleMenu } from "./components/call/call-people-menu.slint";
 import { ModalHost, Placement } from "../../components/overlay.slint";
 import { ResizeEdge, ResizeHandle } from "../../components/resize-handle.slint";
 import { RoomInfoPlacement, RoomScope, UserMessageKind } from "../../enums.slint";
@@ -17,7 +18,7 @@ import { AppStyle, IconSize, Metrics, Radius, Size, Space } from "../../theme.sl
 import { IconButton } from "../../components/button.slint";
 import { CallView, DirectoryView, RoomInfoView, RoomView, SpaceIndexView, WindowView } from "../../views.slint";
 import { Actions } from "../../actions.slint";
-import { CallPanel, LocalState, RoomSearch, Shell, Subspaces } from "../../local.slint";
+import { CallPanel, CallPeopleOpener, CallSize, LocalState, RoomSearch, Shell, Subspaces } from "../../local.slint";
 
 component Toast inherits Rectangle {
     property <bool> is-file-saved: RoomView.toast-message == UserMessageKind.file-saved;
@@ -111,6 +112,9 @@ export component ChatScreen inherits FocusScope {
     property <length> menu-room-above: dock.devices-y - Space.xs - Space.md;
     property <length> menu-room-below: root.height - dock.devices-y - dock.devices-size - Space.xs - Space.md;
     property <bool> menu-above: root.menu-room-above >= root.menu-room-below;
+    property <length> people-room-above: CallPanel.people-top - Space.xs - Space.md;
+    property <length> people-room-below: root.height - CallPanel.people-bottom - Space.xs - Space.md;
+    property <bool> people-above: root.people-room-above > root.people-room-below;
 
     focus-on-click: false;
     focus-on-tab-navigation: false;
@@ -121,7 +125,7 @@ export component ChatScreen inherits FocusScope {
             return reject;
         }
         if key == CallKey.chat {
-            if !Shell.background-reachable || CallPanel.menu-open || CallPanel.devices-open {
+            if !Shell.background-reachable || CallPanel.menu-open || CallPanel.devices-open || CallPanel.people-open {
                 return reject;
             }
             return timeline.show-call-chat() ? EventResult.accept : EventResult.reject;
@@ -225,6 +229,20 @@ export component ChatScreen inherits FocusScope {
     function close-nav() {
         Shell.nav-open = false;
         timeline.focus-nav();
+    }
+
+    function show-person(key: string, by-keys: bool) {
+        CallPanel.people-open = false;
+        if CallPanel.chosen == CallSize.hidden {
+            CallPanel.chosen = CallSize.stage;
+        }
+        let staged = CallView.stage-chosen && CallView.stage.length > 0 && CallView.stage[0].key == key;
+        if by-keys && !staged {
+            CallPanel.focus-stage = true;
+        } else {
+            CallPanel.people-returns += 1;
+        }
+        Actions.focus-call-tile(key);
     }
 
     if !root.compact: Sidebar {
@@ -346,6 +364,38 @@ export component ChatScreen inherits FocusScope {
                 : dock.devices-y + dock.devices-size + Space.xs;
             room: root.menu-above ? root.menu-room-above : root.menu-room-below;
             above-modal: Shell.nav-on-top;
+        }
+    }
+
+    if CallPanel.people-open && CallView.active: ModalHost {
+        x: 0;
+        y: 0;
+        width: root.width;
+        height: root.height;
+        dim: false;
+        label: @tr("People in the call");
+        dismissed => {
+            CallPanel.people-open = false;
+            CallPanel.people-returns += 1;
+        }
+        opened => {
+            people-menu.open(CallPanel.people-by-keys);
+        }
+
+        people-menu := CallPeopleMenu {
+            x: Placement.fit(
+                CallPanel.people-opener == CallPeopleOpener.pill ? CallPanel.people-right - self.width : CallPanel.people-left,
+                self.width,
+                root.width,
+                Space.md);
+            y: root.people-above
+                ? CallPanel.people-top - Space.xs - self.height
+                : CallPanel.people-bottom + Space.xs;
+            room: root.people-above ? root.people-room-above : root.people-room-below;
+            above-modal: Shell.nav-on-top;
+            picked(key, by-keys) => {
+                root.show-person(key, by-keys);
+            }
         }
     }
 

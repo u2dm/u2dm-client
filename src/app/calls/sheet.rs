@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use crate::commands::view::{CallSheetView, JoinOffer, LeavingCall};
 use crate::domain::call::RoomCall;
 use crate::domain::call::media::MediaChoice;
@@ -31,6 +33,7 @@ impl Sheet {
         room: &Room,
         offer: JoinOffer,
         leaving: Option<LeavingCall>,
+        me: Option<&str>,
     ) -> CallSheetView {
         let call = room.call.as_deref();
         CallSheetView {
@@ -41,6 +44,15 @@ impl Sheet {
             offer,
             video: call.map_or(self.video, RoomCall::is_video),
             people: call.map_or(0, RoomCall::people),
+            others: call.map_or_else(
+                || Arc::from(Vec::new()),
+                |call| {
+                    call.people_in_order()
+                        .filter(|user| Some(user.user_id.as_str()) != me)
+                        .cloned()
+                        .collect()
+                },
+            ),
             proposed: self.proposed,
             leaving,
             ended: self.ended && call.is_none(),

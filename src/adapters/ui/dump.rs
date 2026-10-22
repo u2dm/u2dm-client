@@ -10,8 +10,8 @@ use super::activity;
 use super::audio;
 use super::backend::UiBackend;
 use super::fields::{
-    BodyLineFields, BodyPieceFields, CallDeviceFields, CallTileFields, LogLineFields,
-    MessageFields, PollAnswerFields, ReactionFields,
+    BodyLineFields, BodyPieceFields, CallDeviceFields, CallPersonFields, CallTileFields,
+    LogLineFields, MessageFields, PollAnswerFields, ReactionFields,
 };
 use super::props::{BoolProp, EnumProp, IntProp, StringProp, UiProps};
 use super::ringtone;
@@ -208,13 +208,27 @@ pub struct CallDump {
     pub offered_share: String,
     pub ended_share: String,
     pub ended_share_serial: i32,
-    pub people: String,
+    pub people_summary: String,
+    pub people: Vec<CallPersonDump>,
+    pub sheet_people: String,
     pub microphones: Vec<CallDeviceDump>,
     pub speakers: Vec<CallDeviceDump>,
     pub cameras: Vec<CallDeviceDump>,
     pub device_news: String,
     pub device_news_name: String,
     pub device_news_serial: i32,
+}
+
+#[derive(Serialize)]
+#[allow(clippy::struct_excessive_bools)]
+pub struct CallPersonDump {
+    pub key: String,
+    pub name: String,
+    pub you: bool,
+    pub devices: i32,
+    pub muted: bool,
+    pub sharing: bool,
+    pub state: String,
 }
 
 #[derive(Serialize)]
@@ -455,11 +469,30 @@ fn call_view<B: UiBackend>(window: &B::Window) -> CallDump {
         offered_share: window.get_string(StringProp::OfferedShare).to_string(),
         ended_share: window.get_string(StringProp::EndedShare).to_string(),
         ended_share_serial: window.get_int(IntProp::EndedShareSerial),
-        people: format!(
+        people_summary: format!(
             "{} | {} | +{}",
             window.get_string(StringProp::PeopleFirst),
             window.get_string(StringProp::PeopleSecond),
             window.get_int(IntProp::PeopleMore)
+        ),
+        people: B::models()
+            .call_people
+            .iter()
+            .map(|person| CallPersonDump {
+                key: person.key().to_owned(),
+                name: person.name().to_owned(),
+                you: person.you(),
+                devices: person.devices(),
+                muted: person.muted(),
+                sharing: person.sharing(),
+                state: person.state().to_owned(),
+            })
+            .collect(),
+        sheet_people: format!(
+            "{} | {} | +{}",
+            window.get_string(StringProp::SheetPeopleFirst),
+            window.get_string(StringProp::SheetPeopleSecond),
+            window.get_int(IntProp::SheetPeopleMore)
         ),
         microphones: call_devices::<B>(&B::models().call_microphones),
         speakers: call_devices::<B>(&B::models().call_speakers),

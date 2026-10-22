@@ -205,7 +205,11 @@ export component CallSheet inherits ModalHost {
                     }
 
                     if root.joining && !root.refused: DialogNote {
-                        text: CallWords.in-call(CallView.sheet-people);
+                        text: CallWords.in-call-named(
+                            CallView.sheet-people-first,
+                            CallView.sheet-people-second,
+                            CallView.sheet-people-more,
+                            CallView.sheet-people);
                     }
                 }
 

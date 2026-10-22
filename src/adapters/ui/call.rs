@@ -16,8 +16,9 @@ use super::ringtone::{self, Tone};
 use super::{audio, call_video, video};
 use crate::commands::messages::UserMessageKind;
 use crate::commands::view::{
-    ActiveCall, AppViewState, CallDevices, CallNotice, CallPhase, CallSheetView, CallTile,
-    CallView, FailedCall, JoinOffer, OfferView, RingView, RoomCallSummary, ScreenView, TileKind,
+    ActiveCall, AppViewState, CallDevices, CallNotice, CallPerson, CallPhase, CallSheetView,
+    CallTile, CallView, FailedCall, JoinOffer, OfferView, RingView, RoomCallSummary, ScreenView,
+    TileKind,
 };
 use crate::domain::call::devices::DeviceKind;
 use crate::domain::call::video::{FeedId, Framing};
@@ -135,6 +136,12 @@ fn apply_sheet(w: &impl UiProps, sheet: Option<&CallSheetView>) {
         IntProp::SheetPeople,
         i32::try_from(sheet.people).unwrap_or(i32::MAX),
     );
+    apply_names(
+        w,
+        &sheet.others,
+        [StringProp::SheetPeopleFirst, StringProp::SheetPeopleSecond],
+        IntProp::SheetPeopleMore,
+    );
     w.set_bool(BoolProp::SheetMicrophone, sheet.proposed.microphone);
     w.set_bool(BoolProp::SheetCamera, sheet.proposed.camera);
     let leaving = sheet.leaving.as_ref();
@@ -165,6 +172,7 @@ fn apply_active<B: UiBackend>(w: &B::Window, last: Option<&ActiveCall>, next: Op
         let models = B::models();
         models.call_stage.set_vec(Vec::new());
         models.call_tiles.set_vec(Vec::new());
+        models.call_people.set_vec(Vec::new());
         for kind in DeviceKind::ALL {
             device_model::<B>(&models, kind).set_vec(Vec::new());
         }
@@ -202,6 +210,7 @@ fn apply_active<B: UiBackend>(w: &B::Window, last: Option<&ActiveCall>, next: Op
     }
     apply_notice(w, active.notice.as_ref());
     apply_stage::<B>(w, last, active);
+    apply_people::<B>(last.map(|last| last.people.as_ref()), &active.people);
     apply_devices::<B>(w, last.map(|last| &last.devices), &active.devices);
     if last.is_none_or(|last| last.live_since_ms != active.live_since_ms) {
         follow_elapsed(w, active.live_since_ms);
@@ -236,7 +245,12 @@ fn apply_stage<B: UiBackend>(w: &B::Window, last: Option<&ActiveCall>, active: &
             });
     w.set_string(StringProp::EndedShare, ended_who);
     w.set_int(IntProp::EndedShareSerial, ended_serial);
-    apply_people(w, &active.people);
+    apply_names(
+        w,
+        &active.others,
+        [StringProp::PeopleFirst, StringProp::PeopleSecond],
+        IntProp::PeopleMore,
+    );
     let unchanged =
         last.is_some_and(|last| last.stage == active.stage && last.tiles == active.tiles);
     if unchanged {
@@ -303,17 +317,30 @@ fn device_model<B: UiBackend>(models: &Models<B>, kind: DeviceKind) -> &VecModel
     }
 }
 
-fn apply_people(w: &impl UiProps, people: &[NamedUser]) {
+fn apply_people<B: UiBackend>(last: Option<&[CallPerson]>, people: &[CallPerson]) {
+    if last == Some(people) {
+        return;
+    }
+    let rows: Vec<B::CallPerson> = people.iter().map(B::convert_call_person).collect();
+    B::models().call_people.set_vec(rows);
+}
+
+fn apply_names(
+    w: &impl UiProps,
+    names: &[NamedUser],
+    [first, second]: [StringProp; 2],
+    more: IntProp,
+) {
     let shown = |index: usize| {
-        people.get(index).map_or_else(SharedString::new, |person| {
-            SharedString::from(person.shown())
-        })
+        names
+            .get(index)
+            .map_or_else(SharedString::new, |name| SharedString::from(name.shown()))
     };
-    w.set_string(StringProp::PeopleFirst, shown(0));
-    w.set_string(StringProp::PeopleSecond, shown(1));
+    w.set_string(first, shown(0));
+    w.set_string(second, shown(1));
     w.set_int(
-        IntProp::PeopleMore,
-        i32::try_from(people.len().saturating_sub(2)).unwrap_or(i32::MAX),
+        more,
+        i32::try_from(names.len().saturating_sub(2)).unwrap_or(i32::MAX),
     );
 }
 

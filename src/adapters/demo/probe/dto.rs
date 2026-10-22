@@ -6,8 +6,8 @@ use crate::commands::messages::{UserMessage, UserMessageKind};
 use crate::commands::ui::Draft;
 use crate::commands::view::{
     AccountStep, AccountView, ActiveCall, AppViewState, AttachmentView, AudioView, AuthPrompt,
-    CallDevices, CallFailure, CallNotice, CallPhase, CallSheetView, CallTile, CallView, CameraView,
-    CantDecrypt, CardStatus, CopiedLink, CreateRoomView, DeviceOption, DirectoryView,
+    CallDevices, CallFailure, CallNotice, CallPerson, CallPhase, CallSheetView, CallTile, CallView,
+    CameraView, CantDecrypt, CardStatus, CopiedLink, CreateRoomView, DeviceOption, DirectoryView,
     EncryptionStep, EncryptionView, IdentityAlertView, InvitePeopleView, InviteView, InviteeRow,
     InvitesSection, JoinOffer, JoinRefusal, LeaveSpaceView, LifecycleView, LoginStep, LogoutView,
     MentionsView, MicrophoneView, NotificationsView, PackView, PaginationView, PinnedView,
@@ -213,6 +213,7 @@ struct CallSheetDto {
     refusal: Option<&'static str>,
     video: bool,
     people: usize,
+    others: Vec<String>,
     microphone: bool,
     camera: bool,
     leaving: Option<String>,
@@ -247,8 +248,22 @@ struct ActiveCallDto {
     self_view: bool,
     offered_share: Option<String>,
     ended_share: Option<EndedShareDto>,
-    people: Vec<String>,
+    others: Vec<String>,
+    people: Vec<CallPersonDto>,
     devices: CallDevicesDto,
+}
+
+#[derive(Serialize)]
+#[allow(clippy::struct_excessive_bools)]
+struct CallPersonDto {
+    user_id: String,
+    name: String,
+    you: bool,
+    devices: usize,
+    muted: bool,
+    sharing: bool,
+    state: &'static str,
+    tile: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -1072,6 +1087,7 @@ fn call_sheet(sheet: &CallSheetView) -> CallSheetDto {
         refusal: offer_refusal(sheet.offer),
         video: sheet.video,
         people: sheet.people,
+        others: sheet.others.iter().map(NamedUser::shown).collect(),
         microphone: sheet.proposed.microphone,
         camera: sheet.proposed.camera,
         leaving: sheet
@@ -1161,7 +1177,8 @@ fn active_call(active: &ActiveCall) -> ActiveCallDto {
             serial: ended.serial,
             who: ended.who.shown(),
         }),
-        people: active.people.iter().map(NamedUser::shown).collect(),
+        others: active.others.iter().map(NamedUser::shown).collect(),
+        people: active.people.iter().map(call_person).collect(),
         devices: call_devices(&active.devices),
     }
 }
@@ -1222,17 +1239,34 @@ fn call_tile(tile: &CallTile) -> CallTileDto {
             TileKind::Person => "person",
             TileKind::Screen => "screen",
         },
-        state: match tile.state {
-            TileState::Joining => "joining",
-            TileState::WaitingForKeys => "waiting-for-keys",
-            TileState::Live => "live",
-            TileState::CantDecrypt(CantDecrypt::NoKey) => "cant-decrypt",
-            TileState::CantDecrypt(CantDecrypt::NotCrossSigned) => "unverified-device",
-            TileState::Unreachable => "unreachable",
-        },
+        state: tile_state_word(tile.state),
         muted: tile.muted,
         speaking: tile.speaking,
         video: tile.video.as_ref().map(ToString::to_string),
+    }
+}
+
+fn call_person(person: &CallPerson) -> CallPersonDto {
+    CallPersonDto {
+        user_id: person.user.user_id.clone(),
+        name: person.user.shown(),
+        you: person.you,
+        devices: person.devices,
+        muted: person.muted,
+        sharing: person.sharing,
+        state: tile_state_word(person.state),
+        tile: person.tile.as_ref().map(ToString::to_string),
+    }
+}
+
+const fn tile_state_word(state: TileState) -> &'static str {
+    match state {
+        TileState::Joining => "joining",
+        TileState::WaitingForKeys => "waiting-for-keys",
+        TileState::Live => "live",
+        TileState::CantDecrypt(CantDecrypt::NoKey) => "cant-decrypt",
+        TileState::CantDecrypt(CantDecrypt::NotCrossSigned) => "unverified-device",
+        TileState::Unreachable => "unreachable",
     }
 }
 

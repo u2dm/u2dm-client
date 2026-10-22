@@ -105,6 +105,19 @@ export struct CallTileEntry {
     screen: bool,
 }
 
+export struct CallPersonEntry {
+    key: string,
+    user-id: string,
+    name: string,
+    initial: string,
+    color-index: int,
+    you: bool,
+    devices: int,
+    muted: bool,
+    sharing: bool,
+    state: CallTileState,
+}
+
 export struct CallDeviceEntry {
     key: string,
     name: string,

@@ -3,6 +3,7 @@ mod joined;
 pub(super) mod lane;
 mod media;
 mod offer;
+mod people;
 mod sheet;
 mod stage;
 
@@ -1431,7 +1432,8 @@ impl Calls {
                 room_id: joined.room_id.clone(),
                 room_name: joined.room_name().to_owned(),
             });
-        Some(sheet.view(room, self.offer_for(room), leaving))
+        let me = self.own.as_ref().map(|own| &*own.user);
+        Some(sheet.view(room, self.offer_for(room), leaving, me))
     }
 
     fn failed_view(&self, directory: &RoomDirectory) -> Option<FailedCall> {
