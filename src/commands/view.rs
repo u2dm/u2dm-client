@@ -8,6 +8,7 @@ use super::messages::{UserMessage, UserMessageKind};
 use super::ui::Draft;
 use crate::domain::auth::{LoginMethod, Session};
 use crate::domain::call::MemberKey;
+use crate::domain::call::devices::{ByKind, DeviceKey, DeviceKind};
 use crate::domain::call::media::MediaChoice;
 use crate::domain::call::ring::RingKind;
 use crate::domain::call::video::{FeedId, ScreenRefusal};
@@ -433,6 +434,42 @@ pub struct EndedShare {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DeviceStatus {
+    SystemDefault,
+    Connected,
+    Missing,
+    Failed,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DeviceOption {
+    pub key: Option<DeviceKey>,
+    pub name: String,
+    pub status: DeviceStatus,
+    pub chosen: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DeviceTrouble {
+    Disconnected,
+    Failed,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DeviceNews {
+    pub serial: u64,
+    pub kind: DeviceKind,
+    pub name: String,
+    pub trouble: DeviceTrouble,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct CallDevices {
+    pub options: ByKind<Arc<[DeviceOption]>>,
+    pub news: Option<DeviceNews>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MicrophoneView {
     On,
     Off,
@@ -475,6 +512,7 @@ pub struct ActiveCall {
     pub offered_share: Option<NamedUser>,
     pub ended_share: Option<EndedShare>,
     pub people: Arc<[NamedUser]>,
+    pub devices: CallDevices,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]

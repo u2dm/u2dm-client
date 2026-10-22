@@ -64,6 +64,21 @@ const ENUM_COVERAGE: &[EnumCoverage] = &[
         falls_through: &["off"],
     },
     EnumCoverage {
+        slint_enum: "CallDeviceKind",
+        branches_in: "ui/messages.slint",
+        falls_through: &[],
+    },
+    EnumCoverage {
+        slint_enum: "CallDeviceStatus",
+        branches_in: "ui/messages.slint",
+        falls_through: &["connected"],
+    },
+    EnumCoverage {
+        slint_enum: "CallDeviceTrouble",
+        branches_in: "ui/messages.slint",
+        falls_through: &["failed"],
+    },
+    EnumCoverage {
         slint_enum: "UserMessageKind",
         branches_in: "ui/messages.slint",
         falls_through: &["none"],
@@ -313,6 +328,9 @@ const ENUM_TABLES: &[(&str, &str)] = &[
     ("CallScreen", "call_screens"),
     ("CallScreenRefusal", "call_screen_refusals"),
     ("CallTileState", "call_tile_marks"),
+    ("CallDeviceKind", "call_device_kinds"),
+    ("CallDeviceStatus", "call_device_statuses"),
+    ("CallDeviceTrouble", "call_device_troubles"),
     ("CallNotice", "call_notices"),
     ("RosterStatus", "roster_statuses"),
     ("RoomInfoPlacement", "room_info_placements"),

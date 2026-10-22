@@ -95,6 +95,7 @@ macro_rules! string_props {
         EndedShare CallView "CallView" "ended-share" set_ended_share get_ended_share;
         PeopleFirst CallView "CallView" "people-first" set_people_first get_people_first;
         PeopleSecond CallView "CallView" "people-second" set_people_second get_people_second;
+        DeviceNewsName CallView "CallView" "device-news-name" set_device_news_name get_device_news_name;
         SpaceIndexName SpaceIndexView "SpaceIndexView" "space-name" set_space_name get_space_name;
         RoomInfoRoomId RoomInfoView "RoomInfoView" "room-id" set_room_id get_room_id;
         RoomInfoName RoomInfoView "RoomInfoView" "name" set_name get_name;
@@ -250,6 +251,10 @@ macro_rules! simple_callbacks {
         on_set_microphone "set-microphone" set_microphone request(on "on" flag) SetMicrophone;
         on_set_camera "set-camera" set_camera request(on "on" flag) SetCamera;
         on_share_screen "share-screen" share_screen request(on "on" flag) ShareScreen;
+        on_use_call_device "use-call-device" use_call_device
+            request(kind "kind" variant, key "key" text) UseCallDevice;
+        on_refresh_call_devices "refresh-call-devices" refresh_call_devices plain
+            RefreshCallDevices;
         on_focus_call_tile "focus-call-tile" focus_call_tile pass FocusCallTile;
         on_show_call_focus "show-call-focus" show_call_focus plain ShowCallFocus;
         on_show_call_gallery "show-call-gallery" show_call_gallery plain ShowCallGallery;
@@ -549,6 +554,7 @@ macro_rules! int_props {
         ActiveCall CallView "CallView" "active-call" set_active_call get_active_call;
         EndedShareSerial CallView "CallView" "ended-share-serial" set_ended_share_serial get_ended_share_serial;
         PeopleMore CallView "CallView" "people-more" set_people_more get_people_more;
+        DeviceNewsSerial CallView "CallView" "device-news-serial" set_device_news_serial get_device_news_serial;
         CallDeclines WindowView "WindowView" "call-declines" set_call_declines get_call_declines;
         CallAnswers WindowView "WindowView" "call-answers" set_call_answers get_call_answers;
         PresencePartnerMinutes PresenceView "PresenceView" "partner-minutes" set_partner_minutes get_partner_minutes;
@@ -737,6 +743,10 @@ macro_rules! enum_props {
             CallView "CallView" "failure" set_failure get_failure;
         RingRefusal set_ring_refusal(JoinRefusal)
             CallView "CallView" "ring-refusal" set_ring_refusal get_ring_refusal;
+        DeviceNewsKind set_device_news_kind(DeviceKind)
+            CallView "CallView" "device-news-kind" set_device_news_kind get_device_news_kind;
+        DeviceNewsTrouble set_device_news_trouble(DeviceTrouble)
+            CallView "CallView" "device-news-trouble" set_device_news_trouble get_device_news_trouble;
     } };
 }
 pub(crate) use enum_props;
@@ -758,6 +768,9 @@ macro_rules! model_props {
         room_log LogLine SpliceModel RoomLogView "RoomLogView" "lines" set_lines;
         call_stage CallTile VecModel CallView "CallView" "stage" set_stage;
         call_tiles CallTile VecModel CallView "CallView" "tiles" set_tiles;
+        call_microphones CallDevice VecModel CallView "CallView" "microphones" set_microphones;
+        call_speakers CallDevice VecModel CallView "CallView" "speakers" set_speakers;
+        call_cameras CallDevice VecModel CallView "CallView" "cameras" set_cameras;
         user_devices UserDevice VecModel UserInfoView "UserInfoView" "devices" set_devices;
         account_sessions UserDevice VecModel AccountView "AccountView" "sessions" set_sessions;
     } };
@@ -1533,6 +1546,33 @@ macro_rules! call_screen_refusals {
 }
 pub(crate) use call_screen_refusals;
 
+macro_rules! call_device_kinds {
+    ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
+        Microphone Microphone "microphone";
+        Speaker    Speaker    "speaker";
+        Camera     Camera     "camera";
+    } };
+}
+pub(crate) use call_device_kinds;
+
+macro_rules! call_device_statuses {
+    ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
+        SystemDefault SystemDefault "system-default";
+        Connected     Connected     "connected";
+        Missing       Missing       "missing";
+        Failed        Failed        "failed";
+    } };
+}
+pub(crate) use call_device_statuses;
+
+macro_rules! call_device_troubles {
+    ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
+        Disconnected Disconnected "disconnected";
+        Failed       Failed       "failed";
+    } };
+}
+pub(crate) use call_device_troubles;
+
 macro_rules! call_tile_marks {
     ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
         Joining          Joining          "joining";
@@ -2043,6 +2083,16 @@ macro_rules! call_tile_fields {
     } };
 }
 pub(crate) use call_tile_fields;
+
+macro_rules! call_device_fields {
+    ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
+        key set_key "key" text;
+        name set_name "name" text;
+        status set_status "status" enumk(DeviceStatus);
+        chosen set_chosen "chosen" flag;
+    } };
+}
+pub(crate) use call_device_fields;
 
 macro_rules! user_device_fields {
     ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*

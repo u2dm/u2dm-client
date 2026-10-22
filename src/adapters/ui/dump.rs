@@ -10,8 +10,8 @@ use super::activity;
 use super::audio;
 use super::backend::UiBackend;
 use super::fields::{
-    BodyLineFields, BodyPieceFields, CallTileFields, LogLineFields, MessageFields,
-    PollAnswerFields, ReactionFields,
+    BodyLineFields, BodyPieceFields, CallDeviceFields, CallTileFields, LogLineFields,
+    MessageFields, PollAnswerFields, ReactionFields,
 };
 use super::props::{BoolProp, EnumProp, IntProp, StringProp, UiProps};
 use super::ringtone;
@@ -207,6 +207,20 @@ pub struct CallDump {
     pub ended_share: String,
     pub ended_share_serial: i32,
     pub people: String,
+    pub microphones: Vec<CallDeviceDump>,
+    pub speakers: Vec<CallDeviceDump>,
+    pub cameras: Vec<CallDeviceDump>,
+    pub device_news: String,
+    pub device_news_name: String,
+    pub device_news_serial: i32,
+}
+
+#[derive(Serialize)]
+pub struct CallDeviceDump {
+    pub key: String,
+    pub name: String,
+    pub status: String,
+    pub chosen: bool,
 }
 
 #[derive(Serialize)]
@@ -443,7 +457,24 @@ fn call_view<B: UiBackend>(window: &B::Window) -> CallDump {
             window.get_string(StringProp::PeopleSecond),
             window.get_int(IntProp::PeopleMore)
         ),
+        microphones: call_devices::<B>(&B::models().call_microphones),
+        speakers: call_devices::<B>(&B::models().call_speakers),
+        cameras: call_devices::<B>(&B::models().call_cameras),
+        device_news: window.get_enum(EnumProp::DeviceNewsTrouble).to_string(),
+        device_news_name: window.get_string(StringProp::DeviceNewsName).to_string(),
+        device_news_serial: window.get_int(IntProp::DeviceNewsSerial),
     }
+}
+
+fn call_devices<B: UiBackend>(rows: &impl Model<Data = B::CallDevice>) -> Vec<CallDeviceDump> {
+    rows.iter()
+        .map(|row| CallDeviceDump {
+            key: row.key().to_owned(),
+            name: row.name().to_owned(),
+            status: row.status().to_owned(),
+            chosen: row.chosen(),
+        })
+        .collect()
 }
 
 fn call_tile<B: UiBackend>(tile: &B::CallTile) -> CallTileDump {

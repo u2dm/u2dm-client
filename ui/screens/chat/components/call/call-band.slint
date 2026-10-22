@@ -52,15 +52,21 @@ export component CallBand inherits Rectangle {
     out property <length> menu-x: menu-button.absolute-position.x;
     out property <length> menu-y: menu-button.absolute-position.y;
     out property <length> menu-size: menu-button.height;
+    out property <length> devices-x: devices-button.absolute-position.x;
+    out property <length> devices-y: devices-button.absolute-position.y;
+    out property <length> devices-size: devices-button.height;
 
     property <bool> compact: root.size == CallSize.compact;
     property <bool> forced-full: root.size == CallSize.full && CallPanel.chosen == CallSize.stage;
     property <bool> offers-chat: !root.compact && !root.forced-full;
     property <bool> explains-share;
     property <bool> tells-share-ended;
+    property <bool> tells-device-news;
     property <int> ended-share-serial: CallView.ended-share-serial;
+    property <int> device-news-serial: CallView.device-news-serial;
     property <bool> has-status: CallView.notice != CallNotice.none
         || (root.explains-share && CallView.screen == CallScreen.unavailable)
+        || root.tells-device-news
         || (root.tells-share-ended && !root.compact);
     property <string> people: CallWords.people(CallView.people-first, CallView.people-second, CallView.people-more);
     property <string> phase: CallWords.phase(CallView.phase, CallView.elapsed);
@@ -71,6 +77,10 @@ export component CallBand inherits Rectangle {
 
     public function focus-menu() {
         menu-button.take-focus();
+    }
+
+    public function focus-devices() {
+        devices-button.take-focus();
     }
 
     function view-share() {
@@ -95,6 +105,23 @@ export component CallBand inherits Rectangle {
         running: false;
         triggered => {
             root.tells-share-ended = false;
+            self.running = false;
+        }
+    }
+
+    changed device-news-serial => {
+        if root.device-news-serial != 0 {
+            root.tells-device-news = true;
+            news-timer.running = false;
+            news-timer.running = true;
+        }
+    }
+
+    news-timer := Timer {
+        interval: Motion.notice-hold;
+        running: false;
+        triggered => {
+            root.tells-device-news = false;
             self.running = false;
         }
     }
@@ -151,8 +178,20 @@ export component CallBand inherits Rectangle {
                 }
             }
 
-            view-share := LinkButton {
+            devices-button := IconButton {
                 x: (root.compact ? size-toggle.x : menu-button.x) - Space.sm - self.width;
+                y: (parent.height - self.height) / 2;
+                size: Size.md;
+                icon: IconSet.Settings;
+                label: @tr("Choose your microphone, speaker and camera");
+                clicked => {
+                    Actions.refresh-call-devices();
+                    CallPanel.devices-open = true;
+                }
+            }
+
+            view-share := LinkButton {
+                x: devices-button.x - Space.sm - self.width;
                 y: (parent.height - self.height) / 2;
                 height: Size.sm;
                 visible: root.share-to-view != "";
@@ -167,7 +206,7 @@ export component CallBand inherits Rectangle {
 
             HorizontalLayout {
                 x: 0;
-                width: (view-share.visible ? view-share.x : root.compact ? size-toggle.x : menu-button.x) - Space.sm;
+                width: (view-share.visible ? view-share.x : devices-button.x) - Space.sm;
                 spacing: Space.sm;
 
                 if CallView.active-encrypted: IconDisplay {
@@ -221,6 +260,7 @@ export component CallBand inherits Rectangle {
 
         if root.has-status: CallStatus {
             explains-share: root.explains-share && CallView.screen == CallScreen.unavailable;
+            tells-device-news: root.tells-device-news;
             tells-share-ended: root.tells-share-ended && !root.compact;
         }
     }

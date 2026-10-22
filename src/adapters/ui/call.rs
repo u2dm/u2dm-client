@@ -2,9 +2,9 @@ use std::cell::RefCell;
 use std::slice;
 use std::time::Duration;
 
-use slint::{ComponentHandle, SharedString, Timer, TimerMode};
+use slint::{ComponentHandle, SharedString, Timer, TimerMode, VecModel};
 
-use super::backend::{UiBackend, UiEventContext};
+use super::backend::{Models, UiBackend, UiEventContext};
 use super::decode::{AvatarSlot, load_avatar_async};
 use super::dto::{call_failure_message, call_notice_mark, call_offer_mark, call_screen_mark};
 use super::fields::CallTileFields;
@@ -16,9 +16,10 @@ use super::ringtone::{self, Tone};
 use super::{audio, call_video, video};
 use crate::commands::messages::UserMessageKind;
 use crate::commands::view::{
-    ActiveCall, AppViewState, CallNotice, CallPhase, CallSheetView, CallTile, CallView, FailedCall,
-    JoinOffer, OfferView, RingView, RoomCallSummary, ScreenView, TileKind,
+    ActiveCall, AppViewState, CallDevices, CallNotice, CallPhase, CallSheetView, CallTile,
+    CallView, FailedCall, JoinOffer, OfferView, RingView, RoomCallSummary, ScreenView, TileKind,
 };
+use crate::domain::call::devices::DeviceKind;
 use crate::domain::call::video::{FeedId, Framing};
 use crate::domain::member_name::NamedUser;
 use crate::ports::media::MediaCache;
@@ -159,10 +160,14 @@ fn apply_active<B: UiBackend>(w: &B::Window, last: Option<&ActiveCall>, next: Op
         w.set_bool(BoolProp::ActiveVisible, false);
         w.set_int(IntProp::ActiveCall, 0);
         w.set_int(IntProp::EndedShareSerial, 0);
+        w.set_int(IntProp::DeviceNewsSerial, 0);
         apply_notice(w, None);
         let models = B::models();
         models.call_stage.set_vec(Vec::new());
         models.call_tiles.set_vec(Vec::new());
+        for kind in DeviceKind::ALL {
+            device_model::<B>(&models, kind).set_vec(Vec::new());
+        }
         call_video::follow::<B>(w, &[]);
         stop_elapsed(w);
         ringtone::stop_if(Tone::Ringback);
@@ -197,6 +202,7 @@ fn apply_active<B: UiBackend>(w: &B::Window, last: Option<&ActiveCall>, next: Op
     }
     apply_notice(w, active.notice.as_ref());
     apply_stage::<B>(w, last, active);
+    apply_devices::<B>(w, last.map(|last| &last.devices), &active.devices);
     if last.is_none_or(|last| last.live_since_ms != active.live_since_ms) {
         follow_elapsed(w, active.live_since_ms);
     }
@@ -263,6 +269,37 @@ fn apply_stage<B: UiBackend>(w: &B::Window, last: Option<&ActiveCall>, active: &
         .filter_map(|tile| Some((tile.video.clone()?, framing(tile.kind))))
         .collect();
     call_video::follow::<B>(w, &feeds);
+}
+
+fn apply_devices<B: UiBackend>(w: &B::Window, last: Option<&CallDevices>, devices: &CallDevices) {
+    let models = B::models();
+    for kind in DeviceKind::ALL {
+        let options = devices.options.of(kind);
+        if last.is_some_and(|last| last.options.of(kind) == options) {
+            continue;
+        }
+        let rows: Vec<B::CallDevice> = options.iter().map(B::convert_call_device).collect();
+        device_model::<B>(&models, kind).set_vec(rows);
+    }
+    let Some(news) = &devices.news else {
+        w.set_int(IntProp::DeviceNewsSerial, 0);
+        return;
+    };
+    w.set_device_news_kind(news.kind);
+    w.set_device_news_trouble(news.trouble);
+    w.set_string(StringProp::DeviceNewsName, SharedString::from(&news.name));
+    w.set_int(
+        IntProp::DeviceNewsSerial,
+        i32::try_from(news.serial).unwrap_or(i32::MAX),
+    );
+}
+
+fn device_model<B: UiBackend>(models: &Models<B>, kind: DeviceKind) -> &VecModel<B::CallDevice> {
+    match kind {
+        DeviceKind::Microphone => &models.call_microphones,
+        DeviceKind::Speaker => &models.call_speakers,
+        DeviceKind::Camera => &models.call_cameras,
+    }
 }
 
 fn apply_people(w: &impl UiProps, people: &[NamedUser]) {

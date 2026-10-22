@@ -2,7 +2,7 @@ import { IconDisplay, IconSet } from "@lucide";
 
 import { LinkButton } from "../../../../components/button.slint";
 import { DotPulse } from "../../../../components/dot-pulse.slint";
-import { CallNotice } from "../../../../enums.slint";
+import { CallDeviceTrouble, CallNotice } from "../../../../enums.slint";
 import { CallWords } from "../../../../messages.slint";
 import { Actions } from "../../../../actions.slint";
 import { CallView } from "../../../../views.slint";
@@ -10,6 +10,7 @@ import { AppStyle, Fonts, IconSize, Size, Space } from "../../../../theme.slint"
 
 export component CallStatus inherits HorizontalLayout {
     in property <bool> explains-share;
+    in property <bool> tells-device-news;
     in property <bool> tells-share-ended;
 
     property <CallNotice> notice: CallView.notice;
@@ -18,7 +19,10 @@ export component CallStatus inherits HorizontalLayout {
     property <bool> about-others: root.notice == CallNotice.cant-decrypt
         || root.notice == CallNotice.unverified-device;
     property <bool> undiagnosed: root.notice == CallNotice.sharing-never-started;
-    property <bool> trouble: root.noticed && !root.pending && !root.about-others && !root.undiagnosed;
+    property <bool> device-news: !root.noticed && !root.explains-share && root.tells-device-news;
+    property <bool> unplugged: root.device-news && CallView.device-news-trouble == CallDeviceTrouble.disconnected;
+    property <bool> trouble: (root.noticed && !root.pending && !root.about-others && !root.undiagnosed)
+        || (root.device-news && !root.unplugged);
     property <string> action: CallWords.notice-action(root.notice);
 
     function act() {
@@ -48,7 +52,10 @@ export component CallStatus inherits HorizontalLayout {
 
     if !root.pending: IconDisplay {
         cross-axis-self-alignment: center;
-        icon: root.trouble ? IconSet.CircleAlert : root.about-others ? IconSet.ShieldAlert : IconSet.Info;
+        icon: root.trouble ? IconSet.CircleAlert
+            : root.about-others ? IconSet.ShieldAlert
+            : root.unplugged ? IconSet.Unplug
+            : IconSet.Info;
         size: IconSize.sm;
         stroke: root.trouble ? AppStyle.danger-muted : AppStyle.foreground-faint;
     }
@@ -58,6 +65,8 @@ export component CallStatus inherits HorizontalLayout {
             ? CallWords.notice(root.notice, CallView.active-room-name, CallView.notice-name, CallView.notice-others)
             : root.explains-share
             ? CallWords.share(CallView.screen, CallView.screen-refusal)
+            : root.device-news
+            ? CallWords.device-news(CallView.device-news-trouble, CallView.device-news-kind, CallView.device-news-name)
             : @tr("{} stopped sharing their screen", CallView.ended-share);
         font-family: Fonts.emoji;
         font-size: Fonts.body-small;

@@ -1,0 +1,120 @@
+import { ScrollView } from "std-widgets.slint";
+import { Icon, IconDisplay, IconSet } from "@lucide";
+
+import { ChoiceRow } from "../../../../components/choice-row.slint";
+import { PickerCard } from "../../../../components/overlay.slint";
+import { Actions } from "../../../../actions.slint";
+import { CallDeviceKind } from "../../../../enums.slint";
+import { CallWords } from "../../../../messages.slint";
+import { CallDeviceEntry } from "../../../../types.slint";
+import { CallView } from "../../../../views.slint";
+import { AppStyle, Fonts, IconSize, Metrics, Space, Weight } from "../../../../theme.slint";
+
+component DeviceHeading inherits HorizontalLayout {
+    in property <Icon> icon;
+    in property <string> text;
+
+    min-height: Metrics.call-devices-heading;
+    padding-left: Space.md;
+    padding-right: Space.md;
+    spacing: Space.md;
+
+    IconDisplay {
+        cross-axis-self-alignment: center;
+        icon: root.icon;
+        size: IconSize.sm;
+        stroke: AppStyle.foreground-muted;
+        accessible-role: none;
+    }
+
+    Text {
+        horizontal-stretch: 1;
+        text: root.text;
+        font-size: Fonts.caption;
+        font-weight: Weight.semibold;
+        color: AppStyle.foreground-muted;
+        vertical-alignment: center;
+        overflow: elide;
+    }
+}
+
+component DeviceChoice inherits ChoiceRow {
+    in property <CallDeviceKind> kind;
+    in property <CallDeviceEntry> entry;
+
+    height: root.detail == "" ? Metrics.call-device-row : Metrics.choice-row;
+    text: CallWords.device-name(root.entry.status, root.entry.name);
+    detail: CallWords.device-detail(root.entry.status, root.entry.name);
+    checked: root.entry.chosen;
+    label: root.detail == ""
+        ? @tr("{}: {}", CallWords.device-kind(root.kind), root.text)
+        : @tr("{}: {}, {}", CallWords.device-kind(root.kind), root.text, root.detail);
+    clicked => {
+        Actions.use-call-device({ kind: root.kind, key: root.entry.key });
+    }
+}
+
+export component CallDevicesMenu inherits PickerCard {
+    in property <length> room-below;
+
+    width: Metrics.call-devices-width;
+    height: min(rows.preferred-height + 2 * Space.sm, root.room-below);
+
+    TouchArea { }
+
+    scroll := ScrollView {
+        x: 0;
+        y: Space.sm;
+        width: parent.width;
+        height: parent.height - 2 * Space.sm;
+        content-width: self.visible-width;
+        content-height: rows.preferred-height;
+
+        rows := VerticalLayout {
+            width: scroll.visible-width;
+            padding-left: Space.sm;
+            padding-right: Space.sm;
+            spacing: Space.xs;
+
+            DeviceHeading {
+                icon: IconSet.Mic;
+                text: CallWords.device-kind(CallDeviceKind.microphone);
+            }
+
+            for entry in CallView.microphones: DeviceChoice {
+                kind: CallDeviceKind.microphone;
+                entry: entry;
+            }
+
+            DeviceHeading {
+                icon: IconSet.Volume2;
+                text: CallWords.device-kind(CallDeviceKind.speaker);
+            }
+
+            for entry in CallView.speakers: DeviceChoice {
+                kind: CallDeviceKind.speaker;
+                entry: entry;
+            }
+
+            DeviceHeading {
+                icon: IconSet.Video;
+                text: CallWords.device-kind(CallDeviceKind.camera);
+            }
+
+            if CallView.cameras.length == 0: Text {
+                min-height: Metrics.call-devices-heading;
+                text: @tr("No camera was found");
+                font-size: Fonts.body-small;
+                color: AppStyle.foreground-muted;
+                vertical-alignment: center;
+                horizontal-alignment: center;
+                wrap: word-wrap;
+            }
+
+            for entry in CallView.cameras: DeviceChoice {
+                kind: CallDeviceKind.camera;
+                entry: entry;
+            }
+        }
+    }
+}

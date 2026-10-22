@@ -6,12 +6,14 @@ use tokio::sync::{mpsc, oneshot};
 use tokio::time::Instant;
 use tracing::Span;
 
+use super::devices::Devices;
 use super::media::MediaCommand;
 use super::stage::Stage;
 use crate::commands::view::{
     ActiveCall, CallFailure, CallNotice, CallPhase, CallTile, CameraView, CantDecrypt,
     MicrophoneView, ScreenView, TileKind, TileState,
 };
+use crate::domain::call::devices::{DeviceChoice, DeviceChoices, DeviceKey, DeviceKind};
 use crate::domain::call::identity::{IdentityTable, MediaIdentity, member_spellings, spellings};
 use crate::domain::call::keys::{
     KEY_LEN, KeyAction, KeyExchange, KeyHolder, MediaKey, ReceivedKey,
@@ -181,6 +183,7 @@ pub(super) struct Joining {
     pub(super) leave_tx: oneshot::Sender<()>,
     pub(super) media_tx: mpsc::UnboundedSender<MediaCommand>,
     pub(super) media: MediaChoice,
+    pub(super) devices: DeviceChoices,
     pub(super) outgoing: Option<RingKind>,
 }
 
@@ -212,6 +215,7 @@ pub(super) struct Joined {
     outgoing_kind: Option<RingKind>,
     outgoing: Option<Outgoing>,
     stage: Stage,
+    devices: Devices,
 }
 
 pub(super) fn fresh_key() -> MediaKey {
@@ -255,6 +259,7 @@ impl Joined {
             outgoing_kind: joining.outgoing,
             outgoing: None,
             stage: Stage::default(),
+            devices: Devices::new(joining.devices),
         };
         joined.command(MediaCommand::Microphone(media.microphone));
         if media.camera {
@@ -544,6 +549,11 @@ impl Joined {
                 kind,
                 feed,
             } => self.heard.video_heard(sfu, identity, kind, feed),
+            MediaEvent::Devices(lists) => self.devices.listed(lists),
+            MediaEvent::DeviceFailed { kind, device, why } => {
+                tracing::warn!(call = self.call, %kind, %device, why, "a call device could not be used");
+                self.devices.failed(kind, device);
+            }
         }
         Ok(())
     }
@@ -655,8 +665,30 @@ impl Joined {
             return;
         }
         tracing::info!(call = self.call, on, "switching the camera");
+        if on {
+            self.devices.retry(DeviceKind::Camera);
+        }
         self.camera = wanted;
         self.command(MediaCommand::Camera(on));
+    }
+
+    pub(super) fn use_device(
+        &mut self,
+        kind: DeviceKind,
+        key: Option<&DeviceKey>,
+    ) -> Option<DeviceChoice> {
+        let Some(choice) = self.devices.choice_for(kind, key) else {
+            tracing::debug!(call = self.call, %kind, "no such device to use in the call");
+            return None;
+        };
+        tracing::info!(call = self.call, %kind, device = ?choice.key(), "choosing a call device");
+        self.devices.choose(kind, choice.clone());
+        self.command(MediaCommand::Device(kind, choice.clone()));
+        Some(choice)
+    }
+
+    pub(super) fn refresh_devices(&self) {
+        self.command(MediaCommand::RefreshDevices);
     }
 
     pub(super) fn set_screen_share(&mut self, on: bool) {
@@ -831,6 +863,7 @@ impl Joined {
             offered_share: arranged.offered_share,
             ended_share: self.stage.ended_share().cloned(),
             people: Arc::from(self.people()),
+            devices: self.devices.view(),
         }
     }
 

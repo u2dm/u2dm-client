@@ -1,14 +1,19 @@
 use std::sync::Arc;
+use std::time::Duration;
 
 use tokio::sync::mpsc;
+use tokio::time::{Instant, MissedTickBehavior, interval_at};
 
 use crate::app::event::{AppEvent, CallEvent};
 use crate::app::input::EventSender;
+use crate::domain::call::devices::{DeviceChoice, DeviceKind};
 use crate::domain::call::identity::MediaIdentity;
 use crate::domain::call::keys::{KeyIndex, MediaKey};
 use crate::domain::call::media::{MediaEvent, MediaSetup};
 use crate::domain::call::sfu::{SfuGrant, SfuId};
 use crate::ports::call::{CallMediaPort, MediaSession};
+
+const DEVICE_POLL: Duration = Duration::from_secs(2);
 
 pub(super) enum MediaCommand {
     Connect(Box<SfuGrant>),
@@ -16,6 +21,8 @@ pub(super) enum MediaCommand {
     Microphone(bool),
     Camera(bool),
     ScreenShare(bool),
+    Device(DeviceKind, DeviceChoice),
+    RefreshDevices,
     OwnKey(KeyIndex, MediaKey),
     UseOwnKey(KeyIndex),
     Key(Vec<MediaIdentity>, KeyIndex, MediaKey),
@@ -44,8 +51,16 @@ impl MediaDriver {
         };
         let forward = forward_media(&self.events, self.call, media_rx);
         let apply = async {
-            while let Some(command) = commands.recv().await {
-                apply(session.as_mut(), command).await;
+            let mut devices = interval_at(Instant::now() + DEVICE_POLL, DEVICE_POLL);
+            devices.set_missed_tick_behavior(MissedTickBehavior::Delay);
+            loop {
+                tokio::select! {
+                    command = commands.recv() => match command {
+                        Some(command) => apply(session.as_mut(), command).await,
+                        None => break,
+                    },
+                    _ = devices.tick() => session.refresh_devices().await,
+                }
             }
         };
         tokio::select! {
@@ -90,6 +105,8 @@ async fn apply(session: &mut dyn MediaSession, command: MediaCommand) {
         MediaCommand::Microphone(on) => session.set_microphone(on).await,
         MediaCommand::Camera(on) => session.set_camera(on).await,
         MediaCommand::ScreenShare(on) => session.set_screen_share(on).await,
+        MediaCommand::Device(kind, choice) => session.use_device(kind, choice).await,
+        MediaCommand::RefreshDevices => session.refresh_devices().await,
         MediaCommand::OwnKey(index, key) => session.set_own_key(index, &key).await,
         MediaCommand::UseOwnKey(index) => session.use_own_key(index).await,
         MediaCommand::Key(identities, index, key) => {

@@ -1,5 +1,6 @@
 use std::fmt;
 
+use super::devices::{DeviceChoices, DeviceKey, DeviceKind, DeviceLists};
 use super::identity::MediaIdentity;
 use super::sfu::SfuId;
 use super::video::{Camera, FeedId, ScreenShare, VideoKind};
@@ -9,6 +10,7 @@ use crate::domain::room::RoomId;
 pub struct MediaSetup {
     pub room_id: RoomId,
     pub encrypted: bool,
+    pub devices: DeviceChoices,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -85,5 +87,11 @@ pub enum MediaEvent {
         identity: MediaIdentity,
         kind: VideoKind,
         feed: Option<FeedId>,
+    },
+    Devices(DeviceLists),
+    DeviceFailed {
+        kind: DeviceKind,
+        device: DeviceKey,
+        why: String,
     },
 }

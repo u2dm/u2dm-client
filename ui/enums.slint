@@ -491,6 +491,24 @@ export enum CallScreenRefusal {
     no-portal,
 }
 
+export enum CallDeviceKind {
+    microphone,
+    speaker,
+    camera,
+}
+
+export enum CallDeviceStatus {
+    system-default,
+    connected,
+    missing,
+    failed,
+}
+
+export enum CallDeviceTrouble {
+    disconnected,
+    failed,
+}
+
 export enum CallTileState {
     joining,
     waiting-for-keys,

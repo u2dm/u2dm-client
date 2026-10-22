@@ -1,3 +1,4 @@
+mod devices;
 mod joined;
 pub(super) mod lane;
 mod media;
@@ -29,6 +30,7 @@ use crate::commands::view::{
     CallFailure, CallSheetView, CallView, FailedCall, JoinOffer, JoinRefusal, LeavingCall,
     OfferView, RingView, RoomCallSummary, Toast,
 };
+use crate::domain::call::devices::{DeviceChoice, DeviceChoices, DeviceKey, DeviceKind};
 use crate::domain::call::keys::ReceivedKey;
 use crate::domain::call::media::{MediaChoice, MediaEvent, MediaSetup};
 use crate::domain::call::ring::{
@@ -167,6 +169,7 @@ pub(super) struct Calls {
     failed: Option<Failed>,
     sheet: Option<Sheet>,
     sheet_serial: i32,
+    devices: DeviceChoices,
     generation: u64,
     stale_checked: bool,
     published: CallView,
@@ -200,6 +203,7 @@ impl Calls {
             failed: None,
             sheet: None,
             sheet_serial: 0,
+            devices: DeviceChoices::default(),
             generation: 0,
             stale_checked: false,
             published: CallView::default(),
@@ -799,6 +803,7 @@ impl Calls {
             setup: MediaSetup {
                 room_id: room.id.clone(),
                 encrypted: room.is_encrypted,
+                devices: self.devices.clone(),
             },
             events: self.events.clone(),
             call,
@@ -851,6 +856,7 @@ impl Calls {
             leave_tx,
             media_tx,
             media: request.media,
+            devices: self.devices.clone(),
             outgoing,
         })
     }
@@ -934,6 +940,34 @@ impl Calls {
         let _in_call = span.enter();
         joined.set_screen_share(on);
         self.publish(directory);
+    }
+
+    pub(super) fn use_device(
+        &mut self,
+        kind: DeviceKind,
+        key: Option<&DeviceKey>,
+        directory: &RoomDirectory,
+    ) {
+        let Some(joined) = self.joined.as_mut() else {
+            if key.is_none() {
+                *self.devices.of_mut(kind) = DeviceChoice::Default;
+            } else {
+                tracing::debug!(%kind, "no call lists the device to choose");
+            }
+            return;
+        };
+        let span = joined.span.clone();
+        let _in_call = span.enter();
+        if let Some(choice) = joined.use_device(kind, key) {
+            *self.devices.of_mut(kind) = choice;
+        }
+        self.publish(directory);
+    }
+
+    pub(super) fn refresh_devices(&self) {
+        if let Some(joined) = &self.joined {
+            joined.refresh_devices();
+        }
     }
 
     pub(super) fn focus_call_tile(&mut self, key: &str, directory: &RoomDirectory) {

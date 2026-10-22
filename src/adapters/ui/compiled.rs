@@ -13,11 +13,12 @@ use u2dm_ui::{
     AccountActivity as UiAccountActivity, AccountStep as UiAccountStep, AccountView, Actions,
     AppWindow, AttachmentKind as UiAttachmentKind, AttachmentView, AudioKind as UiAudioKind,
     AudioView, AuthStage as UiAuthStage, BodyLine, BodyPiece, CallCamera as UiCallCamera,
-    CallMic as UiCallMic, CallNotice as UiCallNotice, CallOffer as UiCallOffer,
-    CallPhase as UiCallPhase, CallRefusal as UiCallRefusal, CallScreen as UiCallScreen,
-    CallScreenRefusal as UiCallScreenRefusal, CallTileEntry, CallTileState as UiCallTileState,
-    CallView, ChildAccess as UiChildAccess, ComposerDraft, ConnectionState,
-    CreateRoomStatus as UiCreateRoomStatus, CreateRoomView,
+    CallDeviceEntry, CallDeviceKind as UiCallDeviceKind, CallDeviceStatus as UiCallDeviceStatus,
+    CallDeviceTrouble as UiCallDeviceTrouble, CallMic as UiCallMic, CallNotice as UiCallNotice,
+    CallOffer as UiCallOffer, CallPhase as UiCallPhase, CallRefusal as UiCallRefusal,
+    CallScreen as UiCallScreen, CallScreenRefusal as UiCallScreenRefusal, CallTileEntry,
+    CallTileState as UiCallTileState, CallView, ChildAccess as UiChildAccess, ComposerDraft,
+    ConnectionState, CreateRoomStatus as UiCreateRoomStatus, CreateRoomView,
     DecryptionFailure as UiDecryptionFailure, Delivery as UiDelivery, DeviceTrust as UiDeviceTrust,
     DirectChat as UiDirectChat, DirectoryView, DraftVerdict as UiDraftVerdict,
     EmojiArt as UiEmojiArt, EmojiEntry, EmojiRow, EmojiStore,
@@ -62,18 +63,19 @@ use super::decode::{
     AvatarSlot, request_avatar, request_custom_emoji, request_media, request_pack_cell,
 };
 use super::dto::{
-    BodyLineDto, BodyPieceDto, CallNoticeMark, CallOfferMark, CallScreenMark, CallTileDto,
-    CallTileMark, EmojiArt, InviteeDto, LogLineDto, MediaFailureKind, MediaState, MemberRowDto,
-    MemberRowKind, MessageDto, PackCellDto, PackRowDto, PackSurface, PackTabDto, PollAnswerDto,
-    ReactionDto, ReactorAvatarDto, RoomCallMark, RoomDto, RoomRowKind, SpaceChildDto, SpaceDto,
-    SpoilerState, UserDeviceDto, pack_surface_named,
+    BodyLineDto, BodyPieceDto, CallDeviceDto, CallNoticeMark, CallOfferMark, CallScreenMark,
+    CallTileDto, CallTileMark, EmojiArt, InviteeDto, LogLineDto, MediaFailureKind, MediaState,
+    MemberRowDto, MemberRowKind, MessageDto, PackCellDto, PackRowDto, PackSurface, PackTabDto,
+    PollAnswerDto, ReactionDto, ReactorAvatarDto, RoomCallMark, RoomDto, RoomRowKind,
+    SpaceChildDto, SpaceDto, SpoilerState, UserDeviceDto, pack_surface_named,
 };
 #[cfg(feature = "demo")]
 use super::dump;
 use super::fields::{
-    BodyLineFields, BodyPieceFields, CallTileFields, InviteeFields, LogLineFields, MemberRowFields,
-    MessageFields, PackCellFields, PackRowFields, PackTabFields, PollAnswerFields, ReactionFields,
-    ReactorFields, RoomFields, SpaceChildFields, SpaceFields, UserDeviceFields,
+    BodyLineFields, BodyPieceFields, CallDeviceFields, CallTileFields, InviteeFields,
+    LogLineFields, MemberRowFields, MessageFields, PackCellFields, PackRowFields, PackTabFields,
+    PollAnswerFields, ReactionFields, ReactorFields, RoomFields, SpaceChildFields, SpaceFields,
+    UserDeviceFields,
 };
 use super::notices::NoticeWords;
 use super::present::{
@@ -85,7 +87,8 @@ use super::props::{BoolProp, IntProp, StringProp, UiProps};
 use super::router::{DraftVerdict, EditedRow, EditedText};
 use super::schema::{
     account_activities, account_steps, attachment_kinds, audio_kinds, auth_stages,
-    body_line_fields, body_piece_fields, bool_props, call_cameras, call_mics, call_notices,
+    body_line_fields, body_piece_fields, bool_props, call_cameras, call_device_fields,
+    call_device_kinds, call_device_statuses, call_device_troubles, call_mics, call_notices,
     call_offers, call_phases, call_refusals, call_screen_refusals, call_screens, call_tile_fields,
     call_tile_marks, child_accesses, connection_states, create_room_statuses, decryption_failures,
     deliveries, device_trusts, direct_chats, emoji_arts, encryption_activities,
@@ -113,12 +116,14 @@ use crate::commands::messages::{UserMessage, UserMessageKind};
 use crate::commands::ui::{ComposerActivity, TimelineVisibility, ViewportChanged, WindowAttention};
 use crate::commands::view::{
     AccountActivity, AccountStep, AppViewState, AttachmentKind, AuthStage, CallPhase, CameraView,
-    ChildAccess, CreateRoomStatus, DirectChat, EncryptionActivity, EncryptionStep, InviteeState,
-    JoinRefusal, LoginActivity, LoginStep, MicrophoneView, PendingAnswer, PendingModeration,
-    PeopleSearchStatus, ReadersStatus, RoomInfoPlacement, RoomPreviewSheet, RoomScope,
-    RosterStatus, SourceState, SpaceIndexStatus, UpgradeLink, VerifyOffer,
+    ChildAccess, CreateRoomStatus, DeviceStatus, DeviceTrouble, DirectChat, EncryptionActivity,
+    EncryptionStep, InviteeState, JoinRefusal, LoginActivity, LoginStep, MicrophoneView,
+    PendingAnswer, PendingModeration, PeopleSearchStatus, ReadersStatus, RoomInfoPlacement,
+    RoomPreviewSheet, RoomScope, RosterStatus, SourceState, SpaceIndexStatus, UpgradeLink,
+    VerifyOffer,
 };
 use crate::domain::auth::LoginMethod;
+use crate::domain::call::devices::DeviceKind;
 use crate::domain::call::video::ScreenRefusal;
 use crate::domain::departure::RemovalKind;
 use crate::domain::encryption::{Recovery, Standing};
@@ -479,6 +484,9 @@ call_cameras!(impl_slint_enum CameraView UiCallCamera;);
 call_screens!(impl_slint_enum CallScreenMark UiCallScreen;);
 call_screen_refusals!(impl_slint_enum ScreenRefusal UiCallScreenRefusal;);
 call_tile_marks!(impl_slint_enum CallTileMark UiCallTileState;);
+call_device_kinds!(impl_slint_enum DeviceKind UiCallDeviceKind;);
+call_device_statuses!(impl_slint_enum DeviceStatus UiCallDeviceStatus;);
+call_device_troubles!(impl_slint_enum DeviceTrouble UiCallDeviceTrouble;);
 call_notices!(impl_slint_enum CallNoticeMark UiCallNotice;);
 roster_statuses!(impl_slint_enum RosterStatus UiRosterStatus;);
 room_info_placements!(impl_slint_enum RoomInfoPlacement UiRoomInfoPlacement;);
@@ -617,6 +625,7 @@ member_row_fields!(impl_entry MemberRowDto MemberRowFields MemberEntry;);
 invitee_fields!(impl_entry InviteeDto InviteeFields InviteeEntry;);
 log_line_fields!(impl_entry LogLineDto LogLineFields LogLineEntry;);
 call_tile_fields!(impl_entry CallTileDto CallTileFields CallTileEntry;);
+call_device_fields!(impl_entry CallDeviceDto CallDeviceFields CallDeviceEntry;);
 user_device_fields!(impl_entry UserDeviceDto UserDeviceFields UserDeviceEntry;);
 pack_cell_fields!(impl_entry PackCellDto PackCellFields PackCell;);
 pack_tab_fields!(impl_entry PackTabDto PackTabFields PackTabEntry;);
@@ -646,6 +655,7 @@ impl UiBackend for CompiledBackend {
     type Invitee = InviteeEntry;
     type LogLine = LogLineEntry;
     type CallTile = CallTileEntry;
+    type CallDevice = CallDeviceEntry;
     type UserDevice = UserDeviceEntry;
     type PackRow = PackRow;
     type PackCell = PackCell;

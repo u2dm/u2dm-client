@@ -26,8 +26,9 @@ use super::schema::{
 use super::spoilers::{keep_covered_body, spoilers_on};
 use crate::commands::messages::UserMessageKind;
 use crate::commands::view::{
-    CallFailure, CallNotice, CallTile, CantDecrypt, ChildAccess, InviteeRow, InviteeState,
-    JoinOffer, RoomCard, RosterRow, ScreenView, SpaceIndexRow, SpaceMatch, TileKind, TileState,
+    CallFailure, CallNotice, CallTile, CantDecrypt, ChildAccess, DeviceOption, DeviceStatus,
+    InviteeRow, InviteeState, JoinOffer, RoomCard, RosterRow, ScreenView, SpaceIndexRow,
+    SpaceMatch, TileKind, TileState,
 };
 use crate::domain::call::ring::RingKind;
 use crate::domain::departure::{Removal, RemovalKind};
@@ -622,6 +623,13 @@ pub struct CallTileDto {
     pub frame: Option<Image>,
     pub mirrored: bool,
     pub screen: bool,
+}
+
+pub struct CallDeviceDto {
+    pub key: SharedString,
+    pub name: SharedString,
+    pub status: DeviceStatus,
+    pub chosen: bool,
 }
 
 pub struct UserDeviceDto {
@@ -1807,6 +1815,18 @@ pub fn call_tile_to_dto(tile: &CallTile) -> CallTileDto {
         frame: None,
         mirrored: tile.own && tile.kind == TileKind::Person,
         screen: tile.kind == TileKind::Screen,
+    }
+}
+
+pub fn call_device_to_dto(option: &DeviceOption) -> CallDeviceDto {
+    CallDeviceDto {
+        key: option
+            .key
+            .as_ref()
+            .map_or_else(SharedString::new, |key| SharedString::from(key.as_ref())),
+        name: SharedString::from(&option.name),
+        status: option.status,
+        chosen: option.chosen,
     }
 }
 

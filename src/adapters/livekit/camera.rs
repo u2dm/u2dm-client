@@ -1,4 +1,5 @@
 use std::sync::Arc;
+use std::time::Instant;
 
 use livekit::options::{TrackPublishOptions, VideoCodec, VideoEncoding, VideoPreset};
 use livekit::prelude::{LocalTrack, LocalVideoTrack, Room, TrackSource};
@@ -9,7 +10,7 @@ use tokio::sync::mpsc;
 use tokio::task::spawn_blocking;
 
 use super::feeds::Feeds;
-use crate::adapters::video::camera::{Capture, Planes, cameras};
+use crate::adapters::video::camera::{CameraDevice, Capture, Planes};
 use crate::domain::call::media::MediaEvent;
 use crate::domain::call::video::{Camera, FeedId};
 
@@ -27,6 +28,9 @@ const MID_LAYER: (u32, u32, u64) = (640, 360, 450_000);
 pub(super) struct OwnCamera {
     capture: Option<Capture>,
     track: LocalVideoTrack,
+    source: NativeVideoSource,
+    started: Instant,
+    device: CameraDevice,
 }
 
 pub(super) fn own_feed() -> FeedId {
@@ -35,16 +39,36 @@ pub(super) fn own_feed() -> FeedId {
 
 pub(super) async fn start(
     room: &Room,
+    device: CameraDevice,
     feeds: &Arc<Feeds>,
     events_tx: &mpsc::UnboundedSender<MediaEvent>,
 ) -> Result<OwnCamera, String> {
-    let device = cameras()
-        .into_iter()
-        .next()
-        .ok_or_else(|| "no camera was found".to_owned())?;
     tracing::info!(device = %device.path.display(), name = device.name, "starting the camera");
     let source = NativeVideoSource::new(CAPTURED, false);
-    let pump = frame_pump(source.clone(), Arc::clone(feeds));
+    let started = Instant::now();
+    let pump = frame_pump(source.clone(), Arc::clone(feeds), micros_since(started));
+    let capture = capture(&device, pump, events_tx).await?;
+    let track =
+        LocalVideoTrack::create_video_track(TRACK_NAME, RtcVideoSource::Native(source.clone()));
+    room.local_participant()
+        .publish_track(LocalTrack::Video(track.clone()), publish_options())
+        .await
+        .map_err(|e| format!("the camera could not be published: {e}"))?;
+    tracing::info!("published the camera");
+    Ok(OwnCamera {
+        capture: Some(capture),
+        track,
+        source,
+        started,
+        device,
+    })
+}
+
+async fn capture(
+    device: &CameraDevice,
+    pump: impl FnMut(&Planes<'_>) + Send + 'static,
+    events_tx: &mpsc::UnboundedSender<MediaEvent>,
+) -> Result<Capture, String> {
     let lost_tx = events_tx.clone();
     let lost = move |why: String| {
         tracing::warn!("the camera stopped: {why}");
@@ -55,24 +79,57 @@ pub(super) async fn start(
             tracing::debug!("the app stopped listening to the camera");
         }
     };
-    let capture = spawn_blocking(move || Capture::start(&device, pump, lost))
+    let device = device.clone();
+    spawn_blocking(move || Capture::start(&device, pump, lost))
         .await
-        .map_err(|e| format!("the camera did not start: {e}"))??;
-    let track = LocalVideoTrack::create_video_track(TRACK_NAME, RtcVideoSource::Native(source));
-    room.local_participant()
-        .publish_track(LocalTrack::Video(track.clone()), publish_options())
-        .await
-        .map_err(|e| format!("the camera could not be published: {e}"))?;
-    tracing::info!("published the camera");
-    Ok(OwnCamera {
-        capture: Some(capture),
-        track,
-    })
+        .map_err(|e| format!("the camera did not start: {e}"))?
 }
 
 impl OwnCamera {
     pub(super) fn is_capturing(&self) -> bool {
         self.capture.as_ref().is_some_and(Capture::is_running)
+    }
+
+    pub(super) fn device_key(&self) -> &str {
+        &self.device.key
+    }
+
+    pub(super) async fn switch_to(
+        &mut self,
+        device: CameraDevice,
+        feeds: &Arc<Feeds>,
+        events_tx: &mpsc::UnboundedSender<MediaEvent>,
+    ) -> Result<(), String> {
+        tracing::info!(device = %device.path.display(), name = device.name, "switching the camera");
+        if let Some(previous) = self.capture.take() {
+            release(previous).await;
+        }
+        let switched = capture(&device, self.pump(feeds), events_tx).await;
+        match switched {
+            Ok(started) => {
+                self.capture = Some(started);
+                self.device = device;
+                Ok(())
+            }
+            Err(why) => {
+                let previous = self.device.clone();
+                match capture(&previous, self.pump(feeds), events_tx).await {
+                    Ok(restarted) => self.capture = Some(restarted),
+                    Err(again) => {
+                        tracing::warn!("the previous camera did not start again: {again}");
+                    }
+                }
+                Err(why)
+            }
+        }
+    }
+
+    fn pump(&self, feeds: &Arc<Feeds>) -> impl FnMut(&Planes<'_>) + Send + 'static {
+        frame_pump(
+            self.source.clone(),
+            Arc::clone(feeds),
+            micros_since(self.started),
+        )
     }
 
     pub(super) async fn stop(mut self, room: Option<&Room>) {
@@ -96,20 +153,28 @@ impl OwnCamera {
     }
 }
 
+fn micros_since(started: Instant) -> i64 {
+    i64::try_from(started.elapsed().as_micros()).unwrap_or(i64::MAX)
+}
+
 async fn release(capture: Capture) {
     if spawn_blocking(move || drop(capture)).await.is_err() {
         tracing::debug!("the camera thread did not stop cleanly");
     }
 }
 
-fn frame_pump(source: NativeVideoSource, feeds: Arc<Feeds>) -> impl FnMut(&Planes<'_>) + Send {
+fn frame_pump(
+    source: NativeVideoSource,
+    feeds: Arc<Feeds>,
+    since_start_us: i64,
+) -> impl FnMut(&Planes<'_>) + Send + 'static {
     let feed = own_feed();
     move |planes: &Planes<'_>| {
         let mut buffer = I420Buffer::new(planes.width, planes.height);
         copy_planes(&mut buffer, planes);
         let frame = VideoFrame {
             rotation: VideoRotation::VideoRotation0,
-            timestamp_us: planes.timestamp_us,
+            timestamp_us: since_start_us.saturating_add(planes.timestamp_us),
             frame_metadata: None,
             buffer,
         };

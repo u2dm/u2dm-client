@@ -1,6 +1,7 @@
 use crate::adapters::ui::IdentityAlertKind;
 use crate::adapters::ui::schema::{
-    account_activities, account_steps, attachment_kinds, audio_kinds, auth_stages, child_accesses,
+    account_activities, account_steps, attachment_kinds, audio_kinds, auth_stages,
+    call_device_kinds, call_device_statuses, call_device_troubles, child_accesses,
     connection_states, create_room_statuses, device_trusts, direct_chats, encryption_activities,
     encryption_standings, encryption_steps, enum_names, identity_alert_kinds, identity_trusts,
     invite_answers, invite_kinds, invitee_states, log_levels, login_activities, login_methods,
@@ -13,12 +14,13 @@ use crate::adapters::ui::schema::{
 use crate::commands::messages::UserMessageKind;
 use crate::commands::view::{
     AccountActivity, AccountStep, AttachmentKind, AuthStage, ChildAccess, CreateRoomStatus,
-    DirectChat, EncryptionActivity, EncryptionStep, InviteeState, LoginActivity, LoginStep,
-    PendingAnswer, PendingModeration, PeopleSearchStatus, ReadersStatus, RoomInfoPlacement,
-    RoomPreviewSheet, RoomScope, RosterStatus, SourceState, SpaceIndexStatus, UpgradeLink,
-    VerifyOffer,
+    DeviceStatus, DeviceTrouble, DirectChat, EncryptionActivity, EncryptionStep, InviteeState,
+    LoginActivity, LoginStep, PendingAnswer, PendingModeration, PeopleSearchStatus, ReadersStatus,
+    RoomInfoPlacement, RoomPreviewSheet, RoomScope, RosterStatus, SourceState, SpaceIndexStatus,
+    UpgradeLink, VerifyOffer,
 };
 use crate::domain::auth::LoginMethod;
+use crate::domain::call::devices::DeviceKind;
 use crate::domain::departure::RemovalKind;
 use crate::domain::encryption::{Recovery, Standing};
 use crate::domain::invite::InviteKind;
@@ -47,6 +49,10 @@ audio_kinds!(enum_names val audio_kind AudioKind;);
 preview_kinds!(enum_names val preview_kind MessagePreviewKind;);
 notify_modes!(enum_names val notify_mode NotifyMode;);
 notify_modes!(variant_named notify_mode_named NotifyMode;);
+call_device_kinds!(enum_names val call_device_kind DeviceKind;);
+call_device_kinds!(variant_named call_device_kind_named DeviceKind;);
+call_device_statuses!(enum_names val call_device_status DeviceStatus;);
+call_device_troubles!(enum_names val call_device_trouble DeviceTrouble;);
 member_roles!(enum_names val member_role MemberRole;);
 roster_statuses!(enum_names val roster_status RosterStatus;);
 room_info_placements!(enum_names val room_info_placement RoomInfoPlacement;);

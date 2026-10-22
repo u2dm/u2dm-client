@@ -4,7 +4,9 @@ use super::clipboard;
 use super::emote;
 use super::permalink;
 use super::props::send_command;
-use super::schema::{notify_modes, room_accesses, room_kinds, simple_callbacks, variant_named};
+use super::schema::{
+    call_device_kinds, notify_modes, room_accesses, room_kinds, simple_callbacks, variant_named,
+};
 use super::sending::SendingContext;
 use crate::adapters::draft_size;
 use crate::app::input::CommandSender;
@@ -13,6 +15,7 @@ use crate::commands::ui::{
     ViewportChanged, WindowAttention, WindowFocus,
 };
 use crate::domain::auth::LoginCredentials;
+use crate::domain::call::devices::{DeviceKey, DeviceKind};
 use crate::domain::call::media::MediaChoice;
 use crate::domain::capabilities::AccountPage;
 use crate::domain::departure::membership_reason;
@@ -201,6 +204,17 @@ pub fn share_screen(tx: &Tx, on: bool) {
 
 pub fn show_self_view(tx: &Tx, on: bool) {
     send_command(tx, UiCommand::ShowSelfView(on));
+}
+
+call_device_kinds!(variant_named call_device_kind_named DeviceKind;);
+
+pub fn use_call_device(tx: &Tx, kind: &str, key: String) {
+    let Some(kind) = call_device_kind_named(kind) else {
+        tracing::warn!(kind, "the device menu sent an unknown kind");
+        return;
+    };
+    let key = (!key.is_empty()).then(|| DeviceKey::new(key));
+    send_command(tx, UiCommand::UseCallDevice { kind, key });
 }
 
 pub fn use_recovery_key(tx: &Tx, key: String) {

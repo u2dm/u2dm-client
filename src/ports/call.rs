@@ -3,6 +3,7 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use tokio::sync::mpsc;
 
+use crate::domain::call::devices::{DeviceChoice, DeviceKind};
 use crate::domain::call::identity::MediaIdentity;
 use crate::domain::call::keys::{KeyIndex, MediaKey};
 use crate::domain::call::media::{MediaEvent, MediaSetup};
@@ -27,6 +28,8 @@ pub trait MediaSession: Send {
     async fn set_microphone(&mut self, on: bool);
     async fn set_camera(&mut self, on: bool);
     async fn set_screen_share(&mut self, on: bool);
+    async fn use_device(&mut self, kind: DeviceKind, choice: DeviceChoice);
+    async fn refresh_devices(&mut self);
     async fn set_own_key(&mut self, index: KeyIndex, key: &MediaKey);
     async fn use_own_key(&mut self, index: KeyIndex);
     async fn set_key(&mut self, identities: &[MediaIdentity], index: KeyIndex, key: &MediaKey);

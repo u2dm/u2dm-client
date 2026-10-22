@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -15,6 +16,9 @@ use ffmpeg_next::{Dictionary, codec, device, format, media};
 
 const SYSFS_VIDEO: &str = "/sys/class/video4linux";
 const DEVICE_DIR: &str = "/dev";
+const BY_ID_DIR: &str = "/dev/v4l/by-id";
+const BY_PATH_DIR: &str = "/dev/v4l/by-path";
+const NAME_SEPARATOR: &str = ": ";
 const CAPTURE_NODE: &str = "0";
 const V4L2_NAMES: [&str; 2] = ["video4linux2", "v4l2"];
 const LARGEST: (u32, u32) = (1280, 720);
@@ -36,22 +40,51 @@ enum Asked {
 pub struct CameraDevice {
     pub path: PathBuf,
     pub name: String,
+    pub key: String,
 }
 
 pub fn cameras() -> Vec<CameraDevice> {
     let Ok(entries) = fs::read_dir(SYSFS_VIDEO) else {
         return Vec::new();
     };
+    let by_id = links_in(BY_ID_DIR);
+    let by_path = links_in(BY_PATH_DIR);
     let mut found: Vec<CameraDevice> = entries
         .flatten()
         .filter(|entry| read_trimmed(&entry.path().join("index")).as_deref() == Some(CAPTURE_NODE))
-        .map(|entry| CameraDevice {
-            path: Path::new(DEVICE_DIR).join(entry.file_name()),
-            name: read_trimmed(&entry.path().join("name")).unwrap_or_default(),
+        .map(|entry| {
+            let path = Path::new(DEVICE_DIR).join(entry.file_name());
+            let name = shown_name(read_trimmed(&entry.path().join("name")).unwrap_or_default());
+            let key = by_id
+                .get(&path)
+                .or_else(|| by_path.get(&path))
+                .cloned()
+                .unwrap_or_else(|| name.clone());
+            CameraDevice { path, name, key }
         })
         .collect();
     found.sort_by(|a, b| a.path.cmp(&b.path));
     found
+}
+
+fn links_in(dir: &str) -> HashMap<PathBuf, String> {
+    let Ok(entries) = fs::read_dir(dir) else {
+        return HashMap::new();
+    };
+    entries
+        .flatten()
+        .filter_map(|entry| {
+            let node = fs::canonicalize(entry.path()).ok()?;
+            Some((node, entry.file_name().to_string_lossy().into_owned()))
+        })
+        .collect()
+}
+
+fn shown_name(name: String) -> String {
+    match name.split_once(NAME_SEPARATOR) {
+        Some((card, repeated)) if card.starts_with(repeated) => card.to_owned(),
+        _ => name,
+    }
 }
 
 fn read_trimmed(path: &Path) -> Option<String> {

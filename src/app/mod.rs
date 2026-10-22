@@ -890,6 +890,8 @@ impl AppService {
             | UiCommand::SetMicrophone(_)
             | UiCommand::SetCamera(_)
             | UiCommand::ShareScreen(_)
+            | UiCommand::UseCallDevice { .. }
+            | UiCommand::RefreshCallDevices
             | UiCommand::FocusCallTile(_)
             | UiCommand::ShowCallFocus
             | UiCommand::ShowCallGallery
@@ -3022,6 +3024,10 @@ impl AppService {
             UiCommand::SetMicrophone(on) => self.calls.set_microphone(on, directory),
             UiCommand::SetCamera(on) => self.calls.set_camera(on, directory),
             UiCommand::ShareScreen(on) => self.calls.set_screen_share(on, directory),
+            UiCommand::UseCallDevice { kind, key } => {
+                self.calls.use_device(kind, key.as_ref(), directory);
+            }
+            UiCommand::RefreshCallDevices => self.calls.refresh_devices(),
             UiCommand::FocusCallTile(key) => self.calls.focus_call_tile(&key, directory),
             UiCommand::ShowCallFocus => self.calls.show_call_focus(directory),
             UiCommand::ShowCallGallery => self.calls.show_call_gallery(directory),

@@ -7,12 +7,18 @@ use livekit::id::ParticipantIdentity;
 use livekit::options::TrackPublishOptions;
 use livekit::prelude::{LocalAudioTrack, LocalTrack, PlatformAudio, TrackSource};
 use tokio::sync::mpsc;
+use tokio::task::spawn_blocking;
 
 use super::camera::{self, OwnCamera};
 use super::connection::{Connection, Dial, OwnIndex, dial, use_own_index};
+use super::devices::{Listing, select_microphone, select_speaker};
 use super::e2ee;
 use super::feeds::Feeds;
 use super::screen::{self, OwnScreen};
+use crate::adapters::video::camera::CameraDevice;
+use crate::domain::call::devices::{
+    ByKind, DeviceChoice, DeviceChoices, DeviceKey, DeviceKind, DeviceLists, MediaDevice,
+};
 use crate::domain::call::identity::MediaIdentity;
 use crate::domain::call::keys::{KeyIndex, MediaKey};
 use crate::domain::call::media::{MediaEvent, Microphone, SfuState};
@@ -34,6 +40,11 @@ pub(super) struct LiveKitSession {
     camera: Option<OwnCamera>,
     wants_camera: bool,
     screen: Option<OwnScreen>,
+    choices: DeviceChoices,
+    failed: ByKind<Option<DeviceKey>>,
+    listing: Listing,
+    reported: Option<DeviceLists>,
+    routed: ByKind<Option<u16>>,
     feeds: Arc<Feeds>,
     events_tx: mpsc::UnboundedSender<MediaEvent>,
 }
@@ -42,6 +53,7 @@ impl LiveKitSession {
     pub(super) fn new(
         audio: PlatformAudio,
         encrypted: bool,
+        choices: DeviceChoices,
         feeds: Arc<Feeds>,
         events_tx: mpsc::UnboundedSender<MediaEvent>,
     ) -> Self {
@@ -56,6 +68,11 @@ impl LiveKitSession {
             camera: None,
             wants_camera: false,
             screen: None,
+            choices,
+            failed: ByKind::default(),
+            listing: Listing::default(),
+            reported: None,
+            routed: ByKind::default(),
             feeds,
             events_tx,
         }
@@ -84,9 +101,11 @@ impl LiveKitSession {
     }
 
     async fn publish_microphone(&mut self) {
-        if self.microphone.is_some() {
+        if self.microphone.is_some() || self.publishing().is_none() {
             return;
         }
+        self.read_devices().await;
+        self.route(DeviceKind::Microphone).await;
         let Some(connection) = self.publishing() else {
             return;
         };
@@ -129,7 +148,16 @@ impl LiveKitSession {
         else {
             return;
         };
-        match camera::start(&room, &self.feeds, &self.events_tx).await {
+        self.read_devices().await;
+        let Some((chosen, device)) = self.camera_to_start() else {
+            tracing::warn!("the camera did not start: no camera was found");
+            self.wants_camera = false;
+            self.emit(MediaEvent::Camera(Camera::Failed(
+                "no camera was found".into(),
+            )));
+            return;
+        };
+        match camera::start(&room, device, &self.feeds, &self.events_tx).await {
             Ok(own) => {
                 self.camera = Some(own);
                 self.emit(MediaEvent::Camera(Camera::On(camera::own_feed())));
@@ -137,9 +165,168 @@ impl LiveKitSession {
             Err(why) => {
                 tracing::warn!("the camera did not start: {why}");
                 self.wants_camera = false;
+                if self.choices.camera.key() == Some(&chosen.key) {
+                    self.device_failed(DeviceKind::Camera, chosen.key, why.clone());
+                }
                 self.emit(MediaEvent::Camera(Camera::Failed(why)));
             }
         }
+    }
+
+    fn camera_to_start(&self) -> Option<(MediaDevice, CameraDevice)> {
+        let chosen = self
+            .choices
+            .camera
+            .resolve(
+                DeviceKind::Camera,
+                &self.listing.lists().connected.camera,
+                self.failed.camera.as_ref(),
+            )?
+            .clone();
+        let device = self.listing.camera(&chosen)?;
+        Some((chosen, device))
+    }
+
+    async fn follow_camera(&mut self) {
+        let DeviceChoice::Device(chosen) = self.choices.camera.clone() else {
+            return;
+        };
+        if self.failed.camera.as_ref() == Some(&chosen.key) {
+            return;
+        }
+        let Some(device) = self.listing.camera(&chosen) else {
+            return;
+        };
+        let Some(own) = self.camera.as_mut().filter(|own| own.is_capturing()) else {
+            return;
+        };
+        if own.device_key() == device.key {
+            return;
+        }
+        let switched = own.switch_to(device, &self.feeds, &self.events_tx).await;
+        let capturing = own.is_capturing();
+        let Err(why) = switched else {
+            tracing::info!(device = chosen.name, "the camera uses the one you chose");
+            return;
+        };
+        tracing::warn!(
+            device = chosen.name,
+            "the camera you chose did not start: {why}"
+        );
+        self.device_failed(DeviceKind::Camera, chosen.key, why.clone());
+        if !capturing {
+            self.emit(MediaEvent::Camera(Camera::Failed(why)));
+        }
+    }
+
+    async fn read_devices(&mut self) {
+        let audio = self.audio.clone();
+        let listing = match spawn_blocking(move || Listing::read(&audio)).await {
+            Ok(listing) => listing,
+            Err(e) => {
+                tracing::debug!("the call devices could not be listed: {e}");
+                return;
+            }
+        };
+        self.listing = listing;
+        let lists = self.listing.lists();
+        for kind in DeviceKind::ALL {
+            let failed = self.failed.of_mut(kind);
+            if failed
+                .as_ref()
+                .is_some_and(|key| !lists.is_connected(kind, key))
+            {
+                *failed = None;
+            }
+        }
+        if self.reported.as_ref() == Some(lists) {
+            return;
+        }
+        let names = |devices: &[MediaDevice]| -> Vec<String> {
+            devices.iter().map(|device| device.name.clone()).collect()
+        };
+        tracing::info!(
+            microphones = ?names(&lists.connected.microphone),
+            speakers = ?names(&lists.connected.speaker),
+            cameras = ?names(&lists.connected.camera),
+            default_microphone = ?lists.defaults.microphone,
+            default_speaker = ?lists.defaults.speaker,
+            "the call devices changed"
+        );
+        self.reported = Some(lists.clone());
+        self.emit(MediaEvent::Devices(lists.clone()));
+    }
+
+    async fn route(&mut self, kind: DeviceKind) {
+        loop {
+            let chosen = self
+                .choices
+                .of(kind)
+                .resolve(
+                    kind,
+                    self.listing.lists().connected.of(kind),
+                    self.failed.of(kind).as_ref(),
+                )
+                .cloned();
+            let index = self.listing.index_of(kind, chosen.as_ref());
+            if *self.routed.of(kind) == Some(index) {
+                return;
+            }
+            let live = kind == DeviceKind::Microphone && self.microphone_live();
+            let audio = self.audio.clone();
+            let selected = spawn_blocking(move || match kind {
+                DeviceKind::Microphone => select_microphone(&audio, index, live),
+                DeviceKind::Speaker => select_speaker(&audio, index),
+                DeviceKind::Camera => Ok(()),
+            })
+            .await
+            .unwrap_or_else(|e| Err(e.to_string()));
+            *self.routed.of_mut(kind) = Some(index);
+            let name = chosen.as_ref().map(|device| device.name.as_str());
+            let Err(why) = selected else {
+                tracing::info!(%kind, device = name, live, "the call uses this device");
+                return;
+            };
+            let Some(device) = chosen else {
+                tracing::warn!(%kind, live, "the system default device did not start: {why}");
+                if live {
+                    self.emit(MediaEvent::Microphone(Microphone::Failed(why)));
+                }
+                return;
+            };
+            tracing::warn!(%kind, device = device.name, live, "a call device could not be used: {why}");
+            self.device_failed(kind, device.key, why);
+        }
+    }
+
+    fn microphone_live(&self) -> bool {
+        self.wants_microphone && self.microphone.is_some()
+    }
+
+    async fn close_muted_microphone(&self) {
+        if self.wants_microphone || self.microphone.is_none() {
+            return;
+        }
+        let audio = self.audio.clone();
+        let closed = spawn_blocking(move || {
+            if !audio.is_recording_initialized() {
+                return Ok(false);
+            }
+            audio.stop_recording().map(|()| true)
+        })
+        .await;
+        match closed {
+            Ok(Ok(true)) => {
+                tracing::info!("closed the muted microphone, which had started recording again");
+            }
+            Ok(Err(e)) => tracing::debug!("the muted microphone did not close: {e}"),
+            Ok(Ok(false)) | Err(_) => {}
+        }
+    }
+
+    fn device_failed(&mut self, kind: DeviceKind, device: DeviceKey, why: String) {
+        *self.failed.of_mut(kind) = Some(device.clone());
+        self.emit(MediaEvent::DeviceFailed { kind, device, why });
     }
 
     async fn stop_camera(&mut self) {
@@ -174,7 +361,11 @@ impl LiveKitSession {
         }
     }
 
-    fn switch_microphone(&self, on: bool) {
+    async fn switch_microphone(&mut self, on: bool) {
+        if on {
+            self.read_devices().await;
+            self.route(DeviceKind::Microphone).await;
+        }
         let Some(track) = &self.microphone else {
             return;
         };
@@ -253,7 +444,7 @@ impl MediaSession for LiveKitSession {
     async fn set_microphone(&mut self, on: bool) {
         self.wants_microphone = on;
         if self.microphone.is_some() {
-            self.switch_microphone(on);
+            self.switch_microphone(on).await;
         } else if on {
             self.publish_microphone().await;
         }
@@ -262,10 +453,29 @@ impl MediaSession for LiveKitSession {
     async fn set_camera(&mut self, on: bool) {
         self.wants_camera = on;
         if on {
+            self.failed.camera = None;
             self.start_camera().await;
         } else {
             self.stop_camera().await;
         }
+    }
+
+    async fn use_device(&mut self, kind: DeviceKind, choice: DeviceChoice) {
+        *self.choices.of_mut(kind) = choice;
+        *self.failed.of_mut(kind) = None;
+        self.read_devices().await;
+        match kind {
+            DeviceKind::Camera => self.follow_camera().await,
+            DeviceKind::Microphone | DeviceKind::Speaker => self.route(kind).await,
+        }
+    }
+
+    async fn refresh_devices(&mut self) {
+        self.read_devices().await;
+        self.route(DeviceKind::Microphone).await;
+        self.route(DeviceKind::Speaker).await;
+        self.follow_camera().await;
+        self.close_muted_microphone().await;
     }
 
     async fn set_screen_share(&mut self, on: bool) {

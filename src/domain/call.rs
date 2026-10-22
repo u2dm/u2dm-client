@@ -1,3 +1,4 @@
+pub mod devices;
 pub mod identity;
 pub mod keys;
 pub mod media;

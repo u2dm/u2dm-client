@@ -1,5 +1,6 @@
 mod camera;
 mod connection;
+mod devices;
 mod e2ee;
 mod feeds;
 mod screen;
@@ -82,16 +83,18 @@ impl CallMediaPort for LiveKitMedia {
                 return Err(AppError::Other(why));
             }
         };
-        log_devices(&audio);
         tell_screen_refusal(events_tx.clone());
         self.feeds.clear();
         self.feeds.bind_runtime(Handle::current());
-        Ok(Box::new(LiveKitSession::new(
+        let mut session = LiveKitSession::new(
             audio,
             setup.encrypted,
+            setup.devices,
             Arc::clone(&self.feeds),
             events_tx,
-        )))
+        );
+        session.refresh_devices().await;
+        Ok(Box::new(session))
     }
 }
 
@@ -107,19 +110,6 @@ fn tell_screen_refusal(events_tx: mpsc::UnboundedSender<MediaEvent>) {
             }
         }
         .in_current_span(),
-    );
-}
-
-fn log_devices(audio: &PlatformAudio) {
-    let inputs: Vec<String> = audio
-        .recording_devices()
-        .map(|device| device.name)
-        .collect();
-    let outputs: Vec<String> = audio.playout_devices().map(|device| device.name).collect();
-    tracing::info!(
-        ?inputs,
-        ?outputs,
-        "the call uses the system's default microphone and speaker"
     );
 }
 

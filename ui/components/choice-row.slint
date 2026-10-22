@@ -47,7 +47,7 @@ export component ChoiceRow inherits ClickArea {
             }
         }
 
-        IconDisplay {
+        if root.icon.paths.length > 0: IconDisplay {
             cross-axis-self-alignment: center;
             icon: root.icon;
             size: IconSize.sm;

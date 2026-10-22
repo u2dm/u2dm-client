@@ -1,6 +1,6 @@
 use std::fmt;
 
-use serde::Deserialize;
+use serde::{Deserialize, Deserializer, de};
 
 use std::time::Duration;
 
@@ -9,6 +9,7 @@ use crate::adapters::demo::attachments;
 use crate::adapters::ui::dump::Poke;
 use crate::adapters::ui::{link_command, matrix_link, room_address_entry};
 use crate::commands::ui::{MessageDraft, ReplyDraft, UiCommand};
+use crate::domain::call::devices::{DeviceKey, DeviceKind};
 use crate::domain::call::media::MediaChoice;
 use crate::domain::capabilities::AccountPage;
 use crate::domain::departure::membership_reason;
@@ -161,6 +162,13 @@ pub enum ProbeCommand {
     ShareScreen {
         on: bool,
     },
+    UseCallDevice {
+        #[serde(deserialize_with = "device_kind")]
+        kind: DeviceKind,
+        #[serde(default)]
+        key: Option<String>,
+    },
+    RefreshCallDevices,
     FocusCallTile {
         key: String,
     },
@@ -748,6 +756,15 @@ fn room_draft(draft: CreateRoomOp) -> Result<UiCommand, Rejected> {
     }))
 }
 
+fn device_kind<'de, D: Deserializer<'de>>(deserializer: D) -> Result<DeviceKind, D::Error> {
+    let name = String::deserialize(deserializer)?;
+    names::call_device_kind_named(&name).ok_or_else(|| {
+        de::Error::custom(format!(
+            "{name} is not a call device kind; use microphone, speaker or camera"
+        ))
+    })
+}
+
 fn room_notify(
     explicit: Option<String>,
     mode: &str,
@@ -924,6 +941,11 @@ pub fn to_driven(command: ProbeCommand, selected: Selection<'_>) -> Result<Drive
         ProbeCommand::SetMicrophone { on } => UiCommand::SetMicrophone(on),
         ProbeCommand::SetCamera { on } => UiCommand::SetCamera(on),
         ProbeCommand::ShareScreen { on } => UiCommand::ShareScreen(on),
+        ProbeCommand::UseCallDevice { kind, key } => UiCommand::UseCallDevice {
+            kind,
+            key: key.filter(|key| !key.is_empty()).map(DeviceKey::new),
+        },
+        ProbeCommand::RefreshCallDevices => UiCommand::RefreshCallDevices,
         ProbeCommand::FocusCallTile { key } => UiCommand::FocusCallTile(key),
         ProbeCommand::ShowCallFocus => UiCommand::ShowCallFocus,
         ProbeCommand::ShowCallGallery => UiCommand::ShowCallGallery,

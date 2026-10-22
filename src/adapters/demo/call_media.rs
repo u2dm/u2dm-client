@@ -9,11 +9,13 @@ use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
 use tokio::time::sleep;
 
+use super::call_devices::DemoDevices;
 use super::calls::{
     self, CAMERA_LOST_AFTER, CUT_OFF_AFTER, PICKER_TIME, RECONNECT_AFTER, RECONNECT_FOR,
     SHARE_ENDS_AFTER, SPEAKING_TURN, UNTRUSTED,
 };
 use super::data;
+use crate::domain::call::devices::{DeviceChoice, DeviceKind};
 use crate::domain::call::identity::{MediaIdentity, spellings};
 use crate::domain::call::keys::{KeyIndex, MediaKey};
 use crate::domain::call::media::{Decryption, MediaEvent, MediaSetup, Microphone, SfuState};
@@ -206,6 +208,8 @@ impl CallMediaPort for DemoCallMedia {
                 tracing::debug!("demo: the app stopped listening to the call media");
             }
         }
+        let mut devices = DemoDevices::new(setup.devices);
+        devices.refresh(&events_tx);
         Ok(Box::new(DemoMediaSession {
             room_id: setup.room_id,
             encrypted: setup.encrypted,
@@ -214,6 +218,7 @@ impl CallMediaPort for DemoCallMedia {
             keyed: HashSet::new(),
             tasks: Vec::new(),
             screen: None,
+            devices,
         }))
     }
 }
@@ -226,6 +231,7 @@ struct DemoMediaSession {
     keyed: HashSet<MediaIdentity>,
     tasks: Vec<JoinHandle<()>>,
     screen: Option<JoinHandle<()>>,
+    devices: DemoDevices,
 }
 
 impl DemoMediaSession {
@@ -415,13 +421,19 @@ impl MediaSession for DemoMediaSession {
         calls::pause().await;
         if !on {
             tracing::info!(camera = "off", "demo: the camera switches");
+            self.devices.stop_camera();
             return;
         }
-        let shaped = calls::scenario();
-        let camera = match (shaped.no_camera, shaped.camera_fails) {
-            (true, _) => Camera::Failed("demo: no camera was found".into()),
-            (false, true) => Camera::Failed("demo: the camera is busy".into()),
-            (false, false) => Camera::On(FeedId::new(calls::OWN_CAMERA_FEED)),
+        let camera = match self.devices.start_camera() {
+            Err(why) => Camera::Failed(why),
+            Ok(_) if calls::scenario().camera_fails => {
+                self.devices.stop_camera();
+                Camera::Failed("demo: the camera is busy".into())
+            }
+            Ok(device) => {
+                tracing::info!(device, "demo: the camera uses a device");
+                Camera::On(FeedId::new(calls::OWN_CAMERA_FEED))
+            }
         };
         tracing::info!(%camera, "demo: the camera switches");
         let started = matches!(camera, Camera::On(_));
@@ -438,6 +450,15 @@ impl MediaSession for DemoMediaSession {
         } else {
             self.stop_screen_share();
         }
+    }
+
+    async fn use_device(&mut self, kind: DeviceKind, choice: DeviceChoice) {
+        calls::pause().await;
+        self.devices.choose(kind, choice, &self.events_tx);
+    }
+
+    async fn refresh_devices(&mut self) {
+        self.devices.refresh(&self.events_tx);
     }
 
     async fn set_own_key(&mut self, index: KeyIndex, _key: &MediaKey) {
@@ -475,5 +496,6 @@ impl MediaSession for DemoMediaSession {
         for task in self.tasks.iter().chain(&self.screen) {
             task.abort();
         }
+        self.devices.close();
     }
 }

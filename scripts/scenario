@@ -162,6 +162,9 @@ scenario_env() {
     call-pinned-leaves) echo 'U2DM_DEMO_CALLS=active,cameras,member-leaves U2DM_DEMO_WINDOW=900x760' ;;
     call-portrait) echo 'U2DM_DEMO_CALLS=active,cameras,portrait U2DM_DEMO_WINDOW=900x760' ;;
     call-camera-toggles) echo 'U2DM_DEMO_CALLS=active,cameras,camera-toggles U2DM_DEMO_WINDOW=900x760' ;;
+    call-devices) echo 'U2DM_DEMO_CALLS=active,speaking U2DM_DEMO_WINDOW=900x760' ;;
+    call-headset-unplugs) echo 'U2DM_DEMO_CALLS=active,speaking,headset-unplugs U2DM_DEMO_WINDOW=900x760' ;;
+    call-webcam-unplugs) echo 'U2DM_DEMO_CALLS=active,cameras,webcam-unplugs U2DM_DEMO_WINDOW=900x760' ;;
     notifications)   echo 'U2DM_DEMO_NOTIFY=all U2DM_DEMO_WINDOW=900x760' ;;
     notifications-focused) echo 'U2DM_DEMO_NOTIFY=group,dm,mention U2DM_DEMO_WINDOW=900x760' ;;
     notifications-burst) echo 'U2DM_DEMO_NOTIFY=burst U2DM_DEMO_WINDOW=900x760' ;;
@@ -911,6 +914,30 @@ scenario_steps() {
       echo 'sleep 2'
       echo '{"op":"focus_call_tile","key":"@nadia:matrix.org (DEMOCALLDEVICE) person"}'
       echo 'sleep 6' ;;
+    call-devices)
+      echo '{"op":"select_room","room_id":"!rust:demo.local"}'
+      echo 'sleep 2'
+      echo '{"op":"join_call","microphone":false}'
+      echo 'sleep 2'
+      echo '{"op":"use_call_device","kind":"microphone","key":"USB Headset"}'
+      echo '{"op":"use_call_device","kind":"speaker","key":"HDMI / DisplayPort"}'
+      echo 'sleep 2' ;;
+    call-headset-unplugs)
+      echo '{"op":"select_room","room_id":"!rust:demo.local"}'
+      echo 'sleep 2'
+      echo '{"op":"join_call"}'
+      echo 'sleep 2'
+      echo '{"op":"use_call_device","kind":"microphone","key":"USB Headset"}'
+      echo 'sleep 5' ;;
+    call-webcam-unplugs)
+      echo '{"op":"select_room","room_id":"!design:demo.local"}'
+      echo 'sleep 2'
+      echo '{"op":"join_call","camera":true}'
+      echo 'sleep 2'
+      echo '{"op":"use_call_device","kind":"camera","key":"usb-Demo_USB_Webcam-video-index0"}'
+      echo 'sleep 6'
+      echo '{"op":"set_camera","on":true}'
+      echo 'sleep 6' ;;
     notifications)
       echo '{"op":"window_focus","focused":false}'
       echo 'sleep 15'
@@ -1259,6 +1286,9 @@ scenario_note() {
     call-pinned-leaves) echo 'focus Jordan in the Design Team call; he leaves 15 s after sync and the stage falls back to the rule, which in a call of two focuses Nadia (calls, call-ui)' ;;
     call-portrait) echo 'focus Jordan, whose camera is portrait: it fills the stage cropped until the layout menu'"'"'s Fit whole videos (call-ui)' ;;
     call-camera-toggles) echo 'focus Nadia, whose camera goes off and on every 5 s: the stage keeps her, on her avatar while it is off (call-ui)' ;;
+    call-devices) echo 'join the Rust Programming call muted and choose the USB Headset microphone and the HDMI speaker: the Devices menu checks them and the microphone stays muted (call-ui, call-media)' ;;
+    call-headset-unplugs) echo 'choose the USB Headset microphone; 3 s later it is unplugged: the call uses the system default and the band says so; 4 s later it is back and used again (calls, call-media)' ;;
+    call-webcam-unplugs) echo 'switch your camera to the USB Webcam; 3 s later it is unplugged: the camera stops with Try again, which starts the Integrated Camera, and the webcam is used again once it is back (call-media)' ;;
     notifications)   echo 'with the window unfocused, every scripted arrival notifies except the muted room; !rust is read elsewhere and withdrawn, Leo'"'"'s invite notifies, and a click on Priya'"'"'s opens her chat (notifications, directory.attention, title)' ;;
     notifications-focused) echo 'the window keeps focus: arrivals light their rooms and the title count, but nothing notifies (notifications, directory.attention)' ;;
     notifications-burst) echo 'three messages in !rust a second apart: one notification, replaced twice (notifications)' ;;
@@ -1301,7 +1331,7 @@ names() {
     call-switch-calls call-sheet-ended call-answer-video call-answer-switch \
     call-alone call-announce-fails call-cut-off call-camera-lost call-share-cancelled \
     call-voice-panel call-one-to-one call-two-shares call-share-restarts call-pinned-leaves \
-    call-portrait call-camera-toggles \
+    call-portrait call-camera-toggles call-devices call-headset-unplugs call-webcam-unplugs \
     notifications notifications-focused notifications-burst \
     encryption-unverified encryption-recovery-key encryption-new-account encryption-setup-refused \
     identity-reset identity-reset-oauth room-keys \

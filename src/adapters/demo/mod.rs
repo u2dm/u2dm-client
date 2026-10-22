@@ -2,6 +2,7 @@ mod account;
 mod attachments;
 pub mod audio;
 mod browser;
+mod call_devices;
 mod call_media;
 mod calls;
 pub mod catalog;

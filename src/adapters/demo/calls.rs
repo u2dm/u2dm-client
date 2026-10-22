@@ -230,6 +230,21 @@ pub const CATALOG: Scenarios = Scenarios {
             effect: "the desktop ends your screen share 5s after it starts",
             note: "",
         },
+        Flag {
+            value: "headset-unplugs",
+            effect: "the USB Headset is unplugged 3s after you first choose it as your microphone or speaker, and plugged back in 4s later",
+            note: "the call uses the system default while it is gone and the headset again once it is back",
+        },
+        Flag {
+            value: "headset-fails",
+            effect: "the USB Headset cannot be opened, so choosing it as your microphone or speaker fails",
+            note: "the call keeps the system default and the device menu says the headset could not be used",
+        },
+        Flag {
+            value: "webcam-unplugs",
+            effect: "the USB Webcam is unplugged 3s after you first choose it, and plugged back in 4s later",
+            note: "a camera capturing it stops, as an unplugged one does",
+        },
     ],
     notes: &[
         "each decline logs `demo: the call is declined`",
@@ -237,6 +252,7 @@ pub const CATALOG: Scenarios = Scenarios {
         "joining logs `demo: you joined the call`, leaving `demo: you left the call`",
         "the media is fake: it never opens a microphone, speaker or camera; video tiles show generated pictures",
         "sharing your screen stands in for the portal's picker with a 1s wait, then shares nothing real",
+        "the device menu lists two microphones, three speakers and two cameras; none of them exists",
     ],
 };
 
@@ -275,6 +291,8 @@ const PORTRAIT_CAMERA_OF: &str = JORDAN;
 const LEAVER: &str = JORDAN;
 const MEMBER_LEAVES_AFTER: Duration = Duration::from_secs(15);
 pub const PICKER_TIME: Duration = Duration::from_secs(1);
+pub const UNPLUGGED_AFTER: Duration = Duration::from_secs(3);
+pub const PLUGGED_BACK_AFTER: Duration = Duration::from_secs(4);
 pub const SHARE_ENDS_AFTER: Duration = Duration::from_secs(5);
 pub const OWN_CAMERA_FEED: &str = "demo-own-camera";
 const OTHER_OWN_DEVICE: &str = "DEMOOTHERDEVICE";
@@ -334,6 +352,9 @@ pub struct Scenario {
     pub no_screen_capture: bool,
     pub share_cancelled: bool,
     pub share_ends: bool,
+    pub headset_unplugs: bool,
+    pub headset_fails: bool,
+    pub webcam_unplugs: bool,
 }
 
 pub fn scenario() -> Scenario {
@@ -395,6 +416,9 @@ fn apply(scenario: &mut Scenario, flag: &str) {
         "no-screen-capture" => scenario.no_screen_capture = true,
         "share-cancelled" => scenario.share_cancelled = true,
         "share-ends" => scenario.share_ends = true,
+        "headset-unplugs" => scenario.headset_unplugs = true,
+        "headset-fails" => scenario.headset_fails = true,
+        "webcam-unplugs" => scenario.webcam_unplugs = true,
         other => tracing::warn!("unknown {ENV_VAR} flag: {other}"),
     }
 }

@@ -130,12 +130,14 @@ export global CallPanel {
     in-out property <bool> fits-videos: false;
     in-out property <bool> hides-strip: false;
     in-out property <bool> menu-open: false;
+    in-out property <bool> devices-open: false;
 
     public function begin(video: bool) {
         root.chosen = video ? CallSize.stage : CallSize.compact;
         root.fits-videos = false;
         root.hides-strip = false;
         root.menu-open = false;
+        root.devices-open = false;
     }
 }
 
@@ -214,6 +216,7 @@ export global Shell {
         root.attach-open = false;
         root.poll-open = false;
         CallPanel.menu-open = false;
+        CallPanel.devices-open = false;
     }
 }
 
@@ -599,6 +602,7 @@ export global LocalState {
         Polls.clear();
         Shell.poll-open = false;
         CallPanel.menu-open = false;
+        CallPanel.devices-open = false;
     }
 
     public function close-popovers() {
@@ -607,5 +611,6 @@ export global LocalState {
         Shell.picker-open = false;
         Shell.attach-open = false;
         CallPanel.menu-open = false;
+        CallPanel.devices-open = false;
     }
 }

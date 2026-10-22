@@ -1,4 +1,4 @@
-import { CallCamera, CallMic, CallNotice, CallPhase, CallRefusal, CallScreen, CallScreenRefusal, CallTileState, Delivery, EmojiArt, MediaFailure, PresenceLine, PreviewKind, RoomCallMark, ServiceKind, ShieldReason, UpgradeLink, UserMessageKind } from "./enums.slint";
+import { CallCamera, CallDeviceKind, CallDeviceStatus, CallDeviceTrouble, CallMic, CallNotice, CallPhase, CallRefusal, CallScreen, CallScreenRefusal, CallTileState, Delivery, EmojiArt, MediaFailure, PresenceLine, PreviewKind, RoomCallMark, ServiceKind, ShieldReason, UpgradeLink, UserMessageKind } from "./enums.slint";
 
 export global UserMessages {
     public pure function text(kind: UserMessageKind, detail: string) -> string {
@@ -1060,6 +1060,49 @@ export global CallWords {
             return @tr("Your camera did not start, try again");
         }
         return @tr("Turn your camera on");
+    }
+
+    public pure function device-kind(kind: CallDeviceKind) -> string {
+        if kind == CallDeviceKind.microphone {
+            return @tr("Microphone");
+        }
+        if kind == CallDeviceKind.speaker {
+            return @tr("Speaker");
+        }
+        return @tr("Camera");
+    }
+
+    public pure function device-name(status: CallDeviceStatus, name: string) -> string {
+        if status == CallDeviceStatus.system-default {
+            return @tr("System default");
+        }
+        return name;
+    }
+
+    public pure function device-detail(status: CallDeviceStatus, name: string) -> string {
+        if status == CallDeviceStatus.system-default {
+            return name;
+        }
+        if status == CallDeviceStatus.missing {
+            return @tr("Not connected");
+        }
+        if status == CallDeviceStatus.failed {
+            return @tr("Could not be used");
+        }
+        return "";
+    }
+
+    public pure function device-news(trouble: CallDeviceTrouble, kind: CallDeviceKind, name: string) -> string {
+        if trouble == CallDeviceTrouble.disconnected && kind == CallDeviceKind.camera {
+            return @tr("{} was disconnected", name);
+        }
+        if trouble == CallDeviceTrouble.disconnected {
+            return @tr("{} was disconnected, so the call uses the system default", name);
+        }
+        if kind == CallDeviceKind.camera {
+            return @tr("{} could not be started", name);
+        }
+        return @tr("{} could not be used, so the call uses the system default", name);
     }
 
     public pure function stop-sharing(screen: CallScreen) -> string {

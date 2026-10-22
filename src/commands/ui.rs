@@ -1,6 +1,7 @@
 use strum::Display as StrumDisplay;
 
 use crate::domain::auth::LoginCredentials;
+use crate::domain::call::devices::{DeviceKey, DeviceKind};
 use crate::domain::call::media::MediaChoice;
 use crate::domain::capabilities::AccountPage;
 use crate::domain::emote::{ComposerText, Emote};
@@ -420,6 +421,12 @@ pub enum UiCommand {
     SetCamera(bool),
     #[strum(to_string = "ShareScreen({0})")]
     ShareScreen(bool),
+    #[strum(to_string = "UseCallDevice({kind})")]
+    UseCallDevice {
+        kind: DeviceKind,
+        key: Option<DeviceKey>,
+    },
+    RefreshCallDevices,
     #[strum(to_string = "FocusCallTile({0})")]
     FocusCallTile(String),
     ShowCallFocus,
@@ -616,6 +623,8 @@ impl UiCommand {
             | Self::SetMicrophone(_)
             | Self::SetCamera(_)
             | Self::ShareScreen(_)
+            | Self::UseCallDevice { .. }
+            | Self::RefreshCallDevices
             | Self::FocusCallTile(_)
             | Self::ShowCallFocus
             | Self::ShowCallGallery

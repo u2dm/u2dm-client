@@ -26,6 +26,7 @@ import { CallPill } from "../call/call-pill.slint";
 import { CallBand } from "../call/call-band.slint";
 import { CallStrip } from "../call/call-strip.slint";
 import { CallViewMenu } from "../call/call-view-menu.slint";
+import { CallDevicesMenu } from "../call/call-devices-menu.slint";
 import { CallOffer } from "../../../../enums.slint";
 import { CallWords } from "../../../../messages.slint";
 import { AppButton } from "../../../../components/button.slint";
@@ -597,6 +598,25 @@ export component TimelineView inherits Rectangle {
                     CallPanel.menu-open = false;
                     band.focus-menu();
                 }
+            }
+        }
+
+        if CallPanel.devices-open && root.shows-band: ModalHost {
+            x: -root.x;
+            y: 0;
+            width: root.overlay-width;
+            height: root.height;
+            dim: false;
+            label: @tr("Devices");
+            dismissed => {
+                CallPanel.devices-open = false;
+                band.focus-devices();
+            }
+
+            CallDevicesMenu {
+                x: Placement.fit(band.devices-x + band.devices-size - self.width, self.width, root.overlay-width, Space.md);
+                y: band.devices-y + band.devices-size + Space.xs;
+                room-below: root.height - self.y - Space.md;
             }
         }
     }

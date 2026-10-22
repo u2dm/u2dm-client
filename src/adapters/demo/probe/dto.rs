@@ -6,15 +6,15 @@ use crate::commands::messages::{UserMessage, UserMessageKind};
 use crate::commands::ui::Draft;
 use crate::commands::view::{
     AccountStep, AccountView, ActiveCall, AppViewState, AttachmentView, AudioView, AuthPrompt,
-    CallFailure, CallNotice, CallPhase, CallSheetView, CallTile, CallView, CameraView, CantDecrypt,
-    CardStatus, CopiedLink, CreateRoomView, DirectoryView, EncryptionStep, EncryptionView,
-    IdentityAlertView, InvitePeopleView, InviteView, InviteeRow, InvitesSection, JoinOffer,
-    JoinRefusal, LeaveSpaceView, LifecycleView, LoginStep, LogoutView, MentionsView,
-    MicrophoneView, NotificationsView, PackView, PaginationView, PinnedView, PresenceView,
-    ReadersView, RemovalView, RoomInfoView, RoomLogView, RoomMenuTarget, RoomPreviewSheet,
-    RoomPreviewView, RosterRow, ScreenView, SourceState, SpaceIndexRow, SpaceIndexView, SpaceMatch,
-    TileKind, TileState, Toast, TrackFile, TypingView, UnsentMessage, UpgradeView, UserInfoView,
-    VideoView,
+    CallDevices, CallFailure, CallNotice, CallPhase, CallSheetView, CallTile, CallView, CameraView,
+    CantDecrypt, CardStatus, CopiedLink, CreateRoomView, DeviceOption, DirectoryView,
+    EncryptionStep, EncryptionView, IdentityAlertView, InvitePeopleView, InviteView, InviteeRow,
+    InvitesSection, JoinOffer, JoinRefusal, LeaveSpaceView, LifecycleView, LoginStep, LogoutView,
+    MentionsView, MicrophoneView, NotificationsView, PackView, PaginationView, PinnedView,
+    PresenceView, ReadersView, RemovalView, RoomInfoView, RoomLogView, RoomMenuTarget,
+    RoomPreviewSheet, RoomPreviewView, RosterRow, ScreenView, SourceState, SpaceIndexRow,
+    SpaceIndexView, SpaceMatch, TileKind, TileState, Toast, TrackFile, TypingView, UnsentMessage,
+    UpgradeView, UserInfoView, VideoView,
 };
 use crate::domain::call::ring::RingKind;
 use crate::domain::call::video::ScreenRefusal;
@@ -247,6 +247,31 @@ struct ActiveCallDto {
     offered_share: Option<String>,
     ended_share: Option<EndedShareDto>,
     people: Vec<String>,
+    devices: CallDevicesDto,
+}
+
+#[derive(Serialize)]
+struct CallDevicesDto {
+    microphones: Vec<DeviceOptionDto>,
+    speakers: Vec<DeviceOptionDto>,
+    cameras: Vec<DeviceOptionDto>,
+    news: Option<DeviceNewsDto>,
+}
+
+#[derive(Serialize)]
+struct DeviceOptionDto {
+    key: Option<String>,
+    name: String,
+    status: &'static str,
+    chosen: bool,
+}
+
+#[derive(Serialize)]
+struct DeviceNewsDto {
+    serial: u64,
+    kind: &'static str,
+    name: String,
+    trouble: &'static str,
 }
 
 #[derive(Serialize)]
@@ -1132,6 +1157,32 @@ fn active_call(active: &ActiveCall) -> ActiveCallDto {
             who: ended.who.shown(),
         }),
         people: active.people.iter().map(NamedUser::shown).collect(),
+        devices: call_devices(&active.devices),
+    }
+}
+
+fn call_devices(devices: &CallDevices) -> CallDevicesDto {
+    let options = |options: &[DeviceOption]| -> Vec<DeviceOptionDto> {
+        options
+            .iter()
+            .map(|option| DeviceOptionDto {
+                key: option.key.as_ref().map(ToString::to_string),
+                name: option.name.clone(),
+                status: names::call_device_status(option.status),
+                chosen: option.chosen,
+            })
+            .collect()
+    };
+    CallDevicesDto {
+        microphones: options(&devices.options.microphone),
+        speakers: options(&devices.options.speaker),
+        cameras: options(&devices.options.camera),
+        news: devices.news.as_ref().map(|news| DeviceNewsDto {
+            serial: news.serial,
+            kind: names::call_device_kind(news.kind),
+            name: news.name.clone(),
+            trouble: names::call_device_trouble(news.trouble),
+        }),
     }
 }
 
