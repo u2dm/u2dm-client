@@ -1246,13 +1246,6 @@ export global CallWords {
         return @tr("{} could not be used, so the call uses the system default", name);
     }
 
-    public pure function stop-sharing(screen: CallScreen) -> string {
-        if screen == CallScreen.choosing {
-            return @tr("Cancel sharing");
-        }
-        return @tr("Stop sharing");
-    }
-
     public pure function sheet-title(direct: bool, joining: bool, video: bool, room: string, leaving: string) -> string {
         if leaving != "" && joining {
             return @tr("Leave {} and join {}?", leaving, room);

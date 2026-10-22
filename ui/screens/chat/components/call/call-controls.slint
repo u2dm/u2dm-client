@@ -209,15 +209,6 @@ export component CallShareButton inherits CallToggle {
     }
 }
 
-export component CallStopSharingButton inherits AppButton {
-    height: Metrics.call-control;
-    text: CallWords.stop-sharing(CallView.screen);
-    tint: AppStyle.call-sharing;
-    clicked => {
-        Actions.share-screen({ on: false });
-    }
-}
-
 export component CallLeaveButton inherits AppButton {
     height: Metrics.call-control;
     text: @tr("Leave");

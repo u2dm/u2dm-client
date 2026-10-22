@@ -18,7 +18,6 @@ import { HeaderIconButton } from "../../../components/button.slint";
 import { RetryNotice } from "../../../components/retry-notice.slint";
 import { SearchField } from "../../../components/search-field.slint";
 import { ContextPress } from "./context-press.slint";
-import { CallStrip } from "./call/call-strip.slint";
 import { AppStyle, Fonts, IconSize, Metrics, Motion, Opacity, Size, Space, Stroke, Weight } from "../../../theme.slint";
 import { InviteKind, RemovalKind, RoomCallMark, RoomRowKind, RoomScope, ServiceKind } from "../../../enums.slint";
 import { DirectoryView, SpaceIndexView } from "../../../views.slint";
@@ -856,7 +855,6 @@ export component Sidebar inherits Rectangle {
     in property <bool> above-modal: false;
     in property <bool> collapsed: false;
     in property <bool> joins-timeline: false;
-    in property <bool> shows-call-strip: false;
 
     callback room-selected();
 
@@ -908,20 +906,7 @@ export component Sidebar inherits Rectangle {
         root.open-row(DirectoryView.rooms[first]);
     }
 
-    call-strip := CallStrip {
-        x: 0;
-        y: 0;
-        width: root.width;
-        visible: root.shows-call-strip;
-        above-modal: root.above-modal;
-        returned => {
-            root.room-selected();
-        }
-    }
-
     HorizontalLayout {
-        y: root.shows-call-strip ? call-strip.height : 0px;
-        height: root.height - self.y;
 
         rail := SpaceRail {
             width: root.rail-width;

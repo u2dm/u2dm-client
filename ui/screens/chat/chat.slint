@@ -7,6 +7,9 @@ import { SpaceIndexPane } from "./components/space-index.slint";
 import { RoomMenuOverlay } from "./components/room-menu.slint";
 import { CallAnnouncer } from "./components/call/call-announcer.slint";
 import { CallKey, CallKeys } from "./components/call/call-controls.slint";
+import { CallDevicesMenu } from "./components/call/call-devices-menu.slint";
+import { CallDock } from "./components/call/call-dock.slint";
+import { ModalHost, Placement } from "../../components/overlay.slint";
 import { ResizeEdge, ResizeHandle } from "../../components/resize-handle.slint";
 import { RoomInfoPlacement, RoomScope, UserMessageKind } from "../../enums.slint";
 import { UserMessages } from "../../messages.slint";
@@ -105,6 +108,11 @@ export component ChatScreen inherits FocusScope {
     property <length> timeline-width: root.width - root.timeline-x - root.room-info-pane-inset;
 
     property <bool> has-toast: RoomView.toast-message != UserMessageKind.none;
+    property <bool> shows-dock: CallView.active || CallView.failed;
+    property <length> dock-height: root.shows-dock ? dock.height : 0px;
+    property <length> menu-room-above: dock.devices-y - Space.xs - Space.md;
+    property <length> menu-room-below: root.height - dock.devices-y - dock.devices-size - Space.xs - Space.md;
+    property <bool> menu-above: root.menu-room-above >= root.menu-room-below;
 
     focus-on-click: false;
     focus-on-tab-navigation: false;
@@ -238,8 +246,8 @@ export component ChatScreen inherits FocusScope {
         height: root.height;
         visible: !SpaceIndexView.visible;
         compact: root.compact && root.has-room;
-        under-room-list: root.shows-room-list;
         overlay-width: root.width;
+        dock-height: root.dock-height;
         room-info-pane-fits: root.room-info-pane-fits;
         room-info-pane-shown: root.room-info-pane-shown;
         room-info-pane-width: root.room-info-pane-inset;
@@ -250,10 +258,9 @@ export component ChatScreen inherits FocusScope {
         x: 0;
         y: 0;
         width: root.width;
-        height: root.height;
+        height: root.height - root.dock-height;
         subrail-width: root.subrail-width;
         above-modal: Shell.nav-on-top;
-        shows-call-strip: CallView.active || CallView.failed;
         room-selected => {
             root.close-nav();
         }
@@ -263,7 +270,7 @@ export component ChatScreen inherits FocusScope {
         x: root.timeline-x;
         y: 0;
         width: root.timeline-width;
-        height: root.height;
+        height: root.height - root.dock-height;
         above-modal: Shell.nav-on-top;
     }
 
@@ -304,6 +311,45 @@ export component ChatScreen inherits FocusScope {
         }
     }
 
+    dock := CallDock {
+        x: root.timeline-x;
+        y: root.height - self.height;
+        width: root.timeline-width;
+        visible: root.shows-dock;
+        above-modal: Shell.nav-on-top;
+        here: timeline.in-call-room && !root.shows-room-list && !SpaceIndexView.visible;
+        stage-hidden: timeline.stage-hidden;
+        stage-shown: timeline.shows-call-media;
+        returned => {
+            timeline.focus-composer();
+        }
+    }
+
+    if CallPanel.devices-open && CallView.active: ModalHost {
+        x: 0;
+        y: 0;
+        width: root.width;
+        height: root.height;
+        dim: false;
+        label: @tr("Devices");
+        dismissed => {
+            CallPanel.devices-open = false;
+            dock.focus-devices();
+        }
+        opened => {
+            devices-menu.open(CallPanel.devices-by-keys);
+        }
+
+        devices-menu := CallDevicesMenu {
+            x: Placement.fit(dock.devices-x + dock.devices-size - self.width, self.width, root.width, Space.md);
+            y: root.menu-above
+                ? dock.devices-y - Space.xs - self.height
+                : dock.devices-y + dock.devices-size + Space.xs;
+            room: root.menu-above ? root.menu-room-above : root.menu-room-below;
+            above-modal: Shell.nav-on-top;
+        }
+    }
+
     RoomMenuOverlay {
         x: 0;
         y: 0;
@@ -315,7 +361,7 @@ export component ChatScreen inherits FocusScope {
     if root.has-toast: Toast {
         width: clamp(root.timeline-width - 2 * Space.xl, Metrics.toast-min-width, Metrics.toast-max-width);
         x: root.timeline-x + (root.timeline-width - self.width) / 2;
-        y: root.height - self.height - Space.xl;
+        y: root.height - root.dock-height - self.height - Space.xl;
     }
 
     Drawer {

@@ -2,17 +2,19 @@ import { IconDisplay, IconSet } from "@lucide";
 
 import { IconButton, LinkButton } from "../../../../components/button.slint";
 import { Actions } from "../../../../actions.slint";
-import { CallNotice, CallScreen } from "../../../../enums.slint";
 import { CallWords } from "../../../../messages.slint";
 import { CallPanel, CallSize, TipScope } from "../../../../local.slint";
 import { CallView } from "../../../../views.slint";
-import { AppStyle, Fonts, IconSize, Metrics, Motion, Size, Space, Stroke, Weight } from "../../../../theme.slint";
-import { CallCameraButton, CallKey, CallKeys, CallLeaveButton, CallMicButton, CallShareButton } from "./call-controls.slint";
+import { AppStyle, Fonts, IconSize, Size, Space, Stroke, Weight } from "../../../../theme.slint";
+import { CallKey, CallKeys } from "./call-controls.slint";
 import { CallStage } from "./call-stage.slint";
-import { CallStatus } from "./call-status.slint";
 
-component SharingLine inherits HorizontalLayout {
-    spacing: Space.md;
+component ShareOffer inherits HorizontalLayout {
+    in property <string> name;
+
+    callback view();
+
+    spacing: Space.sm;
 
     IconDisplay {
         cross-axis-self-alignment: center;
@@ -24,7 +26,8 @@ component SharingLine inherits HorizontalLayout {
 
     Text {
         horizontal-stretch: 1;
-        text: @tr("You are sharing your screen");
+        text: @tr("{} is sharing their screen", root.name);
+        font-family: Fonts.emoji;
         font-size: Fonts.body-small;
         font-weight: Weight.semibold;
         color: AppStyle.foreground-strong;
@@ -34,12 +37,12 @@ component SharingLine inherits HorizontalLayout {
 
     LinkButton {
         min-height: Size.sm;
-        text: CallWords.stop-sharing(CallScreen.on);
-        label: CallWords.share(CallScreen.on, CallView.screen-refusal);
+        text: @tr("View");
+        label: CallWords.view-share(root.name);
         font-size: Fonts.body-small;
         pad: 2 * Space.sm;
         clicked => {
-            Actions.share-screen({ on: false });
+            root.view();
         }
     }
 }
@@ -48,49 +51,17 @@ export component CallBand inherits Rectangle {
     in property <CallSize> size;
     in property <bool> stage-fits;
 
-    out property <length> natural-height: layout.preferred-height;
     out property <length> menu-x: menu-button.absolute-position.x;
     out property <length> menu-y: menu-button.absolute-position.y;
     out property <length> menu-size: menu-button.height;
-    out property <length> devices-x: devices-button.absolute-position.x;
-    out property <length> devices-y: devices-button.absolute-position.y;
-    out property <length> devices-size: devices-button.height;
 
-    property <bool> compact: root.size == CallSize.compact;
     property <bool> forced-full: root.size == CallSize.full && CallPanel.chosen == CallSize.stage;
-    property <bool> offers-chat: !root.compact && !root.forced-full;
-    property <bool> explains-share;
-    property <bool> tells-share-ended;
-    property <bool> tells-device-news;
-    property <int> ended-share-serial: CallView.ended-share-serial;
-    property <int> device-news-serial: CallView.device-news-serial;
-    property <bool> has-status: CallView.notice != CallNotice.none
-        || (root.explains-share && share.refused)
-        || root.tells-device-news
-        || (root.tells-share-ended && !root.compact);
+    property <bool> offers-chat: !root.forced-full;
     property <string> people: CallWords.people(CallView.people-first, CallView.people-second, CallView.people-more);
-    property <string> phase: CallWords.phase(CallView.phase, CallView.elapsed);
-    property <bool> stage-shows-share: CallView.stage.length > 0 && CallView.stage[0].screen;
-    property <string> share-to-view: root.compact && root.stage-shows-share
-        ? CallView.stage[0].name
-        : CallView.offered-share;
+    property <int> band-takes-focus: CallPanel.band-takes-focus;
 
     public function focus-menu() {
         menu-button.take-focus();
-    }
-
-    public function focus-devices() {
-        devices-button.take-focus();
-    }
-
-    function focus-control-for(notice: CallNotice) {
-        if notice == CallNotice.microphone-failed {
-            mic.take-focus();
-        } else if notice == CallNotice.camera-failed {
-            camera.take-focus();
-        } else if notice == CallNotice.screen-failed || notice == CallNotice.choosing-screen {
-            share.take-focus();
-        }
     }
 
     public function focus-chat() {
@@ -101,54 +72,15 @@ export component CallBand inherits Rectangle {
         }
     }
 
-    function view-share() {
-        if !root.compact || !root.stage-shows-share {
-            Actions.view-call-share();
-        }
-        if root.compact {
-            CallPanel.chosen = CallSize.stage;
-        }
-    }
-
-    changed ended-share-serial => {
-        if root.ended-share-serial != 0 {
-            root.tells-share-ended = true;
-            ended-timer.running = false;
-            ended-timer.running = true;
-        }
-    }
-
-    ended-timer := Timer {
-        interval: Motion.notice-hold;
-        running: false;
-        triggered => {
-            root.tells-share-ended = false;
-            self.running = false;
-        }
-    }
-
-    changed device-news-serial => {
-        if root.device-news-serial != 0 {
-            root.tells-device-news = true;
-            news-timer.running = false;
-            news-timer.running = true;
-        }
-    }
-
-    news-timer := Timer {
-        interval: Motion.notice-hold;
-        running: false;
-        triggered => {
-            root.tells-device-news = false;
-            self.running = false;
-        }
+    changed band-takes-focus => {
+        size-toggle.take-focus();
     }
 
     background: AppStyle.call-band;
     accessible-role: groupbox;
     accessible-label: @tr("Call in {}", CallView.active-room-name);
 
-    layout := VerticalLayout {
+    VerticalLayout {
         padding: Space.md;
         spacing: Space.sm;
 
@@ -179,21 +111,21 @@ export component CallBand inherits Rectangle {
                 x: (root.offers-chat ? chat-toggle.x - Space.sm : parent.width) - self.width;
                 y: (parent.height - self.height) / 2;
                 size: Size.md;
-                icon: root.compact ? IconSet.ChevronDown
-                    : root.forced-full ? IconSet.Minimize2
-                    : IconSet.ChevronUp;
-                label: root.compact ? @tr("Expand the call")
-                    : root.forced-full ? @tr("Show the chat")
-                    : @tr("Collapse the call");
+                icon: root.forced-full ? IconSet.Minimize2 : IconSet.PanelTopClose;
+                label: root.forced-full ? @tr("Show the chat") : @tr("Hide the call");
                 tip: self.label;
                 tip-keys: root.forced-full ? CallKeys.binding(CallKey.chat) : "";
                 tip-below: true;
                 tip-scope: TipScope.call;
                 clicked => {
+                    let by-keys = self.has-focus;
                     if root.forced-full {
                         CallPanel.show-chat(root.stage-fits);
                     } else {
-                        CallPanel.chosen = root.compact ? CallSize.stage : CallSize.compact;
+                        CallPanel.chosen = CallSize.hidden;
+                        if by-keys {
+                            CallPanel.dock-takes-focus += 1;
+                        }
                     }
                 }
             }
@@ -202,7 +134,6 @@ export component CallBand inherits Rectangle {
                 x: size-toggle.x - Space.sm - self.width;
                 y: (parent.height - self.height) / 2;
                 size: Size.md;
-                visible: !root.compact;
                 icon: IconSet.LayoutDashboard;
                 label: @tr("Call layout");
                 tip: self.label;
@@ -214,96 +145,33 @@ export component CallBand inherits Rectangle {
                 }
             }
 
-            devices-button := IconButton {
-                x: (root.compact ? size-toggle.x : menu-button.x) - Space.sm - self.width;
-                y: (parent.height - self.height) / 2;
-                size: Size.md;
-                icon: IconSet.Settings;
-                label: @tr("Choose your microphone, speaker and camera");
-                tip: self.label;
-                tip-below: true;
-                tip-scope: TipScope.call;
-                clicked => {
-                    CallPanel.devices-by-keys = self.has-focus;
-                    Actions.refresh-call-devices();
-                    CallPanel.devices-open = true;
-                }
-            }
-
-            view-share := LinkButton {
-                x: devices-button.x - Space.sm - self.width;
-                y: (parent.height - self.height) / 2;
-                height: Size.sm;
-                visible: root.share-to-view != "";
-                text: CallWords.view-share(root.share-to-view);
-                label: self.text;
-                font-size: Fonts.body-small;
-                pad: 2 * Space.sm;
-                clicked => {
-                    root.view-share();
-                }
-            }
-
-            HorizontalLayout {
+            if CallView.offered-share != "": ShareOffer {
                 x: 0;
-                width: (view-share.visible ? view-share.x : devices-button.x) - Space.sm;
-                spacing: Space.sm;
-
-                if CallView.active-encrypted: IconDisplay {
-                    cross-axis-self-alignment: center;
-                    icon: IconSet.Lock;
-                    size: IconSize.xs;
-                    stroke: AppStyle.foreground-muted;
-                    accessible-role: image;
-                    accessible-label: @tr("The call is end-to-end encrypted");
+                width: max(0px, menu-button.x - Space.md);
+                name: CallView.offered-share;
+                view => {
+                    Actions.view-call-share();
                 }
+            }
 
-                Text {
-                    horizontal-stretch: 1;
-                    text: root.people == "" ? root.phase : @tr("{} · {}", root.phase, root.people);
-                    font-family: Fonts.emoji;
-                    font-size: Fonts.body-small;
-                    font-weight: Weight.semibold;
-                    color: AppStyle.foreground-muted;
-                    vertical-alignment: center;
-                    overflow: elide;
-                }
+            if CallView.offered-share == "": Text {
+                x: 0;
+                width: max(0px, menu-button.x - Space.md);
+                text: root.people;
+                font-family: Fonts.emoji;
+                font-size: Fonts.body-small;
+                font-weight: Weight.semibold;
+                color: AppStyle.foreground-muted;
+                vertical-alignment: center;
+                overflow: elide;
             }
         }
 
-        if CallView.screen == CallScreen.on: SharingLine { }
-
-        if !root.compact: CallStage {
+        CallStage {
             vertical-stretch: 1;
             preferred-height: 0;
             fits-videos: CallPanel.fits-videos;
             hides-strip: CallPanel.hides-strip;
-        }
-
-        HorizontalLayout {
-            alignment: center;
-            spacing: Space.lg;
-
-            mic := CallMicButton { }
-
-            camera := CallCameraButton { }
-
-            share := CallShareButton {
-                explain => {
-                    root.explains-share = !root.explains-share;
-                }
-            }
-
-            CallLeaveButton { }
-        }
-
-        if root.has-status: CallStatus {
-            explains-share: root.explains-share && share.refused;
-            tells-device-news: root.tells-device-news;
-            tells-share-ended: root.tells-share-ended && !root.compact;
-            acted-by-keys(notice) => {
-                root.focus-control-for(notice);
-            }
         }
     }
 

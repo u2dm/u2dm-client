@@ -358,12 +358,12 @@ export global Metrics {
     out property <length> call-stage-min: 220px;
     out property <length> call-chat-min: 160px;
     out property <length> call-stage-column: root.header-row + root.composer-row + 2 * Space.lg
-        + root.call-stage-min + root.call-chat-min;
+        + root.call-stage-min + root.call-chat-min + root.call-dock;
     out property <length> call-control: Size.target;
     out property <length> call-badge: Size.xxs;
-    out property <length> call-strip: root.call-control + 2 * Space.md;
-    out property <length> call-strip-stacked: Size.md + root.call-control + Space.sm + 2 * Space.md;
-    out property <length> call-strip-label-min: 128px;
+    out property <length> call-dock: root.call-control + 2 * Space.md;
+    out property <length> call-dock-stacked: Size.md + root.call-control + Space.sm + 2 * Space.md;
+    out property <length> call-dock-label-min: 128px;
     out property <length> call-tile-min-width: 120px;
     out property <length> call-tile-roomy: 96px;
     out property <float> call-tile-aspect: 16 / 9;

@@ -1,0 +1,407 @@
+import { IconDisplay, IconSet } from "@lucide";
+
+import { AppButton, IconButton } from "../../../../components/button.slint";
+import { ClickArea } from "../../../../components/a11y.slint";
+import { StateLayer } from "../../../../components/state-layer.slint";
+import { CallNotice, CallScreen } from "../../../../enums.slint";
+import { CallWords, UserMessages } from "../../../../messages.slint";
+import { Actions } from "../../../../actions.slint";
+import { CallPanel, CallSize, Shell, TipScope } from "../../../../local.slint";
+import { CallView, DirectoryView, SpaceIndexView } from "../../../../views.slint";
+import { AppStyle, Fonts, IconSize, Metrics, Motion, Radius, Size, Space, Stroke, Weight } from "../../../../theme.slint";
+import { CallCameraButton, CallLeaveButton, CallMicButton, CallShareButton } from "./call-controls.slint";
+import { CallStatus } from "./call-status.slint";
+
+component CallLine inherits HorizontalLayout {
+    in property <bool> names-room;
+    in property <bool> names-people;
+
+    property <bool> sharing: CallView.screen == CallScreen.on;
+    property <string> phase: CallWords.phase(CallView.phase, CallView.elapsed);
+    property <string> people: CallWords.people(CallView.people-first, CallView.people-second, CallView.people-more);
+    property <string> detail: root.sharing ? @tr("Sharing your screen")
+        : root.names-people ? root.people
+        : "";
+
+    padding-left: Space.sm;
+    padding-right: Space.sm;
+    spacing: Space.md;
+
+    IconDisplay {
+        cross-axis-self-alignment: center;
+        icon: CallView.active-video ? IconSet.Video : IconSet.Phone;
+        size: IconSize.sm;
+        stroke: AppStyle.call-live;
+        accessible-role: none;
+    }
+
+    if CallView.active-encrypted: IconDisplay {
+        cross-axis-self-alignment: center;
+        icon: IconSet.Lock;
+        size: IconSize.xs;
+        stroke: AppStyle.foreground-muted;
+        accessible-role: image;
+        accessible-label: @tr("The call is end-to-end encrypted");
+    }
+
+    HorizontalLayout {
+        alignment: start;
+        spacing: Space.sm;
+
+        if root.names-room: Text {
+            text: CallView.active-room-name;
+            font-family: Fonts.emoji;
+            font-size: Fonts.body-small;
+            font-weight: Weight.semibold;
+            color: AppStyle.call-live;
+            vertical-alignment: center;
+            overflow: elide;
+        }
+
+        Text {
+            min-width: self.preferred-width;
+            text: root.names-room ? @tr("· {}", root.phase) : root.phase;
+            font-size: Fonts.body-small;
+            font-weight: root.names-room ? Weight.regular : Weight.semibold;
+            color: AppStyle.foreground-muted;
+            vertical-alignment: center;
+        }
+
+        if root.detail != "": Text {
+            min-width: root.sharing ? self.preferred-width : 0px;
+            text: @tr("· {}", root.detail);
+            font-family: Fonts.emoji;
+            font-size: Fonts.body-small;
+            font-weight: root.sharing ? Weight.semibold : Weight.regular;
+            color: root.sharing ? AppStyle.call-sharing : AppStyle.foreground-muted;
+            vertical-alignment: center;
+            overflow: elide;
+        }
+    }
+}
+
+component CallReturn inherits ClickArea {
+    out property <length> label-width: line.preferred-width;
+
+    ring-radius: Radius.sm;
+    label: @tr("Go back to the call in {}", CallView.active-room-name);
+
+    StateLayer {
+        border-radius: Radius.sm;
+        ink: AppStyle.call-live;
+        hovered: root.has-hover && root.enabled;
+        pressed: root.pressed && root.enabled;
+    }
+
+    line := CallLine {
+        names-room: true;
+    }
+}
+
+component CallHere inherits Rectangle {
+    in property <bool> names-people;
+    out property <length> label-width: line.preferred-width;
+
+    line := CallLine {
+        names-people: root.names-people;
+    }
+}
+
+component FailedCallLabel inherits Rectangle {
+    out property <length> label-width: row.preferred-width;
+    out property <string> text: UserMessages.text(CallView.failure, CallView.failure-detail);
+
+    row := HorizontalLayout {
+        padding-left: Space.sm;
+        padding-right: Space.sm;
+        spacing: Space.md;
+
+        IconDisplay {
+            cross-axis-self-alignment: center;
+            icon: IconSet.CircleAlert;
+            size: IconSize.sm;
+            stroke: AppStyle.danger-muted;
+        }
+
+        Text {
+            text: root.text;
+            font-family: Fonts.emoji;
+            font-size: Fonts.body-small;
+            font-weight: Weight.semibold;
+            color: AppStyle.danger-muted;
+            vertical-alignment: center;
+            overflow: elide;
+        }
+    }
+}
+
+export component CallDock inherits Rectangle {
+    in property <bool> above-modal;
+    in property <bool> here;
+    in property <bool> stage-hidden;
+    in property <bool> stage-shown;
+
+    callback returned();
+
+    out property <length> devices-x: devices.absolute-position.x;
+    out property <length> devices-y: devices.absolute-position.y;
+    out property <length> devices-size: devices.height;
+
+    property <length> pad: Space.md;
+    property <length> gap: Space.md;
+    property <bool> failed: !CallView.active && CallView.failed;
+    property <bool> offers-stage: root.here && root.stage-hidden && !root.failed;
+    property <bool> explains-share;
+    property <bool> tells-share-ended;
+    property <bool> tells-device-news;
+    property <int> ended-share-serial: CallView.ended-share-serial;
+    property <int> device-news-serial: CallView.device-news-serial;
+    property <int> dock-takes-focus: CallPanel.dock-takes-focus;
+    property <bool> has-status: !root.failed
+        && (CallView.notice != CallNotice.none
+            || (root.explains-share && share.refused)
+            || root.tells-device-news
+            || (root.tells-share-ended && root.stage-shown));
+    property <length> status-extra: root.has-status ? status.preferred-height + root.gap : 0px;
+    property <length> show-width: root.offers-stage ? Metrics.call-control + root.gap : 0px;
+    property <length> controls-width: root.failed
+        ? (CallView.failure-retry ? retry.preferred-width + root.gap : 0px) + dismiss.width
+        : 4 * (Metrics.call-control + root.gap) + leave.preferred-width;
+    property <length> line-width: root.failed ? failure.label-width
+        : root.here ? here-line.label-width
+        : back.label-width;
+    property <bool> stacked: root.width
+        < 2 * root.pad + min(root.line-width, Metrics.call-dock-label-min) + root.show-width + root.gap + root.controls-width;
+    property <length> row-height: root.stacked ? Metrics.call-dock-stacked : Metrics.call-dock;
+    property <length> label-span: max(0px, root.stacked
+        ? root.width - 2 * root.pad - root.show-width
+        : root.width - 2 * root.pad - root.show-width - root.gap - root.controls-width);
+    property <length> label-y: root.status-extra + root.pad;
+    property <length> label-height: root.stacked ? Size.md : Metrics.call-control;
+    property <length> controls-y: root.height - root.pad - Metrics.call-control;
+
+    public function focus-devices() {
+        devices.take-focus();
+    }
+
+    function focus-control-for(notice: CallNotice) {
+        if notice == CallNotice.microphone-failed {
+            mic.take-focus();
+        } else if notice == CallNotice.camera-failed {
+            camera.take-focus();
+        } else if notice == CallNotice.screen-failed || notice == CallNotice.choosing-screen {
+            share.take-focus();
+        }
+    }
+
+    function show-stage(by-keys: bool) {
+        if CallView.offered-share != "" {
+            Actions.view-call-share();
+        }
+        CallPanel.chosen = CallSize.stage;
+        if by-keys {
+            CallPanel.band-takes-focus += 1;
+        }
+    }
+
+    function return-to-call() {
+        Shell.nav-open = false;
+        if CallView.active-room-id != DirectoryView.selected-room-id {
+            Actions.select-room(CallView.active-room-id);
+        } else if SpaceIndexView.visible {
+            Actions.close-space-index();
+        }
+        root.returned();
+    }
+
+    changed dock-takes-focus => {
+        show-call.take-focus();
+    }
+
+    changed ended-share-serial => {
+        if root.ended-share-serial != 0 {
+            root.tells-share-ended = true;
+            ended-timer.running = false;
+            ended-timer.running = true;
+        }
+    }
+
+    ended-timer := Timer {
+        interval: Motion.notice-hold;
+        running: false;
+        triggered => {
+            root.tells-share-ended = false;
+            self.running = false;
+        }
+    }
+
+    changed device-news-serial => {
+        if root.device-news-serial != 0 {
+            root.tells-device-news = true;
+            news-timer.running = false;
+            news-timer.running = true;
+        }
+    }
+
+    news-timer := Timer {
+        interval: Motion.notice-hold;
+        running: false;
+        triggered => {
+            root.tells-device-news = false;
+            self.running = false;
+        }
+    }
+
+    height: root.status-extra + root.row-height;
+    background: root.failed ? AppStyle.danger-background : AppStyle.call-band;
+    accessible-role: groupbox;
+    accessible-label: root.failed ? failure.text : @tr("Call in {}", CallView.active-room-name);
+
+    status := CallStatus {
+        x: root.pad;
+        y: root.pad;
+        width: root.width - 2 * root.pad;
+        height: self.preferred-height;
+        visible: root.has-status;
+        explains-share: root.explains-share && share.refused;
+        tells-device-news: root.tells-device-news;
+        tells-share-ended: root.tells-share-ended && root.stage-shown;
+        acted-by-keys(notice) => {
+            root.focus-control-for(notice);
+        }
+    }
+
+    back := CallReturn {
+        x: root.pad;
+        y: root.label-y;
+        width: root.label-span;
+        height: root.label-height;
+        visible: !root.failed && !root.here;
+        above-modal: root.above-modal;
+        clicked => {
+            root.return-to-call();
+        }
+    }
+
+    here-line := CallHere {
+        x: root.pad;
+        y: root.label-y;
+        width: root.label-span;
+        height: root.label-height;
+        visible: !root.failed && root.here;
+        names-people: root.stage-hidden;
+    }
+
+    failure := FailedCallLabel {
+        x: root.pad;
+        y: root.label-y;
+        width: root.label-span;
+        height: root.label-height;
+        visible: root.failed;
+    }
+
+    show-call := IconButton {
+        x: root.pad + root.label-span + root.gap;
+        y: root.label-y + (root.label-height - self.height) / 2;
+        size: Metrics.call-control;
+        visible: root.offers-stage;
+        above-modal: root.above-modal;
+        fill: AppStyle.control;
+        tint: AppStyle.foreground-strong;
+        icon: IconSet.PanelTopOpen;
+        label: CallView.offered-share != "" ? CallWords.view-share(CallView.offered-share) : @tr("Show the call");
+        tip: self.label;
+        tip-scope: TipScope.call;
+        clicked => {
+            root.show-stage(self.has-focus);
+        }
+    }
+
+    mic := CallMicButton {
+        x: camera.x - root.gap - self.width;
+        y: root.controls-y;
+        visible: !root.failed;
+        above-modal: root.above-modal;
+    }
+
+    camera := CallCameraButton {
+        x: share.x - root.gap - self.width;
+        y: root.controls-y;
+        visible: !root.failed;
+        above-modal: root.above-modal;
+    }
+
+    share := CallShareButton {
+        x: devices.x - root.gap - self.width;
+        y: root.controls-y;
+        visible: !root.failed;
+        above-modal: root.above-modal;
+        explain => {
+            root.explains-share = !root.explains-share;
+        }
+    }
+
+    devices := IconButton {
+        x: leave.x - root.gap - self.width;
+        y: root.controls-y;
+        size: Metrics.call-control;
+        visible: !root.failed;
+        above-modal: root.above-modal;
+        fill: AppStyle.control;
+        tint: AppStyle.foreground-strong;
+        icon: IconSet.Settings;
+        label: @tr("Choose your microphone, speaker and camera");
+        tip: self.label;
+        tip-scope: TipScope.call;
+        clicked => {
+            CallPanel.devices-by-keys = self.has-focus;
+            Actions.refresh-call-devices();
+            CallPanel.devices-open = true;
+        }
+    }
+
+    leave := CallLeaveButton {
+        x: root.width - root.pad - self.width;
+        y: root.controls-y;
+        width: self.preferred-width;
+        visible: !root.failed;
+        above-modal: root.above-modal;
+    }
+
+    retry := AppButton {
+        x: dismiss.x - root.gap - self.width;
+        y: root.controls-y;
+        width: self.preferred-width;
+        height: Metrics.call-control;
+        visible: root.failed && CallView.failure-retry;
+        above-modal: root.above-modal;
+        text: @tr("Try again");
+        icon: IconSet.RotateCw;
+        tint: AppStyle.call-accept;
+        clicked => {
+            Actions.retry-failed-call();
+        }
+    }
+
+    dismiss := IconButton {
+        x: root.width - root.pad - self.width;
+        y: root.controls-y;
+        size: Metrics.call-control;
+        visible: root.failed;
+        above-modal: root.above-modal;
+        icon: IconSet.X;
+        tint: AppStyle.foreground-strong;
+        label: @tr("Dismiss");
+        tip: self.label;
+        tip-scope: TipScope.call;
+        clicked => {
+            Actions.dismiss-failed-call();
+        }
+    }
+
+    Rectangle {
+        y: 0;
+        height: Stroke.hairline;
+        background: AppStyle.border;
+    }
+}

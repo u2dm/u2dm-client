@@ -62,7 +62,8 @@ component DeviceChoice inherits ChoiceRow {
 }
 
 export component CallDevicesMenu inherits PickerCard {
-    in property <length> room-below;
+    in property <length> room;
+    in property <bool> above-modal;
 
     property <int> cursor: -1;
     property <int> microphones: CallView.microphones.length;
@@ -118,7 +119,7 @@ export component CallDevicesMenu inherits PickerCard {
     }
 
     width: Metrics.call-devices-width;
-    height: min(rows.preferred-height + 2 * Space.sm, root.room-below);
+    height: min(rows.preferred-height + 2 * Space.sm, root.room);
 
     TouchArea { }
 
@@ -164,6 +165,7 @@ export component CallDevicesMenu inherits PickerCard {
             for entry[index] in CallView.microphones: DeviceChoice {
                 kind: CallDeviceKind.microphone;
                 entry: entry;
+                above-modal: root.above-modal;
                 roving-focus: root.keys-focused && root.cursor == index;
                 roved(top, size) => {
                     root.reveal(top, size);
@@ -178,6 +180,7 @@ export component CallDevicesMenu inherits PickerCard {
             for entry[index] in CallView.speakers: DeviceChoice {
                 kind: CallDeviceKind.speaker;
                 entry: entry;
+                above-modal: root.above-modal;
                 roving-focus: root.keys-focused && root.cursor == root.microphones + index;
                 roved(top, size) => {
                     root.reveal(top, size);
@@ -202,6 +205,7 @@ export component CallDevicesMenu inherits PickerCard {
             for entry[index] in CallView.cameras: DeviceChoice {
                 kind: CallDeviceKind.camera;
                 entry: entry;
+                above-modal: root.above-modal;
                 roving-focus: root.keys-focused && root.cursor == root.microphones + root.speakers + index;
                 roved(top, size) => {
                     root.reveal(top, size);

@@ -123,12 +123,12 @@ export global TextSelection {
     }
 }
 
-export enum CallSize { compact, stage, full }
+export enum CallSize { hidden, stage, full }
 
 export enum CallSheetOpener { composer, header, room-menu }
 
 export global CallPanel {
-    in-out property <CallSize> chosen: CallSize.compact;
+    in-out property <CallSize> chosen: CallSize.hidden;
     in-out property <bool> fits-videos: false;
     in-out property <bool> hides-strip: false;
     in-out property <bool> menu-open: false;
@@ -137,6 +137,8 @@ export global CallPanel {
     in-out property <bool> devices-by-keys: false;
     in-out property <bool> focus-stage: false;
     in-out property <string> focus-tile;
+    in-out property <int> band-takes-focus;
+    in-out property <int> dock-takes-focus;
     in-out property <CallSheetOpener> sheet-opener: CallSheetOpener.composer;
     in-out property <bool> sheet-dismissed: false;
     in-out property <int> sheet-returns;
@@ -154,14 +156,14 @@ export global CallPanel {
 
     public function show-chat(stage-fits: bool) {
         if root.chosen == CallSize.full {
-            root.chosen = stage-fits ? CallSize.stage : CallSize.compact;
+            root.chosen = stage-fits ? CallSize.stage : CallSize.hidden;
         } else if root.chosen == CallSize.stage && !stage-fits {
-            root.chosen = CallSize.compact;
+            root.chosen = CallSize.hidden;
         }
     }
 
     public function begin(video: bool) {
-        root.chosen = video ? CallSize.stage : CallSize.compact;
+        root.chosen = video ? CallSize.stage : CallSize.hidden;
         root.fits-videos = false;
         root.hides-strip = false;
         root.menu-open = false;

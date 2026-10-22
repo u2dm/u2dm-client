@@ -24,9 +24,7 @@ import { Avatar } from "../../../../components/avatar.slint";
 import { RoomInfoPane } from "../room-info.slint";
 import { CallPill } from "../call/call-pill.slint";
 import { CallBand } from "../call/call-band.slint";
-import { CallStrip } from "../call/call-strip.slint";
 import { CallViewMenu } from "../call/call-view-menu.slint";
-import { CallDevicesMenu } from "../call/call-devices-menu.slint";
 import { CallOffer } from "../../../../enums.slint";
 import { CallWords } from "../../../../messages.slint";
 import { AppButton } from "../../../../components/button.slint";
@@ -39,8 +37,8 @@ export component TimelineView inherits Rectangle {
     in-out property <string> input-message: "";
 
     in property <bool> compact: false;
-    in property <bool> under-room-list: false;
     in property <length> overlay-width;
+    in property <length> dock-height;
     in property <bool> room-info-pane-fits: false;
     in property <bool> room-info-pane-shown: false;
     in property <length> room-info-pane-width;
@@ -53,15 +51,16 @@ export component TimelineView inherits Rectangle {
     property <bool> has-pins: RoomView.pinned-count > 0;
     property <length> pinned-height: root.has-pins ? Metrics.pinned-bar + Space.md : 0px;
     property <length> now-playing-height: AudioView.visible ? Metrics.now-playing-bar : 0px;
-    property <bool> shows-band: CallView.active && CallView.active-room-id == root.room-id;
-    property <bool> shows-strip: (CallView.active && CallView.active-room-id != root.room-id)
-        || CallView.failed;
+    out property <bool> in-call-room: CallView.active && CallView.active-room-id == root.room-id;
     property <bool> call-stage-fits: root.height >= Metrics.call-stage-column;
-    property <CallSize> call-size: !root.shows-band ? CallSize.compact
+    property <CallSize> call-size: !root.in-call-room ? CallSize.hidden
         : CallPanel.chosen == CallSize.stage && !root.call-stage-fits ? CallSize.full
         : CallPanel.chosen;
+    out property <bool> stage-hidden: root.in-call-room && root.call-size == CallSize.hidden;
+    property <bool> shows-band: root.in-call-room && root.call-size != CallSize.hidden;
     out property <bool> call-covers-timeline: root.shows-band && root.call-size == CallSize.full;
-    out property <bool> shows-call-media: root.shows-band && root.call-size != CallSize.compact;
+    out property <bool> shows-call-media: root.shows-band;
+    property <int> composer-requests;
     property <bool> call-here: CallView.here-room-id == root.room-id && CallView.here-people > 0;
     property <bool> offers-call-here: CallView.offer-room-id == root.room-id;
     property <bool> offers-call-start: root.offers-call-here
@@ -114,6 +113,10 @@ export component TimelineView inherits Rectangle {
         nav-button.take-focus();
     }
 
+    public function focus-composer() {
+        root.composer-requests += 1;
+    }
+
     public function show-call-chat() -> bool {
         if !root.call-covers-timeline {
             return false;
@@ -130,12 +133,6 @@ export component TimelineView inherits Rectangle {
         color: AppStyle.foreground-muted;
         horizontal-alignment: center;
         vertical-alignment: center;
-    }
-
-    if !root.has-room && root.shows-strip && !root.under-room-list: CallStrip {
-        x: 0;
-        y: 0;
-        width: root.width;
     }
 
     if root.has-room: room-header := Rectangle {
@@ -304,7 +301,8 @@ export component TimelineView inherits Rectangle {
         property <int> menu-returns: RoomMenu.focus-returns;
         property <bool> opened-from-search: RoomSearch.opened(root.room-id) && Shell.background-reachable;
         property <bool> call-covered: root.call-covers-timeline;
-        property <length> room-above-composer: self.height - root.header-height - input.height;
+        property <int> composer-requests: root.composer-requests;
+        property <length> room-above-composer: self.height - root.header-height - input.height - root.dock-height;
         property <length> stage-height: min(
             self.room-above-composer,
             max(
@@ -312,10 +310,9 @@ export component TimelineView inherits Rectangle {
                 min(
                     self.room-above-composer * Metrics.call-stage-share,
                     self.room-above-composer - Metrics.call-chat-min)));
-        property <length> call-height: !root.shows-band ? (root.shows-strip ? strip.height : 0px)
-            : root.call-size == CallSize.full ? self.height - root.header-height
-            : root.call-size == CallSize.stage ? self.stage-height
-            : min(band.natural-height, self.room-above-composer);
+        property <length> call-height: !root.shows-band ? 0px
+            : root.call-size == CallSize.full ? self.height - root.header-height - root.dock-height
+            : self.stage-height;
 
         x: 0;
         y: 0;
@@ -350,6 +347,10 @@ export component TimelineView inherits Rectangle {
             if RoomMenu.return-to == RoomMenuReturn.composer {
                 self.refocus-composer();
             }
+        }
+
+        changed composer-requests => {
+            self.refocus-composer();
         }
 
         function refocus-composer() {
@@ -506,8 +507,8 @@ export component TimelineView inherits Rectangle {
             visible: !root.call-covers-timeline;
             available-width: parent.width;
             top-inset: stage.call-height + root.pinned-height + root.now-playing-height;
-            bottom-inset: input.height + root.spacing;
-            composer-top: parent.height - input.height;
+            bottom-inset: input.height + root.spacing + root.dock-height;
+            composer-top: parent.height - root.dock-height - input.height;
         }
 
         band := CallBand {
@@ -518,16 +519,6 @@ export component TimelineView inherits Rectangle {
             visible: root.shows-band;
             size: root.call-size;
             stage-fits: root.call-stage-fits;
-        }
-
-        strip := CallStrip {
-            x: 0;
-            y: root.header-height;
-            width: parent.width;
-            visible: root.shows-strip;
-            returned => {
-                stage.refocus-composer();
-            }
         }
 
         if root.has-pins && !root.call-covers-timeline: Rectangle {
@@ -562,7 +553,7 @@ export component TimelineView inherits Rectangle {
 
         if root.is-blocking-status: StatusPill {
             x: Space.xl;
-            y: parent.height - input.height - root.spacing - self.height - Space.xl;
+            y: parent.height - root.dock-height - input.height - root.spacing - self.height - Space.xl;
             text: root.status-message(RoomView.timeline-status);
             loading: root.is-loading;
             show-retry: root.can-retry;
@@ -574,7 +565,7 @@ export component TimelineView inherits Rectangle {
 
         input := MessageInput {
             x: 0;
-            y: parent.height - self.height;
+            y: parent.height - root.dock-height - self.height;
             width: parent.width;
             visible: !root.call-covers-timeline;
             room-id: root.room-id;
@@ -582,7 +573,7 @@ export component TimelineView inherits Rectangle {
             overlay-x: -root.x;
             overlay-y: -self.y;
             overlay-width: root.overlay-width;
-            overlay-height: root.height;
+            overlay-height: root.height - root.dock-height;
         }
 
         if root.room-info-pane-shown: RoomInfoPane {
@@ -598,8 +589,8 @@ export component TimelineView inherits Rectangle {
             x: -root.x;
             y: 0;
             width: root.overlay-width;
-            height: root.height;
-            timeline-bottom: content.y + content.height - input.height;
+            height: root.height - root.dock-height;
+            timeline-bottom: content.y + content.height - root.dock-height - input.height;
             closed => {
                 input.focus-input();
             }
@@ -607,7 +598,7 @@ export component TimelineView inherits Rectangle {
 
         if notifier.notice != "": CopyNotice {
             x: (parent.width - self.width) / 2;
-            y: parent.height - input.height - root.spacing - self.height - Space.xl;
+            y: parent.height - root.dock-height - input.height - root.spacing - self.height - Space.xl;
             text: notifier.notice;
         }
 
@@ -615,7 +606,7 @@ export component TimelineView inherits Rectangle {
             x: -root.x;
             y: 0;
             width: root.overlay-width;
-            height: root.height;
+            height: root.height - root.dock-height;
             closed => {
                 input.focus-input();
             }
@@ -624,7 +615,7 @@ export component TimelineView inherits Rectangle {
             }
         }
 
-        if CallPanel.menu-open && root.shows-band && root.call-size != CallSize.compact: ModalHost {
+        if CallPanel.menu-open && root.shows-band: ModalHost {
             x: -root.x;
             y: 0;
             width: root.overlay-width;
@@ -646,28 +637,6 @@ export component TimelineView inherits Rectangle {
                     CallPanel.menu-open = false;
                     band.focus-menu();
                 }
-            }
-        }
-
-        if CallPanel.devices-open && root.shows-band: ModalHost {
-            x: -root.x;
-            y: 0;
-            width: root.overlay-width;
-            height: root.height;
-            dim: false;
-            label: @tr("Devices");
-            dismissed => {
-                CallPanel.devices-open = false;
-                band.focus-devices();
-            }
-            opened => {
-                devices-menu.open(CallPanel.devices-by-keys);
-            }
-
-            devices-menu := CallDevicesMenu {
-                x: Placement.fit(band.devices-x + band.devices-size - self.width, self.width, root.overlay-width, Space.md);
-                y: band.devices-y + band.devices-size + Space.xs;
-                room-below: root.height - self.y - Space.md;
             }
         }
     }

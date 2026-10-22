@@ -135,8 +135,8 @@ scenario_env() {
     call-remote-sfu) echo 'U2DM_DEMO_CALLS=active,remote-sfu U2DM_DEMO_WINDOW=900x760' ;;
     call-switch-rooms) echo 'U2DM_DEMO_CALLS=active U2DM_DEMO_WINDOW=900x760' ;;
     call-compact)    echo 'U2DM_DEMO_CALLS=active U2DM_DEMO_WINDOW=420x760' ;;
-    call-strip-nav)  echo 'U2DM_DEMO_CALLS=active U2DM_DEMO_WINDOW=420x760' ;;
-    call-strip-index) echo 'U2DM_DEMO_CALLS=active U2DM_DEMO_WINDOW=900x760' ;;
+    call-dock-nav)   echo 'U2DM_DEMO_CALLS=active U2DM_DEMO_WINDOW=420x760' ;;
+    call-dock-index) echo 'U2DM_DEMO_CALLS=active U2DM_DEMO_WINDOW=900x760' ;;
     call-minimum)    echo 'U2DM_DEMO_CALLS=active,cameras U2DM_DEMO_WINDOW=360x420' ;;
     call-crowd)      echo 'U2DM_DEMO_CALLS=active,crowd U2DM_DEMO_WINDOW=900x760' ;;
     call-video)      echo 'U2DM_DEMO_CALLS=active,cameras U2DM_DEMO_WINDOW=900x760' ;;
@@ -857,10 +857,10 @@ scenario_steps() {
       echo 'sleep 2'
       echo '{"op":"join_call"}'
       echo 'sleep 3' ;;
-    call-strip-nav)
+    call-dock-nav)
       echo '{"op":"join_call","room_id":"!design:demo.local"}'
       echo 'sleep 3' ;;
-    call-strip-index)
+    call-dock-index)
       echo '{"op":"select_room","room_id":"!rust:demo.local"}'
       echo 'sleep 2'
       echo '{"op":"join_call"}'
@@ -1255,18 +1255,18 @@ scenario_note() {
     call-no-sfu)     echo 'the homeserver has no call server: Join is disabled and says so (calls, call-ui)' ;;
     call-no-permission) echo 'you may not join calls in Rust Programming: Join is disabled and says so (calls)' ;;
     call-unverified-session) echo 'an unverified session cannot join an encrypted call: the dimmed Join still opens the sheet, which says why and offers Verify session (calls, call-ui, encryption)' ;;
-    call-reconnect)  echo 'the media server reconnects 5 s after joining: the band says Reconnecting, then the call is live again (call-media)' ;;
+    call-reconnect)  echo 'the media server reconnects 5 s after joining: the dock says Reconnecting, then the call is live again (call-media)' ;;
     call-remote-sfu) echo 'Jordan publishes to another homeserver'"'"'s media server: two connections, every tile live (calls)' ;;
-    call-switch-rooms) echo 'join Design Team, then open Sarah'"'"'s chat: the call strip under the header leads back (call-ui)' ;;
+    call-switch-rooms) echo 'join Design Team, then open Sarah'"'"'s chat: the call dock at the bottom leads back (call-ui)' ;;
     call-compact)    echo 'a 420 px window in the call: tiles wrap in the band (call-ui)' ;;
-    call-strip-nav)  echo 'a 420 px window in the Design Team call with no room open: the strip tops the room list, which starts below it (call-ui)' ;;
-    call-strip-index) echo 'in the Rust Programming call, open the Rust space index: the strip sits under the index header, above the rows (call-ui, space-index)' ;;
+    call-dock-nav)   echo 'a 420 px window in the Design Team call with no room open: the dock sits under the room list, which ends above it (call-ui)' ;;
+    call-dock-index) echo 'in the Rust Programming call, open the Rust space index: the dock sits under the index, which ends above it (call-ui, space-index)' ;;
     call-minimum)    echo 'the Design Team video call in a 360x420 window: no room for a stage beside the chat, so the call takes the column, the composer hidden, with Show the chat (call-ui)' ;;
     call-crowd)      echo 'nine people in the Design Team call: the tile grid scrolls (call-ui)' ;;
     call-video)      echo 'the Design Team video call with everyone'"'"'s camera on: painted demo videos fill the tiles, yours mirrored (call-ui, call-media)' ;;
-    call-camera)     echo 'join the Rust Programming voice call, then switch your camera on: the compact panel keeps its size, and Expand the call shows your tile with video (call-ui)' ;;
+    call-camera)     echo 'join the Rust Programming voice call, then switch your camera on: the stage stays hidden, and Show the call shows your tile with video (call-ui)' ;;
     call-screen-share) echo 'Nadia shares her screen in the Design Team call: it takes the stage, fitted and named under the picture, and the cameras line up in the rail beside it (call-ui)' ;;
-    call-share-screen) echo 'join the Rust Programming call and share your screen: the panel says you are sharing with Stop sharing, and your tile is still You (call-ui, call-media)' ;;
+    call-share-screen) echo 'join the Rust Programming call and share your screen: the dock says you are sharing, its share toggle stops it, and your tile is still You (call-ui, call-media)' ;;
     call-join-sheet) echo 'Join in Design Team opens the call sheet: the video call, two in it, the microphone and camera proposed off (call-ui, calls)' ;;
     call-start-sheet-dm) echo 'Start in Sarah'"'"'s chat opens the call sheet: a voice call, the microphone proposed on, the camera off (call-ui, calls)' ;;
     call-video-sheet) echo 'the room menu'"'"'s Video call in linux ricing: the sheet starts a video call with the camera still off (call-ui, room-menu)' ;;
@@ -1274,12 +1274,12 @@ scenario_note() {
     call-sheet-ended) echo 'the sheet for Sarah'"'"'s call stays open while she hangs up: it turns into Start, and Join says the call ended (calls)' ;;
     call-answer-video) echo 'Sarah rings with video: the card offers Answer without camera and Answer with camera (call-ui)' ;;
     call-answer-switch) echo 'in the Design Team call Sarah rings: an answer that did not agree to leave Design Team is refused and it keeps ringing (calls)' ;;
-    call-alone)      echo 'start a call in Matrix HQ, where nobody else is: the band says Waiting for others instead of a clock (calls, call-ui)' ;;
-    call-announce-fails) echo 'start a call in Sarah'"'"'s chat whose ring fails to send: no ringback, the band says it could not call her and offers Try again (calls, call-ui)' ;;
-    call-cut-off)    echo 'the media server drops the Design Team call 5 s in: the band gives way to a strip that keeps the failure with Try again (calls, call-ui)' ;;
+    call-alone)      echo 'start a call in Matrix HQ, where nobody else is: the dock says Waiting for others instead of a clock (calls, call-ui)' ;;
+    call-announce-fails) echo 'start a call in Sarah'"'"'s chat whose ring fails to send: no ringback, the dock says it could not call her and offers Try again (calls, call-ui)' ;;
+    call-cut-off)    echo 'the media server drops the Design Team call 5 s in: the dock keeps the failure with Try again (calls, call-ui)' ;;
     call-camera-lost) echo 'in the Rust Programming call your camera stops 3 s after starting: the camera button turns red and the status row offers Try again (call-ui, call-media)' ;;
     call-share-cancelled) echo 'the picker for your screen share closes twice without a choice: the second time the status row says sharing did not start and offers the room logs (call-ui)' ;;
-    call-voice-panel) echo 'join the Rust Programming voice call: a compact panel over the chat names Marcus and Kai beside the clock, with the controls and no tiles (call-ui)' ;;
+    call-voice-panel) echo 'join the Rust Programming voice call: no stage; the dock names Marcus and Kai beside the clock, with Show the call and the controls (call-ui)' ;;
     call-one-to-one) echo 'answer Sarah'"'"'s video ring with your camera: her camera takes the stage and yours sits small in the rail (call-ui)' ;;
     call-two-shares) echo 'Nadia'"'"'s screen takes the Design Team stage; 4 s later Jordan shares too: his screen waits in the rail and the header offers View Jordan'"'"'s screen (call-ui)' ;;
     call-share-restarts) echo 'Nadia stops sharing 6 s after you join: the stage goes back to the gallery and the status row says she stopped; 4 s later her share takes the stage again (call-ui)' ;;
@@ -1287,7 +1287,7 @@ scenario_note() {
     call-portrait) echo 'focus Jordan, whose camera is portrait: it fills the stage cropped until the layout menu'"'"'s Fit whole videos (call-ui)' ;;
     call-camera-toggles) echo 'focus Nadia, whose camera goes off and on every 5 s: the stage keeps her, on her avatar while it is off (call-ui)' ;;
     call-devices) echo 'join the Rust Programming call muted and choose the USB Headset microphone and the HDMI speaker: the Devices menu checks them and the microphone stays muted (call-ui, call-media)' ;;
-    call-headset-unplugs) echo 'choose the USB Headset microphone; 3 s later it is unplugged: the call uses the system default and the band says so; 4 s later it is back and used again (calls, call-media)' ;;
+    call-headset-unplugs) echo 'choose the USB Headset microphone; 3 s later it is unplugged: the call uses the system default and the dock says so; 4 s later it is back and used again (calls, call-media)' ;;
     call-webcam-unplugs) echo 'switch your camera to the USB Webcam; 3 s later it is unplugged: the camera stops with Try again, which starts the Integrated Camera, and the webcam is used again once it is back (call-media)' ;;
     notifications)   echo 'with the window unfocused, every scripted arrival notifies except the muted room; !rust is read elsewhere and withdrawn, Leo'"'"'s invite notifies, and a click on Priya'"'"'s opens her chat (notifications, directory.attention, title)' ;;
     notifications-focused) echo 'the window keeps focus: arrivals light their rooms and the title count, but nothing notifies (notifications, directory.attention)' ;;
@@ -1326,7 +1326,7 @@ names() {
     calls-active call-ring call-ring-ends call-ring-elsewhere call-ring-unconfirmed call-expiry \
     call-join call-start-dm call-start-dm-declined call-keys-late call-undecryptable call-no-sfu \
     call-no-permission call-unverified-session call-reconnect call-remote-sfu call-switch-rooms \
-    call-compact call-strip-nav call-strip-index call-minimum call-crowd call-video call-camera \
+    call-compact call-dock-nav call-dock-index call-minimum call-crowd call-video call-camera \
     call-screen-share call-share-screen call-join-sheet call-start-sheet-dm call-video-sheet \
     call-switch-calls call-sheet-ended call-answer-video call-answer-switch \
     call-alone call-announce-fails call-cut-off call-camera-lost call-share-cancelled \
