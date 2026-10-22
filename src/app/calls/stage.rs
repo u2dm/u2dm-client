@@ -9,6 +9,7 @@ enum Shown {
 
 pub(super) struct Arranged {
     pub(super) stage: Option<CallTile>,
+    pub(super) chosen: bool,
     pub(super) tiles: Vec<CallTile>,
     pub(super) offered_share: Option<NamedUser>,
 }
@@ -143,8 +144,13 @@ impl Stage {
                 _ => rest.push(tile),
             }
         }
+        let chosen = matches!(
+            (&self.chosen, &stage),
+            (Some(Shown::Focus(key)), Some(staged)) if staged.key() == *key
+        );
         Arranged {
             stage,
+            chosen,
             tiles: rest,
             offered_share,
         }

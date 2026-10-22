@@ -411,6 +411,7 @@ macro_rules! bool_props {
         ActiveVideo CallView "CallView" "active-video" set_active_video get_active_video;
         VideoCall CallView "CallView" "video-call" set_video_call get_video_call;
         SelfView CallView "CallView" "self-view" set_self_view get_self_view;
+        StageChosen CallView "CallView" "stage-chosen" set_stage_chosen get_stage_chosen;
         FailureRetry CallView "CallView" "failure-retry" set_failure_retry get_failure_retry;
         VerificationVisible VerificationView "VerificationView" "visible" set_visible get_visible;
         EncryptionVisible EncryptionView "EncryptionView" "visible" set_visible get_visible;

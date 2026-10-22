@@ -487,6 +487,11 @@ impl MediaSession for DemoMediaSession {
             } else {
                 Microphone::Off
             }));
+        } else if on && self.publishes() && calls::scenario().microphone_fails {
+            tracing::info!("demo: the microphone is busy");
+            self.emit(MediaEvent::Microphone(Microphone::Failed(
+                "demo: the microphone is busy".into(),
+            )));
         } else if on && self.publishes() {
             self.microphone_published = true;
             tracing::info!("demo: published the microphone");

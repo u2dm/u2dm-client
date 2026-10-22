@@ -1,5 +1,6 @@
-import { IconSet } from "@lucide";
+import { Icon, IconSet } from "@lucide";
 
+import { RovingKeys } from "../../../../components/a11y.slint";
 import { MenuRow } from "../../../../components/menu-row.slint";
 import { PickerCard } from "../../../../components/overlay.slint";
 import { Actions } from "../../../../actions.slint";
@@ -7,73 +8,123 @@ import { CallPanel } from "../../../../local.slint";
 import { CallView } from "../../../../views.slint";
 import { Metrics, Space } from "../../../../theme.slint";
 
+enum CallViewChoice { gallery, focus, strip, self-view, fit }
+
 export component CallViewMenu inherits PickerCard {
     callback chose();
 
     property <bool> focused: CallView.stage.length > 0;
+    property <[CallViewChoice]> offered: root.focused
+        ? [CallViewChoice.gallery, CallViewChoice.focus, CallViewChoice.strip, CallViewChoice.self-view, CallViewChoice.fit]
+        : [CallViewChoice.gallery, CallViewChoice.focus, CallViewChoice.self-view, CallViewChoice.fit];
+    property <int> cursor: -1;
+    property <bool> keys-focused: keys.has-focus;
+
+    public function open(by-keys: bool) {
+        root.cursor = by-keys ? 0 : -1;
+        keys.focus();
+    }
+
+    pure function icon(choice: CallViewChoice) -> Icon {
+        if choice == CallViewChoice.gallery {
+            return IconSet.LayoutGrid;
+        }
+        if choice == CallViewChoice.focus {
+            return IconSet.Focus;
+        }
+        if choice == CallViewChoice.strip {
+            return IconSet.UsersRound;
+        }
+        if choice == CallViewChoice.self-view {
+            return CallView.self-view ? IconSet.EyeOff : IconSet.Eye;
+        }
+        return CallPanel.fits-videos ? IconSet.Expand : IconSet.Shrink;
+    }
+
+    pure function label(choice: CallViewChoice) -> string {
+        if choice == CallViewChoice.gallery {
+            return @tr("Gallery");
+        }
+        if choice == CallViewChoice.focus {
+            return @tr("Focus");
+        }
+        if choice == CallViewChoice.strip {
+            return CallPanel.hides-strip ? @tr("Show everyone else") : @tr("Hide everyone else");
+        }
+        if choice == CallViewChoice.self-view {
+            return CallView.self-view ? @tr("Hide self-view") : @tr("Show self-view");
+        }
+        return CallPanel.fits-videos ? @tr("Fill tiles with video") : @tr("Fit whole videos");
+    }
+
+    pure function checkable(choice: CallViewChoice) -> bool {
+        return choice == CallViewChoice.gallery || choice == CallViewChoice.focus;
+    }
+
+    pure function checked(choice: CallViewChoice) -> bool {
+        return (choice == CallViewChoice.gallery && !root.focused)
+            || (choice == CallViewChoice.focus && root.focused);
+    }
+
+    pure function cursor-choice() -> CallViewChoice {
+        return root.offered[max(root.cursor, 0)];
+    }
+
+    function choose(choice: CallViewChoice) {
+        if choice == CallViewChoice.gallery {
+            Actions.show-call-gallery();
+        } else if choice == CallViewChoice.focus {
+            Actions.show-call-focus();
+        } else if choice == CallViewChoice.strip {
+            CallPanel.hides-strip = !CallPanel.hides-strip;
+        } else if choice == CallViewChoice.self-view {
+            Actions.show-self-view({ on: !CallView.self-view });
+        } else {
+            CallPanel.fits-videos = !CallPanel.fits-videos;
+        }
+        root.chose();
+    }
 
     width: Metrics.call-menu-width;
     height: layout.preferred-height;
 
     TouchArea { }
 
+    keys := RovingKeys {
+        count: root.offered.length;
+        cursor <=> root.cursor;
+        accessible-label: root.cursor >= 0 ? root.label(root.cursor-choice()) : @tr("Call layout");
+        accessible-checkable: root.cursor >= 0 && root.checkable(root.cursor-choice());
+        accessible-checked: root.cursor >= 0 && root.checked(root.cursor-choice());
+        accessible-action-default => {
+            root.choose(root.cursor-choice());
+        }
+        intercept(event) => {
+            if event.text == Key.Tab || event.text == Key.Backtab {
+                return accept;
+            }
+            return reject;
+        }
+        activated(index) => {
+            root.choose(root.offered[index]);
+        }
+    }
+
     layout := VerticalLayout {
         padding: Space.sm;
         spacing: Space.xs;
 
-        MenuRow {
+        for choice[index] in root.offered: MenuRow {
             height: Metrics.call-menu-row;
-            icon: IconSet.LayoutGrid;
-            label: @tr("Gallery");
-            checkable: true;
-            checked: !root.focused;
-            trailing: root.focused ? { } : IconSet.Check;
+            icon: root.icon(choice);
+            label: root.label(choice);
+            checkable: root.checkable(choice);
+            checked: root.checked(choice);
+            trailing: root.checked(choice) ? IconSet.Check : { };
+            focusable: false;
+            roving-focus: root.keys-focused && root.cursor == index;
             clicked => {
-                Actions.show-call-gallery();
-                root.chose();
-            }
-        }
-
-        MenuRow {
-            height: Metrics.call-menu-row;
-            icon: IconSet.Focus;
-            label: @tr("Focus");
-            checkable: true;
-            checked: root.focused;
-            trailing: root.focused ? IconSet.Check : { };
-            clicked => {
-                Actions.show-call-focus();
-                root.chose();
-            }
-        }
-
-        if root.focused: MenuRow {
-            height: Metrics.call-menu-row;
-            icon: IconSet.UsersRound;
-            label: CallPanel.hides-strip ? @tr("Show everyone else") : @tr("Hide everyone else");
-            clicked => {
-                CallPanel.hides-strip = !CallPanel.hides-strip;
-                root.chose();
-            }
-        }
-
-        MenuRow {
-            height: Metrics.call-menu-row;
-            icon: CallView.self-view ? IconSet.EyeOff : IconSet.Eye;
-            label: CallView.self-view ? @tr("Hide self-view") : @tr("Show self-view");
-            clicked => {
-                Actions.show-self-view({ on: !CallView.self-view });
-                root.chose();
-            }
-        }
-
-        MenuRow {
-            height: Metrics.call-menu-row;
-            icon: CallPanel.fits-videos ? IconSet.Expand : IconSet.Shrink;
-            label: CallPanel.fits-videos ? @tr("Fill tiles with video") : @tr("Fit whole videos");
-            clicked => {
-                CallPanel.fits-videos = !CallPanel.fits-videos;
-                root.chose();
+                root.choose(choice);
             }
         }
     }

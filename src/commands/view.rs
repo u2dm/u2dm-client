@@ -496,6 +496,7 @@ pub enum ScreenView {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[allow(clippy::struct_excessive_bools)]
 pub struct ActiveCall {
     pub call: u64,
     pub room_id: RoomId,
@@ -509,6 +510,7 @@ pub struct ActiveCall {
     pub screen: ScreenView,
     pub notice: Option<CallNotice>,
     pub stage: Option<CallTile>,
+    pub stage_chosen: bool,
     pub tiles: Arc<[CallTile]>,
     pub self_view: bool,
     pub offered_share: Option<NamedUser>,

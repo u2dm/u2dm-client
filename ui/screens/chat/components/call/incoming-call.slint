@@ -17,6 +17,9 @@ export component IncomingCallCard inherits PickerCard {
     property <bool> confirming: false;
     property <bool> with-camera: false;
     property <bool> asks-to-leave: root.confirming && CallView.active;
+    property <bool> question-takes-focus: false;
+    property <bool> answer-takes-focus: false;
+    property <bool> question-focused: false;
     property <string> remedy: CallWords.refusal-action(CallView.ring-refusal);
 
     width: min(Metrics.incoming-call-width, root.available-width - 2 * Metrics.incoming-call-inset);
@@ -27,15 +30,33 @@ export component IncomingCallCard inherits PickerCard {
     changed serial => {
         root.confirming = false;
         root.with-camera = false;
+        root.question-takes-focus = false;
+        root.answer-takes-focus = false;
     }
 
-    function answer(camera: bool) {
+    changed asks-to-leave => {
+        if !root.asks-to-leave && root.question-focused {
+            root.question-focused = false;
+            stop-button.take-focus();
+        }
+    }
+
+    function answer(camera: bool, by-keys: bool) {
         if CallView.active {
             root.with-camera = camera;
+            root.question-takes-focus = by-keys;
             root.confirming = true;
             return;
         }
         root.accept(camera);
+    }
+
+    function asked(camera: bool) -> bool {
+        if root.answer-takes-focus && root.with-camera == camera {
+            root.answer-takes-focus = false;
+            return true;
+        }
+        return false;
     }
 
     function accept(camera: bool) {
@@ -113,7 +134,7 @@ export component IncomingCallCard inherits PickerCard {
                 }
             }
 
-            IconButton {
+            stop-button := IconButton {
                 cross-axis-self-alignment: start;
                 icon: IconSet.X;
                 size: Size.md;
@@ -169,7 +190,18 @@ export component IncomingCallCard inherits PickerCard {
                 text: @tr("Cancel");
                 filled: false;
                 above-modal: true;
+                init => {
+                    if root.question-takes-focus {
+                        root.question-takes-focus = false;
+                        self.take-focus();
+                    }
+                }
+                changed has-focus => {
+                    root.question-focused = self.has-focus;
+                }
                 clicked => {
+                    root.answer-takes-focus = self.has-focus;
+                    root.question-focused = false;
                     root.confirming = false;
                 }
             }
@@ -180,6 +212,9 @@ export component IncomingCallCard inherits PickerCard {
                 icon: root.with-camera ? IconSet.Video : IconSet.Phone;
                 tint: AppStyle.call-accept;
                 above-modal: true;
+                changed has-focus => {
+                    root.question-focused = self.has-focus;
+                }
                 clicked => {
                     root.accept(root.with-camera);
                 }
@@ -223,8 +258,13 @@ export component IncomingCallCard inherits PickerCard {
                     icon: IconSet.Phone;
                     tint: AppStyle.call-accept;
                     above-modal: true;
+                    init => {
+                        if root.asked(false) {
+                            self.take-focus();
+                        }
+                    }
                     clicked => {
-                        root.answer(false);
+                        root.answer(false, self.has-focus);
                     }
                 }
             }
@@ -234,8 +274,13 @@ export component IncomingCallCard inherits PickerCard {
                 icon: IconSet.Phone;
                 tint: AppStyle.call-accept;
                 above-modal: true;
+                init => {
+                    if root.asked(false) {
+                        self.take-focus();
+                    }
+                }
                 clicked => {
-                    root.answer(false);
+                    root.answer(false, self.has-focus);
                 }
             }
 
@@ -244,8 +289,13 @@ export component IncomingCallCard inherits PickerCard {
                 icon: IconSet.Video;
                 filled: false;
                 above-modal: true;
+                init => {
+                    if root.asked(true) {
+                        self.take-focus();
+                    }
+                }
                 clicked => {
-                    root.answer(true);
+                    root.answer(true, self.has-focus);
                 }
             }
         }

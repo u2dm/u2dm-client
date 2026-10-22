@@ -216,6 +216,7 @@ fn shown_tiles(active: &ActiveCall) -> impl Iterator<Item = &CallTile> {
 
 fn apply_stage<B: UiBackend>(w: &B::Window, last: Option<&ActiveCall>, active: &ActiveCall) {
     w.set_bool(BoolProp::SelfView, active.self_view);
+    w.set_bool(BoolProp::StageChosen, active.stage_chosen);
     w.set_string(
         StringProp::OfferedShare,
         active

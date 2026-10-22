@@ -963,6 +963,26 @@ export global CallWords {
         return "";
     }
 
+    public pure function notice-way-out(notice: CallNotice) -> string {
+        if notice == CallNotice.microphone-failed {
+            return @tr("Continue muted");
+        }
+        if notice == CallNotice.camera-failed {
+            return @tr("Continue without camera");
+        }
+        return "";
+    }
+
+    public pure function notice-way-out-label(notice: CallNotice) -> string {
+        if notice == CallNotice.microphone-failed {
+            return @tr("Continue the call with your microphone off");
+        }
+        if notice == CallNotice.camera-failed {
+            return @tr("Continue the call with your camera off");
+        }
+        return "";
+    }
+
     public pure function notice-action-label(notice: CallNotice, room: string) -> string {
         if notice == CallNotice.not-called {
             return @tr("Call {} again", room);
@@ -1103,6 +1123,14 @@ export global CallWords {
         return @tr("Focus on {}", title);
     }
 
+    public pure function show-gallery() -> string {
+        return @tr("Show the gallery");
+    }
+
+    public pure function in-focus(title: string) -> string {
+        return @tr("{} is in focus", title);
+    }
+
     public pure function view-share(name: string) -> string {
         return @tr("View {}'s screen", name);
     }
@@ -1194,6 +1222,15 @@ export global CallWords {
             return @tr("Could not be used");
         }
         return "";
+    }
+
+    public pure function device-label(kind: CallDeviceKind, status: CallDeviceStatus, name: string) -> string {
+        let shown = root.device-name(status, name);
+        let detail = root.device-detail(status, name);
+        if detail == "" {
+            return @tr("{}: {}", root.device-kind(kind), shown);
+        }
+        return @tr("{}: {}, {}", root.device-kind(kind), shown, detail);
     }
 
     public pure function device-news(trouble: CallDeviceTrouble, kind: CallDeviceKind, name: string) -> string {

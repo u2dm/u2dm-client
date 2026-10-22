@@ -133,6 +133,10 @@ export global CallPanel {
     in-out property <bool> hides-strip: false;
     in-out property <bool> menu-open: false;
     in-out property <bool> devices-open: false;
+    in-out property <bool> menu-by-keys: false;
+    in-out property <bool> devices-by-keys: false;
+    in-out property <bool> focus-stage: false;
+    in-out property <string> focus-tile;
     in-out property <CallSheetOpener> sheet-opener: CallSheetOpener.composer;
     in-out property <bool> sheet-dismissed: false;
     in-out property <int> sheet-returns;
@@ -162,6 +166,8 @@ export global CallPanel {
         root.hides-strip = false;
         root.menu-open = false;
         root.devices-open = false;
+        root.focus-stage = false;
+        root.focus-tile = "";
     }
 }
 

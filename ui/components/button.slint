@@ -19,6 +19,7 @@ export component AppButton inherits Rectangle {
     in property <bool> busy: false;
     in property <bool> filled: true;
     in property <color> tint: Palette.accent-background;
+    out property <bool> has-focus: touch.has-focus;
 
     callback clicked();
 

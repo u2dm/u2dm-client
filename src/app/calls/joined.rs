@@ -913,6 +913,7 @@ impl Joined {
             },
             notice,
             stage: arranged.stage,
+            stage_chosen: arranged.chosen,
             tiles: Arc::from(arranged.tiles),
             self_view: self.stage.self_view(),
             offered_share: arranged.offered_share,

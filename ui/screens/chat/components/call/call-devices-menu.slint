@@ -1,6 +1,7 @@
 import { ScrollView } from "std-widgets.slint";
 import { Icon, IconDisplay, IconSet } from "@lucide";
 
+import { RovingKeys } from "../../../../components/a11y.slint";
 import { ChoiceRow } from "../../../../components/choice-row.slint";
 import { PickerCard } from "../../../../components/overlay.slint";
 import { Actions } from "../../../../actions.slint";
@@ -42,13 +43,19 @@ component DeviceChoice inherits ChoiceRow {
     in property <CallDeviceKind> kind;
     in property <CallDeviceEntry> entry;
 
+    callback roved(length, length);
+
     height: root.detail == "" ? Metrics.call-device-row : Metrics.choice-row;
     text: CallWords.device-name(root.entry.status, root.entry.name);
     detail: CallWords.device-detail(root.entry.status, root.entry.name);
     checked: root.entry.chosen;
-    label: root.detail == ""
-        ? @tr("{}: {}", CallWords.device-kind(root.kind), root.text)
-        : @tr("{}: {}, {}", CallWords.device-kind(root.kind), root.text, root.detail);
+    label: CallWords.device-label(root.kind, root.entry.status, root.entry.name);
+    focusable: false;
+    changed roving-focus => {
+        if self.roving-focus {
+            root.roved(self.y, self.height);
+        }
+    }
     clicked => {
         Actions.use-call-device({ kind: root.kind, key: root.entry.key });
     }
@@ -57,10 +64,83 @@ component DeviceChoice inherits ChoiceRow {
 export component CallDevicesMenu inherits PickerCard {
     in property <length> room-below;
 
+    property <int> cursor: -1;
+    property <int> microphones: CallView.microphones.length;
+    property <int> speakers: CallView.speakers.length;
+    property <int> count: root.microphones + root.speakers + CallView.cameras.length;
+    property <bool> keys-focused: keys.has-focus;
+
+    public function open(by-keys: bool) {
+        root.cursor = by-keys && root.count > 0 ? 0 : -1;
+        keys.focus();
+    }
+
+    pure function kind-at(index: int) -> CallDeviceKind {
+        if index < root.microphones {
+            return CallDeviceKind.microphone;
+        }
+        if index < root.microphones + root.speakers {
+            return CallDeviceKind.speaker;
+        }
+        return CallDeviceKind.camera;
+    }
+
+    pure function entry-at(index: int) -> CallDeviceEntry {
+        if index < root.microphones {
+            return CallView.microphones[index];
+        }
+        if index < root.microphones + root.speakers {
+            return CallView.speakers[index - root.microphones];
+        }
+        return CallView.cameras[index - root.microphones - root.speakers];
+    }
+
+    pure function spoken-label() -> string {
+        if root.cursor < 0 || root.cursor >= root.count {
+            return @tr("Devices");
+        }
+        let entry = root.entry-at(root.cursor);
+        return CallWords.device-label(root.kind-at(root.cursor), entry.status, entry.name);
+    }
+
+    function choose-at(index: int) {
+        if index >= 0 && index < root.count {
+            Actions.use-call-device({ kind: root.kind-at(index), key: root.entry-at(index).key });
+        }
+    }
+
+    function reveal(top: length, size: length) {
+        if top < -scroll.content-y {
+            scroll.content-y = -top;
+        } else if top + size > -scroll.content-y + scroll.visible-height {
+            scroll.content-y = -(top + size - scroll.visible-height);
+        }
+    }
+
     width: Metrics.call-devices-width;
     height: min(rows.preferred-height + 2 * Space.sm, root.room-below);
 
     TouchArea { }
+
+    keys := RovingKeys {
+        count: root.count;
+        cursor <=> root.cursor;
+        accessible-label: root.spoken-label();
+        accessible-checkable: root.cursor >= 0;
+        accessible-checked: root.cursor >= 0 && root.entry-at(root.cursor).chosen;
+        accessible-action-default => {
+            root.choose-at(max(root.cursor, 0));
+        }
+        intercept(event) => {
+            if event.text == Key.Tab || event.text == Key.Backtab {
+                return accept;
+            }
+            return reject;
+        }
+        activated(index) => {
+            root.choose-at(index);
+        }
+    }
 
     scroll := ScrollView {
         x: 0;
@@ -81,9 +161,13 @@ export component CallDevicesMenu inherits PickerCard {
                 text: CallWords.device-kind(CallDeviceKind.microphone);
             }
 
-            for entry in CallView.microphones: DeviceChoice {
+            for entry[index] in CallView.microphones: DeviceChoice {
                 kind: CallDeviceKind.microphone;
                 entry: entry;
+                roving-focus: root.keys-focused && root.cursor == index;
+                roved(top, size) => {
+                    root.reveal(top, size);
+                }
             }
 
             DeviceHeading {
@@ -91,9 +175,13 @@ export component CallDevicesMenu inherits PickerCard {
                 text: CallWords.device-kind(CallDeviceKind.speaker);
             }
 
-            for entry in CallView.speakers: DeviceChoice {
+            for entry[index] in CallView.speakers: DeviceChoice {
                 kind: CallDeviceKind.speaker;
                 entry: entry;
+                roving-focus: root.keys-focused && root.cursor == root.microphones + index;
+                roved(top, size) => {
+                    root.reveal(top, size);
+                }
             }
 
             DeviceHeading {
@@ -111,9 +199,13 @@ export component CallDevicesMenu inherits PickerCard {
                 wrap: word-wrap;
             }
 
-            for entry in CallView.cameras: DeviceChoice {
+            for entry[index] in CallView.cameras: DeviceChoice {
                 kind: CallDeviceKind.camera;
                 entry: entry;
+                roving-focus: root.keys-focused && root.cursor == root.microphones + root.speakers + index;
+                roved(top, size) => {
+                    root.reveal(top, size);
+                }
             }
         }
     }

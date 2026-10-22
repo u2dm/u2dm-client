@@ -200,6 +200,7 @@ pub struct CallDump {
     pub sheet_camera: bool,
     pub sheet_leaving: String,
     pub stage: Vec<CallTileDump>,
+    pub stage_chosen: bool,
     pub tiles: Vec<CallTileDump>,
     pub media_shown: bool,
     pub attached: Vec<String>,
@@ -442,6 +443,7 @@ fn call_view<B: UiBackend>(window: &B::Window) -> CallDump {
             .iter()
             .map(|tile| call_tile::<B>(&tile))
             .collect(),
+        stage_chosen: window.get_bool(BoolProp::StageChosen),
         tiles: B::models()
             .call_tiles
             .iter()

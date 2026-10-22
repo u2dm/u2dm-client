@@ -176,6 +176,11 @@ pub const CATALOG: Scenarios = Scenarios {
             note: "",
         },
         Flag {
+            value: "microphone-fails",
+            effect: "your microphone is busy, so publishing it fails",
+            note: "",
+        },
+        Flag {
             value: "camera-lost",
             effect: "your camera stops sending pictures 3s after it first starts",
             note: "Try again starts it for good",
@@ -341,6 +346,7 @@ pub struct Scenario {
     cameras: bool,
     pub no_camera: bool,
     pub camera_fails: bool,
+    pub microphone_fails: bool,
     camera_lost: bool,
     screen_share: bool,
     screen_share_ends: bool,
@@ -405,6 +411,7 @@ fn apply(scenario: &mut Scenario, flag: &str) {
         "cameras" => scenario.cameras = true,
         "no-camera" => scenario.no_camera = true,
         "camera-fails" => scenario.camera_fails = true,
+        "microphone-fails" => scenario.microphone_fails = true,
         "camera-lost" => scenario.camera_lost = true,
         "screen-share" => scenario.screen_share = true,
         "screen-share-ends" => scenario.screen_share_ends = true,

@@ -3,9 +3,11 @@ import { IconDisplay, IconSet } from "@lucide";
 import { Actions } from "../../../../actions.slint";
 import { Avatar } from "../../../../components/avatar.slint";
 import { ClickArea } from "../../../../components/a11y.slint";
+import { CallPanel } from "../../../../local.slint";
 import { CallTileEntry } from "../../../../types.slint";
 import { CallTileState } from "../../../../enums.slint";
 import { CallWords } from "../../../../messages.slint";
+import { CallView } from "../../../../views.slint";
 import { AppStyle, Fonts, Glyph, IconSize, Metrics, Radius, Space, Weight } from "../../../../theme.slint";
 
 component TileName inherits HorizontalLayout {
@@ -48,6 +50,7 @@ export component CallTileView inherits Rectangle {
     in property <CallTileEntry> tile;
     in property <bool> shown: true;
     in property <bool> selectable: false;
+    in property <bool> staged: false;
     in property <bool> fits-video: false;
     in property <bool> above-modal: false;
 
@@ -65,6 +68,7 @@ export component CallTileView inherits Rectangle {
     property <bool> named-outside: root.tile.screen && root.shows-video;
     property <length> picture-height: root.named-outside ? root.height - Metrics.call-tile-caption : root.height;
     property <bool> roomy: root.height >= Metrics.call-tile-roomy;
+    property <bool> leads-back: root.staged && CallView.stage-chosen;
 
     function report() {
         if root.feed != "" {
@@ -192,13 +196,37 @@ export component CallTileView inherits Rectangle {
         above-modal: root.above-modal;
         ring-radius: Radius.md;
         label: CallWords.focus-on(root.title);
+        init => {
+            if CallPanel.focus-tile != "" && CallPanel.focus-tile == root.tile.key {
+                CallPanel.focus-tile = "";
+                self.take-focus();
+            }
+        }
         changed has-focus => {
             if self.has-focus {
                 root.took-focus();
             }
         }
         clicked => {
+            CallPanel.focus-stage = self.has-focus;
             Actions.focus-call-tile(root.tile.key);
+        }
+    }
+
+    if root.leads-back: ClickArea {
+        above-modal: root.above-modal;
+        ring-radius: Radius.md;
+        label: CallWords.show-gallery();
+        accessible-description: CallWords.in-focus(root.title);
+        init => {
+            if CallPanel.focus-stage {
+                CallPanel.focus-stage = false;
+                self.take-focus();
+            }
+        }
+        clicked => {
+            CallPanel.focus-tile = self.has-focus ? root.tile.key : "";
+            Actions.show-call-gallery();
         }
     }
 }

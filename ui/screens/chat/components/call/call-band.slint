@@ -83,6 +83,16 @@ export component CallBand inherits Rectangle {
         devices-button.take-focus();
     }
 
+    function focus-control-for(notice: CallNotice) {
+        if notice == CallNotice.microphone-failed {
+            mic.take-focus();
+        } else if notice == CallNotice.camera-failed {
+            camera.take-focus();
+        } else if notice == CallNotice.screen-failed || notice == CallNotice.choosing-screen {
+            share.take-focus();
+        }
+    }
+
     public function focus-chat() {
         if root.offers-chat {
             chat-toggle.take-focus();
@@ -199,6 +209,7 @@ export component CallBand inherits Rectangle {
                 tip-below: true;
                 tip-scope: TipScope.call;
                 clicked => {
+                    CallPanel.menu-by-keys = self.has-focus;
                     CallPanel.menu-open = true;
                 }
             }
@@ -213,6 +224,7 @@ export component CallBand inherits Rectangle {
                 tip-below: true;
                 tip-scope: TipScope.call;
                 clicked => {
+                    CallPanel.devices-by-keys = self.has-focus;
                     Actions.refresh-call-devices();
                     CallPanel.devices-open = true;
                 }
@@ -272,9 +284,9 @@ export component CallBand inherits Rectangle {
             alignment: center;
             spacing: Space.lg;
 
-            CallMicButton { }
+            mic := CallMicButton { }
 
-            CallCameraButton { }
+            camera := CallCameraButton { }
 
             share := CallShareButton {
                 explain => {
@@ -289,6 +301,9 @@ export component CallBand inherits Rectangle {
             explains-share: root.explains-share && share.refused;
             tells-device-news: root.tells-device-news;
             tells-share-ended: root.tells-share-ended && !root.compact;
+            acted-by-keys(notice) => {
+                root.focus-control-for(notice);
+            }
         }
     }
 

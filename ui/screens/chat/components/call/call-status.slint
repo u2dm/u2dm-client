@@ -8,10 +8,12 @@ import { Actions } from "../../../../actions.slint";
 import { CallView } from "../../../../views.slint";
 import { AppStyle, Fonts, IconSize, Size, Space } from "../../../../theme.slint";
 
-export component CallStatus inherits HorizontalLayout {
+export component CallStatus inherits VerticalLayout {
     in property <bool> explains-share;
     in property <bool> tells-device-news;
     in property <bool> tells-share-ended;
+
+    callback acted-by-keys(CallNotice);
 
     property <CallNotice> notice: CallView.notice;
     property <bool> noticed: root.notice != CallNotice.none;
@@ -24,6 +26,7 @@ export component CallStatus inherits HorizontalLayout {
     property <bool> trouble: (root.noticed && !root.pending && !root.about-others && !root.undiagnosed)
         || (root.device-news && !root.unplugged);
     property <string> action: CallWords.notice-action(root.notice);
+    property <string> way-out: CallWords.notice-way-out(root.notice);
     property <bool> share-waits: CallView.phase == CallPhase.joining || CallView.phase == CallPhase.connecting;
 
     function act() {
@@ -42,48 +45,99 @@ export component CallStatus inherits HorizontalLayout {
         }
     }
 
-    min-height: Size.sm;
-    alignment: center;
-    spacing: Space.md;
-
-    if root.pending: DotPulse {
-        tint: AppStyle.foreground-muted;
-        dot-size: Space.sm;
+    function go-without() {
+        if root.notice == CallNotice.microphone-failed {
+            Actions.set-microphone({ on: false });
+        } else if root.notice == CallNotice.camera-failed {
+            Actions.set-camera({ on: false });
+        }
     }
 
-    if !root.pending: IconDisplay {
-        cross-axis-self-alignment: center;
-        icon: root.trouble ? IconSet.CircleAlert
-            : root.about-others ? IconSet.ShieldAlert
-            : root.unplugged ? IconSet.Unplug
-            : IconSet.Info;
-        size: IconSize.sm;
-        stroke: root.trouble ? AppStyle.danger-muted : AppStyle.foreground-faint;
-    }
+    spacing: Space.xs;
 
-    Text {
-        text: root.noticed
-            ? CallWords.notice(root.notice, CallView.active-room-name, CallView.notice-name, CallView.notice-others)
-            : root.explains-share
-            ? CallWords.share-state(CallView.screen, CallView.screen-refusal, root.share-waits)
-            : root.device-news
-            ? CallWords.device-news(CallView.device-news-trouble, CallView.device-news-kind, CallView.device-news-name)
-            : CallWords.share-ended(CallView.ended-share);
-        font-family: Fonts.emoji;
-        font-size: Fonts.body-small;
-        color: root.trouble ? AppStyle.danger-muted : AppStyle.foreground-muted;
-        vertical-alignment: center;
-        wrap: word-wrap;
-    }
-
-    if root.action != "": LinkButton {
+    HorizontalLayout {
         min-height: Size.sm;
-        text: root.action;
-        label: CallWords.notice-action-label(root.notice, CallView.active-room-name);
-        font-size: Fonts.body-small;
-        pad: 2 * Space.sm;
-        clicked => {
-            root.act();
+        alignment: center;
+        spacing: Space.md;
+
+        if root.pending: DotPulse {
+            tint: AppStyle.foreground-muted;
+            dot-size: Space.sm;
+        }
+
+        if !root.pending: IconDisplay {
+            cross-axis-self-alignment: center;
+            icon: root.trouble ? IconSet.CircleAlert
+                : root.about-others ? IconSet.ShieldAlert
+                : root.unplugged ? IconSet.Unplug
+                : IconSet.Info;
+            size: IconSize.sm;
+            stroke: root.trouble ? AppStyle.danger-muted : AppStyle.foreground-faint;
+        }
+
+        Text {
+            text: root.noticed
+                ? CallWords.notice(root.notice, CallView.active-room-name, CallView.notice-name, CallView.notice-others)
+                : root.explains-share
+                ? CallWords.share-state(CallView.screen, CallView.screen-refusal, root.share-waits)
+                : root.device-news
+                ? CallWords.device-news(CallView.device-news-trouble, CallView.device-news-kind, CallView.device-news-name)
+                : CallWords.share-ended(CallView.ended-share);
+            font-family: Fonts.emoji;
+            font-size: Fonts.body-small;
+            color: root.trouble ? AppStyle.danger-muted : AppStyle.foreground-muted;
+            vertical-alignment: center;
+            wrap: word-wrap;
+        }
+
+        if root.action != "" && root.way-out == "": LinkButton {
+            min-height: Size.sm;
+            text: root.action;
+            label: CallWords.notice-action-label(root.notice, CallView.active-room-name);
+            font-size: Fonts.body-small;
+            pad: 2 * Space.sm;
+            clicked => {
+                let by-keys = self.has-focus;
+                root.act();
+                if by-keys {
+                    root.acted-by-keys(root.notice);
+                }
+            }
+        }
+    }
+
+    if root.way-out != "": HorizontalLayout {
+        alignment: center;
+        spacing: Space.md;
+
+        LinkButton {
+            min-height: Size.sm;
+            text: root.action;
+            label: CallWords.notice-action-label(root.notice, CallView.active-room-name);
+            font-size: Fonts.body-small;
+            pad: 2 * Space.sm;
+            clicked => {
+                let by-keys = self.has-focus;
+                root.act();
+                if by-keys {
+                    root.acted-by-keys(root.notice);
+                }
+            }
+        }
+
+        LinkButton {
+            min-height: Size.sm;
+            text: root.way-out;
+            label: CallWords.notice-way-out-label(root.notice);
+            font-size: Fonts.body-small;
+            pad: 2 * Space.sm;
+            clicked => {
+                let by-keys = self.has-focus;
+                root.go-without();
+                if by-keys {
+                    root.acted-by-keys(root.notice);
+                }
+            }
         }
     }
 }

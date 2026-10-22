@@ -1,4 +1,4 @@
-import { Palette } from "std-widgets.slint";
+import { Palette, ScrollView } from "std-widgets.slint";
 import { Icon, IconDisplay, IconSet } from "@lucide";
 
 import { AppButton, LinkButton } from "../../../../components/button.slint";
@@ -83,6 +83,9 @@ component MediaChoiceRow inherits ClickArea {
 
 export component CallSheet inherits ModalHost {
     property <length> card-width: min(AppStyle.card-width, root.width - AppStyle.card-inset);
+    property <length> body-height: body.preferred-height;
+    property <length> actions-height: actions.preferred-height;
+    property <length> card-height: min(root.body-height + root.actions-height, root.height - AppStyle.card-inset);
     property <int> serial: CallView.sheet-serial;
     property <bool> joining: CallView.sheet-people > 0;
     property <bool> refused: CallView.sheet-offer == CallOffer.refused;
@@ -105,12 +108,30 @@ export component CallSheet inherits ModalHost {
     opened => {
         Reactions.close();
         MetaTip.clear();
-        microphone-row.take-focus();
+        root.focus-first();
     }
 
     changed serial => {
         root.microphone = CallView.sheet-microphone;
         root.camera = CallView.sheet-camera;
+    }
+
+    changed refused => {
+        if root.refused && (microphone-row.has-focus || camera-row.has-focus) {
+            root.focus-first();
+        } else if !root.refused && remedy-button.has-focus {
+            root.focus-first();
+        }
+    }
+
+    function focus-first() {
+        if !root.refused {
+            microphone-row.take-focus();
+        } else if root.remedy != "" {
+            remedy-button.take-focus();
+        } else {
+            cancel-button.take-focus();
+        }
     }
 
     function confirm() {
@@ -142,115 +163,148 @@ export component CallSheet inherits ModalHost {
         x: (root.width - self.width) / 2;
         y: (root.height - self.height) / 2;
         width: root.card-width;
-        height: card-body.preferred-height;
+        height: root.card-height;
+        clip: true;
 
-        card-body := VerticalLayout {
-            padding: Space.xxl;
-            spacing: Space.xl;
+        ScrollView {
+            x: 0;
+            y: 0;
+            width: parent.width;
+            height: parent.height - root.actions-height;
+            content-width: root.card-width;
+            content-height: root.body-height;
 
-            VerticalLayout {
-                spacing: Space.sm;
+            body := VerticalLayout {
+                width: root.card-width;
+                padding-top: Space.xxl;
+                padding-left: Space.xxl;
+                padding-right: Space.xxl;
+                padding-bottom: Space.xl;
+                spacing: Space.xl;
 
-                HorizontalLayout {
-                    alignment: center;
+                VerticalLayout {
+                    spacing: Space.sm;
 
-                    IconDisplay {
-                        icon: CallView.sheet-video ? IconSet.Video : IconSet.Phone;
-                        size: IconSize.lg;
-                        stroke: AppStyle.call-accept;
+                    HorizontalLayout {
+                        alignment: center;
+
+                        IconDisplay {
+                            icon: CallView.sheet-video ? IconSet.Video : IconSet.Phone;
+                            size: IconSize.lg;
+                            stroke: AppStyle.call-accept;
+                        }
+                    }
+
+                    Text {
+                        text: root.title;
+                        font-size: Fonts.title;
+                        font-weight: Weight.semibold;
+                        horizontal-alignment: center;
+                        wrap: word-wrap;
+                        color: Palette.foreground;
+                    }
+
+                    if root.joining && !root.refused: DialogNote {
+                        text: CallWords.in-call(CallView.sheet-people);
                     }
                 }
 
-                Text {
-                    text: root.title;
-                    font-size: Fonts.title;
-                    font-weight: Weight.semibold;
-                    horizontal-alignment: center;
-                    wrap: word-wrap;
-                    color: Palette.foreground;
-                }
+                VerticalLayout {
+                    VerticalLayout {
+                        height: root.refused ? 0 : self.preferred-height;
+                        visible: !root.refused;
+                        spacing: Space.xs;
 
-                if root.joining && !root.refused: DialogNote {
-                    text: CallWords.in-call(CallView.sheet-people);
-                }
-            }
+                        microphone-row := MediaChoiceRow {
+                            label: @tr("Microphone");
+                            on-icon: IconSet.Mic;
+                            off-icon: IconSet.MicOff;
+                            text: CallWords.microphone-choice(self.on);
+                            detail: CallWords.microphone-effect(self.on);
+                            on <=> root.microphone;
+                        }
 
-            VerticalLayout {
-                spacing: Space.xs;
-
-                microphone-row := MediaChoiceRow {
-                    label: @tr("Microphone");
-                    on-icon: IconSet.Mic;
-                    off-icon: IconSet.MicOff;
-                    text: CallWords.microphone-choice(self.on);
-                    detail: CallWords.microphone-effect(self.on);
-                    on <=> root.microphone;
-                }
-
-                MediaChoiceRow {
-                    label: @tr("Camera");
-                    on-icon: IconSet.Video;
-                    off-icon: IconSet.VideoOff;
-                    text: CallWords.camera-choice(self.on);
-                    detail: CallWords.camera-effect(self.on);
-                    on <=> root.camera;
-                }
-            }
-
-            if root.refused: Text {
-                text: CallWords.refusal(CallView.sheet-refusal);
-                font-size: Fonts.body-small;
-                font-weight: Weight.semibold;
-                horizontal-alignment: center;
-                wrap: word-wrap;
-                color: AppStyle.danger-muted;
-                accessible-live-region: AccessibleLiveness.assertive;
-            }
-
-            if root.refused && root.remedy != "": HorizontalLayout {
-                alignment: center;
-
-                LinkButton {
-                    min-height: Size.sm;
-                    above-modal: true;
-                    text: root.remedy;
-                    label: root.remedy;
-                    pad: 2 * Space.sm;
-                    clicked => {
-                        Actions.close-call-sheet();
-                        Actions.open-encryption();
+                        camera-row := MediaChoiceRow {
+                            label: @tr("Camera");
+                            on-icon: IconSet.Video;
+                            off-icon: IconSet.VideoOff;
+                            text: CallWords.camera-choice(self.on);
+                            detail: CallWords.camera-effect(self.on);
+                            on <=> root.camera;
+                        }
                     }
-                }
-            }
 
-            if CallView.sheet-ended && !root.refused: DialogNote {
-                text: @tr("The call ended before you joined it");
-                accessible-live-region: AccessibleLiveness.polite;
-            }
+                    VerticalLayout {
+                        height: root.refused ? self.preferred-height : 0;
+                        visible: root.refused;
 
-            HorizontalLayout {
-                spacing: Space.lg;
+                        Text {
+                            text: CallWords.refusal(CallView.sheet-refusal);
+                            font-size: Fonts.body-small;
+                            font-weight: Weight.semibold;
+                            horizontal-alignment: center;
+                            wrap: word-wrap;
+                            color: AppStyle.danger-muted;
+                            accessible-live-region: AccessibleLiveness.assertive;
+                        }
 
-                AppButton {
-                    horizontal-stretch: 1;
-                    above-modal: true;
-                    text: @tr("Cancel");
-                    filled: false;
-                    clicked => {
-                        CallPanel.dismiss-sheet();
+                        HorizontalLayout {
+                            height: root.remedy != "" ? self.preferred-height : 0;
+                            visible: root.remedy != "";
+                            padding-top: Space.xl;
+                            alignment: center;
+
+                            remedy-button := LinkButton {
+                                min-height: Size.sm;
+                                above-modal: true;
+                                text: root.remedy;
+                                label: root.remedy;
+                                pad: 2 * Space.sm;
+                                clicked => {
+                                    Actions.close-call-sheet();
+                                    Actions.open-encryption();
+                                }
+                            }
+                        }
                     }
                 }
 
-                AppButton {
-                    horizontal-stretch: 1;
-                    above-modal: true;
-                    enabled: !root.refused;
-                    text: CallWords.sheet-action(root.joining, root.leaving);
-                    icon: CallView.sheet-video ? IconSet.Video : IconSet.Phone;
-                    tint: AppStyle.call-accept;
-                    clicked => {
-                        root.confirm();
-                    }
+                if CallView.sheet-ended && !root.refused: DialogNote {
+                    text: @tr("The call ended before you joined it");
+                    accessible-live-region: AccessibleLiveness.polite;
+                }
+            }
+        }
+
+        actions := HorizontalLayout {
+            x: 0;
+            y: parent.height - self.height;
+            width: parent.width;
+            height: root.actions-height;
+            padding-left: Space.xxl;
+            padding-right: Space.xxl;
+            padding-bottom: Space.xxl;
+            spacing: Space.lg;
+
+            cancel-button := AppButton {
+                horizontal-stretch: 1;
+                above-modal: true;
+                text: @tr("Cancel");
+                filled: false;
+                clicked => {
+                    CallPanel.dismiss-sheet();
+                }
+            }
+
+            AppButton {
+                horizontal-stretch: 1;
+                above-modal: true;
+                enabled: !root.refused;
+                text: CallWords.sheet-action(root.joining, root.leaving);
+                icon: CallView.sheet-video ? IconSet.Video : IconSet.Phone;
+                tint: AppStyle.call-accept;
+                clicked => {
+                    root.confirm();
                 }
             }
         }

@@ -635,8 +635,11 @@ export component TimelineView inherits Rectangle {
                 CallPanel.menu-open = false;
                 band.focus-menu();
             }
+            opened => {
+                view-menu.open(CallPanel.menu-by-keys);
+            }
 
-            CallViewMenu {
+            view-menu := CallViewMenu {
                 x: Placement.fit(band.menu-x + band.menu-size - self.width, self.width, root.overlay-width, Space.md);
                 y: Placement.fit(band.menu-y + band.menu-size + Space.xs, self.height, root.height, Space.md);
                 chose => {
@@ -657,8 +660,11 @@ export component TimelineView inherits Rectangle {
                 CallPanel.devices-open = false;
                 band.focus-devices();
             }
+            opened => {
+                devices-menu.open(CallPanel.devices-by-keys);
+            }
 
-            CallDevicesMenu {
+            devices-menu := CallDevicesMenu {
                 x: Placement.fit(band.devices-x + band.devices-size - self.width, self.width, root.overlay-width, Space.md);
                 y: band.devices-y + band.devices-size + Space.xs;
                 room-below: root.height - self.y - Space.md;

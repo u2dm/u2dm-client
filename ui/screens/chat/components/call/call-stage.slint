@@ -111,6 +111,7 @@ export component CallStage inherits Rectangle {
         width: self.box-width;
         height: self.boxed ? self.box-width / root.aspect : root.main-height;
         tile: tile;
+        staged: true;
         fits-video: root.fits-videos;
     }
 
