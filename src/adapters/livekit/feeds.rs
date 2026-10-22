@@ -299,7 +299,7 @@ pub(super) fn signed(side: u32) -> i32 {
 
 fn rotate(upright: &[u8], size: FrameSize, rotation: VideoRotation, out: &mut [u8]) -> bool {
     let (width, height) = (size.width as usize, size.height as usize);
-    for (index, pixel) in upright.chunks_exact(RGBA).enumerate() {
+    for (index, pixel) in upright.as_chunks::<RGBA>().0.iter().enumerate() {
         let (x, y) = (index % width, index / width);
         let (to_x, to_y, to_width) = match rotation {
             VideoRotation::VideoRotation0 => (x, y, width),

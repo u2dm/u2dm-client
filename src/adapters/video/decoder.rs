@@ -146,8 +146,11 @@ impl AudioDecoder {
             return;
         }
         let samples: Vec<f32> = bytes
-            .chunks_exact(size_of::<f32>())
-            .map(|chunk| <[u8; 4]>::try_from(chunk).map_or(0.0, f32::from_ne_bytes))
+            .as_chunks::<{ size_of::<f32>() }>()
+            .0
+            .iter()
+            .copied()
+            .map(f32::from_ne_bytes)
             .collect();
         emit(&self.target.spread_across_device(samples), start);
     }

@@ -17,8 +17,10 @@ struct LinearPart {
 impl LinearPart {
     fn parse(bytes: &[u8]) -> Option<Self> {
         let words: Vec<i32> = bytes
-            .chunks_exact(size_of::<i32>())
-            .filter_map(|chunk| <[u8; 4]>::try_from(chunk).ok())
+            .as_chunks::<{ size_of::<i32>() }>()
+            .0
+            .iter()
+            .copied()
             .map(i32::from_ne_bytes)
             .collect();
         let [a, b, _, c, d, _, _, _, _] = words.as_slice() else {

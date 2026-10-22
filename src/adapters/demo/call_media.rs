@@ -180,10 +180,10 @@ impl VideoFrame for Painted {
         let bar_width = (width / BAR_SHARE).max(1);
         let bar_x =
             u32::try_from(self.frame_number.wrapping_mul(BAR_STEP) % u64::from(width)).unwrap_or(0);
-        for (index, pixel) in rgba.chunks_exact_mut(4).enumerate() {
+        for (index, pixel) in rgba.as_chunks_mut::<4>().0.iter_mut().enumerate() {
             let index = u32::try_from(index).unwrap_or(0);
             let [red, green, blue] = self.colour_at(index % width, index / width, bar_x, bar_width);
-            pixel.copy_from_slice(&[red, green, blue, u8::MAX]);
+            *pixel = [red, green, blue, u8::MAX];
         }
         true
     }
