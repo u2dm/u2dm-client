@@ -3,9 +3,9 @@ import { IconDisplay, IconSet } from "@lucide";
 import { Actions } from "../../../../actions.slint";
 import { Avatar } from "../../../../components/avatar.slint";
 import { ClickArea } from "../../../../components/a11y.slint";
+import { CallStates } from "../../../../call-states.slint";
 import { CallPanel } from "../../../../local.slint";
 import { CallTileEntry } from "../../../../types.slint";
-import { CallTileState } from "../../../../enums.slint";
 import { CallWords } from "../../../../messages.slint";
 import { CallView } from "../../../../views.slint";
 import { AppStyle, Fonts, Glyph, IconSize, Metrics, Radius, Space, Weight } from "../../../../theme.slint";
@@ -14,10 +14,19 @@ component TileName inherits HorizontalLayout {
     in property <CallTileEntry> tile;
     in property <string> title;
     in property <color> text-color: AppStyle.call-tile-text;
+    in property <bool> alerts;
 
     spacing: Space.xs;
 
-    if root.tile.muted: IconDisplay {
+    if root.alerts: IconDisplay {
+        cross-axis-self-alignment: center;
+        icon: IconSet.CircleAlert;
+        size: IconSize.xs;
+        stroke: root.text-color;
+        accessible-role: none;
+    }
+
+    if root.tile.muted && !CallStates.misses-audio(root.tile.state): IconDisplay {
         cross-axis-self-alignment: center;
         icon: IconSet.MicOff;
         size: IconSize.xs;
@@ -60,11 +69,9 @@ export component CallTileView inherits Rectangle {
     property <string> title: root.tile.screen ? CallWords.screen-of(root.tile.name)
         : root.tile.own ? @tr("You")
         : root.tile.name;
-    property <bool> troubled: root.tile.state == CallTileState.cant-decrypt
-        || root.tile.state == CallTileState.unverified-device
-        || root.tile.state == CallTileState.unreachable;
+    property <bool> troubled: CallStates.troubled(root.tile.state);
     property <string> feed: root.tile.feed;
-    property <bool> shows-video: root.tile.has-frame && root.tile.state == CallTileState.live;
+    property <bool> shows-video: root.tile.has-frame && CallStates.flows(root.tile.state);
     property <bool> named-outside: root.tile.screen && root.shows-video;
     property <length> picture-height: root.named-outside ? root.height - Metrics.call-tile-caption : root.height;
     property <bool> roomy: root.height >= Metrics.call-tile-roomy;
@@ -99,7 +106,8 @@ export component CallTileView inherits Rectangle {
     border-radius: Radius.md;
     accessible-role: groupbox;
     accessible-label: root.title;
-    accessible-description: !root.shows-video ? root.state-text : root.tile.screen ? @tr("Screen share") : @tr("Camera on");
+    accessible-description: !root.shows-video ? root.state-text
+        : CallWords.listed(root.tile.screen ? @tr("Screen share") : @tr("Camera on"), root.state-text);
 
     Rectangle {
         background: AppStyle.call-tile;
@@ -117,15 +125,29 @@ export component CallTileView inherits Rectangle {
 
         if root.shows-video && !root.named-outside: Rectangle {
             y: parent.height - self.height;
-            height: Metrics.call-tile-caption;
+            height: root.state-text == "" ? Metrics.call-tile-caption : Metrics.call-tile-caption-tall;
             background: AppStyle.call-caption;
 
-            TileName {
+            VerticalLayout {
                 padding-left: Space.sm;
                 padding-right: Space.sm;
                 alignment: center;
-                tile: root.tile;
-                title: root.title;
+
+                TileName {
+                    alignment: center;
+                    tile: root.tile;
+                    title: root.title;
+                    alerts: root.state-text != "";
+                }
+
+                if root.state-text != "": Text {
+                    text: root.state-text;
+                    font-size: Fonts.caption;
+                    color: AppStyle.call-tile-text;
+                    overflow: elide;
+                    horizontal-alignment: center;
+                    accessible-role: none;
+                }
             }
         }
 
@@ -165,7 +187,7 @@ export component CallTileView inherits Rectangle {
                     color-index: root.tile.color-index;
                     initial: root.tile.initial;
                     initial-size: Glyph.lg;
-                    opacity: root.tile.state == CallTileState.live ? 1 : 0.5;
+                    opacity: CallStates.flows(root.tile.state) ? 1 : 0.5;
                 }
             }
 

@@ -93,7 +93,10 @@ fn apply_failed(w: &impl UiProps, failed: Option<&FailedCall>) {
 
 fn apply_notice(w: &impl UiProps, notice: Option<&CallNotice>) {
     let (name, others) = match notice {
-        Some(CallNotice::CantDecrypt { who, others, .. }) => (who.shown(), *others),
+        Some(
+            CallNotice::CantDecrypt { who, others, .. }
+            | CallNotice::NotReceived { who, others, .. },
+        ) => (who.shown(), *others),
         _ => (String::new(), 0),
     };
     w.set_string(StringProp::NoticeName, SharedString::from(name));

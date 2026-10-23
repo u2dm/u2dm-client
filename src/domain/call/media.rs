@@ -36,6 +36,24 @@ pub enum Decryption {
     Failed,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[cfg_attr(not(any(feature = "calls", feature = "demo")), allow(dead_code))]
+pub enum MediaSource {
+    Microphone,
+    Camera,
+    Screen,
+    ScreenAudio,
+    Unknown,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(not(any(feature = "calls", feature = "demo")), allow(dead_code))]
+pub enum ConnectionQuality {
+    Good,
+    Poor,
+    Lost,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Microphone {
     #[cfg_attr(not(any(feature = "calls", feature = "demo")), allow(dead_code))]
@@ -75,6 +93,21 @@ pub enum MediaEvent {
     Speaking {
         sfu: SfuId,
         speakers: Vec<MediaIdentity>,
+    },
+    Missing {
+        sfu: SfuId,
+        identity: MediaIdentity,
+        source: MediaSource,
+        missing: bool,
+    },
+    Quality {
+        sfu: SfuId,
+        identity: MediaIdentity,
+        quality: ConnectionQuality,
+    },
+    OwnQuality {
+        sfu: SfuId,
+        quality: ConnectionQuality,
     },
     Decryption {
         identity: MediaIdentity,

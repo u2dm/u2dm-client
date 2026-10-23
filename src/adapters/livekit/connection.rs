@@ -1,23 +1,29 @@
+use std::future::pending;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use livekit::e2ee::EncryptionType;
 use livekit::e2ee::key_provider::KeyProvider;
 use livekit::prelude::{
-    ConnectionState, Participant, RemoteParticipant, RemoteTrack, RemoteTrackPublication,
-    RemoteVideoTrack, Room, RoomEvent, RoomOptions, TrackPublication, TrackSource,
+    ConnectionQuality as LiveKitQuality, ConnectionState, Participant, RemoteParticipant,
+    RemoteTrack, RemoteTrackPublication, RemoteVideoTrack, Room, RoomEvent, RoomOptions,
+    TrackPublication, TrackSource,
 };
 use livekit::webrtc::native::frame_cryptor::EncryptionState;
 use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
-use tokio::time::timeout;
+use tokio::time::{Instant, MissedTickBehavior, interval_at, sleep_until, timeout};
 use tracing::Instrument;
 
 use super::e2ee;
 use super::feeds::{Feeds, feed_of};
+use super::quality::{Qualities, QualityOf, Rated};
+use super::reception::{Change, RECEIVE_CHECK, Reception, Wanted};
 use crate::domain::call::identity::MediaIdentity;
 use crate::domain::call::keys::KeyIndex;
-use crate::domain::call::media::{Decryption, MediaEvent, SfuState};
+use crate::domain::call::media::{
+    ConnectionQuality, Decryption, MediaEvent, MediaSource, SfuState,
+};
 use crate::domain::call::sfu::{SfuGrant, SfuId, SfuRole};
 use crate::domain::call::video::VideoKind;
 
@@ -82,6 +88,8 @@ impl Dialled {
                 own_index: Arc::clone(wiring.own_index),
                 feeds: Arc::clone(wiring.feeds),
                 encrypted: wiring.encrypted,
+                reception: Reception::default(),
+                qualities: Qualities::default(),
             })
             .in_current_span(),
         );
@@ -131,6 +139,8 @@ struct Pump {
     own_index: OwnIndex,
     feeds: Arc<Feeds>,
     encrypted: bool,
+    reception: Reception,
+    qualities: Qualities,
 }
 
 async fn pump_events(mut pump: Pump) {
@@ -138,10 +148,27 @@ async fn pump_events(mut pump: Pump) {
         sfu: pump.sfu.clone(),
         state: SfuState::Connected,
     });
-    while let Some(event) = pump.events.recv().await {
-        pump.handle(event);
+    let mut checks = interval_at(Instant::now() + RECEIVE_CHECK, RECEIVE_CHECK);
+    checks.set_missed_tick_behavior(MissedTickBehavior::Delay);
+    loop {
+        let hold_ends = pump.qualities.next_due();
+        tokio::select! {
+            event = pump.events.recv() => match event {
+                Some(event) => pump.handle(event),
+                None => break,
+            },
+            _ = checks.tick() => pump.check_reception(),
+            () = until(hold_ends) => pump.hold_ended(),
+        }
     }
-    tracing::debug!(sfu = %pump.sfu, "the call media server events ended");
+    pump.ended();
+}
+
+async fn until(due: Option<Instant>) {
+    match due {
+        Some(at) => sleep_until(at).await,
+        None => pending().await,
+    }
 }
 
 impl Pump {
@@ -151,7 +178,11 @@ impl Pump {
         }
     }
 
-    fn handle(&self, event: RoomEvent) {
+    fn ended(&self) {
+        tracing::debug!(sfu = %self.sfu, "the call media server events ended");
+    }
+
+    fn handle(&mut self, event: RoomEvent) {
         match event {
             RoomEvent::Connected {
                 participants_with_tracks,
@@ -164,7 +195,7 @@ impl Pump {
                 }
             }
             RoomEvent::ParticipantConnected(participant) => self.present(&participant, true),
-            RoomEvent::ParticipantDisconnected(participant) => self.present(&participant, false),
+            RoomEvent::ParticipantDisconnected(participant) => self.departed(&participant),
             RoomEvent::TrackSubscribed {
                 track,
                 publication,
@@ -186,9 +217,11 @@ impl Pump {
                 participant,
             } => self.track_gone(&participant, publication.source()),
             RoomEvent::TrackSubscriptionFailed {
-                participant, error, ..
+                participant,
+                error,
+                track_sid,
             } => {
-                tracing::info!(sfu = %self.sfu, identity = %participant.identity(), "could not receive a call participant's media: {error}");
+                tracing::info!(sfu = %self.sfu, identity = %participant.identity(), sid = %track_sid, "could not receive a call participant's media: {error}");
             }
             RoomEvent::TrackMuted {
                 participant,
@@ -208,8 +241,12 @@ impl Pump {
             RoomEvent::E2eeStateChanged { participant, state } => {
                 self.encryption_state(&participant, state);
             }
+            RoomEvent::ConnectionQualityChanged {
+                quality,
+                participant,
+            } => self.quality_changed(&participant, quality),
             RoomEvent::ConnectionStateChanged(state) => self.connection_state(state),
-            RoomEvent::Reconnecting => self.sfu_state(SfuState::Reconnecting),
+            RoomEvent::Reconnecting => self.reconnecting(),
             RoomEvent::Reconnected => self.sfu_state(SfuState::Connected),
             RoomEvent::Disconnected { reason } => {
                 self.sfu_state(SfuState::Disconnected(format!("{reason:?}")));
@@ -228,13 +265,116 @@ impl Pump {
         });
     }
 
-    fn connection_state(&self, state: ConnectionState) {
-        let state = match state {
-            ConnectionState::Connected => SfuState::Connected,
-            ConnectionState::Reconnecting => SfuState::Reconnecting,
-            ConnectionState::Disconnected => return,
+    fn connection_state(&mut self, state: ConnectionState) {
+        match state {
+            ConnectionState::Connected => self.sfu_state(SfuState::Connected),
+            ConnectionState::Reconnecting => self.reconnecting(),
+            ConnectionState::Disconnected => {}
+        }
+    }
+
+    fn reconnecting(&mut self) {
+        self.reception.restart();
+        self.sfu_state(SfuState::Reconnecting);
+    }
+
+    fn departed(&mut self, participant: &RemoteParticipant) {
+        self.present(participant, false);
+        if let Some(rated) = self
+            .qualities
+            .forget(&QualityOf::Member(identity_of(participant)))
+        {
+            self.tell_quality(rated);
+        }
+    }
+
+    fn check_reception(&mut self) {
+        if self.room.connection_state() != ConnectionState::Connected {
+            return;
+        }
+        let wanted = self.wanted();
+        for change in self.reception.check(Instant::now(), &wanted) {
+            self.tell_missing(change);
+        }
+    }
+
+    fn wanted(&self) -> Vec<Wanted> {
+        let mut wanted = Vec::new();
+        for participant in self.room.remote_participants().into_values() {
+            let identity = identity_of(&participant);
+            for publication in participant.track_publications().into_values() {
+                let refused =
+                    self.encrypted && publication.encryption_type() == EncryptionType::None;
+                if publication.is_desired() && publication.track().is_none() && !refused {
+                    wanted.push(Wanted {
+                        sid: String::from(publication.sid()),
+                        identity: identity.clone(),
+                        source: media_source(publication.source()),
+                    });
+                }
+            }
+        }
+        wanted
+    }
+
+    fn tell_missing(&self, change: Change) {
+        let Change {
+            identity,
+            source,
+            missing,
+        } = change;
+        if missing {
+            tracing::warn!(sfu = %self.sfu, %identity, ?source, "a call participant's media could not be received");
+        } else {
+            tracing::info!(sfu = %self.sfu, %identity, ?source, "a call participant's media is no longer missing");
+        }
+        self.emit(MediaEvent::Missing {
+            sfu: self.sfu.clone(),
+            identity,
+            source,
+            missing,
+        });
+    }
+
+    fn quality_changed(&mut self, participant: &Participant, quality: LiveKitQuality) {
+        let of = match participant {
+            Participant::Local(_) => QualityOf::You,
+            Participant::Remote(remote) => QualityOf::Member(identity_of(remote)),
         };
-        self.sfu_state(state);
+        let quality = match quality {
+            LiveKitQuality::Excellent | LiveKitQuality::Good => ConnectionQuality::Good,
+            LiveKitQuality::Poor => ConnectionQuality::Poor,
+            LiveKitQuality::Lost => ConnectionQuality::Lost,
+        };
+        if let Some(rated) = self.qualities.rated(of, quality, Instant::now()) {
+            self.tell_quality(rated);
+        }
+    }
+
+    fn hold_ended(&mut self) {
+        for rated in self.qualities.due(Instant::now()) {
+            self.tell_quality(rated);
+        }
+    }
+
+    fn tell_quality(&self, (of, quality): Rated) {
+        match of {
+            QualityOf::You => {
+                tracing::info!(sfu = %self.sfu, ?quality, "your call connection changed");
+                self.emit(MediaEvent::OwnQuality {
+                    sfu: self.sfu.clone(),
+                    quality,
+                });
+            }
+            QualityOf::Member(identity) => {
+                tracing::info!(sfu = %self.sfu, %identity, ?quality, "a call participant's connection changed");
+                self.emit(MediaEvent::Quality {
+                    sfu: self.sfu.clone(),
+                    identity,
+                    quality,
+                });
+            }
+        }
     }
 
     fn present(&self, participant: &RemoteParticipant, present: bool) {
@@ -379,6 +519,16 @@ impl Pump {
         if let Some(index) = index {
             use_own_index(&self.room, index);
         }
+    }
+}
+
+const fn media_source(source: TrackSource) -> MediaSource {
+    match source {
+        TrackSource::Microphone => MediaSource::Microphone,
+        TrackSource::Camera => MediaSource::Camera,
+        TrackSource::Screenshare => MediaSource::Screen,
+        TrackSource::ScreenshareAudio => MediaSource::ScreenAudio,
+        TrackSource::Unknown => MediaSource::Unknown,
     }
 }
 

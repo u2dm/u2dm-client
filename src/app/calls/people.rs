@@ -64,8 +64,11 @@ const fn telling(state: TileState) -> u8 {
         TileState::Joining => 0,
         TileState::WaitingForKeys => 1,
         TileState::Live => 2,
-        TileState::Unreachable => 3,
-        TileState::CantDecrypt(CantDecrypt::NoKey) => 4,
-        TileState::CantDecrypt(CantDecrypt::NotCrossSigned) => 5,
+        TileState::PoorConnection => 3,
+        TileState::NotReceived(_) => 4,
+        TileState::ConnectionLost => 5,
+        TileState::Unreachable => 6,
+        TileState::CantDecrypt(CantDecrypt::NoKey) => 7,
+        TileState::CantDecrypt(CantDecrypt::NotCrossSigned) => 8,
     }
 }

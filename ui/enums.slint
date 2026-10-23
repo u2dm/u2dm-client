@@ -461,8 +461,14 @@ export enum CallNotice {
     screen-failed,
     choosing-screen,
     sharing-never-started,
+    connection-poor,
     cant-decrypt,
     unverified-device,
+    audio-not-received,
+    video-not-received,
+    audio-video-not-received,
+    screen-not-received,
+    media-not-received,
 }
 
 export enum CallMic {
@@ -514,6 +520,13 @@ export enum CallTileState {
     joining,
     waiting-for-keys,
     live,
+    poor-connection,
+    audio-not-received,
+    video-not-received,
+    audio-video-not-received,
+    screen-not-received,
+    media-not-received,
+    connection-lost,
     cant-decrypt,
     unverified-device,
     unreachable,

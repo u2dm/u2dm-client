@@ -1502,16 +1502,22 @@ pub(crate) use call_phases;
 
 macro_rules! call_notices {
     ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
-        None                None                "none";
-        NotCalled           NotCalled           "not-called";
-        NotAnnounced        NotAnnounced        "not-announced";
-        MicrophoneFailed    MicrophoneFailed    "microphone-failed";
-        CameraFailed        CameraFailed        "camera-failed";
-        ScreenFailed        ScreenFailed        "screen-failed";
-        ChoosingScreen      ChoosingScreen      "choosing-screen";
-        SharingNeverStarted SharingNeverStarted "sharing-never-started";
-        CantDecrypt         CantDecrypt         "cant-decrypt";
-        UnverifiedDevice    UnverifiedDevice    "unverified-device";
+        None                  None                  "none";
+        NotCalled             NotCalled             "not-called";
+        NotAnnounced          NotAnnounced          "not-announced";
+        MicrophoneFailed      MicrophoneFailed      "microphone-failed";
+        CameraFailed          CameraFailed          "camera-failed";
+        ScreenFailed          ScreenFailed          "screen-failed";
+        ChoosingScreen        ChoosingScreen        "choosing-screen";
+        SharingNeverStarted   SharingNeverStarted   "sharing-never-started";
+        ConnectionPoor        ConnectionPoor        "connection-poor";
+        CantDecrypt           CantDecrypt           "cant-decrypt";
+        UnverifiedDevice      UnverifiedDevice      "unverified-device";
+        AudioNotReceived      AudioNotReceived      "audio-not-received";
+        VideoNotReceived      VideoNotReceived      "video-not-received";
+        AudioVideoNotReceived AudioVideoNotReceived "audio-video-not-received";
+        ScreenNotReceived     ScreenNotReceived     "screen-not-received";
+        MediaNotReceived      MediaNotReceived      "media-not-received";
     } };
 }
 pub(crate) use call_notices;
@@ -1584,12 +1590,19 @@ pub(crate) use call_device_troubles;
 
 macro_rules! call_tile_marks {
     ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
-        Joining          Joining          "joining";
-        WaitingForKeys   WaitingForKeys   "waiting-for-keys";
-        Live             Live             "live";
-        CantDecrypt      CantDecrypt      "cant-decrypt";
-        UnverifiedDevice UnverifiedDevice "unverified-device";
-        Unreachable      Unreachable      "unreachable";
+        Joining               Joining               "joining";
+        WaitingForKeys        WaitingForKeys        "waiting-for-keys";
+        Live                  Live                  "live";
+        PoorConnection        PoorConnection        "poor-connection";
+        AudioNotReceived      AudioNotReceived      "audio-not-received";
+        VideoNotReceived      VideoNotReceived      "video-not-received";
+        AudioVideoNotReceived AudioVideoNotReceived "audio-video-not-received";
+        ScreenNotReceived     ScreenNotReceived     "screen-not-received";
+        MediaNotReceived      MediaNotReceived      "media-not-received";
+        ConnectionLost        ConnectionLost        "connection-lost";
+        CantDecrypt           CantDecrypt           "cant-decrypt";
+        UnverifiedDevice      UnverifiedDevice      "unverified-device";
+        Unreachable           Unreachable           "unreachable";
     } };
 }
 pub(crate) use call_tile_marks;

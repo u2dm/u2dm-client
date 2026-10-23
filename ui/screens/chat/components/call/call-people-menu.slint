@@ -5,7 +5,7 @@ import { ClickArea, RovingKeys } from "../../../../components/a11y.slint";
 import { Avatar } from "../../../../components/avatar.slint";
 import { PickerCard } from "../../../../components/overlay.slint";
 import { StateLayer } from "../../../../components/state-layer.slint";
-import { CallTileState } from "../../../../enums.slint";
+import { CallStates } from "../../../../call-states.slint";
 import { CallWords } from "../../../../messages.slint";
 import { CallPersonEntry } from "../../../../types.slint";
 import { CallView } from "../../../../views.slint";
@@ -21,9 +21,7 @@ component PersonRow inherits Rectangle {
     callback picked();
     callback roved(length, length);
 
-    property <bool> troubled: root.person.state == CallTileState.cant-decrypt
-        || root.person.state == CallTileState.unverified-device
-        || root.person.state == CallTileState.unreachable;
+    property <bool> troubled: CallStates.troubled(root.person.state);
 
     height: max(Metrics.call-person-row, row.preferred-height);
     border-radius: Radius.sm;
@@ -91,7 +89,7 @@ component PersonRow inherits Rectangle {
             }
         }
 
-        if root.person.muted && root.person.state == CallTileState.live: IconDisplay {
+        if root.person.muted && CallStates.hears(root.person.state): IconDisplay {
             cross-axis-self-alignment: center;
             icon: IconSet.MicOff;
             size: IconSize.sm;

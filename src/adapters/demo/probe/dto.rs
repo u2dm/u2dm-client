@@ -10,8 +10,8 @@ use crate::commands::view::{
     CameraView, CantDecrypt, CardStatus, CopiedLink, CreateRoomView, DeviceOption, DirectoryView,
     EncryptionStep, EncryptionView, IdentityAlertView, InvitePeopleView, InviteView, InviteeRow,
     InvitesSection, JoinOffer, JoinRefusal, LeaveSpaceView, LifecycleView, LoginStep, LogoutView,
-    MentionsView, MicrophoneView, NotificationsView, PackView, PaginationView, PinnedView,
-    PresenceView, ReadersView, RemovalView, RoomInfoView, RoomLogView, RoomMenuTarget,
+    MentionsView, MicrophoneView, MissingMedia, NotificationsView, PackView, PaginationView,
+    PinnedView, PresenceView, ReadersView, RemovalView, RoomInfoView, RoomLogView, RoomMenuTarget,
     RoomPreviewSheet, RoomPreviewView, RosterRow, ScreenView, SourceState, SpaceIndexRow,
     SpaceIndexView, SpaceMatch, TileKind, TileState, Toast, TrackFile, TypingView, UnsentMessage,
     UpgradeView, UserInfoView, VideoView,
@@ -1219,6 +1219,10 @@ fn call_notice(notice: &CallNotice) -> CallNoticeDto {
         CallNotice::ScreenFailed => ("screen-failed", None, 0),
         CallNotice::ChoosingScreen => ("choosing-screen", None, 0),
         CallNotice::SharingNeverStarted => ("sharing-never-started", None, 0),
+        CallNotice::ConnectionPoor => ("connection-poor", None, 0),
+        CallNotice::NotReceived { who, what, others } => {
+            (not_received_word(*what), Some(who.shown()), *others)
+        }
         CallNotice::CantDecrypt { who, why, others } => (
             match why {
                 CantDecrypt::NoKey => "cant-decrypt",
@@ -1261,11 +1265,24 @@ fn call_person(person: &CallPerson) -> CallPersonDto {
     }
 }
 
+const fn not_received_word(what: MissingMedia) -> &'static str {
+    match what {
+        MissingMedia::Audio => "audio-not-received",
+        MissingMedia::Video => "video-not-received",
+        MissingMedia::AudioAndVideo => "audio-video-not-received",
+        MissingMedia::Screen => "screen-not-received",
+        MissingMedia::Other => "media-not-received",
+    }
+}
+
 const fn tile_state_word(state: TileState) -> &'static str {
     match state {
         TileState::Joining => "joining",
         TileState::WaitingForKeys => "waiting-for-keys",
         TileState::Live => "live",
+        TileState::PoorConnection => "poor-connection",
+        TileState::NotReceived(what) => not_received_word(what),
+        TileState::ConnectionLost => "connection-lost",
         TileState::CantDecrypt(CantDecrypt::NoKey) => "cant-decrypt",
         TileState::CantDecrypt(CantDecrypt::NotCrossSigned) => "unverified-device",
         TileState::Unreachable => "unreachable",

@@ -27,8 +27,8 @@ use super::spoilers::{keep_covered_body, spoilers_on};
 use crate::commands::messages::UserMessageKind;
 use crate::commands::view::{
     CallFailure, CallNotice, CallPerson, CallTile, CantDecrypt, ChildAccess, DeviceOption,
-    DeviceStatus, InviteeRow, InviteeState, JoinOffer, RoomCard, RosterRow, ScreenView,
-    SpaceIndexRow, SpaceMatch, TileKind, TileState,
+    DeviceStatus, InviteeRow, InviteeState, JoinOffer, MissingMedia, RoomCard, RosterRow,
+    ScreenView, SpaceIndexRow, SpaceMatch, TileKind, TileState,
 };
 use crate::domain::call::ring::RingKind;
 use crate::domain::departure::{Removal, RemovalKind};
@@ -1865,6 +1865,13 @@ const fn call_tile_mark(state: TileState) -> CallTileMark {
         TileState::Joining => CallTileMark::Joining,
         TileState::WaitingForKeys => CallTileMark::WaitingForKeys,
         TileState::Live => CallTileMark::Live,
+        TileState::PoorConnection => CallTileMark::PoorConnection,
+        TileState::NotReceived(MissingMedia::Audio) => CallTileMark::AudioNotReceived,
+        TileState::NotReceived(MissingMedia::Video) => CallTileMark::VideoNotReceived,
+        TileState::NotReceived(MissingMedia::AudioAndVideo) => CallTileMark::AudioVideoNotReceived,
+        TileState::NotReceived(MissingMedia::Screen) => CallTileMark::ScreenNotReceived,
+        TileState::NotReceived(MissingMedia::Other) => CallTileMark::MediaNotReceived,
+        TileState::ConnectionLost => CallTileMark::ConnectionLost,
         TileState::CantDecrypt(CantDecrypt::NoKey) => CallTileMark::CantDecrypt,
         TileState::CantDecrypt(CantDecrypt::NotCrossSigned) => CallTileMark::UnverifiedDevice,
         TileState::Unreachable => CallTileMark::Unreachable,
@@ -1891,6 +1898,14 @@ pub const fn call_notice_mark(notice: Option<&CallNotice>) -> CallNoticeMark {
         Some(CallNotice::ScreenFailed) => CallNoticeMark::ScreenFailed,
         Some(CallNotice::ChoosingScreen) => CallNoticeMark::ChoosingScreen,
         Some(CallNotice::SharingNeverStarted) => CallNoticeMark::SharingNeverStarted,
+        Some(CallNotice::ConnectionPoor) => CallNoticeMark::ConnectionPoor,
+        Some(CallNotice::NotReceived { what, .. }) => match what {
+            MissingMedia::Audio => CallNoticeMark::AudioNotReceived,
+            MissingMedia::Video => CallNoticeMark::VideoNotReceived,
+            MissingMedia::AudioAndVideo => CallNoticeMark::AudioVideoNotReceived,
+            MissingMedia::Screen => CallNoticeMark::ScreenNotReceived,
+            MissingMedia::Other => CallNoticeMark::MediaNotReceived,
+        },
         Some(CallNotice::CantDecrypt {
             why: CantDecrypt::NoKey,
             ..

@@ -12,14 +12,16 @@ use super::people;
 use super::stage::Stage;
 use crate::commands::view::{
     ActiveCall, CallDevices, CallFailure, CallNotice, CallPhase, CallTile, CameraView, CantDecrypt,
-    MicrophoneView, ScreenView, TileKind, TileState,
+    MicrophoneView, MissingMedia, ScreenView, TileKind, TileState,
 };
 use crate::domain::call::devices::{DeviceChoice, DeviceChoices, DeviceKey, DeviceKind};
 use crate::domain::call::identity::{IdentityTable, MediaIdentity, member_spellings, spellings};
 use crate::domain::call::keys::{
     KEY_LEN, KeyAction, KeyExchange, KeyHolder, MediaKey, ReceivedKey,
 };
-use crate::domain::call::media::{Decryption, MediaChoice, MediaEvent, Microphone, SfuState};
+use crate::domain::call::media::{
+    ConnectionQuality, Decryption, MediaChoice, MediaEvent, MediaSource, Microphone, SfuState,
+};
 use crate::domain::call::ring::{RingId, RingKind};
 use crate::domain::call::sfu::{GrantRequest, GrantResult, SfuId, SfuRole, SfuTarget, plan};
 use crate::domain::call::video::{Camera, FeedId, ScreenRefusal, ScreenShare, VideoKind};
@@ -61,6 +63,8 @@ struct Heard {
     speaking: HashMap<SfuId, HashSet<MediaIdentity>>,
     video: HashMap<SfuId, HashMap<MediaIdentity, FeedId>>,
     screens: HashMap<SfuId, HashMap<MediaIdentity, FeedId>>,
+    missing: HashMap<SfuId, HashMap<MediaIdentity, HashSet<MediaSource>>>,
+    quality: HashMap<SfuId, HashMap<MediaIdentity, ConnectionQuality>>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -166,12 +170,73 @@ impl Heard {
         };
     }
 
+    fn source_heard(
+        &mut self,
+        sfu: SfuId,
+        identity: MediaIdentity,
+        source: MediaSource,
+        missing: bool,
+    ) {
+        let sources = self
+            .missing
+            .entry(sfu)
+            .or_default()
+            .entry(identity)
+            .or_default();
+        if missing {
+            sources.insert(source);
+        } else {
+            sources.remove(&source);
+        }
+    }
+
+    fn missing_on(&self, sfu: &SfuId, identities: &[MediaIdentity]) -> HashSet<MediaSource> {
+        self.missing
+            .get(sfu)
+            .into_iter()
+            .flat_map(|missing| {
+                identities
+                    .iter()
+                    .filter_map(|identity| missing.get(identity))
+            })
+            .flatten()
+            .copied()
+            .collect()
+    }
+
+    fn rated(&mut self, sfu: SfuId, identity: MediaIdentity, quality: ConnectionQuality) {
+        let ratings = self.quality.entry(sfu).or_default();
+        if quality == ConnectionQuality::Good {
+            ratings.remove(&identity);
+        } else {
+            ratings.insert(identity, quality);
+        }
+    }
+
+    fn quality_on(&self, sfu: &SfuId, identities: &[MediaIdentity]) -> ConnectionQuality {
+        let ratings = self.quality.get(sfu);
+        let rated_as = |quality| {
+            identities
+                .iter()
+                .any(|identity| ratings.and_then(|ratings| ratings.get(identity)) == Some(&quality))
+        };
+        if rated_as(ConnectionQuality::Lost) {
+            ConnectionQuality::Lost
+        } else if rated_as(ConnectionQuality::Poor) {
+            ConnectionQuality::Poor
+        } else {
+            ConnectionQuality::Good
+        }
+    }
+
     fn forget(&mut self, sfu: &SfuId) {
         self.present.remove(sfu);
         self.muted.remove(sfu);
         self.speaking.remove(sfu);
         self.video.remove(sfu);
         self.screens.remove(sfu);
+        self.missing.remove(sfu);
+        self.quality.remove(sfu);
     }
 }
 
@@ -239,6 +304,7 @@ pub(super) struct Joined {
     members: Vec<CallMember>,
     links: HashMap<SfuId, Link>,
     heard: Heard,
+    own_quality: ConnectionQuality,
     standings: HashMap<MemberKey, DeviceStanding>,
     microphone: OwnMicrophone,
     microphone_published: bool,
@@ -280,6 +346,7 @@ impl Joined {
             members: Vec::new(),
             links: HashMap::new(),
             heard: Heard::default(),
+            own_quality: ConnectionQuality::Good,
             standings: HashMap::new(),
             microphone: if media.microphone {
                 OwnMicrophone::Starting
@@ -571,6 +638,18 @@ impl Joined {
                     .speaking
                     .insert(sfu, speakers.into_iter().collect());
             }
+            MediaEvent::Missing {
+                sfu,
+                identity,
+                source,
+                missing,
+            } => self.missing_heard(sfu, identity, source, missing),
+            MediaEvent::Quality {
+                sfu,
+                identity,
+                quality,
+            } => self.quality_heard(sfu, identity, quality),
+            MediaEvent::OwnQuality { sfu, quality } => self.own_quality_heard(&sfu, quality),
             MediaEvent::Decryption { identity, state } => {
                 self.heard.decryption.insert(identity, state);
             }
@@ -590,6 +669,34 @@ impl Joined {
             }
         }
         Ok(())
+    }
+
+    fn missing_heard(
+        &mut self,
+        sfu: SfuId,
+        identity: MediaIdentity,
+        source: MediaSource,
+        missing: bool,
+    ) {
+        if self.links.contains_key(&sfu) {
+            self.heard.source_heard(sfu, identity, source, missing);
+        }
+    }
+
+    fn quality_heard(&mut self, sfu: SfuId, identity: MediaIdentity, quality: ConnectionQuality) {
+        if self.links.contains_key(&sfu) {
+            self.heard.rated(sfu, identity, quality);
+        }
+    }
+
+    fn own_quality_heard(&mut self, sfu: &SfuId, quality: ConnectionQuality) {
+        if self
+            .links
+            .get(sfu)
+            .is_some_and(|link| link.role == SfuRole::Publish)
+        {
+            self.own_quality = quality;
+        }
     }
 
     fn microphone_reported(&mut self, report: &Microphone) {
@@ -838,7 +945,18 @@ impl Joined {
         if self.camera == OwnCamera::Failed {
             return Some(CallNotice::CameraFailed);
         }
-        self.screen_notice().or_else(|| undecryptable(tiles))
+        self.screen_notice()
+            .or_else(|| self.connection_notice())
+            .or_else(|| undecryptable(tiles))
+            .or_else(|| not_received(tiles))
+    }
+
+    fn connection_notice(&self) -> Option<CallNotice> {
+        let connected = self
+            .publish_link()
+            .is_some_and(|link| link.state == LinkState::Connected);
+        (connected && self.own_quality != ConnectionQuality::Good)
+            .then_some(CallNotice::ConnectionPoor)
     }
 
     fn screen_notice(&self) -> Option<CallNotice> {
@@ -970,6 +1088,9 @@ impl Joined {
             .iter()
             .any(|identity| self.heard.is_speaking(identity));
         let state = match self.publish_link().map(|link| &link.state) {
+            Some(LinkState::Connected) if self.own_quality != ConnectionQuality::Good => {
+                TileState::PoorConnection
+            }
             Some(LinkState::Connected | LinkState::Reconnecting) => TileState::Live,
             Some(LinkState::Failed(_)) => TileState::Unreachable,
             _ => TileState::Joining,
@@ -1020,8 +1141,12 @@ impl Joined {
         let sfu = self.publishes_to(member)?;
         let feed = self.heard.video_on(&sfu, &identities, VideoKind::Screen)?;
         let key = MemberKey::of(member);
+        let state = match self.remote_state(member, &key, &identities) {
+            TileState::NotReceived(_) | TileState::PoorConnection => TileState::Live,
+            state => state,
+        };
         Some(CallTile {
-            state: self.remote_state(member, &key, &identities),
+            state,
             muted: false,
             speaking: false,
             member: key,
@@ -1038,9 +1163,10 @@ impl Joined {
         key: &MemberKey,
         identities: &[MediaIdentity; 3],
     ) -> TileState {
-        if self.publishes_to(member).is_some_and(|sfu| {
+        let publishes_to = self.publishes_to(member);
+        if publishes_to.as_ref().is_some_and(|sfu| {
             self.links
-                .get(&sfu)
+                .get(sfu)
                 .is_some_and(|link| matches!(link.state, LinkState::Failed(_)))
         }) {
             return TileState::Unreachable;
@@ -1051,6 +1177,16 @@ impl Joined {
         {
             return TileState::Joining;
         }
+        let keys = self.key_state(key, identities);
+        if matches!(keys, TileState::CantDecrypt(_)) {
+            return keys;
+        }
+        publishes_to
+            .and_then(|sfu| self.trouble_on(&sfu, identities))
+            .unwrap_or(keys)
+    }
+
+    fn key_state(&self, key: &MemberKey, identities: &[MediaIdentity; 3]) -> TileState {
         if !self.encrypted {
             return TileState::Live;
         }
@@ -1063,6 +1199,17 @@ impl Joined {
             None if self.keys.has_key_from(key) => TileState::Live,
             Some(Decryption::MissingKey) | None => TileState::WaitingForKeys,
         }
+    }
+
+    fn trouble_on(&self, sfu: &SfuId, identities: &[MediaIdentity]) -> Option<TileState> {
+        let quality = self.heard.quality_on(sfu, identities);
+        if quality == ConnectionQuality::Lost {
+            return Some(TileState::ConnectionLost);
+        }
+        if let Some(what) = missing(&self.heard.missing_on(sfu, identities)) {
+            return Some(TileState::NotReceived(what));
+        }
+        (quality == ConnectionQuality::Poor).then_some(TileState::PoorConnection)
     }
 
     fn why_undecryptable(&self, key: &MemberKey) -> CantDecrypt {
@@ -1083,6 +1230,44 @@ impl Joined {
         }?;
         SfuId::of(transport)
     }
+}
+
+fn missing(sources: &HashSet<MediaSource>) -> Option<MissingMedia> {
+    if sources.is_empty() {
+        return None;
+    }
+    let only = |allowed: &[MediaSource]| sources.iter().all(|source| allowed.contains(source));
+    let media = if only(&[MediaSource::Microphone]) {
+        MissingMedia::Audio
+    } else if only(&[MediaSource::Camera]) {
+        MissingMedia::Video
+    } else if only(&[MediaSource::Microphone, MediaSource::Camera]) {
+        MissingMedia::AudioAndVideo
+    } else if sources.contains(&MediaSource::Screen)
+        && only(&[MediaSource::Screen, MediaSource::ScreenAudio])
+    {
+        MissingMedia::Screen
+    } else {
+        MissingMedia::Other
+    };
+    Some(media)
+}
+
+fn not_received(tiles: &[CallTile]) -> Option<CallNotice> {
+    let mut troubled = tiles.iter().filter_map(|tile| match tile.state {
+        TileState::NotReceived(what) if tile.kind == TileKind::Person => Some((tile, what)),
+        _ => None,
+    });
+    let (first, what) = troubled.next()?;
+    let others: HashSet<&str> = troubled
+        .map(|(tile, _)| tile.member.user.as_str())
+        .filter(|user| *user != first.member.user)
+        .collect();
+    Some(CallNotice::NotReceived {
+        who: first.name.clone(),
+        what,
+        others: others.len(),
+    })
 }
 
 fn undecryptable(tiles: &[CallTile]) -> Option<CallNotice> {

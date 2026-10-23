@@ -11,14 +11,14 @@ use std::time::Duration;
 use async_trait::async_trait;
 use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
-use tokio::time::sleep;
+use tokio::time::{Instant, sleep, sleep_until};
 use tokio_util::task::AbortOnDropHandle;
 use tracing::Instrument;
 
 use super::call_devices::{DemoDevices, plugged_in};
 use super::calls::{
     self, CAMERA_LOST_AFTER, CUT_OFF_AFTER, PICKER_TIME, RECONNECT_AFTER, RECONNECT_FOR,
-    SHARE_ENDS_AFTER, SPEAKING_TURN, UNTRUSTED,
+    SHARE_ENDS_AFTER, SPEAKING_TURN, Trouble, UNTRUSTED,
 };
 use super::data;
 use crate::domain::call::devices::{DeviceChoice, DeviceKind, DeviceLists};
@@ -320,6 +320,21 @@ impl DemoMediaSession {
         }));
     }
 
+    fn spawn_troubles(&mut self, troubles: Vec<Trouble>) {
+        if troubles.is_empty() {
+            return;
+        }
+        let events_tx = self.events_tx.clone();
+        self.tasks.push(tokio::spawn(async move {
+            let connected = Instant::now();
+            for trouble in troubles {
+                sleep_until(connected + trouble.after).await;
+                tracing::info!("{}", trouble.says);
+                drop(events_tx.send(trouble.event));
+            }
+        }));
+    }
+
     fn spawn_cut_off(&mut self, sfu: SfuId) {
         let events_tx = self.events_tx.clone();
         self.tasks.push(tokio::spawn(async move {
@@ -408,6 +423,7 @@ impl DemoMediaSession {
         calls::book().watch(self.room_id.as_ref(), sfu.as_ref(), self.events_tx.clone());
         self.connected.insert(sfu.clone(), role);
         self.report_waiting();
+        self.spawn_troubles(calls::book().troubles(self.room_id.as_ref(), sfu.as_ref(), role));
         if role == SfuRole::Publish {
             if calls::scenario().reconnecting {
                 self.spawn_reconnect(sfu.clone());

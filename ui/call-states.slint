@@ -1,0 +1,43 @@
+import { CallNotice, CallTileState } from "./enums.slint";
+
+export global CallStates {
+    public pure function flows(state: CallTileState) -> bool {
+        return state == CallTileState.live
+            || state == CallTileState.poor-connection
+            || root.misses-media(state);
+    }
+
+    public pure function misses-audio(state: CallTileState) -> bool {
+        return state == CallTileState.audio-not-received
+            || state == CallTileState.audio-video-not-received
+            || state == CallTileState.media-not-received;
+    }
+
+    public pure function hears(state: CallTileState) -> bool {
+        return root.flows(state) && !root.misses-audio(state);
+    }
+
+    public pure function troubled(state: CallTileState) -> bool {
+        return state == CallTileState.cant-decrypt
+            || state == CallTileState.unverified-device
+            || state == CallTileState.unreachable
+            || state == CallTileState.connection-lost
+            || root.misses-media(state);
+    }
+
+    public pure function not-received(notice: CallNotice) -> bool {
+        return notice == CallNotice.audio-not-received
+            || notice == CallNotice.video-not-received
+            || notice == CallNotice.audio-video-not-received
+            || notice == CallNotice.screen-not-received
+            || notice == CallNotice.media-not-received;
+    }
+
+    pure function misses-media(state: CallTileState) -> bool {
+        return state == CallTileState.audio-not-received
+            || state == CallTileState.video-not-received
+            || state == CallTileState.audio-video-not-received
+            || state == CallTileState.screen-not-received
+            || state == CallTileState.media-not-received;
+    }
+}

@@ -345,9 +345,15 @@ pub enum CallNotice {
     ScreenFailed,
     ChoosingScreen,
     SharingNeverStarted,
+    ConnectionPoor,
     CantDecrypt {
         who: NamedUser,
         why: CantDecrypt,
+        others: usize,
+    },
+    NotReceived {
+        who: NamedUser,
+        what: MissingMedia,
         others: usize,
     },
 }
@@ -375,10 +381,22 @@ pub enum CantDecrypt {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MissingMedia {
+    Audio,
+    Video,
+    AudioAndVideo,
+    Screen,
+    Other,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TileState {
     Joining,
     WaitingForKeys,
     Live,
+    PoorConnection,
+    NotReceived(MissingMedia),
+    ConnectionLost,
     CantDecrypt(CantDecrypt),
     Unreachable,
 }

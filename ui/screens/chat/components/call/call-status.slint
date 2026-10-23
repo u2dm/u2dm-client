@@ -2,6 +2,7 @@ import { IconDisplay, IconSet } from "@lucide";
 
 import { LinkButton } from "../../../../components/button.slint";
 import { DotPulse } from "../../../../components/dot-pulse.slint";
+import { CallStates } from "../../../../call-states.slint";
 import { CallDeviceTrouble, CallNotice, CallPhase } from "../../../../enums.slint";
 import { CallWords } from "../../../../messages.slint";
 import { Actions } from "../../../../actions.slint";
@@ -21,9 +22,12 @@ export component CallStatus inherits VerticalLayout {
     property <bool> about-others: root.notice == CallNotice.cant-decrypt
         || root.notice == CallNotice.unverified-device;
     property <bool> undiagnosed: root.notice == CallNotice.sharing-never-started;
+    property <bool> not-received: CallStates.not-received(root.notice);
+    property <bool> own-poor: root.notice == CallNotice.connection-poor;
     property <bool> device-news: !root.noticed && !root.explains-share && root.tells-device-news;
     property <bool> unplugged: root.device-news && CallView.device-news-trouble == CallDeviceTrouble.disconnected;
-    property <bool> trouble: (root.noticed && !root.pending && !root.about-others && !root.undiagnosed)
+    property <bool> trouble: (root.noticed && !root.pending && !root.about-others && !root.undiagnosed
+        && !root.not-received && !root.own-poor)
         || (root.device-news && !root.unplugged);
     property <string> action: CallWords.notice-action(root.notice);
     property <string> way-out: CallWords.notice-way-out(root.notice);
@@ -32,7 +36,7 @@ export component CallStatus inherits VerticalLayout {
     function act() {
         if root.notice == CallNotice.choosing-screen {
             Actions.share-screen({ on: false });
-        } else if root.notice == CallNotice.sharing-never-started {
+        } else if root.notice == CallNotice.sharing-never-started || root.not-received {
             Actions.open-room-log(CallView.active-room-id);
         } else if root.notice == CallNotice.not-called || root.notice == CallNotice.not-announced {
             Actions.announce-call-again();
@@ -69,6 +73,7 @@ export component CallStatus inherits VerticalLayout {
             cross-axis-self-alignment: center;
             icon: root.trouble ? IconSet.CircleAlert
                 : root.about-others ? IconSet.ShieldAlert
+                : root.not-received || root.own-poor ? IconSet.CircleAlert
                 : root.unplugged ? IconSet.Unplug
                 : IconSet.Info;
             size: IconSize.sm;

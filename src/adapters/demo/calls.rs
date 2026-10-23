@@ -11,9 +11,9 @@ use super::catalog::{Flag, Scenarios};
 use super::data;
 use crate::domain::call::identity::{MediaIdentity, spellings};
 use crate::domain::call::keys::{KeyIndex, MediaKey, ReceivedKey};
-use crate::domain::call::media::MediaEvent;
+use crate::domain::call::media::{ConnectionQuality, MediaEvent, MediaSource};
 use crate::domain::call::ring::{CallSignal, Ring, RingId, RingKind};
-use crate::domain::call::sfu::SfuId;
+use crate::domain::call::sfu::{SfuId, SfuRole};
 use crate::domain::call::video::{FeedId, VideoKind};
 use crate::domain::call::{
     CallIntent, CallMember, DeviceId, FocusSelection, MemberKey, RoomCall, Transport,
@@ -255,6 +255,26 @@ pub const CATALOG: Scenarios = Scenarios {
             effect: "the USB Webcam is unplugged 3s after you first choose it, and plugged back in 4s later",
             note: "a camera capturing it stops, as an unplugged one does",
         },
+        Flag {
+            value: "unreceived-audio",
+            effect: "Jordan's audio is not received from 3s after you connect, and arrives 8s later",
+            note: "the dock names him and his tile and people row say what is missing",
+        },
+        Flag {
+            value: "unreceived-media",
+            effect: "Jordan's audio and camera, and Nadia's audio, are never received from 3s after you connect",
+            note: "Jordan's camera picture is withheld; the dock names Nadia and one other person",
+        },
+        Flag {
+            value: "poor-connection",
+            effect: "your own connection is rated poor from 3s after you connect, for 8s",
+            note: "the media server's rating as it reaches the app, already held",
+        },
+        Flag {
+            value: "connection-lost",
+            effect: "Jordan's connection is rated poor 3s after you connect, lost at 7s and good again at 12s",
+            note: "his tile hides its frozen picture while the connection is lost",
+        },
     ],
     notes: &[
         "each decline logs `demo: the call is declined`",
@@ -317,6 +337,11 @@ pub const RECONNECT_FOR: Duration = Duration::from_secs(3);
 pub const SPEAKING_TURN: Duration = Duration::from_secs(2);
 pub const CUT_OFF_AFTER: Duration = Duration::from_secs(5);
 pub const CAMERA_LOST_AFTER: Duration = Duration::from_secs(3);
+const TROUBLE_AFTER: Duration = Duration::from_secs(3);
+const UNRECEIVED_FOR: Duration = Duration::from_secs(8);
+const POOR_FOR: Duration = Duration::from_secs(8);
+const LOST_AFTER: Duration = Duration::from_secs(7);
+const LOST_FOR: Duration = Duration::from_secs(5);
 pub const UNTRUSTED: &str = JORDAN;
 const DEMO_KEY: [u8; 16] = [7; 16];
 
@@ -368,6 +393,10 @@ pub struct Scenario {
     pub headset_unplugs: bool,
     pub headset_fails: bool,
     pub webcam_unplugs: bool,
+    unreceived_audio: bool,
+    unreceived_media: bool,
+    poor_connection: bool,
+    connection_lost: bool,
 }
 
 pub fn scenario() -> Scenario {
@@ -434,6 +463,10 @@ fn apply(scenario: &mut Scenario, flag: &str) {
         "headset-unplugs" => scenario.headset_unplugs = true,
         "headset-fails" => scenario.headset_fails = true,
         "webcam-unplugs" => scenario.webcam_unplugs = true,
+        "unreceived-audio" => scenario.unreceived_audio = true,
+        "unreceived-media" => scenario.unreceived_media = true,
+        "poor-connection" => scenario.poor_connection = true,
+        "connection-lost" => scenario.connection_lost = true,
         other => tracing::warn!("unknown {ENV_VAR} flag: {other}"),
     }
 }
@@ -732,6 +765,47 @@ impl CallBook {
         }
     }
 
+    pub fn troubles(&self, room_id: &str, sfu: &str, role: SfuRole) -> Vec<Trouble> {
+        let Some(id) = sfu_id(sfu) else {
+            return Vec::new();
+        };
+        let here: Vec<Joiner> = self
+            .calls
+            .lock()
+            .map(|calls| {
+                calls
+                    .rooms
+                    .get(room_id)
+                    .into_iter()
+                    .flatten()
+                    .filter(|joiner| joiner.sfu == sfu && joiner.on_main_device())
+                    .copied()
+                    .collect()
+            })
+            .unwrap_or_default();
+        let mut troubles = Vec::new();
+        for joiner in here {
+            troubles.extend(missing_media(&id, joiner));
+            troubles.extend(lost_connection(&id, joiner));
+        }
+        if scenario().poor_connection && role == SfuRole::Publish {
+            troubles.push(Trouble::own(
+                &id,
+                TROUBLE_AFTER,
+                ConnectionQuality::Poor,
+                "demo: your connection is poor",
+            ));
+            troubles.push(Trouble::own(
+                &id,
+                TROUBLE_AFTER + POOR_FOR,
+                ConnectionQuality::Good,
+                "demo: your connection is good again",
+            ));
+        }
+        troubles.sort_by_key(|trouble| trouble.after);
+        troubles
+    }
+
     pub fn others_in(&self, room_id: &str) -> Vec<(MemberKey, MediaIdentity)> {
         self.calls
             .lock()
@@ -923,9 +997,9 @@ pub fn sfu_id(sfu: &str) -> Option<SfuId> {
 }
 
 fn camera_news(sfu: &SfuId, joiner: Joiner, present: bool) -> Option<MediaEvent> {
-    scenario()
-        .cameras
-        .then(|| video_news(sfu, joiner, VideoKind::Camera, present))
+    let shaped = scenario();
+    let withheld = shaped.unreceived_media && joiner.user == JORDAN;
+    (shaped.cameras && !withheld).then(|| video_news(sfu, joiner, VideoKind::Camera, present))
 }
 
 fn screen_news(sfu: &SfuId, joiner: Joiner, present: bool) -> Option<MediaEvent> {
@@ -1024,6 +1098,144 @@ fn end_screen_share_later(
             send_media(&events_tx, restarted);
         }
     });
+}
+
+pub struct Trouble {
+    pub after: Duration,
+    pub event: MediaEvent,
+    pub says: &'static str,
+}
+
+impl Trouble {
+    fn missing(
+        sfu: &SfuId,
+        joiner: Joiner,
+        after: Duration,
+        source: MediaSource,
+        missing: bool,
+        says: &'static str,
+    ) -> Self {
+        Self {
+            after,
+            event: MediaEvent::Missing {
+                sfu: sfu.clone(),
+                identity: joiner.identity(),
+                source,
+                missing,
+            },
+            says,
+        }
+    }
+
+    fn rated(
+        sfu: &SfuId,
+        joiner: Joiner,
+        after: Duration,
+        quality: ConnectionQuality,
+        says: &'static str,
+    ) -> Self {
+        Self {
+            after,
+            event: MediaEvent::Quality {
+                sfu: sfu.clone(),
+                identity: joiner.identity(),
+                quality,
+            },
+            says,
+        }
+    }
+
+    fn own(sfu: &SfuId, after: Duration, quality: ConnectionQuality, says: &'static str) -> Self {
+        Self {
+            after,
+            event: MediaEvent::OwnQuality {
+                sfu: sfu.clone(),
+                quality,
+            },
+            says,
+        }
+    }
+}
+
+fn missing_media(sfu: &SfuId, joiner: Joiner) -> Vec<Trouble> {
+    let shaped = scenario();
+    let mut troubles = Vec::new();
+    if joiner.user == JORDAN && shaped.unreceived_audio {
+        troubles.push(Trouble::missing(
+            sfu,
+            joiner,
+            TROUBLE_AFTER,
+            MediaSource::Microphone,
+            true,
+            "demo: Jordan's audio is not received",
+        ));
+        troubles.push(Trouble::missing(
+            sfu,
+            joiner,
+            TROUBLE_AFTER + UNRECEIVED_FOR,
+            MediaSource::Microphone,
+            false,
+            "demo: Jordan's audio arrives",
+        ));
+    }
+    if joiner.user == JORDAN && shaped.unreceived_media {
+        troubles.push(Trouble::missing(
+            sfu,
+            joiner,
+            TROUBLE_AFTER,
+            MediaSource::Microphone,
+            true,
+            "demo: Jordan's audio is not received",
+        ));
+        troubles.push(Trouble::missing(
+            sfu,
+            joiner,
+            TROUBLE_AFTER,
+            MediaSource::Camera,
+            true,
+            "demo: Jordan's camera is not received",
+        ));
+    }
+    if joiner.user == NADIA && shaped.unreceived_media {
+        troubles.push(Trouble::missing(
+            sfu,
+            joiner,
+            TROUBLE_AFTER,
+            MediaSource::Microphone,
+            true,
+            "demo: Nadia's audio is not received",
+        ));
+    }
+    troubles
+}
+
+fn lost_connection(sfu: &SfuId, joiner: Joiner) -> Vec<Trouble> {
+    if !(scenario().connection_lost && joiner.user == JORDAN) {
+        return Vec::new();
+    }
+    vec![
+        Trouble::rated(
+            sfu,
+            joiner,
+            TROUBLE_AFTER,
+            ConnectionQuality::Poor,
+            "demo: Jordan's connection is poor",
+        ),
+        Trouble::rated(
+            sfu,
+            joiner,
+            LOST_AFTER,
+            ConnectionQuality::Lost,
+            "demo: Jordan's connection is lost",
+        ),
+        Trouble::rated(
+            sfu,
+            joiner,
+            LOST_AFTER + LOST_FOR,
+            ConnectionQuality::Good,
+            "demo: Jordan's connection is good again",
+        ),
+    ]
 }
 
 fn send_media(events_tx: &mpsc::UnboundedSender<MediaEvent>, event: MediaEvent) {

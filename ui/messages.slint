@@ -1,4 +1,5 @@
 import { CallCamera, CallDeviceKind, CallDeviceStatus, CallDeviceTrouble, CallMic, CallNotice, CallPhase, CallRefusal, CallScreen, CallScreenRefusal, CallTileState, Delivery, EmojiArt, MediaFailure, PresenceLine, PreviewKind, RoomCallMark, ServiceKind, ShieldReason, UpgradeLink, UserMessageKind } from "./enums.slint";
+import { CallStates } from "./call-states.slint";
 
 export global UserMessages {
     public pure function text(kind: UserMessageKind, detail: string) -> string {
@@ -949,6 +950,27 @@ export global CallWords {
         if notice == CallNotice.sharing-never-started {
             return @tr("Screen sharing did not start");
         }
+        if notice == CallNotice.connection-poor {
+            return @tr("Your connection is poor");
+        }
+        if others > 0 && CallStates.not-received(notice) {
+            return @tr("Media from {} and {n} other person could not be received" | "Media from {} and {n} other people could not be received" % others, name);
+        }
+        if notice == CallNotice.audio-not-received {
+            return @tr("{}'s audio could not be received", name);
+        }
+        if notice == CallNotice.video-not-received {
+            return @tr("{}'s video could not be received", name);
+        }
+        if notice == CallNotice.audio-video-not-received {
+            return @tr("{}'s audio and video could not be received", name);
+        }
+        if notice == CallNotice.screen-not-received {
+            return @tr("{}'s screen share could not be received", name);
+        }
+        if notice == CallNotice.media-not-received {
+            return @tr("Some of {}'s media could not be received", name);
+        }
         if others > 0 && (notice == CallNotice.cant-decrypt || notice == CallNotice.unverified-device) {
             return @tr("Can't decrypt {} and {n} other person" | "Can't decrypt {} and {n} other people" % others, name);
         }
@@ -965,7 +987,7 @@ export global CallWords {
         if notice == CallNotice.choosing-screen {
             return @tr("Cancel");
         }
-        if notice == CallNotice.sharing-never-started {
+        if notice == CallNotice.sharing-never-started || CallStates.not-received(notice) {
             return @tr("Room logs");
         }
         if notice == CallNotice.not-called || notice == CallNotice.not-announced
@@ -1015,7 +1037,7 @@ export global CallWords {
         if notice == CallNotice.choosing-screen {
             return root.share(CallScreen.choosing, CallScreenRefusal.no-portal);
         }
-        if notice == CallNotice.sharing-never-started {
+        if notice == CallNotice.sharing-never-started || CallStates.not-received(notice) {
             return @tr("Show the room logs of {}", room);
         }
         return "";
@@ -1046,6 +1068,27 @@ export global CallWords {
         }
         if state == CallTileState.waiting-for-keys {
             return @tr("Waiting for keys");
+        }
+        if state == CallTileState.poor-connection {
+            return @tr("Poor connection");
+        }
+        if state == CallTileState.audio-not-received {
+            return @tr("Audio not received");
+        }
+        if state == CallTileState.video-not-received {
+            return @tr("Video not received");
+        }
+        if state == CallTileState.audio-video-not-received {
+            return @tr("Audio and video not received");
+        }
+        if state == CallTileState.screen-not-received {
+            return @tr("Screen share not received");
+        }
+        if state == CallTileState.media-not-received {
+            return @tr("Some media not received");
+        }
+        if state == CallTileState.connection-lost {
+            return @tr("Connection lost");
         }
         if state == CallTileState.cant-decrypt {
             return @tr("Can't decrypt");
@@ -1156,9 +1199,7 @@ export global CallWords {
     }
 
     public pure function person-detail(state: CallTileState, muted: bool, sharing: bool, you: bool, devices: int) -> string {
-        let status = state != CallTileState.live ? root.tile(state)
-            : muted ? @tr("Muted")
-            : "";
+        let status = root.listed(root.tile(state), muted && CallStates.hears(state) ? @tr("Muted") : "");
         let share = !sharing ? ""
             : you ? @tr("Sharing your screen")
             : @tr("Sharing their screen");
@@ -1173,7 +1214,7 @@ export global CallWords {
         return @tr("{}, {}", root.person-name(name, you), detail);
     }
 
-    pure function listed(first: string, second: string) -> string {
+    public pure function listed(first: string, second: string) -> string {
         if first == "" {
             return second;
         }

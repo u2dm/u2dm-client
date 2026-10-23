@@ -3,6 +3,8 @@ mod connection;
 mod devices;
 mod e2ee;
 mod feeds;
+mod quality;
+mod reception;
 mod screen;
 mod session;
 
