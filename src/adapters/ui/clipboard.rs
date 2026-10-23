@@ -27,15 +27,7 @@ fn copied_file(clipboard: &mut Clipboard) -> Option<PathBuf> {
         .file_list()
         .ok()?
         .into_iter()
-        .map(without_uri_list_carriage_return)
         .find(|path| path.is_file())
-}
-
-fn without_uri_list_carriage_return(path: PathBuf) -> PathBuf {
-    match path.to_str().and_then(|text| text.strip_suffix('\r')) {
-        Some(stripped) => PathBuf::from(stripped),
-        None => path,
-    }
 }
 
 fn copied_image(clipboard: &mut Clipboard) -> Option<PastedImage> {

@@ -29,7 +29,7 @@ video = ["dep:alsa", "dep:cpal", "dep:ffmpeg-next"]
 calls = ["video", "dep:glib", "dep:livekit", "dep:rustls"]
 
 [dependencies]
-arboard = { version = "3.6.1", default-features = false, features = [
+arboard = { version = "3.7.0", default-features = false, features = [
     "image-data",
     "wayland-data-control",
 ] }
@@ -40,7 +40,7 @@ axum = { version = "0.8.9", optional = true, default-features = false, features 
     "tokio",
 ] }
 async-trait = "0.1.92"
-base64 = "0.22.1"
+base64 = "0.23.1"
 chrono = { version = "0.4.45", default-features = false, features = [
     "clock",
     "unstable-locales",
@@ -50,7 +50,7 @@ directories = "6.0.0"
 emojis = "0.9.0"
 ffmpeg-next = { version = "9.0.0", optional = true }
 futures-util = "0.3.34"
-glib = { version = "0.21.5", optional = true, default-features = false, features = ["gio"] }
+glib = { version = "0.22.10", optional = true, default-features = false, features = ["gio"] }
 image = { version = "0.25.10", default-features = false, features = [
     "png",
     "jpeg",
@@ -61,12 +61,12 @@ image = { version = "0.25.10", default-features = false, features = [
     "tiff",
 ] }
 infer = "0.22.0"
-keyring-core = "1.0.0"
+keyring-core = "1.0.1"
 livekit = { version = "=0.9.6", optional = true, default-features = false, features = [
     "native",
     "rustls-tls-native-roots",
 ] }
-lucide-slint = { version = "1.46.0", optional = true }
+lucide-slint = { version = "1.61.0", optional = true }
 matrix-sdk = { version = "0.19.1", optional = true, default-features = false, features = [
     "e2e-encryption",
     "experimental-send-custom-to-device",
@@ -79,13 +79,13 @@ matrix-sdk-base = { version = "0.19.1", optional = true, default-features = fals
 matrix-sdk-ui = { version = "0.19.1", optional = true, default-features = false }
 mime = "0.3.17"
 mime_guess = { version = "2.0.5", default-features = false }
-open = "5.4.3"
+open = "5.4.5"
 percent-encoding = "2.3.2"
-pulldown-cmark = { version = "0.13.1", default-features = false, features = ["html"] }
+pulldown-cmark = { version = "0.13.5", default-features = false, features = ["html"] }
 pure-rust-locales = "0.8.2"
-rand = "0.10.2"
+rand = "0.10.3"
 rfd = "0.17.2"
-rustls = { version = "0.23.41", optional = true, default-features = false, features = [
+rustls = { version = "0.23.46", optional = true, default-features = false, features = [
     "aws_lc_rs",
     "std",
 ] }
@@ -98,8 +98,8 @@ ruma = { version = "0.17.1", features = [
     "unstable-msc3381",
 ] }
 serde = { version = "1.0.229", features = ["derive"] }
-serde_json = "1.0.151"
-sha2 = "0.11.0"
+serde_json = "1.0.154"
+sha2 = "0.11.1"
 slint = { version = "1.18.1", default-features = false, features = [
     "std",
     "compat-1-2",
@@ -117,8 +117,8 @@ slint-interpreter = { version = "1.18.1", optional = true, default-features = fa
 ] }
 strum = { version = "0.28.0", features = ["derive"] }
 sys-locale = "0.3.2"
-thiserror = "2.0.20"
-tokio = { version = "1.53.1", features = [
+thiserror = "2.0.21"
+tokio = { version = "1.54.1", features = [
     "rt-multi-thread",
     "macros",
     "net",
@@ -127,21 +127,21 @@ tokio = { version = "1.53.1", features = [
     "fs",
     "io-util",
 ] }
-tokio-util = { version = "0.7.19", features = ["rt"] }
+tokio-util = { version = "0.7.20", features = ["rt"] }
 tracing = "0.1.44"
 tracing-subscriber = { version = "0.3.23", features = ["env-filter", "json"] }
 u2dm-ui = { path = "crates/ui", default-features = false }
-unicode-normalization = "0.1.25"
+unicode-normalization = "0.1.26"
 url = "2.5.8"
 
 [target.'cfg(target_os = "linux")'.dependencies]
 alsa = { version = "0.11.0", optional = true }
-wayland-client = "0.31.12"
-wayland-protocols = { version = "0.32.10", features = ["client", "staging"] }
-zbus = { version = "5.14.0", default-features = false, features = ["async-io"] }
+wayland-client = "0.31.15"
+wayland-protocols = { version = "0.32.13", features = ["client", "staging"] }
+zbus = { version = "5.19.0", default-features = false, features = ["async-io"] }
 
 [target.'cfg(unix)'.dependencies]
-rustix = { version = "1.1.4", features = ["process"] }
+rustix = { version = "1.1.5", features = ["process"] }
 xdg = "3.0.0"
 
 [target.'cfg(all(unix, not(any(target_os = "macos", target_os = "ios", target_os = "android"))))'.dependencies]
@@ -156,7 +156,7 @@ apple-native-keyring-store = { version = "1.0.2", optional = true, features = ["
 windows-native-keyring-store = { version = "1.1.0", optional = true }
 
 [build-dependencies]
-lucide-slint = "1.46.0"
+lucide-slint = "1.61.0"
 
 [lints]
 workspace = true
