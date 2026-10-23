@@ -100,7 +100,7 @@ ruma = { version = "0.17.1", features = [
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.151"
 sha2 = "0.11.0"
-slint = { version = "1.18.0", default-features = false, features = [
+slint = { version = "1.18.1", default-features = false, features = [
     "std",
     "compat-1-2",
     "backend-winit",
@@ -109,7 +109,7 @@ slint = { version = "1.18.0", default-features = false, features = [
     "accessibility",
     "gettext",
 ] }
-slint-interpreter = { version = "1.18.0", optional = true, default-features = false, features = [
+slint-interpreter = { version = "1.18.1", optional = true, default-features = false, features = [
     "compat-1-2",
     "backend-winit",
     "renderer-femtovg",
