@@ -10,7 +10,7 @@ use tokio::time::sleep;
 use super::catalog::{Flag, Scenarios};
 use super::data;
 use crate::domain::call::identity::{MediaIdentity, spellings};
-use crate::domain::call::keys::{KeyIndex, MediaKey, ReceivedKey};
+use crate::domain::call::keys::{KeyIndex, MediaKey, OWN_KEY_LEN, ReceivedKey};
 use crate::domain::call::media::{ConnectionQuality, MediaEvent, MediaSource};
 use crate::domain::call::ring::{CallSignal, Ring, RingId, RingKind};
 use crate::domain::call::sfu::{SfuId, SfuRole};
@@ -343,7 +343,7 @@ const POOR_FOR: Duration = Duration::from_secs(8);
 const LOST_AFTER: Duration = Duration::from_secs(7);
 const LOST_FOR: Duration = Duration::from_secs(5);
 pub const UNTRUSTED: &str = JORDAN;
-const DEMO_KEY: [u8; 16] = [7; 16];
+const DEMO_KEY: [u8; OWN_KEY_LEN] = [7; OWN_KEY_LEN];
 
 #[derive(Default, Clone, Copy)]
 #[allow(clippy::struct_excessive_bools)]

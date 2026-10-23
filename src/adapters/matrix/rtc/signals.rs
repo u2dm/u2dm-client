@@ -213,7 +213,14 @@ fn read_and_pass(
     };
     match read_key(&arrival) {
         Ok((room_id, key)) => {
-            tracing::debug!(%sender, %device, room_id, index = %key.index, "a call key arrived");
+            tracing::debug!(
+                %sender,
+                %device,
+                room_id,
+                index = %key.index,
+                bytes = key.key.bytes().len(),
+                "a call key arrived"
+            );
             hand_over(
                 forward,
                 Heard::Signal(CallSignal::Key {

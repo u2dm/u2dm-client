@@ -17,7 +17,7 @@ use crate::commands::view::{
 use crate::domain::call::devices::{DeviceChoice, DeviceChoices, DeviceKey, DeviceKind};
 use crate::domain::call::identity::{IdentityTable, MediaIdentity, member_spellings, spellings};
 use crate::domain::call::keys::{
-    KEY_LEN, KeyAction, KeyExchange, KeyHolder, MediaKey, ReceivedKey,
+    KeyAction, KeyExchange, KeyHolder, MediaKey, OWN_KEY_LEN, ReceivedKey,
 };
 use crate::domain::call::media::{
     ConnectionQuality, Decryption, MediaChoice, MediaEvent, MediaSource, Microphone, SfuState,
@@ -318,7 +318,7 @@ pub(super) struct Joined {
 }
 
 pub(super) fn fresh_key() -> MediaKey {
-    let mut bytes = [0_u8; KEY_LEN];
+    let mut bytes = [0_u8; OWN_KEY_LEN];
     rand::fill(&mut bytes);
     MediaKey::new(bytes)
 }

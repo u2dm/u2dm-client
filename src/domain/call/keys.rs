@@ -4,20 +4,24 @@ use std::time::Duration;
 
 use super::{CallMember, MemberKey};
 
-pub const KEY_LEN: usize = 16;
+pub const OWN_KEY_LEN: usize = 32;
 pub const KEY_REUSE_WINDOW: Duration = Duration::from_secs(10);
 pub const KEY_SWITCH_DELAY: Duration = Duration::from_secs(1);
 const QUEUED_KEYS_MAX: usize = 64;
 
 #[derive(Clone, PartialEq, Eq)]
-pub struct MediaKey([u8; KEY_LEN]);
+pub struct MediaKey(Vec<u8>);
 
 impl MediaKey {
-    pub const fn new(bytes: [u8; KEY_LEN]) -> Self {
-        Self(bytes)
+    pub fn new(bytes: [u8; OWN_KEY_LEN]) -> Self {
+        Self(bytes.to_vec())
     }
 
-    pub const fn bytes(&self) -> &[u8; KEY_LEN] {
+    pub fn received(bytes: Vec<u8>) -> Option<Self> {
+        (!bytes.is_empty()).then_some(Self(bytes))
+    }
+
+    pub fn bytes(&self) -> &[u8] {
         &self.0
     }
 }

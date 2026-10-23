@@ -4,7 +4,7 @@ use base64::engine::general_purpose::{GeneralPurpose, GeneralPurposeConfig};
 use base64::engine::{DecodePaddingMode, general_purpose};
 use serde_json::{Map, Value, json};
 
-use crate::domain::call::keys::{KEY_LEN, KeyIndex, MediaKey, ReceivedKey};
+use crate::domain::call::keys::{KeyIndex, MediaKey, ReceivedKey};
 use crate::domain::call::{DeviceId, MemberKey};
 
 const LENIENT: GeneralPurposeConfig =
@@ -100,8 +100,5 @@ fn decoded(encoded: &str) -> Result<MediaKey, &'static str> {
         .decode(encoded)
         .or_else(|_| URL_SAFE_LENIENT.decode(encoded))
         .map_err(|_| "its key is not base64")?;
-    let key: [u8; KEY_LEN] = bytes
-        .try_into()
-        .map_err(|_| "its key is not 16 bytes long")?;
-    Ok(MediaKey::new(key))
+    MediaKey::received(bytes).ok_or("its key is empty")
 }
