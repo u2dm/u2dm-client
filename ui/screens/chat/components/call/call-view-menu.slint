@@ -1,20 +1,25 @@
+import { ScrollView } from "std-widgets.slint";
 import { Icon, IconSet } from "@lucide";
 
 import { RovingKeys } from "../../../../components/a11y.slint";
 import { MenuRow } from "../../../../components/menu-row.slint";
 import { PickerCard } from "../../../../components/overlay.slint";
 import { Actions } from "../../../../actions.slint";
-import { CallPanel } from "../../../../local.slint";
+import { CallMode, CallPanel } from "../../../../local.slint";
 import { CallView } from "../../../../views.slint";
-import { Metrics, Space } from "../../../../theme.slint";
+import { AppStyle, Metrics, Space, Stroke } from "../../../../theme.slint";
 
-enum CallViewChoice { gallery, focus, strip, self-view, fit }
+enum CallViewChoice { call-and-chat, call-only, chat-only, gallery, focus, strip, self-view, fit }
 
 export component CallViewMenu inherits PickerCard {
+    in property <bool> beside-chat;
+    in property <length> room;
+
     callback chose();
 
     property <bool> focused: CallView.stage.length > 0;
-    property <[CallViewChoice]> offered: root.focused
+    property <[CallViewChoice]> modes: [CallViewChoice.call-and-chat, CallViewChoice.call-only, CallViewChoice.chat-only];
+    property <[CallViewChoice]> views: root.focused
         ? [CallViewChoice.gallery, CallViewChoice.focus, CallViewChoice.strip, CallViewChoice.self-view, CallViewChoice.fit]
         : [CallViewChoice.gallery, CallViewChoice.focus, CallViewChoice.self-view, CallViewChoice.fit];
     property <int> cursor: -1;
@@ -26,6 +31,15 @@ export component CallViewMenu inherits PickerCard {
     }
 
     pure function icon(choice: CallViewChoice) -> Icon {
+        if choice == CallViewChoice.call-and-chat {
+            return root.beside-chat ? IconSet.LayoutPanelLeft : IconSet.LayoutPanelTop;
+        }
+        if choice == CallViewChoice.call-only {
+            return CallView.active-video ? IconSet.Video : IconSet.Phone;
+        }
+        if choice == CallViewChoice.chat-only {
+            return IconSet.MessageSquare;
+        }
         if choice == CallViewChoice.gallery {
             return IconSet.LayoutGrid;
         }
@@ -42,6 +56,15 @@ export component CallViewMenu inherits PickerCard {
     }
 
     pure function label(choice: CallViewChoice) -> string {
+        if choice == CallViewChoice.call-and-chat {
+            return @tr("Call and chat");
+        }
+        if choice == CallViewChoice.call-only {
+            return @tr("Call only");
+        }
+        if choice == CallViewChoice.chat-only {
+            return @tr("Chat only");
+        }
         if choice == CallViewChoice.gallery {
             return @tr("Gallery");
         }
@@ -58,20 +81,33 @@ export component CallViewMenu inherits PickerCard {
     }
 
     pure function checkable(choice: CallViewChoice) -> bool {
-        return choice == CallViewChoice.gallery || choice == CallViewChoice.focus;
+        return choice != CallViewChoice.strip && choice != CallViewChoice.self-view && choice != CallViewChoice.fit;
     }
 
     pure function checked(choice: CallViewChoice) -> bool {
-        return (choice == CallViewChoice.gallery && !root.focused)
+        return (choice == CallViewChoice.call-and-chat && CallPanel.mode == CallMode.call-and-chat)
+            || (choice == CallViewChoice.call-only && CallPanel.mode == CallMode.call-only)
+            || (choice == CallViewChoice.chat-only && CallPanel.mode == CallMode.chat-only)
+            || (choice == CallViewChoice.gallery && !root.focused)
             || (choice == CallViewChoice.focus && root.focused);
     }
 
+    pure function choice-at(index: int) -> CallViewChoice {
+        return index < root.modes.length ? root.modes[index] : root.views[index - root.modes.length];
+    }
+
     pure function cursor-choice() -> CallViewChoice {
-        return root.offered[max(root.cursor, 0)];
+        return root.choice-at(max(root.cursor, 0));
     }
 
     function choose(choice: CallViewChoice) {
-        if choice == CallViewChoice.gallery {
+        if choice == CallViewChoice.call-and-chat {
+            CallPanel.choose(CallMode.call-and-chat);
+        } else if choice == CallViewChoice.call-only {
+            CallPanel.choose(CallMode.call-only);
+        } else if choice == CallViewChoice.chat-only {
+            CallPanel.choose(CallMode.chat-only);
+        } else if choice == CallViewChoice.gallery {
             Actions.show-call-gallery();
         } else if choice == CallViewChoice.focus {
             Actions.show-call-focus();
@@ -85,13 +121,21 @@ export component CallViewMenu inherits PickerCard {
         root.chose();
     }
 
+    function reveal(top: length, size: length) {
+        if top < -scroll.content-y {
+            scroll.content-y = -top;
+        } else if top + size > -scroll.content-y + scroll.visible-height {
+            scroll.content-y = -(top + size - scroll.visible-height);
+        }
+    }
+
     width: Metrics.call-menu-width;
-    height: layout.preferred-height;
+    height: min(rows.preferred-height + 2 * Space.sm, root.room);
 
     TouchArea { }
 
     keys := RovingKeys {
-        count: root.offered.length;
+        count: root.modes.length + root.views.length;
         cursor <=> root.cursor;
         accessible-label: root.cursor >= 0 ? root.label(root.cursor-choice()) : @tr("Call layout");
         accessible-checkable: root.cursor >= 0 && root.checkable(root.cursor-choice());
@@ -106,25 +150,70 @@ export component CallViewMenu inherits PickerCard {
             return reject;
         }
         activated(index) => {
-            root.choose(root.offered[index]);
+            root.choose(root.choice-at(index));
         }
     }
 
-    layout := VerticalLayout {
-        padding: Space.sm;
-        spacing: Space.xs;
+    scroll := ScrollView {
+        x: 0;
+        y: Space.sm;
+        width: parent.width;
+        height: parent.height - 2 * Space.sm;
+        content-width: self.visible-width;
+        content-height: rows.preferred-height;
 
-        for choice[index] in root.offered: MenuRow {
-            height: Metrics.call-menu-row;
-            icon: root.icon(choice);
-            label: root.label(choice);
-            checkable: root.checkable(choice);
-            checked: root.checked(choice);
-            trailing: root.checked(choice) ? IconSet.Check : { };
-            focusable: false;
-            roving-focus: root.keys-focused && root.cursor == index;
-            clicked => {
-                root.choose(choice);
+        rows := VerticalLayout {
+            width: scroll.visible-width;
+            padding-left: Space.sm;
+            padding-right: Space.sm;
+            spacing: Space.xs;
+
+            for choice[index] in root.modes: MenuRow {
+                height: Metrics.call-menu-row;
+                icon: root.icon(choice);
+                label: root.label(choice);
+                checkable: true;
+                checked: root.checked(choice);
+                trailing: root.checked(choice) ? IconSet.Check : { };
+                focusable: false;
+                roving-focus: root.keys-focused && root.cursor == index;
+                changed roving-focus => {
+                    if self.roving-focus {
+                        root.reveal(self.y, self.height);
+                    }
+                }
+                clicked => {
+                    root.choose(choice);
+                }
+            }
+
+            Rectangle {
+                height: Metrics.call-menu-group-gap;
+
+                Rectangle {
+                    y: (parent.height - self.height) / 2;
+                    height: Stroke.hairline;
+                    background: AppStyle.border;
+                }
+            }
+
+            for choice[index] in root.views: MenuRow {
+                height: Metrics.call-menu-row;
+                icon: root.icon(choice);
+                label: root.label(choice);
+                checkable: root.checkable(choice);
+                checked: root.checked(choice);
+                trailing: root.checked(choice) ? IconSet.Check : { };
+                focusable: false;
+                roving-focus: root.keys-focused && root.cursor == root.modes.length + index;
+                changed roving-focus => {
+                    if self.roving-focus {
+                        root.reveal(self.y, self.height);
+                    }
+                }
+                clicked => {
+                    root.choose(choice);
+                }
             }
         }
     }

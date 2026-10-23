@@ -18,7 +18,7 @@ import { AppStyle, IconSize, Metrics, Radius, Size, Space } from "../../theme.sl
 import { IconButton } from "../../components/button.slint";
 import { CallView, DirectoryView, RoomInfoView, RoomView, SpaceIndexView, WindowView } from "../../views.slint";
 import { Actions } from "../../actions.slint";
-import { CallPanel, CallPeopleOpener, CallSize, LocalState, RoomSearch, Shell, Subspaces } from "../../local.slint";
+import { CallPanel, CallPeopleOpener, LocalState, RoomSearch, Shell, Subspaces } from "../../local.slint";
 
 component Toast inherits Rectangle {
     property <bool> is-file-saved: RoomView.toast-message == UserMessageKind.file-saved;
@@ -236,9 +236,7 @@ export component ChatScreen inherits FocusScope {
 
     function show-person(key: string, by-keys: bool) {
         CallPanel.people-open = false;
-        if CallPanel.chosen == CallSize.hidden {
-            CallPanel.chosen = CallSize.stage;
-        }
+        CallPanel.show-call();
         let staged = CallView.stage-chosen && CallView.stage.length > 0 && CallView.stage[0].key == key;
         if by-keys && !staged {
             CallPanel.focus-stage = true;
@@ -339,7 +337,6 @@ export component ChatScreen inherits FocusScope {
         here: timeline.in-call-room && !root.shows-room-list && !SpaceIndexView.visible;
         stage-hidden: timeline.stage-hidden;
         stage-shown: root.call-stage-on-screen;
-        stage-beside: timeline.call-split-fits;
         returned => {
             timeline.focus-composer();
         }

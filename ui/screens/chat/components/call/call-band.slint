@@ -1,6 +1,6 @@
 import { IconDisplay, IconSet } from "@lucide";
 
-import { IconButton, LinkButton } from "../../../../components/button.slint";
+import { AppButton, IconButton, LinkButton } from "../../../../components/button.slint";
 import { Actions } from "../../../../actions.slint";
 import { CallWords } from "../../../../messages.slint";
 import { CallPanel, CallSize, TipScope } from "../../../../local.slint";
@@ -49,15 +49,14 @@ component ShareOffer inherits HorizontalLayout {
 
 export component CallBand inherits Rectangle {
     in property <CallSize> size;
-    in property <bool> stage-fits;
     in property <bool> beside-chat;
 
     out property <length> menu-x: menu-button.absolute-position.x;
     out property <length> menu-y: menu-button.absolute-position.y;
     out property <length> menu-size: menu-button.height;
 
-    property <bool> forced-full: root.size == CallSize.full && CallPanel.chosen == CallSize.stage;
-    property <bool> offers-chat: !root.forced-full;
+    property <bool> covers-chat: root.size == CallSize.full;
+    property <bool> shows-chat-button;
     property <string> people: CallWords.people(CallView.people-first, CallView.people-second, CallView.people-more);
     property <int> band-takes-focus: CallPanel.band-takes-focus;
 
@@ -66,15 +65,30 @@ export component CallBand inherits Rectangle {
     }
 
     public function focus-chat() {
-        if root.offers-chat {
-            chat-toggle.take-focus();
+        if root.covers-chat {
+            chat-button.take-focus();
         } else {
-            size-toggle.take-focus();
+            menu-button.take-focus();
         }
     }
 
+    function follow-cover() {
+        if root.shows-chat-button && !root.covers-chat && root.size != CallSize.hidden && chat-button.has-focus {
+            menu-button.take-focus();
+        }
+        root.shows-chat-button = root.covers-chat;
+    }
+
+    init => {
+        root.follow-cover();
+    }
+
+    changed covers-chat => {
+        root.follow-cover();
+    }
+
     changed band-takes-focus => {
-        size-toggle.take-focus();
+        root.focus-chat();
     }
 
     background: AppStyle.call-band;
@@ -88,53 +102,25 @@ export component CallBand inherits Rectangle {
         Rectangle {
             height: Size.md;
 
-            chat-toggle := IconButton {
+            chat-button := AppButton {
                 x: parent.width - self.width;
                 y: (parent.height - self.height) / 2;
-                size: Size.md;
-                visible: root.offers-chat;
-                icon: root.size == CallSize.full ? IconSet.Minimize2 : IconSet.Maximize2;
-                label: root.size == CallSize.full ? @tr("Show the chat") : @tr("Hide the chat");
-                tip: self.label;
-                tip-keys: root.size == CallSize.full ? CallKeys.binding(CallKey.chat) : "";
-                tip-below: true;
-                tip-scope: TipScope.call;
+                width: self.preferred-width;
+                height: Size.md;
+                visible: root.shows-chat-button;
+                filled: false;
+                tint: AppStyle.foreground-strong;
+                icon: IconSet.MessageSquare;
+                text: @tr("Chat");
+                label: @tr("Show the chat");
+                description: @tr("Shortcut: {}", CallKeys.binding(CallKey.chat));
                 clicked => {
-                    if root.size == CallSize.full {
-                        CallPanel.show-chat(root.stage-fits);
-                    } else {
-                        CallPanel.chosen = CallSize.full;
-                    }
-                }
-            }
-
-            size-toggle := IconButton {
-                x: (root.offers-chat ? chat-toggle.x - Space.sm : parent.width) - self.width;
-                y: (parent.height - self.height) / 2;
-                size: Size.md;
-                icon: root.forced-full ? IconSet.Minimize2
-                    : root.beside-chat ? IconSet.PanelLeftClose
-                    : IconSet.PanelTopClose;
-                label: root.forced-full ? @tr("Show the chat") : @tr("Hide the call");
-                tip: self.label;
-                tip-keys: root.forced-full ? CallKeys.binding(CallKey.chat) : "";
-                tip-below: true;
-                tip-scope: TipScope.call;
-                clicked => {
-                    let by-keys = self.has-focus;
-                    if root.forced-full {
-                        CallPanel.show-chat(root.stage-fits);
-                    } else {
-                        CallPanel.chosen = CallSize.hidden;
-                        if by-keys {
-                            CallPanel.dock-takes-focus += 1;
-                        }
-                    }
+                    CallPanel.show-chat();
                 }
             }
 
             menu-button := IconButton {
-                x: size-toggle.x - Space.sm - self.width;
+                x: (root.shows-chat-button ? chat-button.x - Space.sm : parent.width) - self.width;
                 y: (parent.height - self.height) / 2;
                 size: Size.md;
                 icon: IconSet.LayoutDashboard;

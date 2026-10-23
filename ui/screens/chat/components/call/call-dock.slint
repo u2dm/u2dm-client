@@ -6,7 +6,7 @@ import { StateLayer } from "../../../../components/state-layer.slint";
 import { CallNotice, CallScreen } from "../../../../enums.slint";
 import { CallWords, UserMessages } from "../../../../messages.slint";
 import { Actions } from "../../../../actions.slint";
-import { CallPanel, CallPeopleOpener, CallSize, Shell, TipScope } from "../../../../local.slint";
+import { CallPanel, CallPeopleOpener, Shell, TipScope } from "../../../../local.slint";
 import { CallView, DirectoryView, SpaceIndexView } from "../../../../views.slint";
 import { AppStyle, Fonts, IconSize, Metrics, Motion, Radius, Size, Space, Stroke, Weight } from "../../../../theme.slint";
 import { CallCameraButton, CallKey, CallLeaveButton, CallMicButton, CallShareButton } from "./call-controls.slint";
@@ -149,7 +149,6 @@ export component CallDock inherits Rectangle {
     in property <bool> here;
     in property <bool> stage-hidden;
     in property <bool> stage-shown;
-    in property <bool> stage-beside;
 
     callback returned();
 
@@ -183,7 +182,7 @@ export component CallDock inherits Rectangle {
     property <length> status-extra: root.status-taken ? status.preferred-height + root.gap
         : root.tells-shares ? shares.preferred-height + root.gap
         : 0px;
-    property <length> show-width: root.offers-button ? Metrics.call-control + root.gap : 0px;
+    property <length> show-width: root.offers-button ? show-call.preferred-width + root.gap : 0px;
     property <length> controls-width: root.failed
         ? (CallView.failure-retry ? retry.preferred-width + root.gap : 0px) + dismiss.width
         : 4 * (Metrics.call-control + root.gap) + leave.preferred-width;
@@ -227,7 +226,7 @@ export component CallDock inherits Rectangle {
     }
 
     function show-stage(by-keys: bool) {
-        CallPanel.chosen = CallSize.stage;
+        CallPanel.show-call();
         if by-keys {
             CallPanel.band-takes-focus += 1;
         }
@@ -237,9 +236,7 @@ export component CallDock inherits Rectangle {
         if !(CallView.stage.length > 0 && CallView.stage[0].screen) {
             Actions.view-call-share();
         }
-        if CallPanel.chosen == CallSize.hidden {
-            CallPanel.chosen = CallSize.stage;
-        }
+        CallPanel.show-call();
         if !root.here {
             root.return-to-call();
         } else if by-keys {
@@ -265,6 +262,7 @@ export component CallDock inherits Rectangle {
         let moving = !root.failed && !root.stage-shown;
         let line-view-goes = moving && root.shows-shares && !root.tells-shares && shares.view-focused;
         let button-view-goes = moving && root.button-views && !root.offers-share && show-call.has-focus;
+        let button-goes = !root.failed && root.shows-button && !root.offers-button && show-call.has-focus;
         root.shows-shares = root.shows-shares || root.tells-shares;
         root.shows-button = root.shows-button || root.offers-button;
         root.button-views = root.offers-share;
@@ -280,6 +278,8 @@ export component CallDock inherits Rectangle {
             } else if !root.offers-stage {
                 root.focus-line();
             }
+        } else if button-goes {
+            root.focus-line();
         }
         root.shows-shares = root.tells-shares;
         root.shows-button = root.offers-button;
@@ -412,22 +412,22 @@ export component CallDock inherits Rectangle {
         visible: root.failed;
     }
 
-    show-call := IconButton {
+    show-call := AppButton {
         x: root.pad + root.label-span + root.gap;
         y: root.label-y + (root.label-height - self.height) / 2;
-        size: Metrics.call-control;
+        width: self.preferred-width;
+        height: Metrics.call-control;
         visible: root.shows-button;
         above-modal: root.above-modal;
-        fill: AppStyle.control;
+        filled: false;
         tint: AppStyle.foreground-strong;
         icon: root.offers-share ? IconSet.MonitorPlay
-            : root.stage-beside ? IconSet.PanelLeftOpen
-            : IconSet.PanelTopOpen;
+            : CallView.active-video ? IconSet.Video
+            : IconSet.Phone;
+        text: root.offers-share ? @tr("View") : @tr("Call");
         label: root.offers-share
             ? CallWords.view-shares(CallView.first-sharer, CallView.share-count)
             : @tr("Show the call");
-        tip: self.label;
-        tip-scope: TipScope.call;
         clicked => {
             if root.offers-share {
                 root.view-shares(self.has-focus);

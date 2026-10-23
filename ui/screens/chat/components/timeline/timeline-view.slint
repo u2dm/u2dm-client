@@ -16,7 +16,7 @@ import { CopyNotifier } from "../../../../components/copier.slint";
 import { AudioView, CallView, DirectoryView, PresenceView, RoomView, TypingView } from "../../../../views.slint";
 import { PresenceWords, TypingLine } from "../../../../messages.slint";
 import { Actions } from "../../../../actions.slint";
-import { CallPanel, CallPeopleOpener, CallSheetOpener, CallSize, LocalState, ReplySwipe, RoomMenu, RoomMenuOrigin, RoomMenuReturn, RoomSearch, Shell } from "../../../../local.slint";
+import { CallMode, CallPanel, CallPeopleOpener, CallSheetOpener, CallSize, CallSurface, LocalState, ReplySwipe, RoomMenu, RoomMenuOrigin, RoomMenuReturn, RoomSearch, Shell } from "../../../../local.slint";
 import { StatusPill } from "../../../../components/status-pill.slint";
 import { NowPlayingBar } from "./now-playing-bar.slint";
 import { PinnedBar } from "./pinned-bar.slint";
@@ -57,8 +57,11 @@ export component TimelineView inherits Rectangle {
     out property <bool> call-split-fits: root.width >= Metrics.call-split-min;
     property <bool> call-stage-fits: root.call-stack-fits || root.call-split-fits;
     property <CallSize> call-size: !root.in-call-room ? CallSize.hidden
-        : CallPanel.chosen == CallSize.stage && !root.call-stage-fits ? CallSize.full
-        : CallPanel.chosen;
+        : CallPanel.mode == CallMode.chat-only ? CallSize.hidden
+        : CallPanel.mode == CallMode.call-only ? CallSize.full
+        : root.call-stage-fits ? CallSize.stage
+        : CallPanel.turn == CallSurface.call ? CallSize.full
+        : CallSize.hidden;
     out property <bool> stage-hidden: root.in-call-room && root.call-size == CallSize.hidden;
     property <bool> shows-band: root.in-call-room && root.call-size != CallSize.hidden;
     property <bool> call-split: root.shows-band && root.call-size == CallSize.stage && root.call-split-fits;
@@ -125,7 +128,7 @@ export component TimelineView inherits Rectangle {
         if !root.call-covers-timeline {
             return false;
         }
-        CallPanel.show-chat(root.call-stage-fits);
+        CallPanel.show-chat();
         return true;
     }
 
@@ -322,6 +325,7 @@ export component TimelineView inherits Rectangle {
         property <int> menu-returns: RoomMenu.focus-returns;
         property <bool> opened-from-search: RoomSearch.opened(root.room-id) && Shell.background-reachable;
         property <bool> call-covered: root.call-covers-timeline;
+        property <bool> composer-covered;
         property <int> composer-requests: root.composer-requests;
         property <length> stage-room: self.height - root.header-height - input.height - root.dock-height
             - root.pinned-height - root.now-playing-height;
@@ -348,6 +352,7 @@ export component TimelineView inherits Rectangle {
         height: root.height;
 
         init => {
+            self.composer-covered = self.call-covered;
             if self.opened-from-search {
                 self.take-keyboard-from-search();
             }
@@ -537,6 +542,7 @@ export component TimelineView inherits Rectangle {
             if self.call-covered && input.input-focused {
                 band.focus-chat();
             }
+            self.composer-covered = self.call-covered;
         }
 
         content := TimelineContent {
@@ -558,7 +564,6 @@ export component TimelineView inherits Rectangle {
             height: stage.call-height;
             visible: root.shows-band;
             size: root.call-size;
-            stage-fits: root.call-stage-fits;
             beside-chat: root.call-split;
         }
 
@@ -646,7 +651,7 @@ export component TimelineView inherits Rectangle {
             x: stage.chat-x;
             y: parent.height - root.dock-height - self.height;
             width: stage.chat-width;
-            visible: !root.call-covers-timeline;
+            visible: !stage.composer-covered;
             room-id: root.room-id;
             message <=> root.input-message;
             overlay-x: -root.x - self.x;
@@ -711,10 +716,16 @@ export component TimelineView inherits Rectangle {
 
             view-menu := CallViewMenu {
                 x: Placement.fit(band.menu-x + band.menu-size - self.width, self.width, root.overlay-width, Space.md);
-                y: Placement.fit(band.menu-y + band.menu-size + Space.xs, self.height, root.height, Space.md);
+                y: Placement.fit(band.menu-y + band.menu-size + Space.xs, self.height, root.height - root.dock-height, Space.md);
+                room: root.height - root.dock-height - 2 * Space.md;
+                beside-chat: root.call-split-fits;
                 chose => {
                     CallPanel.menu-open = false;
-                    band.focus-menu();
+                    if root.shows-band {
+                        band.focus-menu();
+                    } else {
+                        CallPanel.dock-takes-focus += 1;
+                    }
                 }
             }
         }
