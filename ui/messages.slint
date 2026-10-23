@@ -888,6 +888,17 @@ export global CallWords {
         return @tr("Connected to the call");
     }
 
+    public pure function sharing(name: string) -> string {
+        return @tr("{} is sharing their screen", name);
+    }
+
+    public pure function unseen-shares(first: string, count: int) -> string {
+        if count == 1 {
+            return root.sharing(first);
+        }
+        return @tr("{n} screen is being shared" | "{n} screens are being shared" % count);
+    }
+
     public pure function share-ended(name: string) -> string {
         return @tr("{} stopped sharing their screen", name);
     }
@@ -1189,6 +1200,13 @@ export global CallWords {
 
     public pure function view-share(name: string) -> string {
         return @tr("View {}'s screen", name);
+    }
+
+    public pure function view-shares(first: string, count: int) -> string {
+        if count == 1 {
+            return root.view-share(first);
+        }
+        return @tr("View the shared screens");
     }
 
     public pure function person-name(name: string, you: bool) -> string {

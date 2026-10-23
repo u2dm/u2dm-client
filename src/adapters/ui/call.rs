@@ -18,7 +18,7 @@ use crate::commands::messages::UserMessageKind;
 use crate::commands::view::{
     ActiveCall, AppViewState, CallDevices, CallNotice, CallPerson, CallPhase, CallSheetView,
     CallTile, CallView, DeviceNews, FailedCall, JoinOffer, OfferView, RingView, RoomCallSummary,
-    ScreenView, TileKind,
+    ScreenView, ShareNews, TileKind,
 };
 use crate::domain::call::devices::DeviceKind;
 use crate::domain::call::video::{FeedId, Framing};
@@ -174,6 +174,8 @@ fn apply_active<B: UiBackend>(w: &B::Window, last: Option<&ActiveCall>, next: Op
     let Some(active) = next else {
         w.set_bool(BoolProp::ActiveVisible, false);
         w.set_int(IntProp::ActiveCall, 0);
+        w.set_int(IntProp::ShareCount, 0);
+        w.set_int(IntProp::StartedShareSerial, 0);
         w.set_int(IntProp::EndedShareSerial, 0);
         w.set_int(IntProp::DeviceNewsSerial, 0);
         apply_notice(w, None);
@@ -231,25 +233,27 @@ fn shown_tiles(active: &ActiveCall) -> impl Iterator<Item = &CallTile> {
 fn apply_stage<B: UiBackend>(w: &B::Window, last: Option<&ActiveCall>, active: &ActiveCall) {
     w.set_bool(BoolProp::SelfView, active.self_view);
     w.set_bool(BoolProp::StageChosen, active.stage_chosen);
+    w.set_string(StringProp::FirstSharer, shown_name(active.shares.first()));
+    w.set_int(
+        IntProp::ShareCount,
+        i32::try_from(active.shares.len()).unwrap_or(i32::MAX),
+    );
     w.set_string(
         StringProp::OfferedShare,
-        active
-            .offered_share
-            .as_ref()
-            .map_or_else(SharedString::new, |who| SharedString::from(who.shown())),
+        shown_name(active.offered_share.as_ref()),
     );
-    let (ended_who, ended_serial) =
-        active
-            .ended_share
-            .as_ref()
-            .map_or((SharedString::new(), 0), |ended| {
-                (
-                    SharedString::from(ended.who.shown()),
-                    i32::try_from(ended.serial).unwrap_or(i32::MAX),
-                )
-            });
-    w.set_string(StringProp::EndedShare, ended_who);
-    w.set_int(IntProp::EndedShareSerial, ended_serial);
+    apply_share_news(
+        w,
+        active.started_share.as_ref(),
+        StringProp::StartedShare,
+        IntProp::StartedShareSerial,
+    );
+    apply_share_news(
+        w,
+        active.ended_share.as_ref(),
+        StringProp::EndedShare,
+        IntProp::EndedShareSerial,
+    );
     apply_names(
         w,
         &active.others,
@@ -289,6 +293,18 @@ fn apply_stage<B: UiBackend>(w: &B::Window, last: Option<&ActiveCall>, active: &
         .filter_map(|tile| Some((tile.video.clone()?, framing(tile.kind))))
         .collect();
     call_video::follow::<B>(w, &feeds);
+}
+
+fn shown_name(who: Option<&NamedUser>) -> SharedString {
+    who.map_or_else(SharedString::new, |who| SharedString::from(who.shown()))
+}
+
+fn apply_share_news(w: &impl UiProps, news: Option<&ShareNews>, who: StringProp, serial: IntProp) {
+    w.set_string(who, shown_name(news.map(|news| &news.who)));
+    w.set_int(
+        serial,
+        news.map_or(0, |news| i32::try_from(news.serial).unwrap_or(i32::MAX)),
+    );
 }
 
 fn shown_devices(call: &CallView) -> Option<&CallDevices> {

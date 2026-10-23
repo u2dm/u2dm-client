@@ -91,7 +91,9 @@ macro_rules! string_props {
         NoticeName CallView "CallView" "notice-name" set_notice_name get_notice_name;
         FailureRoomId CallView "CallView" "failure-room-id" set_failure_room_id get_failure_room_id;
         FailureDetail CallView "CallView" "failure-detail" set_failure_detail get_failure_detail;
+        FirstSharer CallView "CallView" "first-sharer" set_first_sharer get_first_sharer;
         OfferedShare CallView "CallView" "offered-share" set_offered_share get_offered_share;
+        StartedShare CallView "CallView" "started-share" set_started_share get_started_share;
         EndedShare CallView "CallView" "ended-share" set_ended_share get_ended_share;
         PeopleFirst CallView "CallView" "people-first" set_people_first get_people_first;
         PeopleSecond CallView "CallView" "people-second" set_people_second get_people_second;
@@ -557,6 +559,8 @@ macro_rules! int_props {
         HerePeople CallView "CallView" "here-people" set_here_people get_here_people;
         NoticeOthers CallView "CallView" "notice-others" set_notice_others get_notice_others;
         ActiveCall CallView "CallView" "active-call" set_active_call get_active_call;
+        ShareCount CallView "CallView" "share-count" set_share_count get_share_count;
+        StartedShareSerial CallView "CallView" "started-share-serial" set_started_share_serial get_started_share_serial;
         EndedShareSerial CallView "CallView" "ended-share-serial" set_ended_share_serial get_ended_share_serial;
         PeopleMore CallView "CallView" "people-more" set_people_more get_people_more;
         MicrophoneChosen CallView "CallView" "microphone-chosen" set_microphone_chosen get_microphone_chosen;

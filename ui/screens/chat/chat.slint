@@ -67,10 +67,10 @@ export component ChatScreen inherits FocusScope {
         && !SpaceIndexView.visible
         && !Shell.modal-open
         && !timeline.call-covers-timeline;
-    property <bool> call-media-on-screen: timeline.shows-call-media
-        && !root.window-minimized
+    property <bool> call-stage-on-screen: timeline.shows-call-media
         && !root.shows-room-list
         && !SpaceIndexView.visible;
+    property <bool> call-media-on-screen: root.call-stage-on-screen && !root.window-minimized;
     property <int> active-call: CallView.active-call;
 
     property <length> sidebar-width: Metrics.sidebar-default;
@@ -134,6 +134,9 @@ export component ChatScreen inherits FocusScope {
             return reject;
         }
         if !event.repeat {
+            if !dock.focuses(key) {
+                announcer.expect(key);
+            }
             CallKeys.press(key);
         }
         return accept;
@@ -335,7 +338,7 @@ export component ChatScreen inherits FocusScope {
         above-modal: Shell.nav-on-top;
         here: timeline.in-call-room && !root.shows-room-list && !SpaceIndexView.visible;
         stage-hidden: timeline.stage-hidden;
-        stage-shown: timeline.shows-call-media;
+        stage-shown: root.call-stage-on-screen;
         stage-beside: timeline.call-split-fits;
         returned => {
             timeline.focus-composer();
@@ -421,5 +424,5 @@ export component ChatScreen inherits FocusScope {
         open <=> Shell.drawer-open;
     }
 
-    CallAnnouncer { }
+    announcer := CallAnnouncer { }
 }

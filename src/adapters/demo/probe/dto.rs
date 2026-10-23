@@ -12,9 +12,9 @@ use crate::commands::view::{
     InvitesSection, JoinOffer, JoinRefusal, LeaveSpaceView, LifecycleView, LoginStep, LogoutView,
     MentionsView, MicrophoneView, MissingMedia, NotificationsView, PackView, PaginationView,
     PinnedView, PresenceView, ReadersView, RemovalView, RoomInfoView, RoomLogView, RoomMenuTarget,
-    RoomPreviewSheet, RoomPreviewView, RosterRow, ScreenView, SourceState, SpaceIndexRow,
-    SpaceIndexView, SpaceMatch, TileKind, TileState, Toast, TrackFile, TypingView, UnsentMessage,
-    UpgradeView, UserInfoView, VideoView,
+    RoomPreviewSheet, RoomPreviewView, RosterRow, ScreenView, ShareNews, SourceState,
+    SpaceIndexRow, SpaceIndexView, SpaceMatch, TileKind, TileState, Toast, TrackFile, TypingView,
+    UnsentMessage, UpgradeView, UserInfoView, VideoView,
 };
 use crate::domain::call::ring::RingKind;
 use crate::domain::call::video::ScreenRefusal;
@@ -247,8 +247,10 @@ struct ActiveCallDto {
     stage_chosen: bool,
     tiles: Vec<CallTileDto>,
     self_view: bool,
+    shares: Vec<String>,
     offered_share: Option<String>,
-    ended_share: Option<EndedShareDto>,
+    started_share: Option<ShareNewsDto>,
+    ended_share: Option<ShareNewsDto>,
     others: Vec<String>,
     people: Vec<CallPersonDto>,
     devices: CallDevicesDto,
@@ -292,7 +294,7 @@ struct DeviceNewsDto {
 }
 
 #[derive(Serialize)]
-struct EndedShareDto {
+struct ShareNewsDto {
     serial: u64,
     who: String,
 }
@@ -1174,11 +1176,10 @@ fn active_call(active: &ActiveCall) -> ActiveCallDto {
         stage_chosen: active.stage_chosen,
         tiles: active.tiles.iter().map(call_tile).collect(),
         self_view: active.self_view,
+        shares: active.shares.iter().map(NamedUser::shown).collect(),
         offered_share: active.offered_share.as_ref().map(NamedUser::shown),
-        ended_share: active.ended_share.as_ref().map(|ended| EndedShareDto {
-            serial: ended.serial,
-            who: ended.who.shown(),
-        }),
+        started_share: active.started_share.as_ref().map(share_news),
+        ended_share: active.ended_share.as_ref().map(share_news),
         others: active.others.iter().map(NamedUser::shown).collect(),
         people: active.people.iter().map(call_person).collect(),
         devices: call_devices(&active.devices),
@@ -1249,6 +1250,13 @@ fn call_tile(tile: &CallTile) -> CallTileDto {
         muted: tile.muted,
         speaking: tile.speaking,
         video: tile.video.as_ref().map(ToString::to_string),
+    }
+}
+
+fn share_news(news: &ShareNews) -> ShareNewsDto {
+    ShareNewsDto {
+        serial: news.serial,
+        who: news.who.shown(),
     }
 }
 

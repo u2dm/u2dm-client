@@ -1,4 +1,4 @@
-use crate::commands::view::{CallTile, EndedShare, TileKey, TileKind};
+use crate::commands::view::{CallTile, ShareNews, TileKey, TileKind};
 use crate::domain::member_name::NamedUser;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -11,6 +11,7 @@ pub(super) struct Arranged {
     pub(super) stage: Option<CallTile>,
     pub(super) chosen: bool,
     pub(super) tiles: Vec<CallTile>,
+    pub(super) shares: Vec<NamedUser>,
     pub(super) offered_share: Option<NamedUser>,
 }
 
@@ -20,7 +21,9 @@ pub(super) struct Stage {
     shares: Vec<TileKey>,
     staged: Option<(TileKey, NamedUser)>,
     self_view: bool,
-    ended: Option<EndedShare>,
+    started: Option<ShareNews>,
+    shares_started: u64,
+    ended: Option<ShareNews>,
     shares_ended: u64,
 }
 
@@ -32,6 +35,8 @@ impl Default for Stage {
             shares: Vec::new(),
             staged: None,
             self_view: true,
+            started: None,
+            shares_started: 0,
             ended: None,
             shares_ended: 0,
         }
@@ -43,7 +48,11 @@ impl Stage {
         self.self_view
     }
 
-    pub(super) const fn ended_share(&self) -> Option<&EndedShare> {
+    pub(super) const fn started_share(&self) -> Option<&ShareNews> {
+        self.started.as_ref()
+    }
+
+    pub(super) const fn ended_share(&self) -> Option<&ShareNews> {
         self.ended.as_ref()
     }
 
@@ -127,12 +136,14 @@ impl Stage {
 
     pub(super) fn arrange(&self, tiles: Vec<CallTile>) -> Arranged {
         let shown = self.shown(&tiles);
-        let offered_share = self.offered(&tiles).and_then(|key| {
+        let name_of = |key: &TileKey| {
             tiles
                 .iter()
-                .find(|tile| tile.key() == key)
+                .find(|tile| tile.key() == *key)
                 .map(|tile| tile.name.clone())
-        });
+        };
+        let shares = self.shares.iter().filter_map(name_of).collect();
+        let offered_share = self.offered(&tiles).as_ref().and_then(name_of);
         let mut stage = None;
         let mut rest = Vec::with_capacity(tiles.len());
         for tile in tiles {
@@ -152,6 +163,7 @@ impl Stage {
             stage,
             chosen,
             tiles: rest,
+            shares,
             offered_share,
         }
     }
@@ -171,16 +183,24 @@ impl Stage {
     }
 
     fn follow_shares(&mut self, tiles: &[CallTile]) {
-        let present: Vec<TileKey> = tiles
+        let present: Vec<(TileKey, &NamedUser)> = tiles
             .iter()
             .filter(|tile| tile.kind == TileKind::Screen)
-            .map(CallTile::key)
+            .map(|tile| (tile.key(), &tile.name))
             .collect();
-        self.shares.retain(|key| present.contains(key));
-        for key in present {
-            if !self.shares.contains(&key) {
-                self.shares.push(key);
+        self.shares
+            .retain(|key| present.iter().any(|(shown, _)| shown == key));
+        for (key, who) in present {
+            if self.shares.contains(&key) {
+                continue;
             }
+            self.shares_started = self.shares_started.saturating_add(1);
+            tracing::debug!(tile = %key, "a screen share started");
+            self.started = Some(ShareNews {
+                serial: self.shares_started,
+                who: who.clone(),
+            });
+            self.shares.push(key);
         }
     }
 
@@ -198,7 +218,7 @@ impl Stage {
         {
             self.shares_ended = self.shares_ended.saturating_add(1);
             tracing::debug!(tile = %last, "the screen share on the stage ended");
-            self.ended = Some(EndedShare {
+            self.ended = Some(ShareNews {
                 serial: self.shares_ended,
                 who,
             });

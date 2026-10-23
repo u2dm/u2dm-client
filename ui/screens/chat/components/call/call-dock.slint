@@ -9,8 +9,8 @@ import { Actions } from "../../../../actions.slint";
 import { CallPanel, CallPeopleOpener, CallSize, Shell, TipScope } from "../../../../local.slint";
 import { CallView, DirectoryView, SpaceIndexView } from "../../../../views.slint";
 import { AppStyle, Fonts, IconSize, Metrics, Motion, Radius, Size, Space, Stroke, Weight } from "../../../../theme.slint";
-import { CallCameraButton, CallLeaveButton, CallMicButton, CallShareButton } from "./call-controls.slint";
-import { CallStatus } from "./call-status.slint";
+import { CallCameraButton, CallKey, CallLeaveButton, CallMicButton, CallShareButton } from "./call-controls.slint";
+import { CallStatus, ShareStatus } from "./call-status.slint";
 
 component CallLine inherits HorizontalLayout {
     in property <bool> names-room;
@@ -168,13 +168,22 @@ export component CallDock inherits Rectangle {
     property <int> device-news-serial: CallView.device-news-serial;
     property <int> dock-takes-focus: CallPanel.dock-takes-focus;
     property <int> people-returns: CallPanel.people-returns;
-    property <bool> has-status: !root.failed
+    property <bool> status-taken: !root.failed
         && (CallView.notice != CallNotice.none
             || (root.explains-share && share.refused)
             || root.tells-device-news
             || (root.tells-share-ended && root.stage-shown));
-    property <length> status-extra: root.has-status ? status.preferred-height + root.gap : 0px;
-    property <length> show-width: root.offers-stage ? Metrics.call-control + root.gap : 0px;
+    property <bool> shares-unseen: !root.failed && CallView.share-count > 0 && !root.stage-shown;
+    property <bool> tells-shares: root.shares-unseen && !root.status-taken;
+    property <bool> offers-share: root.shares-unseen && root.status-taken;
+    property <bool> offers-button: root.offers-stage || root.offers-share;
+    property <bool> shows-shares;
+    property <bool> shows-button;
+    property <bool> button-views;
+    property <length> status-extra: root.status-taken ? status.preferred-height + root.gap
+        : root.tells-shares ? shares.preferred-height + root.gap
+        : 0px;
+    property <length> show-width: root.offers-button ? Metrics.call-control + root.gap : 0px;
     property <length> controls-width: root.failed
         ? (CallView.failure-retry ? retry.preferred-width + root.gap : 0px) + dismiss.width
         : 4 * (Metrics.call-control + root.gap) + leave.preferred-width;
@@ -195,6 +204,18 @@ export component CallDock inherits Rectangle {
         devices.take-focus();
     }
 
+    public pure function focuses(key: CallKey) -> bool {
+        return (key == CallKey.microphone && mic.has-focus) || (key == CallKey.camera && camera.has-focus);
+    }
+
+    function focus-line() {
+        if root.here {
+            here-line.take-focus();
+        } else {
+            back.take-focus();
+        }
+    }
+
     function focus-control-for(notice: CallNotice) {
         if notice == CallNotice.microphone-failed {
             mic.take-focus();
@@ -206,11 +227,22 @@ export component CallDock inherits Rectangle {
     }
 
     function show-stage(by-keys: bool) {
-        if CallView.offered-share != "" {
-            Actions.view-call-share();
-        }
         CallPanel.chosen = CallSize.stage;
         if by-keys {
+            CallPanel.band-takes-focus += 1;
+        }
+    }
+
+    function view-shares(by-keys: bool) {
+        if !(CallView.stage.length > 0 && CallView.stage[0].screen) {
+            Actions.view-call-share();
+        }
+        if CallPanel.chosen == CallSize.hidden {
+            CallPanel.chosen = CallSize.stage;
+        }
+        if !root.here {
+            root.return-to-call();
+        } else if by-keys {
             CallPanel.band-takes-focus += 1;
         }
     }
@@ -227,6 +259,46 @@ export component CallDock inherits Rectangle {
 
     changed dock-takes-focus => {
         show-call.take-focus();
+    }
+
+    function follow-shares() {
+        let moving = !root.failed && !root.stage-shown;
+        let line-view-goes = moving && root.shows-shares && !root.tells-shares && shares.view-focused;
+        let button-view-goes = moving && root.button-views && !root.offers-share && show-call.has-focus;
+        root.shows-shares = root.shows-shares || root.tells-shares;
+        root.shows-button = root.shows-button || root.offers-button;
+        root.button-views = root.offers-share;
+        if line-view-goes {
+            if root.offers-share {
+                show-call.take-focus();
+            } else {
+                root.focus-line();
+            }
+        } else if button-view-goes {
+            if root.tells-shares {
+                shares.focus-view();
+            } else if !root.offers-stage {
+                root.focus-line();
+            }
+        }
+        root.shows-shares = root.tells-shares;
+        root.shows-button = root.offers-button;
+    }
+
+    init => {
+        root.follow-shares();
+    }
+
+    changed tells-shares => {
+        root.follow-shares();
+    }
+
+    changed offers-share => {
+        root.follow-shares();
+    }
+
+    changed offers-button => {
+        root.follow-shares();
     }
 
     changed people-returns => {
@@ -279,12 +351,25 @@ export component CallDock inherits Rectangle {
         y: root.pad;
         width: root.width - 2 * root.pad;
         height: self.preferred-height;
-        visible: root.has-status;
+        visible: root.status-taken;
+        above-modal: root.above-modal;
         explains-share: root.explains-share && share.refused;
         tells-device-news: root.tells-device-news;
         tells-share-ended: root.tells-share-ended && root.stage-shown;
         acted-by-keys(notice) => {
             root.focus-control-for(notice);
+        }
+    }
+
+    shares := ShareStatus {
+        x: root.pad;
+        y: root.pad;
+        width: root.width - 2 * root.pad;
+        height: self.preferred-height;
+        visible: root.shows-shares;
+        above-modal: root.above-modal;
+        view(by-keys) => {
+            root.view-shares(by-keys);
         }
     }
 
@@ -331,16 +416,24 @@ export component CallDock inherits Rectangle {
         x: root.pad + root.label-span + root.gap;
         y: root.label-y + (root.label-height - self.height) / 2;
         size: Metrics.call-control;
-        visible: root.offers-stage;
+        visible: root.shows-button;
         above-modal: root.above-modal;
         fill: AppStyle.control;
         tint: AppStyle.foreground-strong;
-        icon: root.stage-beside ? IconSet.PanelLeftOpen : IconSet.PanelTopOpen;
-        label: CallView.offered-share != "" ? CallWords.view-share(CallView.offered-share) : @tr("Show the call");
+        icon: root.offers-share ? IconSet.MonitorPlay
+            : root.stage-beside ? IconSet.PanelLeftOpen
+            : IconSet.PanelTopOpen;
+        label: root.offers-share
+            ? CallWords.view-shares(CallView.first-sharer, CallView.share-count)
+            : @tr("Show the call");
         tip: self.label;
         tip-scope: TipScope.call;
         clicked => {
-            root.show-stage(self.has-focus);
+            if root.offers-share {
+                root.view-shares(self.has-focus);
+            } else {
+                root.show-stage(self.has-focus);
+            }
         }
     }
 

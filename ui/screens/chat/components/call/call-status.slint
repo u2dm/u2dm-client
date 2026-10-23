@@ -10,6 +10,7 @@ import { CallView } from "../../../../views.slint";
 import { AppStyle, Fonts, IconSize, Size, Space } from "../../../../theme.slint";
 
 export component CallStatus inherits VerticalLayout {
+    in property <bool> above-modal;
     in property <bool> explains-share;
     in property <bool> tells-device-news;
     in property <bool> tells-share-ended;
@@ -97,6 +98,7 @@ export component CallStatus inherits VerticalLayout {
 
         if root.action != "" && root.way-out == "": LinkButton {
             min-height: Size.sm;
+            above-modal: root.above-modal;
             text: root.action;
             label: CallWords.notice-action-label(root.notice, CallView.active-room-name);
             font-size: Fonts.body-small;
@@ -117,6 +119,7 @@ export component CallStatus inherits VerticalLayout {
 
         LinkButton {
             min-height: Size.sm;
+            above-modal: root.above-modal;
             text: root.action;
             label: CallWords.notice-action-label(root.notice, CallView.active-room-name);
             font-size: Fonts.body-small;
@@ -132,6 +135,7 @@ export component CallStatus inherits VerticalLayout {
 
         LinkButton {
             min-height: Size.sm;
+            above-modal: root.above-modal;
             text: root.way-out;
             label: CallWords.notice-way-out-label(root.notice);
             font-size: Fonts.body-small;
@@ -143,6 +147,51 @@ export component CallStatus inherits VerticalLayout {
                     root.acted-by-keys(root.notice);
                 }
             }
+        }
+    }
+}
+
+export component ShareStatus inherits HorizontalLayout {
+    in property <bool> above-modal;
+
+    callback view(bool);
+
+    out property <bool> view-focused: view-link.has-focus;
+
+    public function focus-view() {
+        view-link.take-focus();
+    }
+
+    min-height: Size.sm;
+    alignment: center;
+    spacing: Space.md;
+
+    IconDisplay {
+        cross-axis-self-alignment: center;
+        icon: IconSet.ScreenShare;
+        size: IconSize.sm;
+        stroke: AppStyle.call-sharing;
+        accessible-role: none;
+    }
+
+    Text {
+        text: CallWords.unseen-shares(CallView.first-sharer, CallView.share-count);
+        font-family: Fonts.emoji;
+        font-size: Fonts.body-small;
+        color: AppStyle.foreground-muted;
+        vertical-alignment: center;
+        wrap: word-wrap;
+    }
+
+    view-link := LinkButton {
+        min-height: Size.sm;
+        above-modal: root.above-modal;
+        text: @tr("View");
+        label: CallWords.view-shares(CallView.first-sharer, CallView.share-count);
+        font-size: Fonts.body-small;
+        pad: 2 * Space.sm;
+        clicked => {
+            root.view(self.has-focus);
         }
     }
 }

@@ -449,7 +449,7 @@ impl CallTile {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct EndedShare {
+pub struct ShareNews {
     pub serial: u64,
     pub who: NamedUser,
 }
@@ -544,8 +544,10 @@ pub struct ActiveCall {
     pub stage_chosen: bool,
     pub tiles: Arc<[CallTile]>,
     pub self_view: bool,
+    pub shares: Arc<[NamedUser]>,
     pub offered_share: Option<NamedUser>,
-    pub ended_share: Option<EndedShare>,
+    pub started_share: Option<ShareNews>,
+    pub ended_share: Option<ShareNews>,
     pub others: Arc<[NamedUser]>,
     pub people: Arc<[CallPerson]>,
     pub devices: CallDevices,

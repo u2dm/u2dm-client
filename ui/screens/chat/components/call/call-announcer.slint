@@ -1,7 +1,8 @@
 import { Announcer } from "../../../../components/a11y.slint";
-import { CallDeviceTrouble, CallNotice, CallPhase } from "../../../../enums.slint";
+import { CallCamera, CallDeviceTrouble, CallMic, CallNotice, CallPhase } from "../../../../enums.slint";
 import { CallWords, UserMessages } from "../../../../messages.slint";
 import { CallView } from "../../../../views.slint";
+import { CallKey, CallKeys } from "./call-controls.slint";
 
 export component CallAnnouncer {
     property <bool> active: CallView.active;
@@ -10,7 +11,24 @@ export component CallAnnouncer {
     property <bool> failed: CallView.failed;
     property <int> ring: CallView.ring-visible ? CallView.ring-serial : 0;
     property <int> device-news: CallView.device-news-serial;
+    property <int> started-share: CallView.started-share-serial;
     property <int> ended-share: CallView.ended-share-serial;
+    property <CallMic> mic: CallView.mic;
+    property <CallCamera> camera: CallView.camera;
+    property <bool> mic-keyed;
+    property <bool> mic-wanted;
+    property <bool> camera-keyed;
+    property <bool> camera-wanted;
+
+    public function expect(key: CallKey) {
+        if key == CallKey.microphone {
+            root.mic-keyed = true;
+            root.mic-wanted = CallKeys.turns-on(key);
+        } else if key == CallKey.camera {
+            root.camera-keyed = true;
+            root.camera-wanted = CallKeys.turns-on(key);
+        }
+    }
 
     width: 0;
     height: 0;
@@ -30,7 +48,29 @@ export component CallAnnouncer {
     }
 
     changed active => {
+        root.mic-keyed = false;
+        root.camera-keyed = false;
         root.say-phase();
+    }
+
+    changed mic => {
+        if !root.mic-keyed || root.mic == CallMic.starting {
+            return;
+        }
+        root.mic-keyed = false;
+        if root.mic != CallMic.failed && (root.mic == CallMic.on) == root.mic-wanted {
+            calm.say(CallWords.microphone-state(root.mic));
+        }
+    }
+
+    changed camera => {
+        if !root.camera-keyed || root.camera == CallCamera.starting {
+            return;
+        }
+        root.camera-keyed = false;
+        if root.camera != CallCamera.failed && (root.camera == CallCamera.on) == root.camera-wanted {
+            calm.say(CallWords.camera-state(root.camera));
+        }
     }
 
     changed phase => {
@@ -76,6 +116,12 @@ export component CallAnnouncer {
             calm.say(words);
         } else {
             urgent.say(words);
+        }
+    }
+
+    changed started-share => {
+        if root.started-share != 0 && root.active {
+            calm.say(CallWords.sharing(CallView.started-share));
         }
     }
 

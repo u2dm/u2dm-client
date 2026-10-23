@@ -54,12 +54,19 @@ export global CallKeys {
         }
     }
 
+    public pure function turns-on(key: CallKey) -> bool {
+        if key == CallKey.microphone {
+            return CallView.mic != CallMic.on && CallView.mic != CallMic.starting;
+        }
+        return CallView.camera != CallCamera.on && CallView.camera != CallCamera.starting;
+    }
+
     public function toggle-microphone() {
-        Actions.set-microphone({ on: CallView.mic != CallMic.on && CallView.mic != CallMic.starting });
+        Actions.set-microphone({ on: root.turns-on(CallKey.microphone) });
     }
 
     public function toggle-camera() {
-        Actions.set-camera({ on: CallView.camera != CallCamera.on && CallView.camera != CallCamera.starting });
+        Actions.set-camera({ on: root.turns-on(CallKey.camera) });
     }
 }
 

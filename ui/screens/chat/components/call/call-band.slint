@@ -26,7 +26,7 @@ component ShareOffer inherits HorizontalLayout {
 
     Text {
         horizontal-stretch: 1;
-        text: @tr("{} is sharing their screen", root.name);
+        text: CallWords.sharing(root.name);
         font-family: Fonts.emoji;
         font-size: Fonts.body-small;
         font-weight: Weight.semibold;
