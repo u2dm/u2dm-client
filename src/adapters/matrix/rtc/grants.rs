@@ -1,14 +1,16 @@
-use matrix_sdk::Client;
+use matrix_sdk::config::RequestConfig;
 use matrix_sdk::reqwest::{Method, StatusCode};
+use matrix_sdk::ruma::api::client::rtc::livekit::get_token;
+use matrix_sdk::ruma::api::error::{ErrorBody, FromHttpResponseError};
+use matrix_sdk::ruma::{OwnedRoomId, OwnedServerName};
+use matrix_sdk::{Client, HttpError};
 use serde_json::{Value, json};
 
-use super::http::{Auth, JsonRequest, Reply, host_of, send_json};
+use super::http::{Auth, JsonRequest, REQUEST_TIMEOUT, Reply, host_of, send_json};
 use crate::domain::call::Secret;
 use crate::domain::call::identity::{MediaIdentity, spellings};
 use crate::domain::call::sfu::{GrantFailure, GrantRequest, GrantResult, SfuGrant, SfuRole};
 
-const HOMESERVER_TOKEN_PATH: &str =
-    "/_matrix/client/unstable/io.element.msc4195/rtc/livekit/get_token";
 const ROOM_SLOT: &str = "m.call#ROOM";
 const UNRECOGNIZED: &str = "M_UNRECOGNIZED";
 const NOT_FOUND: &str = "M_NOT_FOUND";
@@ -56,18 +58,25 @@ pub(super) async fn grant(client: &Client, room_id: &str, request: &GrantRequest
             (None, None) => Err(GrantFailure::NoRoute),
         },
         SfuRole::Subscribe => {
-            if let Some(sfu) = &transport.sfu_url {
-                match asker.ask_homeserver(sfu).await {
-                    Err(GrantFailure::NoRoute) => {}
-                    answered => return answered,
-                }
-            }
-            match &transport.service_url {
-                Some(service) => asker.subscribe_through(service).await,
+            let answered = match &transport.sfu_url {
+                Some(sfu) => asker.ask_homeserver(sfu).await,
                 None => Err(GrantFailure::NoRoute),
+            };
+            match (answered, &transport.service_url) {
+                (Err(failure), Some(service)) if worth_asking_the_service(&failure) => {
+                    asker.subscribe_through(service).await
+                }
+                (answered, _) => answered,
             }
         }
     }
+}
+
+fn worth_asking_the_service(failure: &GrantFailure) -> bool {
+    matches!(
+        failure,
+        GrantFailure::NoRoute | GrantFailure::Refused(500..=599)
+    )
 }
 
 impl Asker<'_> {
@@ -82,29 +91,40 @@ impl Asker<'_> {
     }
 
     async fn ask_homeserver(&self, sfu: &str) -> GrantResult {
-        let url = self
+        let route = Route::HomeserverGetToken;
+        let homeserver = self.client.homeserver();
+        let answer = self
             .client
-            .homeserver()
-            .join(HOMESERVER_TOKEN_PATH)
-            .map_err(|e| GrantFailure::Malformed(e.to_string()))?;
-        let body = json!({
-            "url": sfu,
-            "room_id": self.room_id,
-            "slot_id": ROOM_SLOT,
-            "member_id": self.request.member_id,
-        });
-        let reply = self
-            .ask(
-                Route::HomeserverGetToken,
-                url.as_str(),
-                &body,
-                Auth::Homeserver,
+            .send(self.token_request(sfu)?)
+            .with_request_config(
+                RequestConfig::new()
+                    .disable_retry()
+                    .timeout(REQUEST_TIMEOUT),
             )
-            .await?;
-        if lacks_route(&reply) {
-            return Err(GrantFailure::NoRoute);
+            .await;
+        match answer {
+            Ok(response) => {
+                answered(route, homeserver.as_str(), StatusCode::OK, None, None);
+                self.granted_with(route, &response.jwt, None)
+            }
+            Err(error) => Err(refused(route, homeserver.as_str(), &error)),
         }
-        self.granted(Route::HomeserverGetToken, &reply)
+    }
+
+    fn token_request(&self, sfu: &str) -> Result<get_token::v1::Request, GrantFailure> {
+        let room_id = OwnedRoomId::try_from(self.room_id)
+            .map_err(|e| GrantFailure::Malformed(format!("{} is no room id: {e}", self.room_id)))?;
+        let server = &self.request.target.server_name;
+        let server_name = OwnedServerName::try_from(server.as_str())
+            .map_err(|e| GrantFailure::Malformed(format!("{server} is no server name: {e}")))?;
+        let mut request = get_token::v1::Request::new(
+            sfu.to_owned(),
+            room_id,
+            ROOM_SLOT.to_owned(),
+            self.request.member_id.clone(),
+        );
+        request.server_name = Some(server_name);
+        Ok(request)
     }
 
     async fn subscribe_through(&self, service: &str) -> GrantResult {
@@ -159,7 +179,7 @@ impl Asker<'_> {
         };
         let url = format!("{}/{path}", service.trim_end_matches('/'));
         let reply = self.ask(route, &url, &body, Auth::Anonymous).await?;
-        if route == Route::ServiceGetToken && lacks_route(&reply) {
+        if route == Route::ServiceGetToken && lacks_route(reply.status, reply.errcode()) {
             return Err(GrantFailure::NoRoute);
         }
         self.granted(route, &reply)
@@ -186,13 +206,12 @@ impl Asker<'_> {
             );
             GrantFailure::Unreachable(e)
         })?;
-        tracing::info!(
-            route = route.name(),
-            host = host_of(url),
-            status = %reply.status,
-            errcode = reply.errcode(),
-            error = reply.text("error"),
-            "a call token request answered"
+        answered(
+            route,
+            url,
+            reply.status,
+            reply.errcode(),
+            reply.text("error"),
         );
         Ok(reply)
     }
@@ -204,8 +223,11 @@ impl Asker<'_> {
         let token = reply
             .text("jwt")
             .ok_or_else(|| GrantFailure::Malformed("no jwt in the answer".into()))?;
-        let url = reply
-            .text("url")
+        self.granted_with(route, token, reply.text("url"))
+    }
+
+    fn granted_with(&self, route: Route, token: &str, answered_url: Option<&str>) -> GrantResult {
+        let url = answered_url
             .or(self.request.target.transport.sfu_url.as_deref())
             .ok_or_else(|| GrantFailure::Malformed("no LiveKit url in the answer".into()))?;
         Ok(SfuGrant {
@@ -218,9 +240,60 @@ impl Asker<'_> {
     }
 }
 
-fn lacks_route(reply: &Reply) -> bool {
+fn answered(
+    route: Route,
+    url: &str,
+    status: StatusCode,
+    errcode: Option<&str>,
+    error: Option<&str>,
+) {
+    tracing::info!(
+        route = route.name(),
+        host = host_of(url),
+        status = %status,
+        errcode,
+        error,
+        "a call token request answered"
+    );
+}
+
+fn refused(route: Route, url: &str, error: &HttpError) -> GrantFailure {
+    let Some(refusal) = error.as_client_api_error() else {
+        tracing::info!(
+            route = route.name(),
+            host = host_of(url),
+            "a call token request failed: {error}"
+        );
+        return unanswered(error);
+    };
+    let errcode = refusal
+        .error_kind()
+        .map(|kind| kind.errcode().as_str().to_owned());
+    let message = if let ErrorBody::Standard(body) = &refusal.body {
+        Some(body.message.as_str())
+    } else {
+        None
+    };
+    answered(route, url, refusal.status_code, errcode.as_deref(), message);
+    if lacks_route(refusal.status_code, errcode.as_deref()) {
+        GrantFailure::NoRoute
+    } else {
+        GrantFailure::Refused(refusal.status_code.as_u16())
+    }
+}
+
+fn unanswered(error: &HttpError) -> GrantFailure {
+    if let HttpError::Api(api) = error
+        && matches!(**api, FromHttpResponseError::Deserialization(_))
+    {
+        return GrantFailure::Malformed(error.to_string());
+    }
+    GrantFailure::Unreachable(error.to_string())
+}
+
+fn lacks_route(status: StatusCode, errcode: Option<&str>) -> bool {
     matches!(
-        reply.status,
+        status,
         StatusCode::NOT_FOUND | StatusCode::METHOD_NOT_ALLOWED
-    ) || matches!(reply.errcode(), Some(UNRECOGNIZED | NOT_FOUND))
+    ) || matches!(errcode, Some(UNRECOGNIZED | NOT_FOUND))
 }

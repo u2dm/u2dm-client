@@ -2,6 +2,7 @@ use std::fmt;
 
 use super::identity::MediaIdentity;
 use super::{CallMember, DeviceId, FocusSelection, MemberKey, Secret, Transport};
+use crate::domain::user_info::server_part;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct SfuId(String);
@@ -39,6 +40,7 @@ pub struct SfuTarget {
     pub id: SfuId,
     pub transport: Transport,
     pub role: SfuRole,
+    pub server_name: String,
 }
 
 pub fn plan(own: &Transport, me: &MemberKey, members: &[CallMember]) -> Vec<SfuTarget> {
@@ -48,18 +50,21 @@ pub fn plan(own: &Transport, me: &MemberKey, members: &[CallMember]) -> Vec<SfuT
             id,
             transport: own.clone(),
             role: SfuRole::Publish,
+            server_name: server_part(&me.user).to_owned(),
         });
     }
-    let oldest = members.first().and_then(|member| member.transport.as_ref());
+    let Some(oldest) = members.first() else {
+        return targets;
+    };
     for member in members {
         if member.user.user_id == me.user && member.device == me.device {
             continue;
         }
-        let published_to = match member.selection {
-            FocusSelection::MultiSfu => member.transport.as_ref(),
+        let named_by = match member.selection {
+            FocusSelection::MultiSfu => member,
             FocusSelection::OldestMembership => oldest,
         };
-        let Some(transport) = published_to else {
+        let Some(transport) = &named_by.transport else {
             continue;
         };
         let Some(id) = SfuId::of(transport) else {
@@ -72,6 +77,7 @@ pub fn plan(own: &Transport, me: &MemberKey, members: &[CallMember]) -> Vec<SfuT
             id,
             transport: transport.clone(),
             role: SfuRole::Subscribe,
+            server_name: server_part(&named_by.user.user_id).to_owned(),
         });
     }
     targets

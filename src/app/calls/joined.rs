@@ -480,7 +480,7 @@ impl Joined {
     }
 
     fn ask_grant(&mut self, target: SfuTarget) -> Effect {
-        tracing::info!(call = self.call, sfu = %target.id, role = ?target.role, "asking for a call media grant");
+        tracing::info!(call = self.call, sfu = %target.id, role = ?target.role, server = %target.server_name, "asking for a call media grant");
         self.links.insert(
             target.id.clone(),
             Link {

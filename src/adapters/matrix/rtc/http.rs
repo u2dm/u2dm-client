@@ -6,7 +6,7 @@ use matrix_sdk::reqwest::{Method, Response, StatusCode};
 use serde_json::Value;
 
 const BODY_MAX_BYTES: usize = 64 * 1024;
-const REQUEST_TIMEOUT: Duration = Duration::from_secs(10);
+pub(super) const REQUEST_TIMEOUT: Duration = Duration::from_secs(10);
 const JSON: &str = "application/json";
 const UNKNOWN_TOKEN: &str = "M_UNKNOWN_TOKEN";
 

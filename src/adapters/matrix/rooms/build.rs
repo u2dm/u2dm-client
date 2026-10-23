@@ -7,7 +7,6 @@ use matrix_sdk::latest_events::LatestEventValue;
 use matrix_sdk::notification_settings::{
     IsEncrypted, IsOneToOne, NotificationSettings, RoomNotificationMode,
 };
-use matrix_sdk::ruma::events::direct::OwnedDirectUserIdentifier;
 use matrix_sdk::ruma::events::poll::unstable_start::SyncUnstablePollStartEvent;
 use matrix_sdk::ruma::events::room::member::MembershipState;
 use matrix_sdk::ruma::events::room::message::{Relation, RoomMessageEventContent};
@@ -18,7 +17,7 @@ use matrix_sdk::ruma::events::{
     AnyMessageLikeEventContent, AnySyncMessageLikeEvent, AnySyncStateEvent, AnySyncTimelineEvent,
     SyncMessageLikeEvent, SyncStateEvent,
 };
-use matrix_sdk::ruma::{MilliSecondsSinceUnixEpoch, OwnedUserId};
+use matrix_sdk::ruma::{MilliSecondsSinceUnixEpoch, OwnedDirectUserIdentifier, OwnedUserId};
 use matrix_sdk::{Client, Room};
 use tracing::Instrument;
 
