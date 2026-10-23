@@ -1202,6 +1202,10 @@ export global CallWords {
         return @tr("View {}'s screen", name);
     }
 
+    public pure function open-call-chat(room: string) -> string {
+        return @tr("Open the chat of {}", room);
+    }
+
     public pure function view-shares(first: string, count: int) -> string {
         if count == 1 {
             return root.view-share(first);

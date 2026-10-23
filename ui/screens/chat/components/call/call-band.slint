@@ -1,11 +1,14 @@
+import { Palette } from "std-widgets.slint";
 import { IconDisplay, IconSet } from "@lucide";
 
+import { ClickArea } from "../../../../components/a11y.slint";
 import { AppButton, IconButton, LinkButton } from "../../../../components/button.slint";
+import { StateLayer } from "../../../../components/state-layer.slint";
 import { Actions } from "../../../../actions.slint";
 import { CallWords } from "../../../../messages.slint";
 import { CallPanel, CallSize, TipScope } from "../../../../local.slint";
-import { CallView } from "../../../../views.slint";
-import { AppStyle, Fonts, IconSize, Size, Space, Stroke, Weight } from "../../../../theme.slint";
+import { CallView, DirectoryView } from "../../../../views.slint";
+import { AppStyle, Fonts, IconSize, Radius, Size, Space, Stroke, Weight } from "../../../../theme.slint";
 import { CallKey, CallKeys } from "./call-controls.slint";
 import { CallStage } from "./call-stage.slint";
 
@@ -47,9 +50,37 @@ component ShareOffer inherits HorizontalLayout {
     }
 }
 
+component CallRoomLink inherits ClickArea {
+    out property <length> text-width: caption.preferred-width + 2 * Space.sm;
+
+    ring-radius: Radius.sm;
+    label: CallWords.open-call-chat(CallView.active-room-name);
+
+    StateLayer {
+        border-radius: Radius.sm;
+        ink: Palette.accent-background;
+        hovered: root.has-hover && root.enabled;
+        pressed: root.pressed && root.enabled;
+    }
+
+    caption := Text {
+        x: Space.sm;
+        width: parent.width - 2 * Space.sm;
+        text: CallView.active-room-name;
+        font-family: Fonts.emoji;
+        font-size: Fonts.body-small;
+        font-weight: Weight.semibold;
+        color: Palette.accent-background;
+        vertical-alignment: center;
+        overflow: elide;
+    }
+}
+
 export component CallBand inherits Rectangle {
     in property <CallSize> size;
     in property <bool> beside-chat;
+
+    callback chat-opened();
 
     out property <length> menu-x: menu-button.absolute-position.x;
     out property <length> menu-y: menu-button.absolute-position.y;
@@ -57,12 +88,18 @@ export component CallBand inherits Rectangle {
 
     property <bool> covers-chat: root.size == CallSize.full;
     property <bool> shows-chat-button;
+    property <bool> elsewhere: CallView.active-room-id != DirectoryView.selected-room-id;
     property <string> people: CallWords.people(CallView.people-first, CallView.people-second, CallView.people-more);
     property <int> band-takes-focus: CallPanel.band-takes-focus;
+    property <length> name-room: max(0px, menu-button.x - Space.md);
+    property <length> name-width: min(root.elsewhere ? room-link.text-width : room-name.preferred-width, root.name-room / 2);
+    property <length> rest-x: root.name-width + Space.sm;
+    property <length> rest-width: max(0px, menu-button.x - Space.md - root.rest-x);
 
     public function focus-menu() {
         menu-button.take-focus();
     }
+
 
     public function focus-chat() {
         if root.covers-chat {
@@ -77,6 +114,15 @@ export component CallBand inherits Rectangle {
             menu-button.take-focus();
         }
         root.shows-chat-button = root.covers-chat;
+    }
+
+    function open-chat(by-keys: bool) {
+        Actions.select-room(CallView.active-room-id);
+        if !root.covers-chat {
+            root.chat-opened();
+        } else if by-keys {
+            chat-button.take-focus();
+        }
     }
 
     init => {
@@ -134,9 +180,33 @@ export component CallBand inherits Rectangle {
                 }
             }
 
-            if CallView.offered-share != "": ShareOffer {
+            room-link := CallRoomLink {
                 x: 0;
-                width: max(0px, menu-button.x - Space.md);
+                width: root.name-width;
+                height: parent.height;
+                visible: root.elsewhere;
+                clicked => {
+                    root.open-chat(self.has-focus);
+                }
+            }
+
+            room-name := Text {
+                x: 0;
+                width: root.name-width;
+                height: parent.height;
+                visible: !root.elsewhere;
+                text: CallView.active-room-name;
+                font-family: Fonts.emoji;
+                font-size: Fonts.body-small;
+                font-weight: Weight.semibold;
+                color: AppStyle.foreground-strong;
+                vertical-alignment: center;
+                overflow: elide;
+            }
+
+            if CallView.offered-share != "": ShareOffer {
+                x: root.rest-x;
+                width: root.rest-width;
                 name: CallView.offered-share;
                 view => {
                     Actions.view-call-share();
@@ -144,9 +214,9 @@ export component CallBand inherits Rectangle {
             }
 
             if CallView.offered-share == "": Text {
-                x: 0;
-                width: max(0px, menu-button.x - Space.md);
-                text: root.people;
+                x: root.rest-x;
+                width: root.rest-width;
+                text: root.people == "" ? "" : @tr("· {}", root.people);
                 font-family: Fonts.emoji;
                 font-size: Fonts.body-small;
                 font-weight: Weight.semibold;

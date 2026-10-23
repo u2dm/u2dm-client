@@ -423,7 +423,6 @@ fn call_view<B: UiBackend>(window: &B::Window) -> CallDump {
     let here = window.get_string(StringProp::HereRoomId);
     let selected = window.get_string(StringProp::SelectedRoomId);
     let active = window.get_bool(BoolProp::ActiveVisible);
-    let in_call_room = window.get_string(StringProp::ActiveRoomId) == selected;
     let failure = window.get_enum(EnumProp::CallFailure).to_string();
     let failed = failure != "none";
     let answerable = window.get_bool(BoolProp::RingAnswerable);
@@ -437,7 +436,7 @@ fn call_view<B: UiBackend>(window: &B::Window) -> CallDump {
         pill: !here.is_empty() && here == selected,
         pill_people: window.get_int(IntProp::HerePeople),
         pill_video: window.get_bool(BoolProp::HereVideo),
-        band: active && in_call_room,
+        band: active,
         dock: active || failed,
         elapsed: window.get_string(StringProp::CallElapsed).to_string(),
         notice: window.get_enum(EnumProp::CallNotice).to_string(),

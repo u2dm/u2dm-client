@@ -84,7 +84,7 @@ component CallReturn inherits ClickArea {
     out property <length> label-width: line.preferred-width;
 
     ring-radius: Radius.sm;
-    label: @tr("Go back to the call in {}", CallView.active-room-name);
+    label: CallWords.open-call-chat(CallView.active-room-name);
 
     StateLayer {
         border-radius: Radius.sm;
@@ -147,7 +147,6 @@ component FailedCallLabel inherits Rectangle {
 export component CallDock inherits Rectangle {
     in property <bool> above-modal;
     in property <bool> here;
-    in property <bool> stage-hidden;
     in property <bool> stage-shown;
 
     callback returned();
@@ -159,7 +158,7 @@ export component CallDock inherits Rectangle {
     property <length> pad: Space.md;
     property <length> gap: Space.md;
     property <bool> failed: !CallView.active && CallView.failed;
-    property <bool> offers-stage: root.here && root.stage-hidden && !root.failed;
+    property <bool> offers-stage: CallView.active && !root.stage-shown && !root.failed;
     property <bool> explains-share;
     property <bool> tells-share-ended;
     property <bool> tells-device-news;
@@ -226,6 +225,13 @@ export component CallDock inherits Rectangle {
     }
 
     function show-stage(by-keys: bool) {
+        Shell.nav-open = false;
+        if SpaceIndexView.visible {
+            Actions.close-space-index();
+        }
+        if DirectoryView.selected-room-id == "" {
+            Actions.select-room(CallView.active-room-id);
+        }
         CallPanel.show-call();
         if by-keys {
             CallPanel.band-takes-focus += 1;
@@ -236,15 +242,10 @@ export component CallDock inherits Rectangle {
         if !(CallView.stage.length > 0 && CallView.stage[0].screen) {
             Actions.view-call-share();
         }
-        CallPanel.show-call();
-        if !root.here {
-            root.return-to-call();
-        } else if by-keys {
-            CallPanel.band-takes-focus += 1;
-        }
+        root.show-stage(by-keys);
     }
 
-    function return-to-call() {
+    function open-call-chat() {
         Shell.nav-open = false;
         if CallView.active-room-id != DirectoryView.selected-room-id {
             Actions.select-room(CallView.active-room-id);
@@ -381,7 +382,7 @@ export component CallDock inherits Rectangle {
         visible: !root.failed && !root.here;
         above-modal: root.above-modal;
         clicked => {
-            root.return-to-call();
+            root.open-call-chat();
         }
     }
 
@@ -392,7 +393,7 @@ export component CallDock inherits Rectangle {
         height: root.label-height;
         visible: !root.failed && root.here;
         above-modal: root.above-modal;
-        names-people: root.stage-hidden;
+        names-people: !root.stage-shown;
         clicked => {
             CallPanel.open-people(
                 CallPeopleOpener.dock,

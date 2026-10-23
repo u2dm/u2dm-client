@@ -56,15 +56,20 @@ export component TimelineView inherits Rectangle {
     property <bool> call-stack-fits: root.height >= Metrics.call-stage-column;
     out property <bool> call-split-fits: root.width >= Metrics.call-split-min;
     property <bool> call-stage-fits: root.call-stack-fits || root.call-split-fits;
-    property <CallSize> call-size: !root.in-call-room ? CallSize.hidden
+    property <CallSize> call-size: !CallView.active ? CallSize.hidden
         : CallPanel.mode == CallMode.chat-only ? CallSize.hidden
         : CallPanel.mode == CallMode.call-only ? CallSize.full
         : root.call-stage-fits ? CallSize.stage
         : CallPanel.turn == CallSurface.call ? CallSize.full
         : CallSize.hidden;
-    out property <bool> stage-hidden: root.in-call-room && root.call-size == CallSize.hidden;
-    property <bool> shows-band: root.in-call-room && root.call-size != CallSize.hidden;
+    property <bool> shows-band: CallView.active && root.call-size != CallSize.hidden;
     property <bool> call-split: root.shows-band && root.call-size == CallSize.stage && root.call-split-fits;
+    property <length> widest-stage: max(Metrics.call-split-stage-min, root.width - Metrics.timeline-min);
+    property <length> split-width: clamp(
+        root.width * CallPanel.split-share,
+        Metrics.call-split-stage-min,
+        root.widest-stage);
+    property <length> chat-x: root.call-split ? root.split-width : 0px;
     out property <bool> call-covers-timeline: root.shows-band && root.call-size == CallSize.full;
     out property <bool> shows-call-media: root.shows-band;
     property <int> composer-requests;
@@ -97,6 +102,9 @@ export component TimelineView inherits Rectangle {
         LocalState.forget-room();
         if !RoomSearch.opened(root.room-id) {
             RoomSearch.opened-room = "";
+        }
+        if CallView.active && CallPanel.mode == CallMode.call-and-chat {
+            CallPanel.turn = CallSurface.chat;
         }
     }
 
@@ -154,9 +162,9 @@ export component TimelineView inherits Rectangle {
         property <int> sheet-returns: CallPanel.sheet-returns;
         property <int> people-returns: CallPanel.people-returns;
 
-        x: 0;
+        x: root.chat-x;
         y: 0;
-        width: root.width;
+        width: root.width - root.chat-x;
         height: root.header-height;
         background: root.background;
 
@@ -333,17 +341,13 @@ export component TimelineView inherits Rectangle {
         property <length> stage-height: min(
             self.stage-room,
             clamp(self.stage-room * CallPanel.stage-share, Metrics.call-stage-min, self.tallest-stage));
-        property <length> widest-stage: max(Metrics.call-split-stage-min, self.width - Metrics.timeline-min);
-        property <length> split-width: clamp(
-            self.width * CallPanel.split-share,
-            Metrics.call-split-stage-min,
-            self.widest-stage);
+        property <length> call-top: root.call-split ? 0px : root.header-height;
         property <length> call-height: !root.shows-band ? 0px
-            : root.call-size == CallSize.full || root.call-split ? self.height - root.header-height - root.dock-height
+            : root.call-size == CallSize.full || root.call-split ? self.height - self.call-top - root.dock-height
             : self.stage-height;
-        property <length> call-width: root.call-split ? self.split-width : self.width;
+        property <length> call-width: root.call-split ? root.split-width : self.width;
         property <length> call-above-chat: root.call-split ? 0px : self.call-height;
-        property <length> chat-x: root.call-split ? self.call-width : 0px;
+        property <length> chat-x: root.chat-x;
         property <length> chat-width: self.width - self.chat-x;
 
         x: 0;
@@ -400,7 +404,7 @@ export component TimelineView inherits Rectangle {
         }
 
         function resize-split(grow: length) {
-            CallPanel.split-share = clamp(self.split-width + grow, Metrics.call-split-stage-min, self.widest-stage)
+            CallPanel.split-share = clamp(root.split-width + grow, Metrics.call-split-stage-min, root.widest-stage)
                 / self.width;
         }
 
@@ -559,12 +563,15 @@ export component TimelineView inherits Rectangle {
 
         band := CallBand {
             x: 0;
-            y: root.header-height;
+            y: stage.call-top;
             width: stage.call-width;
             height: stage.call-height;
             visible: root.shows-band;
             size: root.call-size;
             beside-chat: root.call-split;
+            chat-opened => {
+                stage.refocus-composer();
+            }
         }
 
         if root.shows-band && root.call-size == CallSize.stage && !root.call-split: ResizeHandle {
@@ -588,13 +595,13 @@ export component TimelineView inherits Rectangle {
 
         if root.call-split: ResizeHandle {
             x: stage.call-width - self.width;
-            y: root.header-height;
+            y: stage.call-top;
             width: Metrics.divider;
             height: stage.call-height;
             label: @tr("Call width");
             value: stage.call-width;
             minimum: Metrics.call-split-stage-min;
-            maximum: stage.widest-stage;
+            maximum: root.widest-stage;
             step: Metrics.resize-step;
             dragged(grow) => {
                 stage.resize-split(grow);

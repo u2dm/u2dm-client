@@ -335,7 +335,6 @@ export component ChatScreen inherits FocusScope {
         visible: root.shows-dock;
         above-modal: Shell.nav-on-top;
         here: timeline.in-call-room && !root.shows-room-list && !SpaceIndexView.visible;
-        stage-hidden: timeline.stage-hidden;
         stage-shown: root.call-stage-on-screen;
         returned => {
             timeline.focus-composer();
