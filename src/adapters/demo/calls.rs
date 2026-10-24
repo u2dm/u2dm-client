@@ -191,6 +191,11 @@ pub const CATALOG: Scenarios = Scenarios {
             note: "Try again starts it for good",
         },
         Flag {
+            value: "audio-tests-fail",
+            effect: "the call sheet's microphone and speaker tests do not start",
+            note: "",
+        },
+        Flag {
             value: "preview-lost",
             effect: "the camera the call sheet previews stops sending pictures 3s after it starts",
             note: "switching the sheet's camera off and on starts it again",
@@ -387,6 +392,7 @@ pub struct Scenario {
     pub microphone_fails: bool,
     camera_lost: bool,
     pub preview_lost: bool,
+    pub audio_tests_fail: bool,
     screen_share: bool,
     screen_share_ends: bool,
     screen_share_restarts: bool,
@@ -458,6 +464,7 @@ fn apply(scenario: &mut Scenario, flag: &str) {
         "microphone-fails" => scenario.microphone_fails = true,
         "camera-lost" => scenario.camera_lost = true,
         "preview-lost" => scenario.preview_lost = true,
+        "audio-tests-fail" => scenario.audio_tests_fail = true,
         "screen-share" => scenario.screen_share = true,
         "screen-share-ends" => scenario.screen_share_ends = true,
         "screen-share-restarts" => scenario.screen_share_restarts = true,

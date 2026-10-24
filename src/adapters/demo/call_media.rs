@@ -1,4 +1,5 @@
 use std::collections::{HashMap, HashSet};
+use std::f64::consts::TAU;
 use std::future::{Future, poll_fn};
 use std::pin::Pin;
 use std::result;
@@ -21,6 +22,7 @@ use super::calls::{
     SHARE_ENDS_AFTER, SPEAKING_TURN, Trouble, UNTRUSTED,
 };
 use super::data;
+use crate::domain::call::device_test::{DeviceTest, TestNews};
 use crate::domain::call::devices::{DeviceChoice, DeviceKind, DeviceLists};
 use crate::domain::call::identity::{MediaIdentity, spellings};
 use crate::domain::call::keys::{KeyIndex, MediaKey};
@@ -30,12 +32,16 @@ use crate::domain::call::video::{
     Camera, FeedId, FrameSize, Framing, PreviewFailure, ScreenRefusal, ScreenShare,
 };
 use crate::domain::room::RoomId;
-use crate::error::Result;
+use crate::error::{AppError, Result};
 use crate::ports::call::{
-    CallMediaPort, CallVideoPort, CameraPreview, ConnectedSfu, FrameSink, MediaSession, VideoFrame,
+    CallMediaPort, CallVideoPort, CameraPreview, ConnectedSfu, FrameSink, MediaSession,
+    RunningTest, VideoFrame,
 };
 
 const DEMO_FPS: u64 = 10;
+const DEMO_LEVEL_EVERY: Duration = Duration::from_millis(100);
+const DEMO_LEVEL_PERIOD: f64 = 20.0;
+const DEMO_TEST_SOUND: Duration = Duration::from_secs(1);
 const SOURCE: FrameSize = FrameSize::new(1280, 720);
 const PORTRAIT_SOURCE: FrameSize = FrameSize::new(720, 1280);
 const SCREEN_SOURCE: FrameSize = FrameSize::new(2560, 1440);
@@ -233,6 +239,39 @@ impl CallMediaPort for DemoCallMedia {
         }))
     }
 
+    async fn test_device(
+        &self,
+        test: DeviceTest,
+        news: mpsc::UnboundedSender<TestNews>,
+    ) -> Result<Box<dyn RunningTest>> {
+        calls::pause().await;
+        let kind = test.kind();
+        if calls::scenario().audio_tests_fail {
+            tracing::info!(%kind, "demo: the device test does not start");
+            return Err(AppError::Other(
+                "demo: the test connection did not connect".into(),
+            ));
+        }
+        let (DeviceTest::Microphone(choice) | DeviceTest::Speaker(choice)) = &test;
+        let lists = plugged_in();
+        let device = choice
+            .resolve(kind, lists.connected.of(kind), None)
+            .map_or_else(
+                || lists.defaults.of(kind).clone().unwrap_or_default(),
+                |device| device.name.clone(),
+            );
+        tracing::info!(%kind, device, "demo: testing a device");
+        let work = match test {
+            DeviceTest::Microphone(_) => tokio::spawn(demo_levels(news)),
+            DeviceTest::Speaker(_) => tokio::spawn(async move {
+                sleep(DEMO_TEST_SOUND).await;
+                tracing::info!("demo: the test sound ends");
+                drop(news.send(TestNews::Played));
+            }),
+        };
+        Ok(Box::new(DemoTest { work, kind }))
+    }
+
     async fn open(
         &self,
         setup: MediaSetup,
@@ -266,6 +305,32 @@ impl CallMediaPort for DemoCallMedia {
 
 struct DemoPreview {
     losing: Option<JoinHandle<()>>,
+}
+
+struct DemoTest {
+    work: JoinHandle<()>,
+    kind: DeviceKind,
+}
+
+#[async_trait]
+impl RunningTest for DemoTest {
+    async fn close(self: Box<Self>) {
+        self.work.abort();
+        tracing::info!(kind = %self.kind, "demo: the device test stops");
+    }
+}
+
+#[allow(clippy::cast_possible_truncation)]
+async fn demo_levels(news: mpsc::UnboundedSender<TestNews>) {
+    let mut step = 0.0_f64;
+    loop {
+        let level = 0.5 + 0.4 * (step * TAU / DEMO_LEVEL_PERIOD).sin();
+        if news.send(TestNews::Level(level as f32)).is_err() {
+            return;
+        }
+        step += 1.0;
+        sleep(DEMO_LEVEL_EVERY).await;
+    }
 }
 
 fn lose_preview(lost: oneshot::Sender<String>) -> JoinHandle<()> {

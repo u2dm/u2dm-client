@@ -1,6 +1,8 @@
 use slint::{Image, Rgb8Pixel, SharedPixelBuffer, SharedString, StyledText};
 
-use super::dto::{CallNoticeMark, CallOfferMark, CallScreenMark, PackSurface, SheetPreviewMark};
+use super::dto::{
+    CallNoticeMark, CallOfferMark, CallScreenMark, PackSurface, SheetPreviewMark, TestPhaseMark,
+};
 use super::present::{IdentityAlertKind, ServiceKind, VerifyStep};
 use super::schema::{bool_props, enum_props, int_props, string_props};
 use crate::app::input::CommandSender;

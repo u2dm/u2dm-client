@@ -242,6 +242,8 @@ macro_rules! simple_callbacks {
             request(room_id "room-id" text, video "video" flag) OpenCallSheet;
         on_close_call_sheet "close-call-sheet" close_call_sheet plain CloseCallSheet;
         on_sheet_camera "sheet-camera" sheet_camera request(on "on" flag) SheetCamera;
+        on_test_call_device "test-call-device" test_call_device
+            request(kind "kind" variant, on "on" flag) TestCallDevice;
         on_start_call "start-call" start_call
             request(room_id "room-id" text, video "video" flag, microphone "microphone" flag,
                 camera "camera" flag, leaving "leaving" text) StartCall;
@@ -407,6 +409,7 @@ macro_rules! bool_props {
         SheetMicrophone CallView "CallView" "sheet-microphone" set_sheet_microphone get_sheet_microphone;
         SheetCamera CallView "CallView" "sheet-camera" set_sheet_camera get_sheet_camera;
         SheetEnded CallView "CallView" "sheet-ended" set_sheet_ended get_sheet_ended;
+        SheetTests CallView "CallView" "sheet-tests" set_sheet_tests get_sheet_tests;
         RingVideo CallView "CallView" "ring-video" set_ring_video get_ring_video;
         RingDirect CallView "CallView" "ring-direct" set_ring_direct get_ring_direct;
         RingAnswerable CallView "CallView" "ring-answerable" set_ring_answerable get_ring_answerable;
@@ -569,6 +572,7 @@ macro_rules! int_props {
         MicrophoneChosen CallView "CallView" "microphone-chosen" set_microphone_chosen get_microphone_chosen;
         CameraChosen CallView "CallView" "camera-chosen" set_camera_chosen get_camera_chosen;
         SpeakerChosen CallView "CallView" "speaker-chosen" set_speaker_chosen get_speaker_chosen;
+        SheetTestLevel CallView "CallView" "sheet-test-level" set_sheet_test_level get_sheet_test_level;
         DeviceNewsSerial CallView "CallView" "device-news-serial" set_device_news_serial get_device_news_serial;
         CallDeclines WindowView "WindowView" "call-declines" set_call_declines get_call_declines;
         CallAnswers WindowView "WindowView" "call-answers" set_call_answers get_call_answers;
@@ -747,6 +751,10 @@ macro_rules! enum_props {
         CallPreviewTrouble set_call_preview_trouble(PreviewTrouble)
             CallView "CallView" "sheet-preview-trouble" set_sheet_preview_trouble
             get_sheet_preview_trouble;
+        CallSheetTestKind set_call_sheet_test_kind(DeviceKind)
+            CallView "CallView" "sheet-test-kind" set_sheet_test_kind get_sheet_test_kind;
+        CallSheetTestPhase set_call_sheet_test_phase(TestPhaseMark)
+            CallView "CallView" "sheet-test-phase" set_sheet_test_phase get_sheet_test_phase;
         CallPhase set_call_phase(CallPhase)
             CallView "CallView" "phase" set_phase get_phase;
         CallMic set_call_mic(MicrophoneView)
@@ -1501,6 +1509,17 @@ macro_rules! sheet_previews {
     } };
 }
 pub(crate) use sheet_previews;
+
+macro_rules! test_phases {
+    ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
+        None     None     "none";
+        Starting Starting "starting";
+        Running  Running  "running";
+        Failed   Failed   "failed";
+        Lost     Lost     "lost";
+    } };
+}
+pub(crate) use test_phases;
 
 macro_rules! preview_troubles {
     ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*

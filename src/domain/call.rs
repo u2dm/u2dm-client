@@ -1,3 +1,4 @@
+pub mod device_test;
 pub mod devices;
 pub mod identity;
 pub mod keys;

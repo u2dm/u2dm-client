@@ -204,6 +204,11 @@ export struct CallDeviceRequest {
     key: string,
 }
 
+export struct CallDeviceTestRequest {
+    kind: CallDeviceKind,
+    on: bool,
+}
+
 export struct ReactorAvatar {
     user-id: string,
     initial: string,

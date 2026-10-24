@@ -13,7 +13,8 @@ use crate::domain::call::media::{MediaEvent, MediaSetup};
 use crate::domain::call::sfu::{SfuGrant, SfuId, SfuRole};
 use crate::ports::call::{CallMediaPort, ConnectedSfu, MediaSession};
 
-const DEVICE_POLL: Duration = Duration::from_secs(2);
+pub(super) const DEVICE_POLL: Duration = Duration::from_secs(2);
+pub(super) const MEDIA_TURN_SHARES: u32 = 2;
 const MEDIA_HANDOVER_WAIT: Duration = Duration::from_secs(10);
 
 pub(super) enum MediaCommand {
@@ -124,7 +125,8 @@ impl MediaDriver {
         &self,
         commands: &mpsc::UnboundedReceiver<MediaCommand>,
     ) -> Option<OwnedSemaphorePermit> {
-        match timeout(MEDIA_HANDOVER_WAIT, Arc::clone(&self.turn).acquire_owned()).await {
+        let every_share = Arc::clone(&self.turn).acquire_many_owned(MEDIA_TURN_SHARES);
+        match timeout(MEDIA_HANDOVER_WAIT, every_share).await {
             Ok(Ok(turn)) => Some(turn),
             Ok(Err(e)) => {
                 tracing::debug!(call = self.call, "the call media cannot take its turn: {e}");

@@ -1,4 +1,4 @@
-import { CallCamera, CallDeviceKind, CallDeviceStatus, CallDeviceTrouble, CallMic, CallNotice, CallPhase, CallPreviewTrouble, CallRefusal, CallScreen, CallScreenRefusal, CallSheetPreview, CallTileState, Delivery, EmojiArt, MediaFailure, PresenceLine, PreviewKind, RoomCallMark, ServiceKind, ShieldReason, UpgradeLink, UserMessageKind } from "./enums.slint";
+import { CallCamera, CallDeviceKind, CallDeviceStatus, CallDeviceTrouble, CallMic, CallNotice, CallPhase, CallPreviewTrouble, CallRefusal, CallScreen, CallScreenRefusal, CallSheetPreview, CallTestPhase, CallTileState, Delivery, EmojiArt, MediaFailure, PresenceLine, PreviewKind, RoomCallMark, ServiceKind, ShieldReason, UpgradeLink, UserMessageKind } from "./enums.slint";
 import { CallStates } from "./call-states.slint";
 
 export global UserMessages {
@@ -1356,6 +1356,39 @@ export global CallWords {
             return @tr("Change the speaker");
         }
         return @tr("Change the microphone");
+    }
+
+    public pure function test-action(kind: CallDeviceKind, testing: bool) -> string {
+        if testing {
+            return @tr("Stop test");
+        }
+        if kind == CallDeviceKind.speaker {
+            return @tr("Test speaker");
+        }
+        return @tr("Test microphone");
+    }
+
+    public pure function test-action-label(kind: CallDeviceKind, testing: bool) -> string {
+        if kind == CallDeviceKind.speaker {
+            return testing ? @tr("Stop the speaker test") : @tr("Test the speaker");
+        }
+        return testing ? @tr("Stop the microphone test") : @tr("Test the microphone");
+    }
+
+    public pure function test-status(kind: CallDeviceKind, phase: CallTestPhase) -> string {
+        if phase == CallTestPhase.starting {
+            return @tr("Starting the test…");
+        }
+        if phase == CallTestPhase.running {
+            return kind == CallDeviceKind.speaker ? @tr("Playing a test sound") : @tr("Recording for test — not sent");
+        }
+        if phase == CallTestPhase.failed {
+            return kind == CallDeviceKind.speaker ? @tr("The test sound could not be played") : @tr("Your microphone could not be tested");
+        }
+        if phase == CallTestPhase.lost {
+            return kind == CallDeviceKind.speaker ? @tr("The speaker you were testing was disconnected") : @tr("The microphone you were testing was disconnected");
+        }
+        return "";
     }
 
     public pure function preview-note(preview: CallSheetPreview, call: string) -> string {

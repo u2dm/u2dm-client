@@ -1,5 +1,6 @@
 mod camera;
 mod connection;
+mod device_test;
 mod devices;
 mod e2ee;
 mod feeds;
@@ -22,11 +23,14 @@ use tracing::Instrument;
 use self::devices::Listing;
 use self::feeds::Feeds;
 use self::session::LiveKitSession;
+use crate::domain::call::device_test::{DeviceTest, TestNews};
 use crate::domain::call::devices::{DeviceChoice, DeviceLists};
 use crate::domain::call::media::{MediaEvent, MediaSetup};
 use crate::domain::call::video::{FeedId, FrameSize, Framing, PreviewFailure, ScreenShare};
 use crate::error::{AppError, Result};
-use crate::ports::call::{CallMediaPort, CallVideoPort, CameraPreview, FrameSink, MediaSession};
+use crate::ports::call::{
+    CallMediaPort, CallVideoPort, CameraPreview, FrameSink, MediaSession, RunningTest,
+};
 
 static TLS_PROVIDER: Once = Once::new();
 
@@ -85,6 +89,17 @@ impl CallMediaPort for LiveKitMedia {
     ) -> result::Result<Box<dyn CameraPreview>, PreviewFailure> {
         let preview = camera::preview(camera, Arc::clone(&self.feeds), lost).await?;
         Ok(Box::new(preview))
+    }
+
+    async fn test_device(
+        &self,
+        test: DeviceTest,
+        news: mpsc::UnboundedSender<TestNews>,
+    ) -> Result<Box<dyn RunningTest>> {
+        let check = device_test::start(test, news)
+            .await
+            .map_err(AppError::Other)?;
+        Ok(Box::new(check))
     }
 
     async fn open(

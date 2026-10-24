@@ -15,7 +15,7 @@ import {
     CallDeviceEntry,
     UserDeviceEntry,
 } from "./types.slint";
-import { AccountActivity, AccountStep, AttachmentKind, AudioKind, AuthStage, CallCamera, CallDeviceKind, CallDeviceTrouble, CallMic, CallNotice, CallOffer, CallPhase, CallPreviewTrouble, CallRefusal, CallScreen, CallScreenRefusal, CallSheetPreview, ChildAccess, ConnectionState, CreateRoomStatus, DirectChat, EncryptionActivity, EncryptionStanding, EncryptionStep, IdentityAlertKind, IdentityTrust, InviteAnswer, InviteKind, LoginActivity, LoginMethodKind, LoginPhase, MemberRole, Moderation, NotifyMode, PackSurface, PeopleSearchStatus, PresenceLine, PreviewKind, ReadersStatus, RecoveryStatus, RemovalKind, RoomInfoPlacement, RoomKind, RoomMembership, RoomPreviewStatus, RoomScope, RosterStatus, ServiceKind, SourceEncryption, SourceStatus, SpaceIndexStatus, TimelineState, UpgradeLink, UserMessageKind, VerificationActivity, VerificationPhase, VerifyOffer } from "./enums.slint";
+import { AccountActivity, AccountStep, AttachmentKind, AudioKind, AuthStage, CallCamera, CallDeviceKind, CallDeviceTrouble, CallMic, CallNotice, CallOffer, CallPhase, CallPreviewTrouble, CallRefusal, CallScreen, CallScreenRefusal, CallSheetPreview, CallTestPhase, ChildAccess, ConnectionState, CreateRoomStatus, DirectChat, EncryptionActivity, EncryptionStanding, EncryptionStep, IdentityAlertKind, IdentityTrust, InviteAnswer, InviteKind, LoginActivity, LoginMethodKind, LoginPhase, MemberRole, Moderation, NotifyMode, PackSurface, PeopleSearchStatus, PresenceLine, PreviewKind, ReadersStatus, RecoveryStatus, RemovalKind, RoomInfoPlacement, RoomKind, RoomMembership, RoomPreviewStatus, RoomScope, RosterStatus, ServiceKind, SourceEncryption, SourceStatus, SpaceIndexStatus, TimelineState, UpgradeLink, UserMessageKind, VerificationActivity, VerificationPhase, VerifyOffer } from "./enums.slint";
 
 export global LoginView {
     in property <LoginPhase> step: LoginPhase.loading;
@@ -465,6 +465,10 @@ export global CallView {
     in property <string> sheet-preview-call;
     in property <bool> sheet-preview-has-frame;
     in property <image> sheet-preview-frame;
+    in property <bool> sheet-tests;
+    in property <CallDeviceKind> sheet-test-kind;
+    in property <CallTestPhase> sheet-test-phase: CallTestPhase.none;
+    in property <int> sheet-test-level;
     in property <bool> active;
     in property <int> active-call;
     in property <string> active-room-id;

@@ -1,6 +1,7 @@
 use std::path::PathBuf;
 
 use super::account::AccountOutcome;
+use super::calls::device_test::TestOutcome;
 use super::calls::lane::LaneEvent;
 use super::calls::preview::PreviewOutcome;
 use super::encryption::EncryptionOutcome;
@@ -272,6 +273,10 @@ pub(super) enum CallEvent {
         preview: u64,
         outcome: PreviewOutcome,
     },
+    DeviceTest {
+        test: u64,
+        outcome: TestOutcome,
+    },
 }
 
 impl CallEvent {
@@ -291,7 +296,8 @@ impl CallEvent {
             | Self::Declined { .. }
             | Self::Transports { .. }
             | Self::DevicesListed { .. }
-            | Self::Preview { .. } => None,
+            | Self::Preview { .. }
+            | Self::DeviceTest { .. } => None,
         }
     }
 
@@ -312,6 +318,7 @@ impl CallEvent {
             Self::Standings { .. } => "CallStandings",
             Self::DevicesListed { .. } => "CallDevicesListed",
             Self::Preview { .. } => "CallPreview",
+            Self::DeviceTest { .. } => "CallDeviceTest",
         }
     }
 }

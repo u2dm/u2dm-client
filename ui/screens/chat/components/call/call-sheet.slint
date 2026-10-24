@@ -6,7 +6,7 @@ import { ClickArea } from "../../../../components/a11y.slint";
 import { DialogCard, ModalHost, Placement } from "../../../../components/overlay.slint";
 import { StateLayer } from "../../../../components/state-layer.slint";
 import { AppStyle, Fonts, IconSize, Metrics, Radius, Size, Space, Weight } from "../../../../theme.slint";
-import { CallDeviceKind, CallOffer, CallSheetPreview } from "../../../../enums.slint";
+import { CallDeviceKind, CallOffer, CallSheetPreview, CallTestPhase } from "../../../../enums.slint";
 import { CallDeviceEntry } from "../../../../types.slint";
 import { CallDevicesMenu } from "./call-devices-menu.slint";
 import { CallView, DirectoryView, SpaceIndexView } from "../../../../views.slint";
@@ -131,6 +131,60 @@ component DeviceLine inherits Rectangle {
             clicked => {
                 root.change(self.has-focus);
             }
+        }
+    }
+}
+
+component DeviceTestLine inherits VerticalLayout {
+    in property <CallDeviceKind> kind;
+
+    property <bool> mine: CallView.sheet-test-kind == root.kind && CallView.sheet-test-phase != CallTestPhase.none;
+    property <CallTestPhase> phase: root.mine ? CallView.sheet-test-phase : CallTestPhase.none;
+    property <bool> testing: root.phase == CallTestPhase.starting || root.phase == CallTestPhase.running;
+    property <bool> metered: root.kind == CallDeviceKind.microphone && root.phase == CallTestPhase.running;
+
+    padding-left: Space.md + Metrics.call-control + Space.lg;
+    padding-right: Space.md;
+    spacing: Space.xs;
+
+    HorizontalLayout {
+        min-height: Size.sm;
+        spacing: Space.md;
+
+        Text {
+            horizontal-stretch: 1;
+            text: CallWords.test-status(root.kind, root.phase);
+            font-size: Fonts.body-small;
+            color: root.phase == CallTestPhase.failed || root.phase == CallTestPhase.lost ? AppStyle.danger-muted : AppStyle.foreground-muted;
+            vertical-alignment: center;
+            wrap: word-wrap;
+            accessible-live-region: AccessibleLiveness.polite;
+        }
+
+        LinkButton {
+            min-height: Size.sm;
+            above-modal: true;
+            text: CallWords.test-action(root.kind, root.testing);
+            label: CallWords.test-action-label(root.kind, root.testing);
+            pad: 2 * Space.sm;
+            clicked => {
+                Actions.test-call-device({ kind: root.kind, on: !root.testing });
+            }
+        }
+    }
+
+    if root.metered: Rectangle {
+        height: Metrics.call-test-meter-height;
+        border-radius: self.height / 2;
+        background: AppStyle.control;
+        accessible-role: none;
+
+        Rectangle {
+            x: 0;
+            width: parent.width * clamp(CallView.sheet-test-level / 100, 0, 1);
+            height: parent.height;
+            border-radius: parent.border-radius;
+            background: AppStyle.call-live;
         }
     }
 }
@@ -342,6 +396,7 @@ export component CallSheet inherits ModalHost {
     property <bool> microphone: CallView.sheet-microphone;
     property <bool> camera: CallView.sheet-camera;
     property <bool> lists-devices: CallView.microphones.length > 0;
+    property <bool> offers-tests: CallView.sheet-tests && root.lists-devices;
     property <bool> devices-open;
     property <bool> devices-by-keys;
     property <CallDeviceKind> devices-kind: CallDeviceKind.microphone;
@@ -547,12 +602,24 @@ export component CallSheet inherits ModalHost {
                             }
                         }
 
+                        DeviceTestLine {
+                            height: root.offers-tests ? self.preferred-height : 0;
+                            visible: root.offers-tests;
+                            kind: CallDeviceKind.microphone;
+                        }
+
                         speaker-line := SpeakerLine {
                             height: root.lists-devices ? Metrics.choice-row : 0;
                             visible: root.lists-devices;
                             change(by-keys) => {
                                 root.open-devices(CallDeviceKind.speaker, by-keys, false);
                             }
+                        }
+
+                        DeviceTestLine {
+                            height: root.offers-tests ? self.preferred-height : 0;
+                            visible: root.offers-tests;
+                            kind: CallDeviceKind.speaker;
                         }
 
                         camera-row := MediaChoiceRow {

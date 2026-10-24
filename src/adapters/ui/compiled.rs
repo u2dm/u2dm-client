@@ -18,9 +18,9 @@ use u2dm_ui::{
     CallOffer as UiCallOffer, CallPersonEntry, CallPhase as UiCallPhase,
     CallPreviewTrouble as UiCallPreviewTrouble, CallRefusal as UiCallRefusal,
     CallScreen as UiCallScreen, CallScreenRefusal as UiCallScreenRefusal,
-    CallSheetPreview as UiCallSheetPreview, CallTileEntry, CallTileState as UiCallTileState,
-    CallView, ChildAccess as UiChildAccess, ComposerDraft, ConnectionState,
-    CreateRoomStatus as UiCreateRoomStatus, CreateRoomView,
+    CallSheetPreview as UiCallSheetPreview, CallTestPhase as UiCallTestPhase, CallTileEntry,
+    CallTileState as UiCallTileState, CallView, ChildAccess as UiChildAccess, ComposerDraft,
+    ConnectionState, CreateRoomStatus as UiCreateRoomStatus, CreateRoomView,
     DecryptionFailure as UiDecryptionFailure, Delivery as UiDelivery, DeviceTrust as UiDeviceTrust,
     DirectChat as UiDirectChat, DirectoryView, DraftVerdict as UiDraftVerdict,
     EmojiArt as UiEmojiArt, EmojiEntry, EmojiRow, EmojiStore,
@@ -69,7 +69,8 @@ use super::dto::{
     CallScreenMark, CallTileDto, CallTileMark, EmojiArt, InviteeDto, LogLineDto, MediaFailureKind,
     MediaState, MemberRowDto, MemberRowKind, MessageDto, PackCellDto, PackRowDto, PackSurface,
     PackTabDto, PollAnswerDto, ReactionDto, ReactorAvatarDto, RoomCallMark, RoomDto, RoomRowKind,
-    SheetPreviewMark, SpaceChildDto, SpaceDto, SpoilerState, UserDeviceDto, pack_surface_named,
+    SheetPreviewMark, SpaceChildDto, SpaceDto, SpoilerState, TestPhaseMark, UserDeviceDto,
+    pack_surface_named,
 };
 #[cfg(feature = "demo")]
 use super::dump;
@@ -106,7 +107,7 @@ use super::schema::{
     room_memberships, room_preview_statuses, room_row_kinds, room_scopes, roster_statuses,
     send_states, service_kinds, sheet_previews, shield_reasons, shields, simple_callbacks,
     source_encryptions, source_statuses, space_child_fields, space_fields, space_index_statuses,
-    spoiler_states, string_props, timeline_states, upgrade_links, user_device_fields,
+    spoiler_states, string_props, test_phases, timeline_states, upgrade_links, user_device_fields,
     user_message_kinds, verification_activities, verification_phases, verify_offers,
 };
 use super::session::active_models;
@@ -491,6 +492,7 @@ room_row_kinds!(impl_slint_enum RoomRowKind UiRoomRowKind;);
 room_call_marks!(impl_slint_enum RoomCallMark UiRoomCallMark;);
 call_offers!(impl_slint_enum CallOfferMark UiCallOffer;);
 sheet_previews!(impl_slint_enum SheetPreviewMark UiCallSheetPreview;);
+test_phases!(impl_slint_enum TestPhaseMark UiCallTestPhase;);
 preview_troubles!(impl_slint_enum PreviewTrouble UiCallPreviewTrouble;);
 call_refusals!(impl_slint_enum JoinRefusal UiCallRefusal;);
 call_phases!(impl_slint_enum CallPhase UiCallPhase;);

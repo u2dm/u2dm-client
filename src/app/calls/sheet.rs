@@ -1,6 +1,8 @@
 use std::sync::Arc;
 
-use crate::commands::view::{CallDevices, CallSheetView, JoinOffer, LeavingCall, SheetPreview};
+use crate::commands::view::{
+    CallDevices, CallSheetView, JoinOffer, LeavingCall, SheetPreview, SheetTests,
+};
 use crate::domain::call::RoomCall;
 use crate::domain::call::devices::DeviceChoices;
 use crate::domain::call::media::MediaChoice;
@@ -22,6 +24,7 @@ pub(super) struct SheetFacts<'a> {
     pub(super) me: Option<&'a str>,
     pub(super) devices: Option<CallDevices>,
     pub(super) preview: Option<SheetPreview>,
+    pub(super) tests: SheetTests,
 }
 
 impl Sheet {
@@ -69,6 +72,7 @@ impl Sheet {
             devices: facts.devices,
             proposed: self.proposed,
             preview: facts.preview,
+            tests: facts.tests,
             leaving: facts.leaving,
             ended: self.ended && call.is_none(),
         }

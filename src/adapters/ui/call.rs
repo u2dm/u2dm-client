@@ -8,6 +8,7 @@ use super::backend::{Models, UiBackend, UiEventContext};
 use super::decode::{AvatarSlot, load_avatar_async};
 use super::dto::{
     call_failure_message, call_notice_mark, call_offer_mark, call_screen_mark, sheet_preview_mark,
+    test_phase_mark,
 };
 use super::fields::CallTileFields;
 use super::notices::NoticeWords;
@@ -132,6 +133,7 @@ fn apply_sheet(w: &impl UiProps, sheet: Option<&CallSheetView>) {
     let Some(sheet) = sheet else {
         w.set_bool(BoolProp::SheetVisible, false);
         apply_sheet_preview(w, None);
+        w.set_call_sheet_test_phase(test_phase_mark(None));
         return;
     };
     w.set_string(
@@ -161,6 +163,13 @@ fn apply_sheet(w: &impl UiProps, sheet: Option<&CallSheetView>) {
     w.set_bool(BoolProp::SheetMicrophone, sheet.proposed.microphone);
     w.set_bool(BoolProp::SheetCamera, sheet.proposed.camera);
     apply_sheet_preview(w, sheet.preview.as_ref());
+    w.set_bool(BoolProp::SheetTests, sheet.tests.offered());
+    let running = sheet.tests.running();
+    if let Some(test) = running {
+        w.set_call_sheet_test_kind(test.kind);
+        w.set_int(IntProp::SheetTestLevel, i32::from(test.level));
+    }
+    w.set_call_sheet_test_phase(test_phase_mark(running.map(|test| test.phase)));
     let leaving = sheet.leaving.as_ref();
     w.set_string(
         StringProp::SheetLeavingId,

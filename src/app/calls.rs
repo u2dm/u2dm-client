@@ -1,3 +1,4 @@
+pub(super) mod device_test;
 mod devices;
 mod joined;
 pub(super) mod lane;
@@ -16,10 +17,11 @@ use tokio::sync::{Semaphore, mpsc, oneshot};
 use tokio::time::{sleep, sleep_until, timeout};
 use tracing::{Instrument, Span};
 
+use self::device_test::{TestOutcome, TestState, TestTask, Testing, level_percent};
 use self::devices::Devices;
 use self::joined::{Effect, Joined, Joining};
 use self::lane::{LEAVE_WAIT, Lane, LaneEvent, MEMBERSHIP_LIFETIME, keep_membership};
-use self::media::MediaDriver;
+use self::media::{MEDIA_TURN_SHARES, MediaDriver};
 use self::offer::{Media, OfferFacts, Transports, offer};
 use self::preview::{Preview, PreviewOutcome, PreviewState, PreviewTask};
 use self::sheet::{Sheet, SheetFacts};
@@ -31,9 +33,10 @@ use super::task_group::TaskGroup;
 use crate::commands::messages::{UserMessage, UserMessageKind};
 use crate::commands::ui::WindowFocus;
 use crate::commands::view::{
-    CallFailure, CallSheetView, CallView, FailedCall, JoinOffer, JoinRefusal, LeavingCall,
-    OfferView, RingView, RoomCallSummary, SheetPreview, Toast,
+    CallFailure, CallSheetView, CallView, DeviceTestView, FailedCall, JoinOffer, JoinRefusal,
+    LeavingCall, OfferView, RingView, RoomCallSummary, SheetPreview, SheetTests, TestPhase, Toast,
 };
+use crate::domain::call::device_test::DeviceTest;
 use crate::domain::call::devices::{
     DeviceChoice, DeviceChoices, DeviceKey, DeviceKind, DeviceLists,
 };
@@ -179,6 +182,9 @@ pub(super) struct Calls {
     preview: Option<Preview>,
     previews: u64,
     preview_tasks: TaskGroup,
+    testing: Option<Testing>,
+    tests: u64,
+    test_tasks: TaskGroup,
     devices: DeviceChoices,
     listed: Option<DeviceLists>,
     listings: u64,
@@ -201,7 +207,7 @@ impl Calls {
             actions: TaskGroup::new("call-actions"),
             lane: TaskGroup::new("call-lane"),
             media_tasks: TaskGroup::new("call-media"),
-            media_turn: Arc::new(Semaphore::new(1)),
+            media_turn: Arc::new(Semaphore::new(MEDIA_TURN_SHARES as usize)),
             key_tasks: TaskGroup::new("call-keys"),
             own: None,
             focus: WindowFocus::default(),
@@ -219,6 +225,9 @@ impl Calls {
             preview: None,
             previews: 0,
             preview_tasks: TaskGroup::new("call-preview"),
+            testing: None,
+            tests: 0,
+            test_tasks: TaskGroup::new("call-device-test"),
             devices: DeviceChoices::default(),
             listed: None,
             listings: 0,
@@ -728,6 +737,123 @@ impl Calls {
             PreviewState::Starting => SheetPreview::Starting,
             PreviewState::Showing(feed) => SheetPreview::Local(feed.clone()),
             PreviewState::Failed(trouble) => SheetPreview::Failed(*trouble),
+        })
+    }
+
+    pub(super) fn test_device(&mut self, kind: DeviceKind, on: bool, directory: &RoomDirectory) {
+        if let Some(testing) = self.testing.take() {
+            testing.stop();
+        }
+        let test = match kind {
+            DeviceKind::Microphone => DeviceTest::Microphone(self.devices.microphone.clone()),
+            DeviceKind::Speaker => DeviceTest::Speaker(self.devices.speaker.clone()),
+            DeviceKind::Camera => {
+                tracing::debug!("a camera is previewed, not tested");
+                return;
+            }
+        };
+        if on && self.offers_tests(directory) {
+            self.start_test(test);
+        } else if on {
+            tracing::debug!(%kind, "no device test is offered here");
+        }
+        self.publish(directory);
+    }
+
+    fn start_test(&mut self, test: DeviceTest) {
+        let Some(port) = self.media.clone() else {
+            return;
+        };
+        self.tests = self.tests.wrapping_add(1);
+        let task = TestTask {
+            port,
+            test,
+            turn: Arc::clone(&self.media_turn),
+            events: self.events.clone(),
+            serial: self.tests,
+        };
+        let (testing, run) = Testing::start(task, self.test_tasks.token());
+        self.test_tasks.spawn(run);
+        self.testing = Some(testing);
+    }
+
+    pub(super) fn test_heard(
+        &mut self,
+        test: u64,
+        outcome: TestOutcome,
+        directory: &RoomDirectory,
+    ) {
+        let Some(running) = self
+            .testing
+            .as_mut()
+            .filter(|running| running.serial == test)
+        else {
+            tracing::debug!(test, "news of a device test that was stopped, dropping");
+            return;
+        };
+        match outcome {
+            TestOutcome::Started => running.state = TestState::Running(0),
+            TestOutcome::Level(loudness) => {
+                running.state = TestState::Running(level_percent(loudness));
+            }
+            TestOutcome::Failed => running.state = TestState::Failed,
+            TestOutcome::Lost => running.state = TestState::Lost,
+            TestOutcome::Ended => self.testing = None,
+        }
+        self.publish(directory);
+    }
+
+    fn offers_tests(&self, directory: &RoomDirectory) -> bool {
+        if self.joined.is_some() || self.media.is_none() {
+            return false;
+        }
+        self.sheet
+            .as_ref()
+            .and_then(|sheet| directory.room(&sheet.room_id))
+            .is_some_and(|room| !matches!(self.offer_for(room), JoinOffer::Refused(_)))
+    }
+
+    fn follow_test(&mut self, directory: &RoomDirectory) {
+        let Some(running) = &self.testing else {
+            return;
+        };
+        let still_chosen = match &running.test {
+            DeviceTest::Microphone(choice) => *choice == self.devices.microphone,
+            DeviceTest::Speaker(choice) => *choice == self.devices.speaker,
+        };
+        let offered = self.offers_tests(directory);
+        if offered && still_chosen {
+            return;
+        }
+        let restart = offered && matches!(running.test, DeviceTest::Microphone(_));
+        if let Some(testing) = self.testing.take() {
+            testing.stop();
+        }
+        if restart {
+            self.start_test(DeviceTest::Microphone(self.devices.microphone.clone()));
+        }
+    }
+
+    fn sheet_tests(&self, directory: &RoomDirectory) -> SheetTests {
+        if !self.offers_tests(directory) {
+            return SheetTests::NotOffered;
+        }
+        self.test_view()
+            .map_or(SheetTests::Idle, SheetTests::Testing)
+    }
+
+    fn test_view(&self) -> Option<DeviceTestView> {
+        let running = self.testing.as_ref()?;
+        let (phase, level) = match running.state {
+            TestState::Starting => (TestPhase::Starting, 0),
+            TestState::Running(level) => (TestPhase::Running, level),
+            TestState::Failed => (TestPhase::Failed, 0),
+            TestState::Lost => (TestPhase::Lost, 0),
+        };
+        Some(DeviceTestView {
+            kind: running.test.kind(),
+            phase,
+            level,
         })
     }
 
@@ -1286,7 +1412,8 @@ impl Calls {
             | CallEvent::Declined { .. }
             | CallEvent::Transports { .. }
             | CallEvent::DevicesListed { .. }
-            | CallEvent::Preview { .. } => {}
+            | CallEvent::Preview { .. }
+            | CallEvent::DeviceTest { .. } => {}
         }
     }
 
@@ -1507,6 +1634,7 @@ impl Calls {
             self.media_tasks.restart(),
             self.key_tasks.restart(),
             self.preview_tasks.restart(),
+            self.test_tasks.restart(),
         );
         self.reset();
     }
@@ -1528,6 +1656,7 @@ impl Calls {
             self.media_tasks.shutdown(),
             self.key_tasks.shutdown(),
             self.preview_tasks.shutdown(),
+            self.test_tasks.shutdown(),
         );
         self.reset();
     }
@@ -1544,6 +1673,7 @@ impl Calls {
         self.failed = None;
         self.sheet = None;
         self.preview = None;
+        self.testing = None;
         self.stale_checked = false;
         self.published = CallView::default();
     }
@@ -1601,6 +1731,7 @@ impl Calls {
             joined.settle_stage();
         }
         self.follow_preview(directory);
+        self.follow_test(directory);
         let view = CallView {
             ring: self.ring_view(directory),
             here: self.here(directory),
@@ -1644,6 +1775,7 @@ impl Calls {
             me: self.own.as_ref().map(|own| &*own.user),
             devices: self.sheet_devices().map(|devices| devices.view()),
             preview: self.sheet_preview(sheet, offer),
+            tests: self.sheet_tests(directory),
         };
         Some(sheet.view(room, facts))
     }

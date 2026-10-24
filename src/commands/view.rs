@@ -324,8 +324,44 @@ pub struct CallSheetView {
     pub devices: Option<CallDevices>,
     pub proposed: MediaChoice,
     pub preview: Option<SheetPreview>,
+    pub tests: SheetTests,
     pub leaving: Option<LeavingCall>,
     pub ended: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SheetTests {
+    NotOffered,
+    Idle,
+    Testing(DeviceTestView),
+}
+
+impl SheetTests {
+    pub const fn offered(self) -> bool {
+        !matches!(self, Self::NotOffered)
+    }
+
+    pub const fn running(self) -> Option<DeviceTestView> {
+        match self {
+            Self::Testing(test) => Some(test),
+            Self::NotOffered | Self::Idle => None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct DeviceTestView {
+    pub kind: DeviceKind,
+    pub phase: TestPhase,
+    pub level: u8,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TestPhase {
+    Starting,
+    Running,
+    Failed,
+    Lost,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

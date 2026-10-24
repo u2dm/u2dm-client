@@ -394,6 +394,11 @@ pub enum UiCommand {
     CloseCallSheet,
     #[strum(to_string = "SheetCamera({0})")]
     SheetCamera(bool),
+    #[strum(to_string = "TestCallDevice({kind}, {on})")]
+    TestCallDevice {
+        kind: DeviceKind,
+        on: bool,
+    },
     #[strum(to_string = "StartCall({room_id})")]
     StartCall {
         room_id: RoomId,
@@ -619,6 +624,7 @@ impl UiCommand {
             | Self::SilenceRing
             | Self::CloseCallSheet
             | Self::SheetCamera(_)
+            | Self::TestCallDevice { .. }
             | Self::LeaveCall
             | Self::RetryFailedCall
             | Self::DismissFailedCall

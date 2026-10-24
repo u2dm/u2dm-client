@@ -13,8 +13,8 @@ use crate::commands::view::{
     MentionsView, MicrophoneView, MissingMedia, NotificationsView, PackView, PaginationView,
     PinnedView, PresenceView, PreviewTrouble, ReadersView, RemovalView, RoomInfoView, RoomLogView,
     RoomMenuTarget, RoomPreviewSheet, RoomPreviewView, RosterRow, ScreenView, ShareNews,
-    SheetPreview, SourceState, SpaceIndexRow, SpaceIndexView, SpaceMatch, TileKind, TileState,
-    Toast, TrackFile, TypingView, UnsentMessage, UpgradeView, UserInfoView, VideoView,
+    SheetPreview, SourceState, SpaceIndexRow, SpaceIndexView, SpaceMatch, TestPhase, TileKind,
+    TileState, Toast, TrackFile, TypingView, UnsentMessage, UpgradeView, UserInfoView, VideoView,
 };
 use crate::domain::call::ring::RingKind;
 use crate::domain::call::video::ScreenRefusal;
@@ -218,9 +218,18 @@ struct CallSheetDto {
     microphone: bool,
     camera: bool,
     preview: Option<SheetPreviewDto>,
+    tests: bool,
+    test: Option<DeviceTestDto>,
     leaving: Option<String>,
     leaving_name: Option<String>,
     ended: bool,
+}
+
+#[derive(Serialize)]
+struct DeviceTestDto {
+    kind: &'static str,
+    phase: &'static str,
+    level: u8,
 }
 
 #[derive(Serialize)]
@@ -1104,6 +1113,17 @@ fn call_sheet(sheet: &CallSheetView) -> CallSheetDto {
         microphone: sheet.proposed.microphone,
         camera: sheet.proposed.camera,
         preview: sheet.preview.as_ref().map(sheet_preview),
+        tests: sheet.tests.offered(),
+        test: sheet.tests.running().map(|test| DeviceTestDto {
+            kind: names::call_device_kind(test.kind),
+            phase: match test.phase {
+                TestPhase::Starting => "starting",
+                TestPhase::Running => "running",
+                TestPhase::Failed => "failed",
+                TestPhase::Lost => "lost",
+            },
+            level: test.level,
+        }),
         leaving: sheet
             .leaving
             .as_ref()

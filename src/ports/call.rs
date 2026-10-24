@@ -4,6 +4,7 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use tokio::sync::{mpsc, oneshot};
 
+use crate::domain::call::device_test::{DeviceTest, TestNews};
 use crate::domain::call::devices::{DeviceChoice, DeviceKind, DeviceLists};
 use crate::domain::call::identity::MediaIdentity;
 use crate::domain::call::keys::{KeyIndex, MediaKey};
@@ -21,6 +22,11 @@ pub trait CallMediaPort: Send + Sync {
         camera: DeviceChoice,
         lost: oneshot::Sender<String>,
     ) -> result::Result<Box<dyn CameraPreview>, PreviewFailure>;
+    async fn test_device(
+        &self,
+        test: DeviceTest,
+        news: mpsc::UnboundedSender<TestNews>,
+    ) -> Result<Box<dyn RunningTest>>;
     async fn open(
         &self,
         setup: MediaSetup,
@@ -31,6 +37,11 @@ pub trait CallMediaPort: Send + Sync {
 #[async_trait]
 pub trait CameraPreview: Send {
     fn feed(&self) -> FeedId;
+    async fn close(self: Box<Self>);
+}
+
+#[async_trait]
+pub trait RunningTest: Send {
     async fn close(self: Box<Self>);
 }
 

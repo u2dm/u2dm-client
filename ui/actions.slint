@@ -25,6 +25,7 @@ import {
     ScreenShareRequest,
     SelfViewRequest,
     CallDeviceRequest,
+    CallDeviceTestRequest,
     RenameSessionRequest,
     ChangePasswordRequest,
     DeactivateRequest,
@@ -192,6 +193,7 @@ export global Actions {
     callback set-camera(CameraRequest);
     callback share-screen(ScreenShareRequest);
     callback use-call-device(CallDeviceRequest);
+    callback test-call-device(CallDeviceTestRequest);
     callback refresh-call-devices();
     callback focus-call-tile(string);
     callback show-call-focus();

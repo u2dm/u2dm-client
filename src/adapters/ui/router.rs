@@ -212,6 +212,14 @@ pub fn show_self_view(tx: &Tx, on: bool) {
 
 call_device_kinds!(variant_named call_device_kind_named DeviceKind;);
 
+pub fn test_call_device(tx: &Tx, kind: &str, on: bool) {
+    let Some(kind) = call_device_kind_named(kind) else {
+        tracing::warn!(kind, "the call sheet asked to test an unknown kind");
+        return;
+    };
+    send_command(tx, UiCommand::TestCallDevice { kind, on });
+}
+
 pub fn use_call_device(tx: &Tx, kind: &str, key: String) {
     let Some(kind) = call_device_kind_named(kind) else {
         tracing::warn!(kind, "the device menu sent an unknown kind");

@@ -360,6 +360,7 @@ pub(super) fn command_allowed(phase: AppPhase, cmd: &UiCommand) -> bool {
         | UiCommand::OpenCallSheet { .. }
         | UiCommand::CloseCallSheet
         | UiCommand::SheetCamera(_)
+        | UiCommand::TestCallDevice { .. }
         | UiCommand::StartCall { .. }
         | UiCommand::JoinCall { .. }
         | UiCommand::AnswerCall { .. }

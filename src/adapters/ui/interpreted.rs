@@ -29,7 +29,8 @@ use super::dto::{
     CallScreenMark, CallTileDto, CallTileMark, EmojiArt, InviteeDto, LogLineDto, MediaFailureKind,
     MediaState, MemberRowDto, MemberRowKind, MessageDto, PackCellDto, PackRowDto, PackSurface,
     PackTabDto, PollAnswerDto, ReactionDto, ReactorAvatarDto, RoomCallMark, RoomDto, RoomRowKind,
-    SheetPreviewMark, SpaceChildDto, SpaceDto, SpoilerState, UserDeviceDto, pack_surface_named,
+    SheetPreviewMark, SpaceChildDto, SpaceDto, SpoilerState, TestPhaseMark, UserDeviceDto,
+    pack_surface_named,
 };
 #[cfg(feature = "demo")]
 use super::dump;
@@ -66,8 +67,8 @@ use super::schema::{
     room_memberships, room_preview_statuses, room_row_kinds, room_scopes, roster_statuses,
     send_states, service_kinds, sheet_previews, shield_reasons, shields, simple_callbacks,
     source_encryptions, source_statuses, space_child_fields, space_fields, space_index_statuses,
-    spoiler_states, timeline_states, upgrade_links, user_device_fields, user_message_kinds,
-    verification_activities, verification_phases, verify_offers,
+    spoiler_states, test_phases, timeline_states, upgrade_links, user_device_fields,
+    user_message_kinds, verification_activities, verification_phases, verify_offers,
 };
 use super::session::active_models;
 use super::video::{self, millis_to_duration};
@@ -283,6 +284,7 @@ room_row_kinds!(impl_slint_enum RoomRowKind "RoomRowKind";);
 room_call_marks!(impl_slint_enum RoomCallMark "RoomCallMark";);
 call_offers!(impl_slint_enum CallOfferMark "CallOffer";);
 sheet_previews!(impl_slint_enum SheetPreviewMark "CallSheetPreview";);
+test_phases!(impl_slint_enum TestPhaseMark "CallTestPhase";);
 preview_troubles!(impl_slint_enum PreviewTrouble "CallPreviewTrouble";);
 call_refusals!(impl_slint_enum JoinRefusal "CallRefusal";);
 call_phases!(impl_slint_enum CallPhase "CallPhase";);

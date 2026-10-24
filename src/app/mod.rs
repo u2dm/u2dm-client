@@ -881,6 +881,7 @@ impl AppService {
             | UiCommand::OpenCallSheet { .. }
             | UiCommand::CloseCallSheet
             | UiCommand::SheetCamera(_)
+            | UiCommand::TestCallDevice { .. }
             | UiCommand::StartCall { .. }
             | UiCommand::JoinCall { .. }
             | UiCommand::AnswerCall { .. }
@@ -2986,6 +2987,9 @@ impl AppService {
                 self.calls
                     .preview_shown(preview, outcome, &self.room_directory);
             }
+            CallEvent::DeviceTest { test, outcome } => {
+                self.calls.test_heard(test, outcome, &self.room_directory);
+            }
             event => {
                 if event.call().is_some_and(|call| self.calls.is_current(call)) {
                     self.calls.call_event(event, &self.room_directory);
@@ -3009,6 +3013,7 @@ impl AppService {
             }
             UiCommand::CloseCallSheet => self.calls.close_sheet(directory),
             UiCommand::SheetCamera(on) => self.calls.sheet_camera(on, directory),
+            UiCommand::TestCallDevice { kind, on } => self.calls.test_device(kind, on, directory),
             UiCommand::StartCall {
                 room_id,
                 video,
