@@ -3,7 +3,7 @@ use crate::commands::view::{CallPerson, CallTile, CantDecrypt, TileKey, TileKind
 pub(super) fn of_tiles(
     tiles: &[CallTile],
     shared_by_you: bool,
-    self_view: bool,
+    self_focusable: bool,
 ) -> Vec<CallPerson> {
     let mut people: Vec<CallPerson> = Vec::new();
     for tile in tiles.iter().filter(|tile| tile.kind == TileKind::Person) {
@@ -11,8 +11,8 @@ pub(super) fn of_tiles(
             .iter_mut()
             .find(|person| person.user.user_id == tile.member.user)
         {
-            Some(person) => add_device(person, tile, self_view),
-            None => people.push(first_device(tile, self_view)),
+            Some(person) => add_device(person, tile, self_focusable),
+            None => people.push(first_device(tile, self_focusable)),
         }
     }
     for tile in tiles.iter().filter(|tile| tile.kind == TileKind::Screen) {
@@ -31,32 +31,36 @@ pub(super) fn of_tiles(
     people
 }
 
-fn first_device(tile: &CallTile, self_view: bool) -> CallPerson {
+fn first_device(tile: &CallTile, self_focusable: bool) -> CallPerson {
     CallPerson {
         user: tile.name.clone(),
+        avatar_mxc: tile.avatar_mxc.clone(),
         you: tile.own,
         devices: 1,
         muted: tile.muted,
         sharing: false,
         state: tile.state,
-        tile: focusable(tile, self_view),
+        tile: focusable(tile, self_focusable),
     }
 }
 
-fn add_device(person: &mut CallPerson, tile: &CallTile, self_view: bool) {
+fn add_device(person: &mut CallPerson, tile: &CallTile, self_focusable: bool) {
     person.devices += 1;
     person.muted &= tile.muted;
+    if person.avatar_mxc.is_none() {
+        person.avatar_mxc.clone_from(&tile.avatar_mxc);
+    }
     if telling(tile.state) > telling(person.state) {
         person.state = tile.state;
     }
     if tile.own {
         person.you = true;
-        person.tile = focusable(tile, self_view);
+        person.tile = focusable(tile, self_focusable);
     }
 }
 
-fn focusable(tile: &CallTile, self_view: bool) -> Option<TileKey> {
-    (!tile.own || self_view).then(|| tile.key())
+fn focusable(tile: &CallTile, self_focusable: bool) -> Option<TileKey> {
+    (!tile.own || self_focusable).then(|| tile.key())
 }
 
 const fn telling(state: TileState) -> u8 {

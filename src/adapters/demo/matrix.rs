@@ -2539,6 +2539,11 @@ impl CallSignalPort for DemoAuthed {
             })
             .collect()
     }
+
+    async fn fetch_avatars(&self, mxcs: &[String]) -> usize {
+        room_info::pause_avatars().await;
+        media::fetch_member_avatars(mxcs)
+    }
 }
 
 #[async_trait]

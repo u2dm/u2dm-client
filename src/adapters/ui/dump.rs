@@ -210,7 +210,10 @@ pub struct CallDump {
     pub sheet_test_level: i32,
     pub stage: Vec<CallTileDump>,
     pub stage_chosen: bool,
+    pub view_chosen: bool,
+    pub follows_speaker: bool,
     pub tiles: Vec<CallTileDump>,
+    pub compact_self: Vec<CallTileDump>,
     pub media_shown: bool,
     pub attached: Vec<String>,
     pub self_view: bool,
@@ -239,6 +242,7 @@ pub struct CallDump {
 pub struct CallPersonDump {
     pub key: String,
     pub name: String,
+    pub has_avatar: bool,
     pub you: bool,
     pub devices: i32,
     pub muted: bool,
@@ -269,6 +273,7 @@ pub struct CallTileDump {
     pub wanted_width: u32,
     pub wanted_height: u32,
     pub own: bool,
+    pub has_avatar: bool,
     pub mirrored: bool,
     pub screen: bool,
 }
@@ -484,17 +489,12 @@ fn call_view<B: UiBackend>(window: &B::Window) -> CallDump {
         sheet_preview_frames: call_video::frames_of(
             &window.get_string(StringProp::SheetPreviewFeed),
         ),
-        stage: B::models()
-            .call_stage
-            .iter()
-            .map(|tile| call_tile::<B>(&tile))
-            .collect(),
+        stage: call_tiles::<B>(&B::models().call_stage),
         stage_chosen: window.get_bool(BoolProp::StageChosen),
-        tiles: B::models()
-            .call_tiles
-            .iter()
-            .map(|tile| call_tile::<B>(&tile))
-            .collect(),
+        view_chosen: window.get_bool(BoolProp::ViewChosen),
+        follows_speaker: window.get_bool(BoolProp::FollowsSpeaker),
+        tiles: call_tiles::<B>(&B::models().call_tiles),
+        compact_self: call_tiles::<B>(&B::models().call_self),
         media_shown: call_video::media_is_shown(),
         attached: call_video::attached(),
         self_view: window.get_bool(BoolProp::SelfView),
@@ -513,19 +513,7 @@ fn call_view<B: UiBackend>(window: &B::Window) -> CallDump {
             window.get_string(StringProp::PeopleSecond),
             window.get_int(IntProp::PeopleMore)
         ),
-        people: B::models()
-            .call_people
-            .iter()
-            .map(|person| CallPersonDump {
-                key: person.key().to_owned(),
-                name: person.name().to_owned(),
-                you: person.you(),
-                devices: person.devices(),
-                muted: person.muted(),
-                sharing: person.sharing(),
-                state: person.state().to_owned(),
-            })
-            .collect(),
+        people: call_people::<B>(&B::models().call_people),
         sheet_people: format!(
             "{} | {} | +{}",
             window.get_string(StringProp::SheetPeopleFirst),
@@ -552,6 +540,25 @@ fn call_devices<B: UiBackend>(rows: &impl Model<Data = B::CallDevice>) -> Vec<Ca
         .collect()
 }
 
+fn call_people<B: UiBackend>(rows: &impl Model<Data = B::CallPerson>) -> Vec<CallPersonDump> {
+    rows.iter()
+        .map(|person| CallPersonDump {
+            key: person.key().to_owned(),
+            name: person.name().to_owned(),
+            has_avatar: person.has_avatar(),
+            you: person.you(),
+            devices: person.devices(),
+            muted: person.muted(),
+            sharing: person.sharing(),
+            state: person.state().to_owned(),
+        })
+        .collect()
+}
+
+fn call_tiles<B: UiBackend>(rows: &impl Model<Data = B::CallTile>) -> Vec<CallTileDump> {
+    rows.iter().map(|tile| call_tile::<B>(&tile)).collect()
+}
+
 fn call_tile<B: UiBackend>(tile: &B::CallTile) -> CallTileDump {
     let frame = tile.frame().size();
     let wanted = call_video::wanted_of(tile.feed()).unwrap_or(FrameSize::new(0, 0));
@@ -568,6 +575,7 @@ fn call_tile<B: UiBackend>(tile: &B::CallTile) -> CallTileDump {
         wanted_width: wanted.width,
         wanted_height: wanted.height,
         own: tile.own(),
+        has_avatar: tile.has_avatar(),
         mirrored: tile.mirrored(),
         screen: tile.screen(),
     }

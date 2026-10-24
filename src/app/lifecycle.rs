@@ -380,6 +380,7 @@ pub(super) fn command_allowed(phase: AppPhase, cmd: &UiCommand) -> bool {
         | UiCommand::ViewCallShare
         | UiCommand::ShowSelfView(_)
         | UiCommand::ShowSharePreview(_)
+        | UiCommand::FollowSpeaker(_)
         | UiCommand::DismissToast => phase == AppPhase::Syncing,
     }
 }

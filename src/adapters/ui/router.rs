@@ -214,6 +214,10 @@ pub fn show_share_preview(tx: &Tx, on: bool) {
     send_command(tx, UiCommand::ShowSharePreview(on));
 }
 
+pub fn follow_speaker(tx: &Tx, on: bool) {
+    send_command(tx, UiCommand::FollowSpeaker(on));
+}
+
 call_device_kinds!(variant_named call_device_kind_named DeviceKind;);
 
 pub fn test_call_device(tx: &Tx, kind: &str, on: bool) {

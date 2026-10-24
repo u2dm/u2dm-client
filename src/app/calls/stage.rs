@@ -1,5 +1,9 @@
+use std::time::Duration;
+
 use crate::commands::view::{CallTile, ShareNews, TileKey, TileKind};
 use crate::domain::member_name::NamedUser;
+
+const SPEAKER_SETTLE: Duration = Duration::from_secs(2);
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum Shown {
@@ -10,9 +14,18 @@ enum Shown {
 pub(super) struct Arranged {
     pub(super) stage: Option<CallTile>,
     pub(super) chosen: bool,
+    pub(super) view_chosen: bool,
     pub(super) tiles: Vec<CallTile>,
+    pub(super) compact_self: Option<CallTile>,
     pub(super) shares: Vec<NamedUser>,
     pub(super) offered_share: Option<NamedUser>,
+}
+
+#[derive(Default)]
+struct Following {
+    on: bool,
+    speaker: Option<TileKey>,
+    candidate: Option<(TileKey, Duration)>,
 }
 
 pub(super) struct Stage {
@@ -22,6 +35,7 @@ pub(super) struct Stage {
     staged: Option<(TileKey, NamedUser)>,
     self_view: bool,
     share_preview: bool,
+    following: Following,
     started: Option<ShareNews>,
     shares_started: u64,
     ended: Option<ShareNews>,
@@ -37,6 +51,7 @@ impl Default for Stage {
             staged: None,
             self_view: true,
             share_preview: true,
+            following: Following::default(),
             started: None,
             shares_started: 0,
             ended: None,
@@ -54,6 +69,14 @@ impl Stage {
         self.share_preview
     }
 
+    pub(super) const fn follows_speaker(&self) -> bool {
+        self.following.on
+    }
+
+    pub(super) fn self_focusable(&self, tiles: &[CallTile]) -> bool {
+        self.self_view && !self.compacts_self(tiles)
+    }
+
     pub(super) const fn started_share(&self) -> Option<&ShareNews> {
         self.started.as_ref()
     }
@@ -62,7 +85,12 @@ impl Stage {
         self.ended.as_ref()
     }
 
-    pub(super) fn settle(&mut self, tiles: &[CallTile]) {
+    pub(super) fn settle(
+        &mut self,
+        tiles: &[CallTile],
+        loudest: Option<&TileKey>,
+        now: Duration,
+    ) -> Option<Duration> {
         self.follow_shares(tiles);
         let gone = match &self.chosen {
             Some(Shown::Focus(key)) if !self.shows(key, tiles) => Some(key.clone()),
@@ -78,12 +106,14 @@ impl Stage {
                 TileKind::Person => None,
             };
         }
+        let wake = self.track_speaker(tiles, loudest, now);
         self.follow_staged(tiles);
+        wake
     }
 
     pub(super) fn focus(&mut self, key: &str, tiles: &[CallTile]) -> bool {
         let Some(tile) = tiles.iter().find(|tile| {
-            self.visible(tile) && !tile.is_own_share() && tile.key().to_string() == key
+            self.seen(tile, tiles) && !tile.is_own_share() && tile.key().to_string() == key
         }) else {
             return false;
         };
@@ -116,7 +146,7 @@ impl Stage {
             .or_else(|| {
                 tiles
                     .iter()
-                    .find(|tile| self.visible(tile) && !tile.is_own_share())
+                    .find(|tile| self.seen(tile, tiles) && !tile.is_own_share())
                     .map(CallTile::key)
             });
         if let Some(key) = pick {
@@ -143,6 +173,19 @@ impl Stage {
         self.share_preview = on;
     }
 
+    pub(super) fn follow_speaker(&mut self, on: bool) {
+        if on {
+            self.chosen = None;
+            self.before_share = None;
+        }
+        if self.following.on != on {
+            self.following = Following {
+                on,
+                ..Following::default()
+            };
+        }
+    }
+
     pub(super) fn arrange(&self, tiles: Vec<CallTile>) -> Arranged {
         let shown = self.shown(&tiles);
         let name_of = |key: &TileKey| {
@@ -153,10 +196,20 @@ impl Stage {
         };
         let shares = self.shares.iter().filter_map(name_of).collect();
         let offered_share = self.offered(&tiles).as_ref().and_then(name_of);
+        let view_chosen = self
+            .chosen
+            .as_ref()
+            .is_some_and(|chosen| self.applies(chosen, &tiles));
+        let compact = self.compacts_self(&tiles);
         let mut stage = None;
+        let mut compact_self = None;
         let mut rest = Vec::with_capacity(tiles.len());
         for tile in tiles {
             if !self.visible(&tile) {
+                continue;
+            }
+            if compact && tile.is_self_view() {
+                compact_self = Some(tile);
                 continue;
             }
             match &shown {
@@ -171,10 +224,52 @@ impl Stage {
         Arranged {
             stage,
             chosen,
+            view_chosen,
             tiles: rest,
+            compact_self,
             shares,
             offered_share,
         }
+    }
+
+    fn track_speaker(
+        &mut self,
+        tiles: &[CallTile],
+        loudest: Option<&TileKey>,
+        now: Duration,
+    ) -> Option<Duration> {
+        if !self.following.on {
+            return None;
+        }
+        if self
+            .following
+            .speaker
+            .as_ref()
+            .is_some_and(|key| !self.shows(key, tiles))
+        {
+            self.following.speaker = None;
+        }
+        let Some(loudest) = loudest.filter(|key| self.shows(key, tiles)) else {
+            self.following.candidate = None;
+            return None;
+        };
+        if self.following.speaker.as_ref() == Some(loudest) {
+            self.following.candidate = None;
+            return None;
+        }
+        let since = match &self.following.candidate {
+            Some((key, since)) if key == loudest => *since,
+            _ => now,
+        };
+        let settled = since.saturating_add(SPEAKER_SETTLE);
+        if now < settled {
+            self.following.candidate = Some((loudest.clone(), since));
+            return Some(settled);
+        }
+        tracing::debug!(tile = %loudest, "following the speaker");
+        self.following.speaker = Some(loudest.clone());
+        self.following.candidate = None;
+        None
     }
 
     fn pick(&mut self, key: TileKey, tiles: &[CallTile]) {
@@ -246,6 +341,14 @@ impl Stage {
         if let Some(share) = self.shares.iter().find(|key| self.shows(key, tiles)) {
             return Shown::Focus(share.clone());
         }
+        if let Some(speaker) = self
+            .following
+            .speaker
+            .as_ref()
+            .filter(|key| self.following.on && self.shows(key, tiles))
+        {
+            return Shown::Focus(speaker.clone());
+        }
         let mut others = tiles
             .iter()
             .filter(|tile| tile.kind == TileKind::Person && !tile.own);
@@ -277,7 +380,21 @@ impl Stage {
     fn shows(&self, key: &TileKey, tiles: &[CallTile]) -> bool {
         tiles
             .iter()
-            .any(|tile| self.visible(tile) && tile.key() == *key)
+            .any(|tile| self.seen(tile, tiles) && tile.key() == *key)
+    }
+
+    fn seen(&self, tile: &CallTile, tiles: &[CallTile]) -> bool {
+        self.visible(tile) && !(tile.is_self_view() && self.compacts_self(tiles))
+    }
+
+    fn compacts_self(&self, tiles: &[CallTile]) -> bool {
+        self.self_view
+            && tiles
+                .iter()
+                .any(|tile| tile.is_self_view() && tile.video.is_none())
+            && tiles
+                .iter()
+                .any(|tile| !tile.is_self_view() && self.visible(tile))
     }
 
     const fn visible(&self, tile: &CallTile) -> bool {

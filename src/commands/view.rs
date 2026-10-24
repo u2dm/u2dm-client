@@ -489,6 +489,7 @@ impl fmt::Display for TileKey {
 pub struct CallTile {
     pub member: MemberKey,
     pub name: NamedUser,
+    pub avatar_mxc: Option<String>,
     pub own: bool,
     pub kind: TileKind,
     pub state: TileState,
@@ -527,6 +528,7 @@ pub struct ShareNews {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CallPerson {
     pub user: NamedUser,
+    pub avatar_mxc: Option<String>,
     pub you: bool,
     pub devices: usize,
     pub muted: bool,
@@ -614,8 +616,12 @@ pub struct ActiveCall {
     pub notice: Option<CallNotice>,
     pub stage: Option<CallTile>,
     pub stage_chosen: bool,
+    pub view_chosen: bool,
     pub tiles: Arc<[CallTile]>,
+    pub compact_self: Option<CallTile>,
     pub self_view: bool,
+    pub follows_speaker: bool,
+    pub faces_ready: u64,
     pub shares: Arc<[NamedUser]>,
     pub offered_share: Option<NamedUser>,
     pub started_share: Option<ShareNews>,

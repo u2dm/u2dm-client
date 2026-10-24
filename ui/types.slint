@@ -91,9 +91,12 @@ export struct LogLineEntry {
 export struct CallTileEntry {
     key: string,
     member: string,
+    user-id: string,
     name: string,
     initial: string,
     color-index: int,
+    has-avatar: bool,
+    avatar: image,
     own: bool,
     state: CallTileState,
     muted: bool,
@@ -113,6 +116,8 @@ export struct CallPersonEntry {
     name: string,
     initial: string,
     color-index: int,
+    has-avatar: bool,
+    avatar: image,
     you: bool,
     devices: int,
     muted: bool,
@@ -202,6 +207,10 @@ export struct SelfViewRequest {
 }
 
 export struct SharePreviewRequest {
+    on: bool,
+}
+
+export struct FollowSpeakerRequest {
     on: bool,
 }
 

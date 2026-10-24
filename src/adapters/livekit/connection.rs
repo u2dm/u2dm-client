@@ -172,6 +172,26 @@ async fn until(due: Option<Instant>) {
 }
 
 impl Pump {
+    fn speaking_now(&self) -> Vec<MediaIdentity> {
+        let local = self.room.local_participant();
+        let mut speaking: Vec<(f32, MediaIdentity)> = self
+            .room
+            .remote_participants()
+            .values()
+            .filter(|participant| participant.is_speaking())
+            .map(|participant| {
+                let identity = MediaIdentity::new(participant.identity().to_string());
+                (participant.audio_level(), identity)
+            })
+            .collect();
+        if local.is_speaking() {
+            let identity = MediaIdentity::new(local.identity().to_string());
+            speaking.push((local.audio_level(), identity));
+        }
+        speaking.sort_by(|one, other| other.0.total_cmp(&one.0));
+        speaking.into_iter().map(|(_, identity)| identity).collect()
+    }
+
     fn emit(&self, event: MediaEvent) {
         if self.events_tx.send(event).is_err() {
             tracing::debug!(sfu = %self.sfu, "the call media session is gone");
@@ -231,12 +251,9 @@ impl Pump {
                 participant,
                 publication,
             } => self.muted(&participant, &publication, false),
-            RoomEvent::ActiveSpeakersChanged { speakers } => self.emit(MediaEvent::Speaking {
+            RoomEvent::ActiveSpeakersChanged { .. } => self.emit(MediaEvent::Speaking {
                 sfu: self.sfu.clone(),
-                speakers: speakers
-                    .iter()
-                    .map(|speaker| MediaIdentity::new(speaker.identity().to_string()))
-                    .collect(),
+                speakers: self.speaking_now(),
             }),
             RoomEvent::E2eeStateChanged { participant, state } => {
                 self.encryption_state(&participant, state);

@@ -182,6 +182,9 @@ pub enum ProbeCommand {
     ShowSharePreview {
         on: bool,
     },
+    FollowSpeaker {
+        on: bool,
+    },
     JoinSuccessor {
         #[serde(default)]
         room_id: Option<String>,
@@ -957,6 +960,7 @@ pub fn to_driven(command: ProbeCommand, selected: Selection<'_>) -> Result<Drive
         ProbeCommand::ViewCallShare => UiCommand::ViewCallShare,
         ProbeCommand::ShowSelfView { on } => UiCommand::ShowSelfView(on),
         ProbeCommand::ShowSharePreview { on } => UiCommand::ShowSharePreview(on),
+        ProbeCommand::FollowSpeaker { on } => UiCommand::FollowSpeaker(on),
         ProbeCommand::JoinSuccessor { room_id } => {
             return in_room(room_id, selected, UiCommand::JoinSuccessor);
         }

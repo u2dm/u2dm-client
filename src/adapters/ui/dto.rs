@@ -613,9 +613,12 @@ pub struct InviteeDto {
 pub struct CallTileDto {
     pub key: SharedString,
     pub member: SharedString,
+    pub user_id: SharedString,
     pub name: SharedString,
     pub initial: SharedString,
     pub color_index: i32,
+    pub has_avatar: bool,
+    pub avatar: Option<Image>,
     pub own: bool,
     pub state: CallTileMark,
     pub muted: bool,
@@ -629,12 +632,15 @@ pub struct CallTileDto {
     pub screen: bool,
 }
 
+#[allow(clippy::struct_excessive_bools)]
 pub struct CallPersonDto {
     pub key: SharedString,
     pub user_id: SharedString,
     pub name: SharedString,
     pub initial: SharedString,
     pub color_index: i32,
+    pub has_avatar: bool,
+    pub avatar: Option<Image>,
     pub you: bool,
     pub devices: i32,
     pub muted: bool,
@@ -1817,9 +1823,12 @@ pub fn call_tile_to_dto(tile: &CallTile) -> CallTileDto {
     CallTileDto {
         key: SharedString::from(tile.key().to_string()),
         member: SharedString::from(tile.member.to_string()),
+        user_id: SharedString::from(tile.name.user_id.as_str()),
         name: SharedString::from(tile.name.shown()),
         initial: SharedString::from(name_initials(&tile.name.name, &tile.name.user_id)),
         color_index: avatar_color_index(&tile.name.user_id),
+        has_avatar: false,
+        avatar: None,
         own: tile.own,
         state: call_tile_mark(tile.state),
         muted: tile.muted,
@@ -1846,6 +1855,8 @@ pub fn call_person_to_dto(person: &CallPerson) -> CallPersonDto {
         name: SharedString::from(person.user.shown()),
         initial: SharedString::from(name_initials(&person.user.name, &person.user.user_id)),
         color_index: avatar_color_index(&person.user.user_id),
+        has_avatar: false,
+        avatar: None,
         you: person.you,
         devices: i32::try_from(person.devices).unwrap_or(i32::MAX),
         muted: person.muted,

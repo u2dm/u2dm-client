@@ -13,7 +13,7 @@ use serde_json::{Map, Value};
 
 use super::CALL_MEMBER_TYPE;
 use super::http::host_of;
-use crate::adapters::matrix::member_name::named_member;
+use crate::adapters::matrix::member_name::named_member_with_avatar;
 use crate::domain::call::{CallIntent, CallMember, DeviceId, FocusSelection, RoomCall, Transport};
 
 const MEMBERSHIP_LIFETIME_MS: u64 = 14_400_000;
@@ -173,8 +173,10 @@ async fn read(room: &Room, event: &MembershipEvent, now_ms: u64) -> Reading {
     }
     let member_id = text(content, "membershipID")
         .map_or_else(|| format!("{}:{device}", event.sender), str::to_owned);
+    let (user, avatar_mxc) = named_member_with_avatar(room, &event.sender).await;
     Reading::Member(Box::new(CallMember {
-        user: named_member(room, &event.sender).await,
+        user,
+        avatar_mxc,
         device: DeviceId::new(device),
         member_id,
         created_ms,

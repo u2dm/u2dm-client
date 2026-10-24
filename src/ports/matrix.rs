@@ -323,6 +323,7 @@ pub trait CallSignalPort: Send + Sync {
         to: &[MemberKey],
     ) -> KeySendReport;
     async fn device_standing(&self, members: &[MemberKey]) -> Vec<(MemberKey, DeviceStanding)>;
+    async fn fetch_avatars(&self, mxcs: &[String]) -> usize;
 }
 
 #[async_trait]

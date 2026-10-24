@@ -109,6 +109,7 @@ pub enum FocusSelection {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CallMember {
     pub user: NamedUser,
+    pub avatar_mxc: Option<String>,
     pub device: DeviceId,
     pub member_id: String,
     pub created_ms: u64,

@@ -6,11 +6,12 @@ import { MenuRow } from "../../../../components/menu-row.slint";
 import { PickerCard } from "../../../../components/overlay.slint";
 import { Actions } from "../../../../actions.slint";
 import { CallScreen } from "../../../../enums.slint";
+import { CallWords } from "../../../../messages.slint";
 import { CallMode, CallPanel } from "../../../../local.slint";
 import { CallView } from "../../../../views.slint";
 import { AppStyle, Metrics, Space, Stroke } from "../../../../theme.slint";
 
-enum CallViewChoice { call-and-chat, call-only, chat-only, gallery, focus, strip, self-view, share-preview, fit }
+enum CallViewChoice { call-and-chat, call-only, chat-only, gallery, focus, follow, strip, self-view, share-preview, fit }
 
 export component CallViewMenu inherits PickerCard {
     in property <bool> beside-chat;
@@ -22,12 +23,12 @@ export component CallViewMenu inherits PickerCard {
     property <bool> sharing: CallView.screen == CallScreen.on;
     property <[CallViewChoice]> modes: [CallViewChoice.call-and-chat, CallViewChoice.call-only, CallViewChoice.chat-only];
     property <[CallViewChoice]> views: root.focused && root.sharing
-        ? [CallViewChoice.gallery, CallViewChoice.focus, CallViewChoice.strip, CallViewChoice.self-view, CallViewChoice.share-preview, CallViewChoice.fit]
+        ? [CallViewChoice.gallery, CallViewChoice.focus, CallViewChoice.follow, CallViewChoice.strip, CallViewChoice.self-view, CallViewChoice.share-preview, CallViewChoice.fit]
         : root.focused
-        ? [CallViewChoice.gallery, CallViewChoice.focus, CallViewChoice.strip, CallViewChoice.self-view, CallViewChoice.fit]
+        ? [CallViewChoice.gallery, CallViewChoice.focus, CallViewChoice.follow, CallViewChoice.strip, CallViewChoice.self-view, CallViewChoice.fit]
         : root.sharing
-        ? [CallViewChoice.gallery, CallViewChoice.focus, CallViewChoice.self-view, CallViewChoice.share-preview, CallViewChoice.fit]
-        : [CallViewChoice.gallery, CallViewChoice.focus, CallViewChoice.self-view, CallViewChoice.fit];
+        ? [CallViewChoice.gallery, CallViewChoice.focus, CallViewChoice.follow, CallViewChoice.self-view, CallViewChoice.share-preview, CallViewChoice.fit]
+        : [CallViewChoice.gallery, CallViewChoice.focus, CallViewChoice.follow, CallViewChoice.self-view, CallViewChoice.fit];
     property <int> cursor: -1;
     property <bool> keys-focused: keys.has-focus;
 
@@ -51,6 +52,9 @@ export component CallViewMenu inherits PickerCard {
         }
         if choice == CallViewChoice.focus {
             return IconSet.Focus;
+        }
+        if choice == CallViewChoice.follow {
+            return IconSet.AudioLines;
         }
         if choice == CallViewChoice.strip {
             return IconSet.UsersRound;
@@ -80,6 +84,9 @@ export component CallViewMenu inherits PickerCard {
         if choice == CallViewChoice.focus {
             return @tr("Focus");
         }
+        if choice == CallViewChoice.follow {
+            return CallWords.follow-speaker();
+        }
         if choice == CallViewChoice.strip {
             return CallPanel.hides-strip ? @tr("Show everyone else") : @tr("Hide everyone else");
         }
@@ -102,7 +109,8 @@ export component CallViewMenu inherits PickerCard {
             || (choice == CallViewChoice.call-only && CallPanel.mode == CallMode.call-only)
             || (choice == CallViewChoice.chat-only && CallPanel.mode == CallMode.chat-only)
             || (choice == CallViewChoice.gallery && !root.focused)
-            || (choice == CallViewChoice.focus && root.focused);
+            || (choice == CallViewChoice.focus && root.focused)
+            || (choice == CallViewChoice.follow && CallView.follows-speaker);
     }
 
     pure function choice-at(index: int) -> CallViewChoice {
@@ -124,6 +132,8 @@ export component CallViewMenu inherits PickerCard {
             Actions.show-call-gallery();
         } else if choice == CallViewChoice.focus {
             Actions.show-call-focus();
+        } else if choice == CallViewChoice.follow {
+            Actions.follow-speaker({ on: !CallView.follows-speaker });
         } else if choice == CallViewChoice.strip {
             CallPanel.hides-strip = !CallPanel.hides-strip;
         } else if choice == CallViewChoice.self-view {

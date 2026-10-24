@@ -62,6 +62,8 @@ component PersonRow inherits Rectangle {
             width: Metrics.call-person-avatar;
             height: Metrics.call-person-avatar;
             color-index: root.person.color-index;
+            has-image: root.person.has-avatar;
+            image: root.person.avatar;
             initial: root.person.initial;
             initial-size: Glyph.xs;
         }

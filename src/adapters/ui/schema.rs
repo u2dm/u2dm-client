@@ -272,6 +272,7 @@ macro_rules! simple_callbacks {
         on_show_self_view "show-self-view" show_self_view request(on "on" flag) ShowSelfView;
         on_show_share_preview "show-share-preview" show_share_preview request(on "on" flag)
             ShowSharePreview;
+        on_follow_speaker "follow-speaker" follow_speaker request(on "on" flag) FollowSpeaker;
         on_select_room "select-room" select_room room SelectRoom;
         on_open_notification "open-notification" open_notification room OpenNotification;
         on_select_space "select-space" select_space opt_room SelectSpace;
@@ -425,6 +426,8 @@ macro_rules! bool_props {
         VideoCall CallView "CallView" "video-call" set_video_call get_video_call;
         SelfView CallView "CallView" "self-view" set_self_view get_self_view;
         SharePreview CallView "CallView" "share-preview" set_share_preview get_share_preview;
+        FollowsSpeaker CallView "CallView" "follows-speaker" set_follows_speaker get_follows_speaker;
+        ViewChosen CallView "CallView" "view-chosen" set_view_chosen get_view_chosen;
         StageChosen CallView "CallView" "stage-chosen" set_stage_chosen get_stage_chosen;
         FailureRetry CallView "CallView" "failure-retry" set_failure_retry get_failure_retry;
         VerificationVisible VerificationView "VerificationView" "visible" set_visible get_visible;
@@ -801,6 +804,7 @@ macro_rules! model_props {
         room_log LogLine SpliceModel RoomLogView "RoomLogView" "lines" set_lines;
         call_stage CallTile VecModel CallView "CallView" "stage" set_stage;
         call_tiles CallTile VecModel CallView "CallView" "tiles" set_tiles;
+        call_self CallTile VecModel CallView "CallView" "compact-self" set_compact_self;
         call_people CallPerson VecModel CallView "CallView" "people" set_people;
         call_microphones CallDevice VecModel CallView "CallView" "microphones" set_microphones;
         call_speakers CallDevice VecModel CallView "CallView" "speakers" set_speakers;
@@ -2148,9 +2152,12 @@ macro_rules! call_tile_fields {
     ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
         key set_key "key" text;
         member set_member "member" text;
+        user_id set_user_id "user-id" text;
         name set_name "name" text;
         initial set_initial "initial" text;
         color_index set_color_index "color-index" int;
+        has_avatar set_has_avatar "has-avatar" flag;
+        avatar set_avatar "avatar" image;
         own set_own "own" flag;
         state set_state "state" enumk(CallTileMark);
         muted set_muted "muted" flag;
@@ -2173,6 +2180,8 @@ macro_rules! call_person_fields {
         name set_name "name" text;
         initial set_initial "initial" text;
         color_index set_color_index "color-index" int;
+        has_avatar set_has_avatar "has-avatar" flag;
+        avatar set_avatar "avatar" image;
         you set_you "you" flag;
         devices set_devices "devices" int;
         muted set_muted "muted" flag;

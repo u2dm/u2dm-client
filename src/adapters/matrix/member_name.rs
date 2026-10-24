@@ -7,15 +7,25 @@ use matrix_sdk::ruma::events::room::member::MembershipState;
 use crate::domain::member_name::{MemberName, NamedUser};
 
 pub(super) async fn named_member(room: &Room, user_id: &UserId) -> NamedUser {
-    let name = match room.get_member_no_sync(user_id).await {
-        Ok(Some(member)) => member_name(room, &member).await,
-        Ok(None) => MemberName::Unset,
+    named_member_with_avatar(room, user_id).await.0
+}
+
+pub(super) async fn named_member_with_avatar(
+    room: &Room,
+    user_id: &UserId,
+) -> (NamedUser, Option<String>) {
+    let (name, avatar_mxc) = match room.get_member_no_sync(user_id).await {
+        Ok(Some(member)) => (
+            member_name(room, &member).await,
+            member.avatar_url().map(ToString::to_string),
+        ),
+        Ok(None) => (MemberName::Unset, None),
         Err(e) => {
             tracing::debug!(%user_id, "could not read the member's name: {e}");
-            MemberName::Unset
+            (MemberName::Unset, None)
         }
     };
-    NamedUser::new(user_id.as_str(), name)
+    (NamedUser::new(user_id.as_str(), name), avatar_mxc)
 }
 
 pub(super) async fn member_name(room: &Room, member: &RoomMember) -> MemberName {

@@ -900,7 +900,8 @@ impl AppService {
             | UiCommand::ShowCallGallery
             | UiCommand::ViewCallShare
             | UiCommand::ShowSelfView(_)
-            | UiCommand::ShowSharePreview(_)) => {
+            | UiCommand::ShowSharePreview(_)
+            | UiCommand::FollowSpeaker(_)) => {
                 self.handle_call_command(cmd);
             }
             UiCommand::DismissToast => {
@@ -3052,6 +3053,7 @@ impl AppService {
             UiCommand::ViewCallShare => self.calls.view_call_share(directory),
             UiCommand::ShowSelfView(on) => self.calls.show_self_view(on, directory),
             UiCommand::ShowSharePreview(on) => self.calls.show_share_preview(on, directory),
+            UiCommand::FollowSpeaker(on) => self.calls.follow_speaker(on, directory),
             other => tracing::warn!(command = %other, "this command is not about calls"),
         }
     }

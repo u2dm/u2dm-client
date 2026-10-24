@@ -66,6 +66,7 @@ pub enum AvatarSlot {
     Removal,
     RoomPreview,
     Ring,
+    CallFace(String),
     User,
     AttachmentPreview {
         pick: u64,

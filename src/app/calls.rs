@@ -9,6 +9,7 @@ pub(super) mod preview;
 mod sheet;
 mod stage;
 
+use std::collections::HashSet;
 use std::fmt;
 use std::sync::Arc;
 use std::time::Duration;
@@ -33,8 +34,9 @@ use super::task_group::TaskGroup;
 use crate::commands::messages::{UserMessage, UserMessageKind};
 use crate::commands::ui::WindowFocus;
 use crate::commands::view::{
-    CallFailure, CallSheetView, CallView, DeviceTestView, FailedCall, JoinOffer, JoinRefusal,
-    LeavingCall, OfferView, RingView, RoomCallSummary, SheetPreview, SheetTests, TestPhase, Toast,
+    ActiveCall, CallFailure, CallSheetView, CallView, DeviceTestView, FailedCall, JoinOffer,
+    JoinRefusal, LeavingCall, OfferView, RingView, RoomCallSummary, SheetPreview, SheetTests,
+    TestPhase, Toast,
 };
 use crate::domain::call::device_test::DeviceTest;
 use crate::domain::call::devices::{
@@ -176,6 +178,9 @@ pub(super) struct Calls {
     discovering: bool,
     pending_join: Option<JoinRequest>,
     joined: Option<Joined>,
+    stage_wake: Option<Duration>,
+    faces_asked: HashSet<String>,
+    faces_ready: u64,
     failed: Option<Failed>,
     sheet: Option<Sheet>,
     sheet_serial: i32,
@@ -219,6 +224,9 @@ impl Calls {
             discovering: false,
             pending_join: None,
             joined: None,
+            stage_wake: None,
+            faces_asked: HashSet::new(),
+            faces_ready: 0,
             failed: None,
             sheet: None,
             sheet_serial: 0,
@@ -1329,6 +1337,10 @@ impl Calls {
         self.arrange_stage(directory, |joined| joined.show_share_preview(on));
     }
 
+    pub(super) fn follow_speaker(&mut self, on: bool, directory: &RoomDirectory) {
+        self.arrange_stage(directory, |joined| joined.follow_speaker(on));
+    }
+
     fn arrange_stage(&mut self, directory: &RoomDirectory, arrange: impl FnOnce(&mut Joined)) {
         let Some(joined) = self.joined.as_mut() else {
             return;
@@ -1344,6 +1356,7 @@ impl Calls {
             tracing::info!(call = joined.call, room_id = %joined.room_id, "hanging up");
             joined.order_farewell();
             self.key_tasks.cancel_and_detach();
+            self.stage_wake = None;
         }
     }
 
@@ -1354,6 +1367,7 @@ impl Calls {
         tracing::info!(call = joined.call, room_id = %joined.room_id, "leaving the call");
         joined.order_farewell();
         self.key_tasks.cancel_and_detach();
+        self.stage_wake = None;
         if let Some(draft) = self.sheet.as_mut().and_then(|sheet| sheet.draft.take()) {
             tracing::info!("the call sheet's devices are chosen, now that no call runs");
             self.devices = draft;
@@ -1412,6 +1426,16 @@ impl Calls {
                 if let Some(joined) = self.joined.as_mut() {
                     let effects = joined.key_wake();
                     self.run_effects(effects);
+                }
+            }
+            CallEvent::StageWake { .. } => {
+                self.stage_wake = None;
+                self.publish(directory);
+            }
+            CallEvent::FacesReady { ready, .. } => {
+                if ready > 0 {
+                    self.faces_ready = self.faces_ready.saturating_add(1);
+                    self.publish(directory);
                 }
             }
             CallEvent::KeysSent { report, .. } => keys_sent(&report),
@@ -1684,6 +1708,8 @@ impl Calls {
         self.discovering = false;
         self.pending_join = None;
         self.joined = None;
+        self.stage_wake = None;
+        self.faces_asked.clear();
         self.failed = None;
         self.sheet = None;
         self.preview = None;
@@ -1741,17 +1767,22 @@ impl Calls {
     }
 
     fn publish(&mut self, directory: &RoomDirectory) {
-        if let Some(joined) = self.joined.as_mut() {
-            joined.settle_stage();
+        if let Some(wake) = self.joined.as_mut().and_then(Joined::settle_stage) {
+            self.wake_stage(wake);
         }
         self.follow_preview(directory);
         self.follow_test(directory);
+        let mut active = self.joined.as_ref().map(Joined::view);
+        if let Some(active) = active.as_mut() {
+            active.faces_ready = self.faces_ready;
+            self.fetch_faces(active);
+        }
         let view = CallView {
             ring: self.ring_view(directory),
             here: self.here(directory),
             offer: self.offer_view(directory),
             sheet: self.sheet_view(directory),
-            active: self.joined.as_ref().map(Joined::view),
+            active,
             failed: self.failed_view(directory),
         };
         if view == self.published {
@@ -1760,6 +1791,55 @@ impl Calls {
         self.published = view.clone();
         self.output
             .publish(Box::new(move |state| state.call = view));
+    }
+
+    fn wake_stage(&mut self, at: Duration) {
+        let Some(joined) = self.joined.as_ref() else {
+            return;
+        };
+        if self.stage_wake == Some(at) {
+            return;
+        }
+        self.stage_wake = Some(at);
+        let call = joined.call;
+        let wake = joined.wake_at(at);
+        let events = self.events.clone();
+        let token = self.key_tasks.token();
+        self.key_tasks.spawn(async move {
+            if token.run_until_cancelled(sleep_until(wake)).await.is_some() {
+                send(&events, CallEvent::StageWake { call });
+            }
+        });
+    }
+
+    fn fetch_faces(&mut self, active: &ActiveCall) {
+        let Some(port) = self.own.as_ref().map(|own| Arc::clone(&own.port)) else {
+            return;
+        };
+        let fresh: Vec<String> = active
+            .stage
+            .iter()
+            .chain(active.tiles.iter())
+            .chain(active.compact_self.iter())
+            .filter_map(|tile| tile.avatar_mxc.clone())
+            .chain(
+                active
+                    .people
+                    .iter()
+                    .filter_map(|person| person.avatar_mxc.clone()),
+            )
+            .filter(|mxc| self.faces_asked.insert(mxc.clone()))
+            .collect();
+        if fresh.is_empty() {
+            return;
+        }
+        tracing::debug!(avatars = fresh.len(), "fetching the call's avatars");
+        let call = active.call;
+        let events = self.events.clone();
+        self.actions.spawn(async move {
+            let ready = port.fetch_avatars(&fresh).await;
+            send(&events, CallEvent::FacesReady { call, ready });
+        });
     }
 
     fn offer_view(&self, directory: &RoomDirectory) -> Option<OfferView> {

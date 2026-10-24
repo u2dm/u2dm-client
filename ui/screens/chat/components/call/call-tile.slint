@@ -521,6 +521,8 @@ export component CallTileView inherits Rectangle {
                     width: Metrics.call-tile-avatar;
                     height: Metrics.call-tile-avatar;
                     color-index: root.tile.color-index;
+                    has-image: root.tile.has-avatar;
+                    image: root.tile.avatar;
                     initial: root.tile.initial;
                     initial-size: Glyph.lg;
                     opacity: CallStates.flows(root.tile.state) ? 1 : 0.5;

@@ -257,6 +257,13 @@ pub(super) enum CallEvent {
     KeyWake {
         call: u64,
     },
+    StageWake {
+        call: u64,
+    },
+    FacesReady {
+        call: u64,
+        ready: usize,
+    },
     KeysSent {
         call: u64,
         report: KeySendReport,
@@ -289,6 +296,8 @@ impl CallEvent {
             | Self::Announced { call, .. }
             | Self::RingOutTimeout { call }
             | Self::KeyWake { call }
+            | Self::StageWake { call }
+            | Self::FacesReady { call, .. }
             | Self::KeysSent { call, .. }
             | Self::Standings { call, .. } => Some(*call),
             Self::Signal { .. }
@@ -314,6 +323,8 @@ impl CallEvent {
             Self::Announced { .. } => "CallAnnounced",
             Self::RingOutTimeout { .. } => "CallRingOutTimeout",
             Self::KeyWake { .. } => "CallKeyWake",
+            Self::StageWake { .. } => "CallStageWake",
+            Self::FacesReady { .. } => "CallFacesReady",
             Self::KeysSent { .. } => "CallKeysSent",
             Self::Standings { .. } => "CallStandings",
             Self::DevicesListed { .. } => "CallDevicesListed",

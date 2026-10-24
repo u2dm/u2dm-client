@@ -12,7 +12,7 @@ use super::people;
 use super::stage::Stage;
 use crate::commands::view::{
     ActiveCall, CallFailure, CallNotice, CallPhase, CallTile, CameraView, CantDecrypt,
-    MicrophoneView, MissingMedia, ScreenView, TileKind, TileState,
+    MicrophoneView, MissingMedia, ScreenView, TileKey, TileKind, TileState,
 };
 use crate::domain::call::devices::{
     DeviceChoice, DeviceChoices, DeviceKey, DeviceKind, DeviceLists,
@@ -62,7 +62,7 @@ struct Heard {
     present: HashMap<SfuId, HashSet<MediaIdentity>>,
     decryption: HashMap<MediaIdentity, Decryption>,
     muted: HashMap<SfuId, HashSet<MediaIdentity>>,
-    speaking: HashMap<SfuId, HashSet<MediaIdentity>>,
+    speaking: HashMap<SfuId, Vec<MediaIdentity>>,
     video: HashMap<SfuId, HashMap<MediaIdentity, FeedId>>,
     screens: HashMap<SfuId, HashMap<MediaIdentity, FeedId>>,
     missing: HashMap<SfuId, HashMap<MediaIdentity, HashSet<MediaSource>>>,
@@ -644,9 +644,7 @@ impl Joined {
                 }
             }
             MediaEvent::Speaking { sfu, speakers } => {
-                self.heard
-                    .speaking
-                    .insert(sfu, speakers.into_iter().collect());
+                self.heard.speaking.insert(sfu, speakers);
             }
             MediaEvent::Missing {
                 sfu,
@@ -1017,9 +1015,32 @@ impl Joined {
         }
     }
 
-    pub(super) fn settle_stage(&mut self) {
+    pub(super) fn settle_stage(&mut self) -> Option<Duration> {
         let tiles = self.tiles();
-        self.stage.settle(&tiles);
+        let loudest = self.loudest_speaker();
+        let now = self.now();
+        self.stage.settle(&tiles, loudest.as_ref(), now)
+    }
+
+    fn loudest_speaker(&self) -> Option<TileKey> {
+        let mut servers: Vec<&SfuId> = self.heard.speaking.keys().collect();
+        servers.sort_unstable();
+        servers
+            .into_iter()
+            .filter_map(|sfu| self.heard.speaking.get(sfu))
+            .flatten()
+            .find_map(|identity| self.person_speaking(identity))
+    }
+
+    fn person_speaking(&self, identity: &MediaIdentity) -> Option<TileKey> {
+        self.members
+            .iter()
+            .filter(|member| MemberKey::of(member) != self.me)
+            .find(|member| member_spellings(member).contains(identity))
+            .map(|member| TileKey {
+                member: MemberKey::of(member),
+                kind: TileKind::Person,
+            })
     }
 
     pub(super) fn focus_tile(&mut self, key: &str) {
@@ -1049,6 +1070,11 @@ impl Joined {
         self.stage.show_self(on);
     }
 
+    pub(super) fn follow_speaker(&mut self, on: bool) {
+        tracing::info!(call = self.call, on, "switching speaker following");
+        self.stage.follow_speaker(on);
+    }
+
     pub(super) fn show_share_preview(&mut self, on: bool) {
         tracing::info!(
             call = self.call,
@@ -1062,7 +1088,7 @@ impl Joined {
         let tiles = self.tiles();
         let notice = self.notice(&tiles);
         let sharing = matches!(self.screen, OwnScreen::On(_));
-        let people = people::of_tiles(&tiles, sharing, self.stage.self_view());
+        let people = people::of_tiles(&tiles, sharing, self.stage.self_focusable(&tiles));
         let arranged = self.stage.arrange(tiles);
         ActiveCall {
             call: self.call,
@@ -1096,8 +1122,12 @@ impl Joined {
             notice,
             stage: arranged.stage,
             stage_chosen: arranged.chosen,
+            view_chosen: arranged.view_chosen,
             tiles: Arc::from(arranged.tiles),
+            compact_self: arranged.compact_self,
             self_view: self.stage.self_view(),
+            follows_speaker: self.stage.follows_speaker(),
+            faces_ready: 0,
             shares: Arc::from(arranged.shares),
             offered_share: arranged.offered_share,
             started_share: self.stage.started_share().cloned(),
@@ -1132,12 +1162,12 @@ impl Joined {
         {
             let me = NamedUser::unnamed(self.me.user.clone());
             tiles.extend(self.own_screen_tile(&me));
-            tiles.push(self.own_tile(me));
+            tiles.push(self.own_tile(me, None));
         }
         for member in &self.members {
             if MemberKey::of(member) == self.me {
                 tiles.extend(self.own_screen_tile(&member.user));
-                tiles.push(self.own_tile(member.user.clone()));
+                tiles.push(self.own_tile(member.user.clone(), member.avatar_mxc.clone()));
             } else {
                 tiles.push(self.remote_tile(member));
             }
@@ -1145,7 +1175,7 @@ impl Joined {
         tiles
     }
 
-    fn own_tile(&self, name: NamedUser) -> CallTile {
+    fn own_tile(&self, name: NamedUser, avatar_mxc: Option<String>) -> CallTile {
         let speaking = self
             .own_spellings()
             .iter()
@@ -1165,6 +1195,7 @@ impl Joined {
         CallTile {
             member: self.me.clone(),
             name,
+            avatar_mxc,
             own: true,
             kind: TileKind::Person,
             state,
@@ -1181,6 +1212,7 @@ impl Joined {
         Some(CallTile {
             member: self.me.clone(),
             name: name.clone(),
+            avatar_mxc: None,
             own: true,
             kind: TileKind::Screen,
             state: TileState::Live,
@@ -1209,6 +1241,7 @@ impl Joined {
                 .any(|identity| self.heard.is_speaking(identity)),
             member: key,
             name: member.user.clone(),
+            avatar_mxc: member.avatar_mxc.clone(),
             own: false,
             kind: TileKind::Person,
             video,
@@ -1230,6 +1263,7 @@ impl Joined {
             speaking: false,
             member: key,
             name: member.user.clone(),
+            avatar_mxc: None,
             own: false,
             kind: TileKind::Screen,
             video: Some(feed),

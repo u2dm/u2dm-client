@@ -1,16 +1,17 @@
 use std::cell::RefCell;
+use std::collections::HashSet;
 use std::slice;
 use std::time::Duration;
 
-use slint::{ComponentHandle, SharedString, Timer, TimerMode, VecModel};
+use slint::{ComponentHandle, Image, Model, SharedString, Timer, TimerMode, VecModel};
 
 use super::backend::{Models, UiBackend, UiEventContext};
-use super::decode::{AvatarSlot, load_avatar_async};
+use super::decode::{AvatarSlot, load_avatar_async, peek_avatar};
 use super::dto::{
     call_failure_message, call_notice_mark, call_offer_mark, call_screen_mark, sheet_preview_mark,
     test_phase_mark,
 };
-use super::fields::CallTileFields;
+use super::fields::{CallPersonFields, CallTileFields};
 use super::notices::NoticeWords;
 use super::present::{avatar_color_index, avatar_initials};
 use super::props::{BoolProp, IntProp, StringProp, UiProps};
@@ -70,7 +71,7 @@ pub fn apply_call<B: UiBackend>(
     }
     let last_active = last.and_then(|last| last.active.as_ref());
     if last_active != next.active.as_ref() {
-        apply_active::<B>(w, last_active, next.active.as_ref());
+        apply_active::<B>(w, last_active, next.active.as_ref(), ctx.media);
     }
     let last_devices = last.and_then(shown_devices);
     let next_devices = shown_devices(next);
@@ -215,7 +216,12 @@ fn previewed_feed(call: &CallView) -> Option<&FeedId> {
         .and_then(SheetPreview::feed)
 }
 
-fn apply_active<B: UiBackend>(w: &B::Window, last: Option<&ActiveCall>, next: Option<&ActiveCall>) {
+fn apply_active<B: UiBackend>(
+    w: &B::Window,
+    last: Option<&ActiveCall>,
+    next: Option<&ActiveCall>,
+    media: &dyn MediaCache,
+) {
     let Some(active) = next else {
         w.set_bool(BoolProp::ActiveVisible, false);
         w.set_int(IntProp::ActiveCall, 0);
@@ -228,6 +234,7 @@ fn apply_active<B: UiBackend>(w: &B::Window, last: Option<&ActiveCall>, next: Op
         let models = B::models();
         models.call_stage.set_vec(Vec::new());
         models.call_tiles.set_vec(Vec::new());
+        models.call_self.set_vec(Vec::new());
         models.call_people.set_vec(Vec::new());
         call_video::follow::<B>(w, &[]);
         stop_elapsed(w);
@@ -262,8 +269,9 @@ fn apply_active<B: UiBackend>(w: &B::Window, last: Option<&ActiveCall>, next: Op
         w.set_call_screen_refusal(refusal);
     }
     apply_notice(w, active.notice.as_ref());
-    apply_stage::<B>(w, last, active);
-    apply_people::<B>(last.map(|last| last.people.as_ref()), &active.people);
+    apply_stage::<B>(w, last, active, media);
+    apply_people::<B>(last.map(|last| last.people.as_ref()), &active.people, media);
+    request_faces::<B>(active, media);
     apply_device_news(w, active.devices.news.as_ref());
     if last.is_none_or(|last| last.live_since_ms != active.live_since_ms) {
         follow_elapsed(w, active.live_since_ms);
@@ -276,8 +284,15 @@ fn shown_tiles(active: &ActiveCall) -> impl Iterator<Item = &CallTile> {
     active.stage.iter().chain(active.tiles.iter())
 }
 
-fn apply_stage<B: UiBackend>(w: &B::Window, last: Option<&ActiveCall>, active: &ActiveCall) {
+fn apply_stage<B: UiBackend>(
+    w: &B::Window,
+    last: Option<&ActiveCall>,
+    active: &ActiveCall,
+    media: &dyn MediaCache,
+) {
     w.set_bool(BoolProp::SelfView, active.self_view);
+    w.set_bool(BoolProp::FollowsSpeaker, active.follows_speaker);
+    w.set_bool(BoolProp::ViewChosen, active.view_chosen);
     w.set_bool(BoolProp::SharePreview, active.share_preview);
     w.set_int(
         IntProp::ShareChangeCancelled,
@@ -311,8 +326,11 @@ fn apply_stage<B: UiBackend>(w: &B::Window, last: Option<&ActiveCall>, active: &
         [StringProp::PeopleFirst, StringProp::PeopleSecond],
         IntProp::PeopleMore,
     );
-    let unchanged =
-        last.is_some_and(|last| last.stage == active.stage && last.tiles == active.tiles);
+    let unchanged = last.is_some_and(|last| {
+        last.stage == active.stage
+            && last.tiles == active.tiles
+            && last.compact_self == active.compact_self
+    });
     if unchanged {
         return;
     }
@@ -320,6 +338,10 @@ fn apply_stage<B: UiBackend>(w: &B::Window, last: Option<&ActiveCall>, active: &
     let convert = |tile: &CallTile| {
         let mut row = B::convert_call_tile(tile);
         call_video::show_last::<B>(&mut row);
+        if let Some(face) = face_of(tile.avatar_mxc.as_deref(), media) {
+            row.set_avatar(face);
+            row.set_has_avatar(true);
+        }
         row
     };
     let last_stage = last.and_then(|last| last.stage.as_ref());
@@ -334,6 +356,14 @@ fn apply_stage<B: UiBackend>(w: &B::Window, last: Option<&ActiveCall>, active: &
         &models.call_tiles,
         &active.tiles,
         last.map_or(&[] as &[CallTile], |last| last.tiles.as_ref()),
+        &convert,
+        &|row| row.key(),
+    );
+    let last_self = last.and_then(|last| last.compact_self.as_ref());
+    apply_call_tiles(
+        &models.call_self,
+        active.compact_self.as_slice(),
+        last_self.map_or(&[], slice::from_ref),
         &convert,
         &|row| row.key(),
     );
@@ -427,12 +457,90 @@ fn device_model<B: UiBackend>(models: &Models<B>, kind: DeviceKind) -> &VecModel
     }
 }
 
-fn apply_people<B: UiBackend>(last: Option<&[CallPerson]>, people: &[CallPerson]) {
+fn apply_people<B: UiBackend>(
+    last: Option<&[CallPerson]>,
+    people: &[CallPerson],
+    media: &dyn MediaCache,
+) {
     if last == Some(people) {
         return;
     }
-    let rows: Vec<B::CallPerson> = people.iter().map(B::convert_call_person).collect();
+    let rows: Vec<B::CallPerson> = people
+        .iter()
+        .map(|person| {
+            let mut row = B::convert_call_person(person);
+            if let Some(face) = face_of(person.avatar_mxc.as_deref(), media) {
+                row.set_avatar(face);
+                row.set_has_avatar(true);
+            }
+            row
+        })
+        .collect();
     B::models().call_people.set_vec(rows);
+}
+
+fn face_of(mxc: Option<&str>, media: &dyn MediaCache) -> Option<Image> {
+    let path = media.user_avatar_path(mxc?)?;
+    peek_avatar(&path)
+}
+
+fn request_faces<B: UiBackend>(active: &ActiveCall, media: &dyn MediaCache) {
+    let tiles = active
+        .stage
+        .iter()
+        .chain(active.tiles.iter())
+        .chain(active.compact_self.iter())
+        .map(|tile| (tile.name.user_id.as_str(), tile.avatar_mxc.as_deref()));
+    let people = active
+        .people
+        .iter()
+        .map(|person| (person.user.user_id.as_str(), person.avatar_mxc.as_deref()));
+    let mut asked: HashSet<&str> = HashSet::new();
+    for (user_id, mxc) in tiles.chain(people) {
+        let Some(mxc) = mxc else {
+            continue;
+        };
+        if !asked.insert(user_id) {
+            continue;
+        }
+        let path = media.user_avatar_path(mxc);
+        let slot = AvatarSlot::CallFace(user_id.to_owned());
+        if let Some(face) = load_avatar_async(path.as_deref(), slot) {
+            show_faces::<B>(&HashSet::from([user_id]), &face);
+        }
+    }
+}
+
+pub fn show_faces<B: UiBackend>(users: &HashSet<&str>, face: &Image) {
+    if users.is_empty() {
+        return;
+    }
+    let models = B::models();
+    for rows in [&models.call_stage, &models.call_tiles, &models.call_self] {
+        for row in 0..rows.row_count() {
+            let Some(mut entry) = rows.row_data(row) else {
+                continue;
+            };
+            if entry.screen() || entry.has_avatar() || !users.contains(entry.user_id()) {
+                continue;
+            }
+            entry.set_avatar(face.clone());
+            entry.set_has_avatar(true);
+            rows.set_row_data(row, entry);
+        }
+    }
+    let people = &models.call_people;
+    for row in 0..people.row_count() {
+        let Some(mut entry) = people.row_data(row) else {
+            continue;
+        };
+        if entry.has_avatar() || !users.contains(entry.user_id()) {
+            continue;
+        }
+        entry.set_avatar(face.clone());
+        entry.set_has_avatar(true);
+        people.set_row_data(row, entry);
+    }
 }
 
 fn apply_names(

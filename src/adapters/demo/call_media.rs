@@ -557,6 +557,33 @@ impl DemoMediaSession {
         }));
     }
 
+    fn spawn_speeches(&mut self, sfu: SfuId) {
+        let events_tx = self.events_tx.clone();
+        let room_id = self.room_id.clone();
+        self.tasks.push(tokio::spawn(async move {
+            loop {
+                for (user, length) in calls::SPEECHES {
+                    let speakers: Vec<MediaIdentity> = calls::book()
+                        .others_in(room_id.as_ref())
+                        .into_iter()
+                        .filter(|(member, _)| member.user == user)
+                        .map(|(_, identity)| identity)
+                        .take(1)
+                        .collect();
+                    tracing::info!(user, "demo: someone speaks");
+                    let speaking = MediaEvent::Speaking {
+                        sfu: sfu.clone(),
+                        speakers,
+                    };
+                    if events_tx.send(speaking).is_err() {
+                        return;
+                    }
+                    sleep(length).await;
+                }
+            }
+        }));
+    }
+
     fn publishes(&self) -> bool {
         self.connected
             .values()
@@ -606,6 +633,9 @@ impl DemoMediaSession {
             }
             if calls::scenario().speaking {
                 self.spawn_speaking(sfu.clone());
+            }
+            if calls::scenario().speeches {
+                self.spawn_speeches(sfu.clone());
             }
         }
         ConnectedSfu { sfu, role }

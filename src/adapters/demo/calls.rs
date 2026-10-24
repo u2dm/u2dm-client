@@ -8,7 +8,7 @@ use tokio::sync::mpsc;
 use tokio::time::sleep;
 
 use super::catalog::{Flag, Scenarios};
-use super::data;
+use super::{data, room_info};
 use crate::domain::call::identity::{MediaIdentity, spellings};
 use crate::domain::call::keys::{KeyIndex, MediaKey, OWN_KEY_LEN, ReceivedKey};
 use crate::domain::call::media::{ConnectionQuality, MediaEvent, MediaSource};
@@ -149,6 +149,11 @@ pub const CATALOG: Scenarios = Scenarios {
             value: "speaking",
             effect: "the people in your call take turns speaking every 2s",
             note: "",
+        },
+        Flag {
+            value: "speeches",
+            effect: "with active: Nadia speaks 4s, Jordan 0.5s, Nadia 3s, Jordan 4s, and again; you never speak",
+            note: "Jordan's 0.5s interjection is shorter than the stage's speaker settle",
         },
         Flag {
             value: "crowd",
@@ -352,6 +357,12 @@ pub const KEYS_LATE_BY: Duration = Duration::from_secs(4);
 pub const RECONNECT_AFTER: Duration = Duration::from_secs(5);
 pub const RECONNECT_FOR: Duration = Duration::from_secs(3);
 pub const SPEAKING_TURN: Duration = Duration::from_secs(2);
+pub const SPEECHES: [(&str, Duration); 4] = [
+    (NADIA, Duration::from_secs(4)),
+    (JORDAN, Duration::from_millis(500)),
+    (NADIA, Duration::from_secs(3)),
+    (JORDAN, Duration::from_secs(4)),
+];
 pub const CUT_OFF_AFTER: Duration = Duration::from_secs(5);
 pub const CAMERA_LOST_AFTER: Duration = Duration::from_secs(3);
 const TROUBLE_AFTER: Duration = Duration::from_secs(3);
@@ -389,6 +400,7 @@ pub struct Scenario {
     pub declines: bool,
     announce_fails: bool,
     pub speaking: bool,
+    pub speeches: bool,
     crowd: bool,
     second_device: bool,
     remote_sfu: bool,
@@ -462,6 +474,7 @@ fn apply(scenario: &mut Scenario, flag: &str) {
         "declines" => scenario.declines = true,
         "announce-fails" => scenario.announce_fails = true,
         "speaking" => scenario.speaking = true,
+        "speeches" => scenario.speeches = true,
         "crowd" => scenario.crowd = true,
         "second-device" => scenario.second_device = true,
         "remote-sfu" => scenario.remote_sfu = true,
@@ -540,6 +553,7 @@ impl Joiner {
                 self.user,
                 MemberName::new(data::person_name(self.user).as_deref(), false),
             ),
+            avatar_mxc: Some(room_info::member_avatar(self.user)),
             device: DeviceId::new(self.device),
             member_id: format!("{}:{}", self.user, self.device),
             created_ms,

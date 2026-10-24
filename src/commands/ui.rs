@@ -444,6 +444,8 @@ pub enum UiCommand {
     ShowSelfView(bool),
     #[strum(to_string = "ShowSharePreview({0})")]
     ShowSharePreview(bool),
+    #[strum(to_string = "FollowSpeaker({0})")]
+    FollowSpeaker(bool),
     DismissToast,
     Logout,
     ConfirmLogout,
@@ -644,6 +646,7 @@ impl UiCommand {
             | Self::ViewCallShare
             | Self::ShowSelfView(_)
             | Self::ShowSharePreview(_)
+            | Self::FollowSpeaker(_)
             | Self::DismissToast
             | Self::Logout
             | Self::ConfirmLogout

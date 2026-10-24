@@ -2,13 +2,17 @@ import { Palette } from "std-widgets.slint";
 import { IconDisplay, IconSet } from "@lucide";
 
 import { ClickArea } from "../../../../components/a11y.slint";
+import { Avatar } from "../../../../components/avatar.slint";
 import { AppButton, IconButton, LinkButton } from "../../../../components/button.slint";
 import { StateLayer } from "../../../../components/state-layer.slint";
+import { TipSource } from "../../../../components/tip.slint";
 import { Actions } from "../../../../actions.slint";
+import { CallStates } from "../../../../call-states.slint";
 import { CallWords } from "../../../../messages.slint";
 import { CallPanel, CallSize, TipScope } from "../../../../local.slint";
+import { CallTileEntry } from "../../../../types.slint";
 import { CallView, DirectoryView } from "../../../../views.slint";
-import { AppStyle, Fonts, IconSize, Radius, Size, Space, Stroke, Weight } from "../../../../theme.slint";
+import { AppStyle, Fonts, Glyph, IconSize, Metrics, Radius, Size, Space, Stroke, Weight } from "../../../../theme.slint";
 import { CallKey, CallKeys } from "./call-controls.slint";
 import { CallStage } from "./call-stage.slint";
 
@@ -47,6 +51,63 @@ component ShareOffer inherits HorizontalLayout {
         clicked => {
             root.view();
         }
+    }
+}
+
+component SelfChip inherits Rectangle {
+    in property <CallTileEntry> tile;
+
+    property <string> words: CallWords.self-chip(root.tile.muted, root.tile.speaking);
+
+    width: Metrics.call-self-chip;
+    height: self.width;
+    accessible-role: image;
+    accessible-label: root.words;
+
+    touch := TouchArea { }
+
+    Avatar {
+        width: root.width;
+        height: root.height;
+        color-index: root.tile.color-index;
+        has-image: root.tile.has-avatar;
+        image: root.tile.avatar;
+        initial: root.tile.initial;
+        initial-size: Glyph.xs;
+        opacity: CallStates.flows(root.tile.state) ? 1 : 0.5;
+        accessible-role: none;
+    }
+
+    Rectangle {
+        border-radius: root.width / 2;
+        border-width: root.tile.speaking ? Metrics.call-speaking-ring : 0;
+        border-color: AppStyle.call-speaking;
+    }
+
+    if root.tile.muted: Rectangle {
+        x: root.width - self.width + Space.xs;
+        y: root.height - self.height + Space.xs;
+        width: Metrics.call-badge;
+        height: self.width;
+        border-radius: self.width / 2;
+        background: AppStyle.call-band;
+
+        IconDisplay {
+            icon: IconSet.MicOff;
+            size: IconSize.xs;
+            stroke: AppStyle.foreground-strong;
+            accessible-role: none;
+        }
+    }
+
+    TipSource {
+        width: root.width;
+        height: root.height;
+        text: root.words;
+        hovered: touch.has-hover;
+        pressed: touch.pressed;
+        below: true;
+        scope: TipScope.call;
     }
 }
 
@@ -90,14 +151,23 @@ export component CallBand inherits Rectangle {
     property <bool> shows-chat-button;
     property <bool> staged: CallView.stage.length > 0;
     property <string> staged-title: CallWords.tile-title(CallView.stage[0].screen, CallView.stage[0].own, CallView.stage[0].name);
+    property <bool> follows-back: CallView.follows-speaker && CallView.view-chosen;
+    property <bool> offers-return: root.staged || root.follows-back;
+    property <bool> compact-self: CallView.compact-self.length > 0;
+    property <bool> return-worded: menu-button.x - Space.sm - gallery-button.preferred-width
+        - (root.compact-self ? Metrics.call-self-chip + Space.sm : 0px) - Space.md >= Metrics.call-header-label-min;
+    property <length> return-x: root.return-worded ? gallery-button.x : gallery-icon.x;
+    property <length> buttons-x: root.compact-self ? self-chip.x
+        : root.offers-return ? root.return-x
+        : menu-button.x;
     property <bool> elsewhere: CallView.active-room-id != DirectoryView.selected-room-id;
     property <string> people: CallWords.people(CallView.people-first, CallView.people-second, CallView.people-more);
     property <int> band-takes-focus: CallPanel.band-takes-focus;
     property <int> gallery-takes-focus: CallPanel.gallery-takes-focus;
-    property <length> name-room: max(0px, (root.staged ? gallery-button.x : menu-button.x) - Space.md);
+    property <length> name-room: max(0px, root.buttons-x - Space.md);
     property <length> name-width: min(root.elsewhere ? room-link.text-width : room-name.preferred-width, root.name-room / 2);
     property <length> rest-x: root.name-width + Space.sm;
-    property <length> rest-width: max(0px, (root.staged ? gallery-button.x : menu-button.x) - Space.md - root.rest-x);
+    property <length> rest-width: max(0px, root.buttons-x - Space.md - root.rest-x);
 
     public function focus-menu() {
         menu-button.take-focus();
@@ -141,8 +211,22 @@ export component CallBand inherits Rectangle {
     }
 
     changed gallery-takes-focus => {
-        if root.staged {
+        if root.offers-return && root.return-worded {
             gallery-button.take-focus();
+        } else if root.offers-return {
+            gallery-icon.take-focus();
+        }
+    }
+
+    function take-return(by-keys: bool) {
+        if root.follows-back {
+            if by-keys {
+                menu-button.take-focus();
+            }
+            Actions.follow-speaker({ on: true });
+        } else {
+            CallPanel.focus-tile = by-keys ? CallView.stage[0].key : "";
+            Actions.show-call-gallery();
         }
     }
 
@@ -194,17 +278,38 @@ export component CallBand inherits Rectangle {
                 y: (parent.height - self.height) / 2;
                 width: self.preferred-width;
                 height: Size.md;
-                visible: root.staged;
+                visible: root.offers-return && root.return-worded;
                 filled: false;
                 tint: AppStyle.foreground-strong;
-                icon: IconSet.LayoutGrid;
-                text: @tr("Gallery");
-                label: CallWords.show-gallery();
-                description: CallWords.in-focus(root.staged-title);
+                icon: root.follows-back ? IconSet.AudioLines : IconSet.LayoutGrid;
+                text: root.follows-back ? @tr("Follow speaker") : @tr("Gallery");
+                label: root.follows-back ? CallWords.follow-speaker() : CallWords.show-gallery();
+                description: root.staged ? CallWords.in-focus(root.staged-title) : "";
                 clicked => {
-                    CallPanel.focus-tile = self.has-focus ? CallView.stage[0].key : "";
-                    Actions.show-call-gallery();
+                    root.take-return(self.has-focus);
                 }
+            }
+
+            gallery-icon := IconButton {
+                x: menu-button.x - Space.sm - self.width;
+                y: (parent.height - self.height) / 2;
+                size: Size.md;
+                visible: root.offers-return && !root.return-worded;
+                icon: root.follows-back ? IconSet.AudioLines : IconSet.LayoutGrid;
+                label: root.follows-back ? CallWords.follow-speaker() : CallWords.show-gallery();
+                tip: self.label;
+                tip-below: true;
+                tip-scope: TipScope.call;
+                clicked => {
+                    root.take-return(self.has-focus);
+                }
+            }
+
+            self-chip := SelfChip {
+                x: (root.offers-return ? root.return-x : menu-button.x) - Space.sm - self.width;
+                y: (parent.height - self.height) / 2;
+                visible: root.compact-self;
+                tile: CallView.compact-self[0];
             }
 
             room-link := CallRoomLink {

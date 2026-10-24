@@ -6,7 +6,6 @@ use std::sync::Arc;
 use slint::{ComponentHandle, Image, Model, ModelRc, SharedString, VecModel};
 use tokio::sync::{OwnedSemaphorePermit, mpsc, watch};
 
-use super::call_video;
 use super::clock::install_clock_invalidation;
 use super::decode::{
     AvatarSlot, DecodeFailure, DecodeOutcome, MediaSlot, TimelineItemKey, advance_animations,
@@ -46,6 +45,7 @@ use super::session::{begin_session, with_session};
 use super::splice_model::SpliceModel;
 use super::spoilers::reveal_row;
 use super::window_events::install_window_events;
+use super::{call, call_video};
 use crate::commands::effects::Effect;
 use crate::commands::view::{
     AppViewState, CallPerson, CallTile, DeviceOption, InviteeRow, RosterRow, SpaceIndexRow,
@@ -734,6 +734,7 @@ struct AvatarTargets<'a> {
     readers: HashSet<&'a str>,
     mentions: HashSet<&'a str>,
     invitees: HashSet<&'a str>,
+    call_faces: HashSet<&'a str>,
     singles: HashSet<SingleAvatar>,
 }
 
@@ -792,6 +793,9 @@ fn group_slots(slots: &[AvatarSlot]) -> AvatarTargets<'_> {
             }
             AvatarSlot::Ring => {
                 targets.singles.insert(SingleAvatar::Ring);
+            }
+            AvatarSlot::CallFace(user_id) => {
+                targets.call_faces.insert(user_id.as_str());
             }
             AvatarSlot::User => {
                 targets.singles.insert(SingleAvatar::User);
@@ -936,6 +940,7 @@ fn apply_avatar_ready<B: UiBackend>(
         );
     }
     patch_person_avatars::<B>(&targets, image);
+    call::show_faces::<B>(&targets.call_faces, image);
 }
 
 fn patch_person_avatars<B: UiBackend>(targets: &AvatarTargets<'_>, image: &Image) {

@@ -1190,6 +1190,20 @@ export global CallWords {
         return @tr("Your shared screen");
     }
 
+    public pure function follow-speaker() -> string {
+        return @tr("Follow the speaker");
+    }
+
+    public pure function self-chip(muted: bool, speaking: bool) -> string {
+        if speaking {
+            return @tr("You, speaking");
+        }
+        if muted {
+            return @tr("You, muted");
+        }
+        return @tr("You");
+    }
+
     public pure function tile-title(screen: bool, own: bool, name: string) -> string {
         if screen && own {
             return root.your-screen();

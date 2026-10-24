@@ -487,6 +487,7 @@ export global CallView {
     in property <string> elapsed;
     in property <[CallTileEntry]> stage;
     in property <[CallTileEntry]> tiles;
+    in property <[CallTileEntry]> compact-self;
     in property <[CallPersonEntry]> people;
     in property <[CallDeviceEntry]> microphones;
     in property <[CallDeviceEntry]> speakers;
@@ -500,6 +501,8 @@ export global CallView {
     in property <int> device-news-serial;
     in property <bool> self-view: true;
     in property <bool> share-preview: true;
+    in property <bool> follows-speaker;
+    in property <bool> view-chosen;
     in property <bool> stage-chosen;
     in property <int> share-count;
     in property <string> first-sharer;
