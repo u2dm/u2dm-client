@@ -247,7 +247,10 @@ impl Pump {
             } => self.quality_changed(&participant, quality),
             RoomEvent::ConnectionStateChanged(state) => self.connection_state(state),
             RoomEvent::Reconnecting => self.reconnecting(),
-            RoomEvent::Reconnected => self.sfu_state(SfuState::Connected),
+            RoomEvent::Reconnected => {
+                self.feeds.redeliver(&self.sfu);
+                self.sfu_state(SfuState::Connected);
+            }
             RoomEvent::Disconnected { reason } => {
                 self.sfu_state(SfuState::Disconnected(format!("{reason:?}")));
             }

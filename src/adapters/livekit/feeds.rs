@@ -42,10 +42,35 @@ struct Entry {
     forwarder: Option<JoinHandle<()>>,
 }
 
+impl Entry {
+    fn wanted(&self) -> Option<FrameSize> {
+        self.attachment.as_ref().map(|attachment| attachment.wanted)
+    }
+}
+
 #[derive(Clone)]
 struct Remote {
     track: RemoteVideoTrack,
     publication: RemoteTrackPublication,
+}
+
+impl Remote {
+    fn deliver(&self, feed: &FeedId, wanted: Option<FrameSize>) {
+        let was_delivered = self.track.is_enabled();
+        let dimension = if let Some(size) = wanted {
+            self.track.enable();
+            TrackDimension(size.width, size.height)
+        } else {
+            self.track.disable();
+            self.publication.dimension()
+        };
+        self.publication.update_video_dimensions(dimension);
+        match (was_delivered, wanted.is_some()) {
+            (true, false) => tracing::debug!(%feed, "paused a hidden call video"),
+            (false, true) => tracing::debug!(%feed, "resumed a shown call video"),
+            _ => {}
+        }
+    }
 }
 
 #[derive(Clone)]
@@ -70,11 +95,12 @@ impl Feeds {
     ) {
         let remote = Remote { track, publication };
         let attached = self.with_entry(feed, |entry| {
+            remote.deliver(feed, entry.wanted());
             entry.remote = Some(remote.clone());
-            entry.attachment.clone()
+            entry.attachment.is_some()
         });
-        if let Some(attachment) = attached.flatten() {
-            self.forward(feed, &remote, attachment.wanted);
+        if attached == Some(true) {
+            self.forward(feed, &remote);
         }
     }
 
@@ -107,6 +133,21 @@ impl Feeds {
         }
     }
 
+    pub(super) fn redeliver(&self, sfu: &SfuId) {
+        let prefix = format!("{sfu}{FEED_SEPARATOR}");
+        let Ok(entries) = self.entries.lock() else {
+            return;
+        };
+        for (feed, entry) in entries
+            .iter()
+            .filter(|(feed, _)| feed.as_ref().starts_with(&prefix))
+        {
+            if let Some(remote) = &entry.remote {
+                remote.deliver(feed, entry.wanted());
+            }
+        }
+    }
+
     pub(super) fn clear(&self) {
         if let Ok(mut entries) = self.entries.lock() {
             for entry in entries.values_mut() {
@@ -136,10 +177,7 @@ impl Feeds {
         }
     }
 
-    fn forward(self: &Arc<Self>, feed: &FeedId, remote: &Remote, wanted: FrameSize) {
-        remote
-            .publication
-            .update_video_dimensions(TrackDimension(wanted.width, wanted.height));
+    fn forward(self: &Arc<Self>, feed: &FeedId, remote: &Remote) {
         let Some(runtime) = self.runtime.lock().ok().and_then(|slot| slot.clone()) else {
             tracing::warn!(%feed, "no runtime to show a call video on");
             return;
@@ -171,31 +209,35 @@ impl Feeds {
                 framing,
             });
             stop(&mut entry.forwarder);
-            entry.remote.clone()
-        });
-        if let Some(remote) = remote.flatten() {
-            self.forward(feed, &remote, wanted);
-        }
-    }
-
-    pub(super) fn resize(&self, feed: &FeedId, wanted: FrameSize) {
-        let remote = self.with_entry(feed, |entry| {
-            if let Some(attachment) = entry.attachment.as_mut() {
-                attachment.wanted = wanted;
+            if let Some(remote) = &entry.remote {
+                remote.deliver(feed, Some(wanted));
             }
             entry.remote.clone()
         });
         if let Some(remote) = remote.flatten() {
-            remote
-                .publication
-                .update_video_dimensions(TrackDimension(wanted.width, wanted.height));
+            self.forward(feed, &remote);
         }
+    }
+
+    pub(super) fn resize(&self, feed: &FeedId, wanted: FrameSize) {
+        self.with_entry(feed, |entry| {
+            let Some(attachment) = entry.attachment.as_mut() else {
+                return;
+            };
+            attachment.wanted = wanted;
+            if let Some(remote) = &entry.remote {
+                remote.deliver(feed, Some(wanted));
+            }
+        });
     }
 
     pub(super) fn detach(&self, feed: &FeedId) {
         self.with_entry(feed, |entry| {
             entry.attachment = None;
             stop(&mut entry.forwarder);
+            if let Some(remote) = &entry.remote {
+                remote.deliver(feed, None);
+            }
         });
         self.drop_unused(feed);
     }
