@@ -85,6 +85,8 @@ macro_rules! string_props {
         SheetRoomName CallView "CallView" "sheet-room-name" set_sheet_room_name get_sheet_room_name;
         SheetLeavingId CallView "CallView" "sheet-leaving-id" set_sheet_leaving_id get_sheet_leaving_id;
         SheetLeavingName CallView "CallView" "sheet-leaving-name" set_sheet_leaving_name get_sheet_leaving_name;
+        SheetPreviewFeed CallView "CallView" "sheet-preview-feed" set_sheet_preview_feed get_sheet_preview_feed;
+        SheetPreviewCall CallView "CallView" "sheet-preview-call" set_sheet_preview_call get_sheet_preview_call;
         ActiveRoomId CallView "CallView" "active-room-id" set_active_room_id get_active_room_id;
         ActiveRoomName CallView "CallView" "active-room-name" set_active_room_name get_active_room_name;
         CallElapsed CallView "CallView" "elapsed" set_elapsed get_elapsed;
@@ -239,6 +241,7 @@ macro_rules! simple_callbacks {
         on_open_call_sheet "open-call-sheet" open_call_sheet
             request(room_id "room-id" text, video "video" flag) OpenCallSheet;
         on_close_call_sheet "close-call-sheet" close_call_sheet plain CloseCallSheet;
+        on_sheet_camera "sheet-camera" sheet_camera request(on "on" flag) SheetCamera;
         on_start_call "start-call" start_call
             request(room_id "room-id" text, video "video" flag, microphone "microphone" flag,
                 camera "camera" flag, leaving "leaving" text) StartCall;
@@ -565,6 +568,7 @@ macro_rules! int_props {
         PeopleMore CallView "CallView" "people-more" set_people_more get_people_more;
         MicrophoneChosen CallView "CallView" "microphone-chosen" set_microphone_chosen get_microphone_chosen;
         CameraChosen CallView "CallView" "camera-chosen" set_camera_chosen get_camera_chosen;
+        SpeakerChosen CallView "CallView" "speaker-chosen" set_speaker_chosen get_speaker_chosen;
         DeviceNewsSerial CallView "CallView" "device-news-serial" set_device_news_serial get_device_news_serial;
         CallDeclines WindowView "WindowView" "call-declines" set_call_declines get_call_declines;
         CallAnswers WindowView "WindowView" "call-answers" set_call_answers get_call_answers;
@@ -738,6 +742,11 @@ macro_rules! enum_props {
             CallView "CallView" "sheet-offer" set_sheet_offer get_sheet_offer;
         CallSheetRefusal set_call_sheet_refusal(JoinRefusal)
             CallView "CallView" "sheet-refusal" set_sheet_refusal get_sheet_refusal;
+        CallSheetPreview set_call_sheet_preview(SheetPreviewMark)
+            CallView "CallView" "sheet-preview" set_sheet_preview get_sheet_preview;
+        CallPreviewTrouble set_call_preview_trouble(PreviewTrouble)
+            CallView "CallView" "sheet-preview-trouble" set_sheet_preview_trouble
+            get_sheet_preview_trouble;
         CallPhase set_call_phase(CallPhase)
             CallView "CallView" "phase" set_phase get_phase;
         CallMic set_call_mic(MicrophoneView)
@@ -1480,6 +1489,27 @@ macro_rules! call_offers {
     } };
 }
 pub(crate) use call_offers;
+
+macro_rules! sheet_previews {
+    ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
+        None      None      "none";
+        Starting  Starting  "starting";
+        Local     Local     "local";
+        InCall    InCall    "in-call";
+        Elsewhere Elsewhere "elsewhere";
+        Failed    Failed    "failed";
+    } };
+}
+pub(crate) use sheet_previews;
+
+macro_rules! preview_troubles {
+    ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
+        NoCamera   NoCamera   "no-camera";
+        NotStarted NotStarted "not-started";
+        Stopped    Stopped    "stopped";
+    } };
+}
+pub(crate) use preview_troubles;
 
 macro_rules! call_refusals {
     ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*

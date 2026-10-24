@@ -15,7 +15,7 @@ import {
     CallDeviceEntry,
     UserDeviceEntry,
 } from "./types.slint";
-import { AccountActivity, AccountStep, AttachmentKind, AudioKind, AuthStage, CallCamera, CallDeviceKind, CallDeviceTrouble, CallMic, CallNotice, CallOffer, CallPhase, CallRefusal, CallScreen, CallScreenRefusal, ChildAccess, ConnectionState, CreateRoomStatus, DirectChat, EncryptionActivity, EncryptionStanding, EncryptionStep, IdentityAlertKind, IdentityTrust, InviteAnswer, InviteKind, LoginActivity, LoginMethodKind, LoginPhase, MemberRole, Moderation, NotifyMode, PackSurface, PeopleSearchStatus, PresenceLine, PreviewKind, ReadersStatus, RecoveryStatus, RemovalKind, RoomInfoPlacement, RoomKind, RoomMembership, RoomPreviewStatus, RoomScope, RosterStatus, ServiceKind, SourceEncryption, SourceStatus, SpaceIndexStatus, TimelineState, UpgradeLink, UserMessageKind, VerificationActivity, VerificationPhase, VerifyOffer } from "./enums.slint";
+import { AccountActivity, AccountStep, AttachmentKind, AudioKind, AuthStage, CallCamera, CallDeviceKind, CallDeviceTrouble, CallMic, CallNotice, CallOffer, CallPhase, CallPreviewTrouble, CallRefusal, CallScreen, CallScreenRefusal, CallSheetPreview, ChildAccess, ConnectionState, CreateRoomStatus, DirectChat, EncryptionActivity, EncryptionStanding, EncryptionStep, IdentityAlertKind, IdentityTrust, InviteAnswer, InviteKind, LoginActivity, LoginMethodKind, LoginPhase, MemberRole, Moderation, NotifyMode, PackSurface, PeopleSearchStatus, PresenceLine, PreviewKind, ReadersStatus, RecoveryStatus, RemovalKind, RoomInfoPlacement, RoomKind, RoomMembership, RoomPreviewStatus, RoomScope, RosterStatus, ServiceKind, SourceEncryption, SourceStatus, SpaceIndexStatus, TimelineState, UpgradeLink, UserMessageKind, VerificationActivity, VerificationPhase, VerifyOffer } from "./enums.slint";
 
 export global LoginView {
     in property <LoginPhase> step: LoginPhase.loading;
@@ -459,6 +459,12 @@ export global CallView {
     in property <string> sheet-leaving-id;
     in property <string> sheet-leaving-name;
     in property <bool> sheet-ended;
+    in property <CallSheetPreview> sheet-preview: CallSheetPreview.none;
+    in property <CallPreviewTrouble> sheet-preview-trouble;
+    in property <string> sheet-preview-feed;
+    in property <string> sheet-preview-call;
+    in property <bool> sheet-preview-has-frame;
+    in property <image> sheet-preview-frame;
     in property <bool> active;
     in property <int> active-call;
     in property <string> active-room-id;
@@ -483,6 +489,7 @@ export global CallView {
     in property <[CallDeviceEntry]> cameras;
     in property <int> microphone-chosen: -1;
     in property <int> camera-chosen: -1;
+    in property <int> speaker-chosen: -1;
     in property <CallDeviceKind> device-news-kind;
     in property <CallDeviceTrouble> device-news-trouble;
     in property <string> device-news-name;

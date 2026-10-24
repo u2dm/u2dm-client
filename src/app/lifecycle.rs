@@ -359,6 +359,7 @@ pub(super) fn command_allowed(phase: AppPhase, cmd: &UiCommand) -> bool {
         | UiCommand::SilenceRing
         | UiCommand::OpenCallSheet { .. }
         | UiCommand::CloseCallSheet
+        | UiCommand::SheetCamera(_)
         | UiCommand::StartCall { .. }
         | UiCommand::JoinCall { .. }
         | UiCommand::AnswerCall { .. }

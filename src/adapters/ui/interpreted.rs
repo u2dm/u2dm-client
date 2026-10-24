@@ -29,7 +29,7 @@ use super::dto::{
     CallScreenMark, CallTileDto, CallTileMark, EmojiArt, InviteeDto, LogLineDto, MediaFailureKind,
     MediaState, MemberRowDto, MemberRowKind, MessageDto, PackCellDto, PackRowDto, PackSurface,
     PackTabDto, PollAnswerDto, ReactionDto, ReactorAvatarDto, RoomCallMark, RoomDto, RoomRowKind,
-    SpaceChildDto, SpaceDto, SpoilerState, UserDeviceDto, pack_surface_named,
+    SheetPreviewMark, SpaceChildDto, SpaceDto, SpoilerState, UserDeviceDto, pack_surface_named,
 };
 #[cfg(feature = "demo")]
 use super::dump;
@@ -60,13 +60,13 @@ use super::schema::{
     media_failures, media_states, member_roles, member_row_fields, member_row_kinds,
     message_fields, message_kinds, model_props, notify_modes, pack_cell_fields, pack_origins,
     pack_row_fields, pack_surfaces, pack_tab_fields, pending_moderations, people_search_statuses,
-    poll_answer_fields, poll_phases, presence_lines, preview_kinds, reaction_fields,
-    reaction_sends, reactor_fields, readers_statuses, recovery_statuses, removal_kinds,
-    room_accesses, room_call_marks, room_fields, room_info_placements, room_kinds,
+    poll_answer_fields, poll_phases, presence_lines, preview_kinds, preview_troubles,
+    reaction_fields, reaction_sends, reactor_fields, readers_statuses, recovery_statuses,
+    removal_kinds, room_accesses, room_call_marks, room_fields, room_info_placements, room_kinds,
     room_memberships, room_preview_statuses, room_row_kinds, room_scopes, roster_statuses,
-    send_states, service_kinds, shield_reasons, shields, simple_callbacks, source_encryptions,
-    source_statuses, space_child_fields, space_fields, space_index_statuses, spoiler_states,
-    timeline_states, upgrade_links, user_device_fields, user_message_kinds,
+    send_states, service_kinds, sheet_previews, shield_reasons, shields, simple_callbacks,
+    source_encryptions, source_statuses, space_child_fields, space_fields, space_index_statuses,
+    spoiler_states, timeline_states, upgrade_links, user_device_fields, user_message_kinds,
     verification_activities, verification_phases, verify_offers,
 };
 use super::session::active_models;
@@ -80,9 +80,9 @@ use crate::commands::view::{
     AccountActivity, AccountStep, AppViewState, AttachmentKind, AuthStage, CallPhase, CameraView,
     ChildAccess, CreateRoomStatus, DeviceStatus, DeviceTrouble, DirectChat, EncryptionActivity,
     EncryptionStep, InviteeState, JoinRefusal, LoginActivity, LoginStep, MicrophoneView,
-    PendingAnswer, PendingModeration, PeopleSearchStatus, ReadersStatus, RoomInfoPlacement,
-    RoomPreviewSheet, RoomScope, RosterStatus, SourceState, SpaceIndexStatus, UpgradeLink,
-    VerifyOffer,
+    PendingAnswer, PendingModeration, PeopleSearchStatus, PreviewTrouble, ReadersStatus,
+    RoomInfoPlacement, RoomPreviewSheet, RoomScope, RosterStatus, SourceState, SpaceIndexStatus,
+    UpgradeLink, VerifyOffer,
 };
 use crate::domain::auth::LoginMethod;
 use crate::domain::call::devices::DeviceKind;
@@ -145,6 +145,7 @@ mod names {
         pub const REVEAL_SPOILERS: &str = "reveal-spoilers";
         pub const CALL_TILE_SEEN: &str = "call-tile-seen";
         pub const CALL_MEDIA_SHOWN: &str = "call-media-shown";
+        pub const CALL_PREVIEW_SEEN: &str = "call-preview-seen";
         pub const EMOTE_AT: &str = "emote-at";
         pub const PLACE_EMOTE: &str = "place-emote";
         pub const SCROLL_POSITION_CHANGED: &str = "scroll-position-changed";
@@ -281,6 +282,8 @@ member_row_kinds!(impl_slint_enum MemberRowKind "MemberRowKind";);
 room_row_kinds!(impl_slint_enum RoomRowKind "RoomRowKind";);
 room_call_marks!(impl_slint_enum RoomCallMark "RoomCallMark";);
 call_offers!(impl_slint_enum CallOfferMark "CallOffer";);
+sheet_previews!(impl_slint_enum SheetPreviewMark "CallSheetPreview";);
+preview_troubles!(impl_slint_enum PreviewTrouble "CallPreviewTrouble";);
 call_refusals!(impl_slint_enum JoinRefusal "CallRefusal";);
 call_phases!(impl_slint_enum CallPhase "CallPhase";);
 call_mics!(impl_slint_enum MicrophoneView "CallMic";);
@@ -618,6 +621,26 @@ impl UiProps for ComponentInstance {
         }
     }
 
+    fn apply_call_preview(&self, frame: Option<slint::Image>) {
+        match frame {
+            Some(img) => {
+                set_global(self, "CallView", "sheet-preview-frame", Value::Image(img));
+                set_global(
+                    self,
+                    "CallView",
+                    "sheet-preview-has-frame",
+                    Value::Bool(true),
+                );
+            }
+            None => set_global(
+                self,
+                "CallView",
+                "sheet-preview-has-frame",
+                Value::Bool(false),
+            ),
+        }
+    }
+
     fn apply_room_info_topic(&self, topic: StyledText) {
         set_global(
             self,
@@ -819,6 +842,24 @@ impl UiBackend for InterpretedBackend {
         });
         if let Err(e) = bound {
             tracing::warn!("failed to bind the call tile callback: {e}");
+        }
+    }
+
+    fn bind_call_preview_seen(
+        window: &ComponentInstance,
+        seen: impl Fn(&str, i32, i32, bool) + 'static,
+    ) {
+        let bound = bind_action(window, callback::CALL_PREVIEW_SEEN, move |args| {
+            seen(
+                &string_arg(args, 0),
+                int_arg(args, 1).unwrap_or_default(),
+                int_arg(args, 2).unwrap_or_default(),
+                bool_arg(args, 3),
+            );
+            Value::Void
+        });
+        if let Err(e) = bound {
+            tracing::warn!("failed to bind the camera preview callback: {e}");
         }
     }
 

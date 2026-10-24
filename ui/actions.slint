@@ -180,6 +180,7 @@ export global Actions {
     callback silence-ring();
     callback open-call-sheet(CallSheetRequest);
     callback close-call-sheet();
+    callback sheet-camera(CameraRequest);
     callback start-call(StartCallRequest);
     callback join-call(JoinCallRequest);
     callback answer-call(AnswerCallRequest);
@@ -199,6 +200,7 @@ export global Actions {
     callback show-self-view(SelfViewRequest);
     callback call-tile-seen(string, int, int, bool);
     callback call-media-shown(bool);
+    callback call-preview-seen(string, int, int, bool);
     callback user-activity-changed(bool);
     callback composer-changed(string, bool, int);
     callback keep-draft(ComposerDraft);

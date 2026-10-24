@@ -94,6 +94,7 @@ pub trait UiBackend: Sized + 'static {
     fn bind_browse_packs(window: &Self::Window, browse: impl Fn(PackSurface, &str, i32) + 'static);
     fn bind_reveal_spoilers(window: &Self::Window, reveal: impl Fn(&str) + 'static);
     fn bind_call_tile_seen(window: &Self::Window, seen: impl Fn(&str, i32, i32, bool) + 'static);
+    fn bind_call_preview_seen(window: &Self::Window, seen: impl Fn(&str, i32, i32, bool) + 'static);
     fn bind_call_media_shown(window: &Self::Window, shown: impl Fn(bool) + 'static);
     fn notification_text(window: &Self::Window, words: &NoticeWords<'_>) -> SharedString;
 
@@ -245,6 +246,12 @@ pub fn spawn_event_handler<B: UiBackend>(
     B::bind_call_media_shown(window, move |shown| {
         if let Some(window) = showing.upgrade() {
             call_video::media_shown::<B>(&window, shown);
+        }
+    });
+    let previewing = window.as_weak();
+    B::bind_call_preview_seen(window, move |feed, width, height, shown| {
+        if let Some(window) = previewing.upgrade() {
+            call_video::preview_seen::<B>(&window, feed, width, height, shown);
         }
     });
     follow_activations::<B>(window, notifier.as_ref());

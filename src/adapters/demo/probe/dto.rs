@@ -11,10 +11,10 @@ use crate::commands::view::{
     EncryptionStep, EncryptionView, IdentityAlertView, InvitePeopleView, InviteView, InviteeRow,
     InvitesSection, JoinOffer, JoinRefusal, LeaveSpaceView, LifecycleView, LoginStep, LogoutView,
     MentionsView, MicrophoneView, MissingMedia, NotificationsView, PackView, PaginationView,
-    PinnedView, PresenceView, ReadersView, RemovalView, RoomInfoView, RoomLogView, RoomMenuTarget,
-    RoomPreviewSheet, RoomPreviewView, RosterRow, ScreenView, ShareNews, SourceState,
-    SpaceIndexRow, SpaceIndexView, SpaceMatch, TileKind, TileState, Toast, TrackFile, TypingView,
-    UnsentMessage, UpgradeView, UserInfoView, VideoView,
+    PinnedView, PresenceView, PreviewTrouble, ReadersView, RemovalView, RoomInfoView, RoomLogView,
+    RoomMenuTarget, RoomPreviewSheet, RoomPreviewView, RosterRow, ScreenView, ShareNews,
+    SheetPreview, SourceState, SpaceIndexRow, SpaceIndexView, SpaceMatch, TileKind, TileState,
+    Toast, TrackFile, TypingView, UnsentMessage, UpgradeView, UserInfoView, VideoView,
 };
 use crate::domain::call::ring::RingKind;
 use crate::domain::call::video::ScreenRefusal;
@@ -217,9 +217,18 @@ struct CallSheetDto {
     devices: Option<CallDevicesDto>,
     microphone: bool,
     camera: bool,
+    preview: Option<SheetPreviewDto>,
     leaving: Option<String>,
     leaving_name: Option<String>,
     ended: bool,
+}
+
+#[derive(Serialize)]
+struct SheetPreviewDto {
+    state: &'static str,
+    feed: Option<String>,
+    call: Option<String>,
+    trouble: Option<&'static str>,
 }
 
 #[derive(Serialize)]
@@ -1094,6 +1103,7 @@ fn call_sheet(sheet: &CallSheetView) -> CallSheetDto {
         devices: sheet.devices.as_ref().map(call_devices),
         microphone: sheet.proposed.microphone,
         camera: sheet.proposed.camera,
+        preview: sheet.preview.as_ref().map(sheet_preview),
         leaving: sheet
             .leaving
             .as_ref()
@@ -1103,6 +1113,30 @@ fn call_sheet(sheet: &CallSheetView) -> CallSheetDto {
             .as_ref()
             .map(|leaving| leaving.room_name.clone()),
         ended: sheet.ended,
+    }
+}
+
+fn sheet_preview(preview: &SheetPreview) -> SheetPreviewDto {
+    let (state, call, trouble) = match preview {
+        SheetPreview::Starting => ("starting", None, None),
+        SheetPreview::Local(_) => ("local", None, None),
+        SheetPreview::InCall { room_name, .. } => ("in-call", Some(room_name.clone()), None),
+        SheetPreview::Elsewhere { room_name } => ("elsewhere", Some(room_name.clone()), None),
+        SheetPreview::Failed(trouble) => ("failed", None, Some(preview_trouble_word(*trouble))),
+    };
+    SheetPreviewDto {
+        state,
+        feed: preview.feed().map(ToString::to_string),
+        call,
+        trouble,
+    }
+}
+
+const fn preview_trouble_word(trouble: PreviewTrouble) -> &'static str {
+    match trouble {
+        PreviewTrouble::NoCamera => "no-camera",
+        PreviewTrouble::NotStarted => "not-started",
+        PreviewTrouble::Stopped => "stopped",
     }
 }
 

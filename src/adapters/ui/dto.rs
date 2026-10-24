@@ -21,14 +21,14 @@ use super::richtext::{self, Cover, InlineContent, InlineLine, InlinePiece, RoomW
 use super::schema::{
     call_notices, call_offers, call_screens, call_tile_marks, define_ui_enum, define_ui_names,
     emoji_arts, media_failures, media_states, member_row_kinds, pack_surfaces, room_call_marks,
-    room_row_kinds, spoiler_states, variant_named,
+    room_row_kinds, sheet_previews, spoiler_states, variant_named,
 };
 use super::spoilers::{keep_covered_body, spoilers_on};
 use crate::commands::messages::UserMessageKind;
 use crate::commands::view::{
     CallFailure, CallNotice, CallPerson, CallTile, CantDecrypt, ChildAccess, DeviceOption,
     DeviceStatus, InviteeRow, InviteeState, JoinOffer, MissingMedia, RoomCard, RosterRow,
-    ScreenView, SpaceIndexRow, SpaceMatch, TileKind, TileState,
+    ScreenView, SheetPreview, SpaceIndexRow, SpaceMatch, TileKind, TileState,
 };
 use crate::domain::call::ring::RingKind;
 use crate::domain::departure::{Removal, RemovalKind};
@@ -61,6 +61,7 @@ member_row_kinds!(define_ui_enum MemberRowKind;);
 room_row_kinds!(define_ui_enum RoomRowKind;);
 room_call_marks!(define_ui_enum RoomCallMark;);
 call_offers!(define_ui_enum CallOfferMark;);
+sheet_previews!(define_ui_enum SheetPreviewMark;);
 call_screens!(define_ui_enum CallScreenMark;);
 call_tile_marks!(define_ui_enum CallTileMark;);
 call_notices!(define_ui_enum CallNoticeMark;);
@@ -1933,6 +1934,17 @@ pub const fn call_offer_mark(offer: Option<JoinOffer>) -> CallOfferMark {
         Some(JoinOffer::Join) => CallOfferMark::Join,
         Some(JoinOffer::InCall) => CallOfferMark::InCall,
         Some(JoinOffer::Refused(_)) => CallOfferMark::Refused,
+    }
+}
+
+pub const fn sheet_preview_mark(preview: Option<&SheetPreview>) -> SheetPreviewMark {
+    match preview {
+        None => SheetPreviewMark::None,
+        Some(SheetPreview::Starting) => SheetPreviewMark::Starting,
+        Some(SheetPreview::Local(_)) => SheetPreviewMark::Local,
+        Some(SheetPreview::InCall { .. }) => SheetPreviewMark::InCall,
+        Some(SheetPreview::Elsewhere { .. }) => SheetPreviewMark::Elsewhere,
+        Some(SheetPreview::Failed(_)) => SheetPreviewMark::Failed,
     }
 }
 

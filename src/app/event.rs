@@ -2,6 +2,7 @@ use std::path::PathBuf;
 
 use super::account::AccountOutcome;
 use super::calls::lane::LaneEvent;
+use super::calls::preview::PreviewOutcome;
 use super::encryption::EncryptionOutcome;
 use super::establish::EstablishedSession;
 use super::invites::Answer;
@@ -267,6 +268,10 @@ pub(super) enum CallEvent {
         listing: u64,
         lists: DeviceLists,
     },
+    Preview {
+        preview: u64,
+        outcome: PreviewOutcome,
+    },
 }
 
 impl CallEvent {
@@ -285,7 +290,8 @@ impl CallEvent {
             | Self::RingWindow { .. }
             | Self::Declined { .. }
             | Self::Transports { .. }
-            | Self::DevicesListed { .. } => None,
+            | Self::DevicesListed { .. }
+            | Self::Preview { .. } => None,
         }
     }
 
@@ -305,6 +311,7 @@ impl CallEvent {
             Self::KeysSent { .. } => "CallKeysSent",
             Self::Standings { .. } => "CallStandings",
             Self::DevicesListed { .. } => "CallDevicesListed",
+            Self::Preview { .. } => "CallPreview",
         }
     }
 }

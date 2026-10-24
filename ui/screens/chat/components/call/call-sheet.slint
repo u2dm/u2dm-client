@@ -6,7 +6,7 @@ import { ClickArea } from "../../../../components/a11y.slint";
 import { DialogCard, ModalHost, Placement } from "../../../../components/overlay.slint";
 import { StateLayer } from "../../../../components/state-layer.slint";
 import { AppStyle, Fonts, IconSize, Metrics, Radius, Size, Space, Weight } from "../../../../theme.slint";
-import { CallDeviceKind, CallOffer } from "../../../../enums.slint";
+import { CallDeviceKind, CallOffer, CallSheetPreview } from "../../../../enums.slint";
 import { CallDeviceEntry } from "../../../../types.slint";
 import { CallDevicesMenu } from "./call-devices-menu.slint";
 import { CallView, DirectoryView, SpaceIndexView } from "../../../../views.slint";
@@ -86,6 +86,7 @@ component MediaChoiceRow inherits ClickArea {
 component DeviceLine inherits Rectangle {
     in property <CallDeviceKind> kind;
     in property <int> index;
+    in property <length> inset: Space.md + Metrics.call-control + Space.lg;
 
     out property <length> change-x: change.absolute-position.x;
     out property <length> change-y: change.absolute-position.y;
@@ -94,8 +95,8 @@ component DeviceLine inherits Rectangle {
 
     callback change(bool);
 
-    property <CallDeviceEntry> entry: root.kind == CallDeviceKind.camera
-        ? CallView.cameras[root.index]
+    property <CallDeviceEntry> entry: root.kind == CallDeviceKind.camera ? CallView.cameras[root.index]
+        : root.kind == CallDeviceKind.speaker ? CallView.speakers[root.index]
         : CallView.microphones[root.index];
     property <string> shown: root.index >= 0 ? CallWords.device-chosen(root.entry.status, root.entry.name)
         : root.kind == CallDeviceKind.camera ? @tr("No camera was found")
@@ -106,7 +107,7 @@ component DeviceLine inherits Rectangle {
     }
 
     HorizontalLayout {
-        padding-left: Space.md + Metrics.call-control + Space.lg;
+        padding-left: root.inset;
         padding-right: Space.md;
         spacing: Space.md;
 
@@ -134,6 +135,200 @@ component DeviceLine inherits Rectangle {
     }
 }
 
+component SpeakerLine inherits Rectangle {
+    out property <length> change-x: line.change-x;
+    out property <length> change-y: line.change-y;
+    out property <length> change-width: line.change-width;
+    out property <length> change-height: line.change-height;
+
+    callback change(bool);
+
+    public function focus-change() {
+        line.focus-change();
+    }
+
+    height: Metrics.choice-row;
+
+    HorizontalLayout {
+        padding-left: Space.md;
+        spacing: Space.lg;
+
+        Rectangle {
+            width: Metrics.call-control;
+
+            IconDisplay {
+                icon: IconSet.Volume2;
+                size: IconSize.md;
+                stroke: AppStyle.foreground-muted;
+                accessible-role: none;
+            }
+        }
+
+        VerticalLayout {
+            horizontal-stretch: 1;
+            alignment: center;
+
+            Text {
+                text: CallWords.device-kind(CallDeviceKind.speaker);
+                font-size: Fonts.label;
+                font-weight: Weight.semibold;
+                overflow: elide;
+            }
+
+            line := DeviceLine {
+                height: Size.sm;
+                kind: CallDeviceKind.speaker;
+                index: CallView.speaker-chosen;
+                inset: 0;
+                change(by-keys) => {
+                    root.change(by-keys);
+                }
+            }
+        }
+    }
+}
+
+component CameraPreview inherits Rectangle {
+    out property <length> change-x: change.absolute-position.x;
+    out property <length> change-y: change.absolute-position.y;
+    out property <length> change-width: change.width;
+    out property <length> change-height: change.height;
+    out property <bool> boxed: root.state == CallSheetPreview.starting || root.live;
+
+    callback change-camera(bool);
+    callback without-camera();
+    callback appeared();
+
+    property <CallSheetPreview> state: CallView.sheet-preview;
+    property <bool> live: root.state == CallSheetPreview.local || root.state == CallSheetPreview.in-call;
+    property <bool> failed: root.state == CallSheetPreview.failed;
+    property <bool> pictured: root.live && CallView.sheet-preview-has-frame;
+    property <string> feed: CallView.sheet-preview-feed;
+    property <string> note: CallWords.preview-note(root.state, CallView.sheet-preview-call);
+
+    public function focus-change() {
+        change.take-focus();
+    }
+
+    function report() {
+        if root.feed != "" {
+            Actions.call-preview-seen(
+                root.feed,
+                round(picture.width / 1phx),
+                round(picture.height / 1phx),
+                root.live);
+        }
+    }
+
+    init => {
+        root.report();
+    }
+    changed feed => {
+        root.report();
+    }
+    changed live => {
+        root.report();
+    }
+    changed boxed => {
+        if root.boxed {
+            root.appeared();
+        }
+    }
+
+    height: root.state == CallSheetPreview.none ? 0 : layout.preferred-height;
+    visible: root.state != CallSheetPreview.none;
+
+    layout := VerticalLayout {
+        padding-top: Space.sm;
+        padding-bottom: Space.sm;
+        spacing: Space.sm;
+
+        picture := Rectangle {
+            height: root.boxed ? self.width * 9 / 16 : 0;
+            visible: root.boxed;
+            border-radius: Radius.md;
+            background: AppStyle.control;
+            clip: true;
+            accessible-role: image;
+            accessible-label: @tr("Camera preview");
+
+            changed width => {
+                root.report();
+            }
+
+            if root.pictured: Image {
+                width: parent.width;
+                height: parent.height;
+                source: CallView.sheet-preview-frame;
+                image-fit: cover;
+                transform-scale-x: -1;
+                accessible-role: none;
+            }
+
+            if !root.pictured: IconDisplay {
+                icon: IconSet.Video;
+                size: IconSize.lg;
+                stroke: AppStyle.foreground-faint;
+                accessible-role: none;
+            }
+        }
+
+        Text {
+            height: root.note != "" && !root.failed ? self.preferred-height : 0;
+            visible: root.note != "" && !root.failed;
+            text: root.note;
+            font-family: Fonts.emoji;
+            font-size: Fonts.body-small;
+            color: AppStyle.foreground-muted;
+            horizontal-alignment: center;
+            wrap: word-wrap;
+        }
+
+        VerticalLayout {
+            height: root.failed ? self.preferred-height : 0;
+            visible: root.failed;
+            spacing: Space.sm;
+
+            Text {
+                text: CallWords.preview-trouble(CallView.sheet-preview-trouble);
+                font-size: Fonts.body-small;
+                font-weight: Weight.semibold;
+                color: AppStyle.danger-muted;
+                horizontal-alignment: center;
+                wrap: word-wrap;
+                accessible-live-region: AccessibleLiveness.polite;
+            }
+
+            HorizontalLayout {
+                alignment: center;
+                spacing: Space.lg;
+
+                change := LinkButton {
+                    min-height: Size.sm;
+                    above-modal: true;
+                    text: @tr("Change camera");
+                    label: self.text;
+                    pad: 2 * Space.sm;
+                    clicked => {
+                        root.change-camera(self.has-focus);
+                    }
+                }
+
+                LinkButton {
+                    min-height: Size.sm;
+                    above-modal: true;
+                    text: @tr("Continue without camera");
+                    label: self.text;
+                    pad: 2 * Space.sm;
+                    clicked => {
+                        root.without-camera();
+                    }
+                }
+            }
+        }
+    }
+}
+
 export component CallSheet inherits ModalHost {
     property <length> card-width: min(AppStyle.card-width, root.width - AppStyle.card-inset);
     property <length> body-height: body.preferred-height;
@@ -150,11 +345,23 @@ export component CallSheet inherits ModalHost {
     property <bool> devices-open;
     property <bool> devices-by-keys;
     property <CallDeviceKind> devices-kind: CallDeviceKind.microphone;
-    property <bool> camera-devices: root.devices-kind == CallDeviceKind.camera;
-    property <length> anchor-x: root.camera-devices ? camera-line.change-x : microphone-line.change-x;
-    property <length> anchor-y: root.camera-devices ? camera-line.change-y : microphone-line.change-y;
-    property <length> anchor-width: root.camera-devices ? camera-line.change-width : microphone-line.change-width;
-    property <length> anchor-height: root.camera-devices ? camera-line.change-height : microphone-line.change-height;
+    property <bool> devices-from-preview;
+    property <length> anchor-x: root.devices-from-preview ? preview.change-x
+        : root.devices-kind == CallDeviceKind.camera ? camera-line.change-x
+        : root.devices-kind == CallDeviceKind.speaker ? speaker-line.change-x
+        : microphone-line.change-x;
+    property <length> anchor-y: root.devices-from-preview ? preview.change-y
+        : root.devices-kind == CallDeviceKind.camera ? camera-line.change-y
+        : root.devices-kind == CallDeviceKind.speaker ? speaker-line.change-y
+        : microphone-line.change-y;
+    property <length> anchor-width: root.devices-from-preview ? preview.change-width
+        : root.devices-kind == CallDeviceKind.camera ? camera-line.change-width
+        : root.devices-kind == CallDeviceKind.speaker ? speaker-line.change-width
+        : microphone-line.change-width;
+    property <length> anchor-height: root.devices-from-preview ? preview.change-height
+        : root.devices-kind == CallDeviceKind.camera ? camera-line.change-height
+        : root.devices-kind == CallDeviceKind.speaker ? speaker-line.change-height
+        : microphone-line.change-height;
     property <length> devices-room-above: root.anchor-y - Space.xs - Space.md;
     property <length> devices-room-below: root.height - root.anchor-y - root.anchor-height - Space.xs - Space.md;
     property <bool> devices-above: root.devices-room-above > root.devices-room-below;
@@ -185,6 +392,10 @@ export component CallSheet inherits ModalHost {
         root.camera = CallView.sheet-camera;
     }
 
+    changed camera => {
+        Actions.sheet-camera({ on: root.camera });
+    }
+
     changed refused => {
         if root.refused && (microphone-row.has-focus || camera-row.has-focus) {
             root.focus-first();
@@ -193,19 +404,32 @@ export component CallSheet inherits ModalHost {
         }
     }
 
-    function open-devices(kind: CallDeviceKind, by-keys: bool) {
+    function open-devices(kind: CallDeviceKind, by-keys: bool, from-preview: bool) {
         root.devices-kind = kind;
         root.devices-by-keys = by-keys;
+        root.devices-from-preview = from-preview;
         Actions.refresh-call-devices();
         root.devices-open = true;
     }
 
     function close-devices() {
         root.devices-open = false;
-        if root.camera-devices {
+        if root.devices-from-preview && CallView.sheet-preview == CallSheetPreview.failed {
+            preview.focus-change();
+        } else if root.devices-kind == CallDeviceKind.camera {
             camera-line.focus-change();
+        } else if root.devices-kind == CallDeviceKind.speaker {
+            speaker-line.focus-change();
         } else {
             microphone-line.focus-change();
+        }
+    }
+
+    function reveal(top: length, size: length) {
+        if top < -scroll.content-y {
+            scroll.content-y = -top;
+        } else if top + size > -scroll.content-y + scroll.visible-height {
+            scroll.content-y = -(top + size - scroll.visible-height);
         }
     }
 
@@ -251,7 +475,7 @@ export component CallSheet inherits ModalHost {
         height: root.card-height;
         clip: true;
 
-        ScrollView {
+        scroll := ScrollView {
             x: 0;
             y: 0;
             width: parent.width;
@@ -319,7 +543,15 @@ export component CallSheet inherits ModalHost {
                             kind: CallDeviceKind.microphone;
                             index: CallView.microphone-chosen;
                             change(by-keys) => {
-                                root.open-devices(CallDeviceKind.microphone, by-keys);
+                                root.open-devices(CallDeviceKind.microphone, by-keys, false);
+                            }
+                        }
+
+                        speaker-line := SpeakerLine {
+                            height: root.lists-devices ? Metrics.choice-row : 0;
+                            visible: root.lists-devices;
+                            change(by-keys) => {
+                                root.open-devices(CallDeviceKind.speaker, by-keys, false);
                             }
                         }
 
@@ -338,7 +570,20 @@ export component CallSheet inherits ModalHost {
                             kind: CallDeviceKind.camera;
                             index: CallView.camera-chosen;
                             change(by-keys) => {
-                                root.open-devices(CallDeviceKind.camera, by-keys);
+                                root.open-devices(CallDeviceKind.camera, by-keys, false);
+                            }
+                        }
+
+                        preview := CameraPreview {
+                            change-camera(by-keys) => {
+                                root.open-devices(CallDeviceKind.camera, by-keys, true);
+                            }
+                            without-camera => {
+                                camera-row.take-focus();
+                                root.camera = false;
+                            }
+                            appeared => {
+                                root.reveal(self.absolute-position.y - body.absolute-position.y, self.height);
                             }
                         }
                     }

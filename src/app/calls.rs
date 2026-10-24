@@ -4,6 +4,7 @@ pub(super) mod lane;
 mod media;
 mod offer;
 mod people;
+pub(super) mod preview;
 mod sheet;
 mod stage;
 
@@ -20,7 +21,8 @@ use self::joined::{Effect, Joined, Joining};
 use self::lane::{LEAVE_WAIT, Lane, LaneEvent, MEMBERSHIP_LIFETIME, keep_membership};
 use self::media::MediaDriver;
 use self::offer::{Media, OfferFacts, Transports, offer};
-use self::sheet::Sheet;
+use self::preview::{Preview, PreviewOutcome, PreviewState, PreviewTask};
+use self::sheet::{Sheet, SheetFacts};
 use super::event::{AppEvent, CallEvent, RingDeadline};
 use super::input::EventSender;
 use super::room_directory::RoomDirectory;
@@ -30,7 +32,7 @@ use crate::commands::messages::{UserMessage, UserMessageKind};
 use crate::commands::ui::WindowFocus;
 use crate::commands::view::{
     CallFailure, CallSheetView, CallView, FailedCall, JoinOffer, JoinRefusal, LeavingCall,
-    OfferView, RingView, RoomCallSummary, Toast,
+    OfferView, RingView, RoomCallSummary, SheetPreview, Toast,
 };
 use crate::domain::call::devices::{
     DeviceChoice, DeviceChoices, DeviceKey, DeviceKind, DeviceLists,
@@ -174,6 +176,9 @@ pub(super) struct Calls {
     failed: Option<Failed>,
     sheet: Option<Sheet>,
     sheet_serial: i32,
+    preview: Option<Preview>,
+    previews: u64,
+    preview_tasks: TaskGroup,
     devices: DeviceChoices,
     listed: Option<DeviceLists>,
     listings: u64,
@@ -211,6 +216,9 @@ impl Calls {
             failed: None,
             sheet: None,
             sheet_serial: 0,
+            preview: None,
+            previews: 0,
+            preview_tasks: TaskGroup::new("call-preview"),
             devices: DeviceChoices::default(),
             listed: None,
             listings: 0,
@@ -629,11 +637,107 @@ impl Calls {
         }
         tracing::debug!(%room_id, video, "asking how to join the call");
         self.sheet_serial = self.sheet_serial.wrapping_add(1);
-        self.sheet = Some(Sheet::open(room, video, self.sheet_serial));
+        let draft = self.joined.is_some().then(|| self.devices.clone());
+        self.sheet = Some(Sheet::open(room, video, self.sheet_serial, draft));
         if self.joined.is_none() {
             self.list_devices();
         }
         self.publish(directory);
+    }
+
+    pub(super) fn sheet_camera(&mut self, on: bool, directory: &RoomDirectory) {
+        let Some(sheet) = self.sheet.as_mut().filter(|sheet| sheet.camera != on) else {
+            return;
+        };
+        tracing::debug!(on, "the call sheet's camera is switched");
+        sheet.camera = on;
+        self.publish(directory);
+    }
+
+    pub(super) fn preview_shown(
+        &mut self,
+        preview: u64,
+        outcome: PreviewOutcome,
+        directory: &RoomDirectory,
+    ) {
+        let Some(running) = self
+            .preview
+            .as_mut()
+            .filter(|running| running.serial == preview)
+        else {
+            tracing::debug!(
+                preview,
+                "news of a camera preview that was stopped, dropping"
+            );
+            return;
+        };
+        running.state = match outcome {
+            PreviewOutcome::Shown(feed) => PreviewState::Showing(feed),
+            PreviewOutcome::Failed(trouble) => PreviewState::Failed(trouble),
+        };
+        self.publish(directory);
+    }
+
+    fn follow_preview(&mut self, directory: &RoomDirectory) {
+        let wanted = self.wanted_preview(directory);
+        if self.preview.as_ref().map(|preview| &preview.camera) == wanted.as_ref() {
+            return;
+        }
+        if let Some(preview) = self.preview.take() {
+            preview.stop();
+        }
+        let (Some(camera), Some(port)) = (wanted, self.media.clone()) else {
+            return;
+        };
+        self.previews = self.previews.wrapping_add(1);
+        let task = PreviewTask {
+            port,
+            camera,
+            turn: Arc::clone(&self.media_turn),
+            events: self.events.clone(),
+            serial: self.previews,
+        };
+        let (preview, run) = Preview::start(task, self.preview_tasks.token());
+        self.preview_tasks.spawn(run);
+        self.preview = Some(preview);
+    }
+
+    fn wanted_preview(&self, directory: &RoomDirectory) -> Option<DeviceChoice> {
+        if self.joined.is_some() {
+            return None;
+        }
+        let sheet = self.sheet.as_ref().filter(|sheet| sheet.camera)?;
+        let room = directory.room(&sheet.room_id)?;
+        let refused = matches!(self.offer_for(room), JoinOffer::Refused(_));
+        (!refused).then(|| self.devices.camera.clone())
+    }
+
+    fn sheet_preview(&self, sheet: &Sheet, offer: JoinOffer) -> Option<SheetPreview> {
+        if !sheet.camera || matches!(offer, JoinOffer::Refused(_)) {
+            return None;
+        }
+        if let Some(joined) = &self.joined {
+            let camera = &sheet.draft.as_ref()?.camera;
+            let room_name = joined.room_name().to_owned();
+            return Some(match joined.camera_showing(camera) {
+                Some(feed) => SheetPreview::InCall { feed, room_name },
+                None => SheetPreview::Elsewhere { room_name },
+            });
+        }
+        Some(match &self.preview.as_ref()?.state {
+            PreviewState::Starting => SheetPreview::Starting,
+            PreviewState::Showing(feed) => SheetPreview::Local(feed.clone()),
+            PreviewState::Failed(trouble) => SheetPreview::Failed(*trouble),
+        })
+    }
+
+    fn sheet_devices(&self) -> Option<Devices> {
+        let Some(joined) = &self.joined else {
+            return self.listed_devices();
+        };
+        let mut devices = Devices::new(self.sheet.as_ref()?.draft.clone()?);
+        devices.listed(joined.device_lists());
+        Some(devices)
     }
 
     fn list_devices(&mut self) {
@@ -798,7 +902,14 @@ impl Calls {
                 return;
             }
         };
-        self.sheet = None;
+        let sheet = self.sheet.take();
+        if let Some(draft) = sheet
+            .filter(|sheet| sheet.room_id == request.room_id)
+            .and_then(|sheet| sheet.draft)
+        {
+            tracing::info!("the call opens on the devices chosen in its sheet");
+            self.devices = draft;
+        }
         self.failed = None;
         if self.rings_in(&request.room_id) {
             self.stop(RingEnd::Answered);
@@ -998,6 +1109,14 @@ impl Calls {
         key: Option<&DeviceKey>,
         directory: &RoomDirectory,
     ) {
+        if self
+            .sheet
+            .as_ref()
+            .is_some_and(|sheet| sheet.draft.is_some())
+        {
+            self.choose_for_next_call(kind, key, directory);
+            return;
+        }
         let Some(joined) = self.joined.as_mut() else {
             let choice = match key {
                 None => Some(DeviceChoice::Default),
@@ -1018,6 +1137,26 @@ impl Calls {
         let _in_call = span.enter();
         if let Some(choice) = joined.use_device(kind, key) {
             *self.devices.of_mut(kind) = choice;
+        }
+        self.publish(directory);
+    }
+
+    fn choose_for_next_call(
+        &mut self,
+        kind: DeviceKind,
+        key: Option<&DeviceKey>,
+        directory: &RoomDirectory,
+    ) {
+        let Some(choice) = self
+            .sheet_devices()
+            .and_then(|devices| devices.choice_for(kind, key))
+        else {
+            tracing::debug!(%kind, "no device of that key to choose for the next call");
+            return;
+        };
+        tracing::info!(%kind, device = ?choice.key(), "choosing a device for the call the sheet would join");
+        if let Some(draft) = self.sheet.as_mut().and_then(|sheet| sheet.draft.as_mut()) {
+            *draft.of_mut(kind) = choice;
         }
         self.publish(directory);
     }
@@ -1075,6 +1214,11 @@ impl Calls {
         tracing::info!(call = joined.call, room_id = %joined.room_id, "leaving the call");
         joined.order_farewell();
         self.key_tasks.cancel_and_detach();
+        if let Some(draft) = self.sheet.as_mut().and_then(|sheet| sheet.draft.take()) {
+            tracing::info!("the call sheet's devices are chosen, now that no call runs");
+            self.devices = draft;
+            self.list_devices();
+        }
         if let Some(ended) = ended {
             show_toast(
                 self.output.as_ref(),
@@ -1141,7 +1285,8 @@ impl Calls {
             | CallEvent::RingWindow { .. }
             | CallEvent::Declined { .. }
             | CallEvent::Transports { .. }
-            | CallEvent::DevicesListed { .. } => {}
+            | CallEvent::DevicesListed { .. }
+            | CallEvent::Preview { .. } => {}
         }
     }
 
@@ -1361,6 +1506,7 @@ impl Calls {
             self.lane.restart(),
             self.media_tasks.restart(),
             self.key_tasks.restart(),
+            self.preview_tasks.restart(),
         );
         self.reset();
     }
@@ -1381,6 +1527,7 @@ impl Calls {
             self.lane.shutdown(),
             self.media_tasks.shutdown(),
             self.key_tasks.shutdown(),
+            self.preview_tasks.shutdown(),
         );
         self.reset();
     }
@@ -1396,6 +1543,7 @@ impl Calls {
         self.joined = None;
         self.failed = None;
         self.sheet = None;
+        self.preview = None;
         self.stale_checked = false;
         self.published = CallView::default();
     }
@@ -1452,6 +1600,7 @@ impl Calls {
         if let Some(joined) = self.joined.as_mut() {
             joined.settle_stage();
         }
+        self.follow_preview(directory);
         let view = CallView {
             ring: self.ring_view(directory),
             here: self.here(directory),
@@ -1488,12 +1637,15 @@ impl Calls {
                 room_id: joined.room_id.clone(),
                 room_name: joined.room_name().to_owned(),
             });
-        let me = self.own.as_ref().map(|own| &*own.user);
-        let devices = self.joined.as_ref().map_or_else(
-            || self.listed_devices().map(|devices| devices.view()),
-            |joined| Some(joined.devices_view()),
-        );
-        Some(sheet.view(room, self.offer_for(room), leaving, me, devices))
+        let offer = self.offer_for(room);
+        let facts = SheetFacts {
+            offer,
+            leaving,
+            me: self.own.as_ref().map(|own| &*own.user),
+            devices: self.sheet_devices().map(|devices| devices.view()),
+            preview: self.sheet_preview(sheet, offer),
+        };
+        Some(sheet.view(room, facts))
     }
 
     fn failed_view(&self, directory: &RoomDirectory) -> Option<FailedCall> {

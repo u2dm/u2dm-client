@@ -9,7 +9,7 @@ use std::thread;
 use std::time::Duration;
 
 use async_trait::async_trait;
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, oneshot};
 use tokio::task::JoinHandle;
 use tokio::time::{Instant, sleep, sleep_until};
 use tokio_util::task::AbortOnDropHandle;
@@ -26,11 +26,13 @@ use crate::domain::call::identity::{MediaIdentity, spellings};
 use crate::domain::call::keys::{KeyIndex, MediaKey};
 use crate::domain::call::media::{Decryption, MediaEvent, MediaSetup, Microphone, SfuState};
 use crate::domain::call::sfu::{SfuGrant, SfuId, SfuRole};
-use crate::domain::call::video::{Camera, FeedId, FrameSize, Framing, ScreenRefusal, ScreenShare};
+use crate::domain::call::video::{
+    Camera, FeedId, FrameSize, Framing, PreviewFailure, ScreenRefusal, ScreenShare,
+};
 use crate::domain::room::RoomId;
 use crate::error::Result;
 use crate::ports::call::{
-    CallMediaPort, CallVideoPort, ConnectedSfu, FrameSink, MediaSession, VideoFrame,
+    CallMediaPort, CallVideoPort, CameraPreview, ConnectedSfu, FrameSink, MediaSession, VideoFrame,
 };
 
 const DEMO_FPS: u64 = 10;
@@ -208,6 +210,29 @@ impl CallMediaPort for DemoCallMedia {
         Ok(plugged_in())
     }
 
+    async fn preview_camera(
+        &self,
+        camera: DeviceChoice,
+        lost: oneshot::Sender<String>,
+    ) -> result::Result<Box<dyn CameraPreview>, PreviewFailure> {
+        calls::pause().await;
+        let lists = plugged_in();
+        let Some(device) = camera.resolve(DeviceKind::Camera, &lists.connected.camera, None) else {
+            tracing::info!("demo: there is no camera to preview");
+            return Err(PreviewFailure::NoCamera);
+        };
+        if calls::scenario().camera_fails {
+            tracing::info!(device = device.name, "demo: the camera to preview is busy");
+            return Err(PreviewFailure::NotStarted(
+                "demo: the camera is busy".into(),
+            ));
+        }
+        tracing::info!(device = device.name, "demo: the camera preview starts");
+        Ok(Box::new(DemoPreview {
+            losing: calls::scenario().preview_lost.then(|| lose_preview(lost)),
+        }))
+    }
+
     async fn open(
         &self,
         setup: MediaSetup,
@@ -236,6 +261,37 @@ impl CallMediaPort for DemoCallMedia {
             screen: None,
             devices,
         }))
+    }
+}
+
+struct DemoPreview {
+    losing: Option<JoinHandle<()>>,
+}
+
+fn lose_preview(lost: oneshot::Sender<String>) -> JoinHandle<()> {
+    tokio::spawn(async move {
+        sleep(CAMERA_LOST_AFTER).await;
+        tracing::info!("demo: the previewed camera stops sending pictures");
+        if lost
+            .send("demo: the camera stopped sending pictures".into())
+            .is_err()
+        {
+            tracing::debug!("demo: the camera preview had already closed");
+        }
+    })
+}
+
+#[async_trait]
+impl CameraPreview for DemoPreview {
+    fn feed(&self) -> FeedId {
+        FeedId::new(calls::PREVIEW_FEED)
+    }
+
+    async fn close(self: Box<Self>) {
+        if let Some(losing) = &self.losing {
+            losing.abort();
+        }
+        tracing::info!("demo: the camera preview stops");
     }
 }
 

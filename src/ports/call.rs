@@ -1,25 +1,37 @@
+use std::result;
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, oneshot};
 
 use crate::domain::call::devices::{DeviceChoice, DeviceKind, DeviceLists};
 use crate::domain::call::identity::MediaIdentity;
 use crate::domain::call::keys::{KeyIndex, MediaKey};
 use crate::domain::call::media::{MediaEvent, MediaSetup};
 use crate::domain::call::sfu::{SfuGrant, SfuId, SfuRole};
-use crate::domain::call::video::{FeedId, FrameSize, Framing};
+use crate::domain::call::video::{FeedId, FrameSize, Framing, PreviewFailure};
 use crate::error::Result;
 
 #[async_trait]
 pub trait CallMediaPort: Send + Sync {
     fn broken(&self) -> Option<String>;
     async fn list_devices(&self) -> Result<DeviceLists>;
+    async fn preview_camera(
+        &self,
+        camera: DeviceChoice,
+        lost: oneshot::Sender<String>,
+    ) -> result::Result<Box<dyn CameraPreview>, PreviewFailure>;
     async fn open(
         &self,
         setup: MediaSetup,
         events_tx: mpsc::UnboundedSender<MediaEvent>,
     ) -> Result<Box<dyn MediaSession>>;
+}
+
+#[async_trait]
+pub trait CameraPreview: Send {
+    fn feed(&self) -> FeedId;
+    async fn close(self: Box<Self>);
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

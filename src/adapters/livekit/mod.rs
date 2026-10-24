@@ -8,24 +8,25 @@ mod reception;
 mod screen;
 mod session;
 
+use std::result;
 use std::sync::{Arc, Mutex, Once};
 
 use async_trait::async_trait;
 use livekit::prelude::PlatformAudio;
 use rustls::crypto::aws_lc_rs;
 use tokio::runtime::Handle;
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, oneshot};
 use tokio::task::spawn_blocking;
 use tracing::Instrument;
 
 use self::devices::Listing;
 use self::feeds::Feeds;
 use self::session::LiveKitSession;
-use crate::domain::call::devices::DeviceLists;
+use crate::domain::call::devices::{DeviceChoice, DeviceLists};
 use crate::domain::call::media::{MediaEvent, MediaSetup};
-use crate::domain::call::video::{FeedId, FrameSize, Framing, ScreenShare};
+use crate::domain::call::video::{FeedId, FrameSize, Framing, PreviewFailure, ScreenShare};
 use crate::error::{AppError, Result};
-use crate::ports::call::{CallMediaPort, CallVideoPort, FrameSink, MediaSession};
+use crate::ports::call::{CallMediaPort, CallVideoPort, CameraPreview, FrameSink, MediaSession};
 
 static TLS_PROVIDER: Once = Once::new();
 
@@ -75,6 +76,15 @@ impl CallMediaPort for LiveKitMedia {
         listing
             .map(Listing::into_lists)
             .map_err(|e| AppError::Other(format!("the audio devices did not open: {e}")))
+    }
+
+    async fn preview_camera(
+        &self,
+        camera: DeviceChoice,
+        lost: oneshot::Sender<String>,
+    ) -> result::Result<Box<dyn CameraPreview>, PreviewFailure> {
+        let preview = camera::preview(camera, Arc::clone(&self.feeds), lost).await?;
+        Ok(Box::new(preview))
     }
 
     async fn open(

@@ -16,8 +16,9 @@ use u2dm_ui::{
     CallDeviceEntry, CallDeviceKind as UiCallDeviceKind, CallDeviceStatus as UiCallDeviceStatus,
     CallDeviceTrouble as UiCallDeviceTrouble, CallMic as UiCallMic, CallNotice as UiCallNotice,
     CallOffer as UiCallOffer, CallPersonEntry, CallPhase as UiCallPhase,
-    CallRefusal as UiCallRefusal, CallScreen as UiCallScreen,
-    CallScreenRefusal as UiCallScreenRefusal, CallTileEntry, CallTileState as UiCallTileState,
+    CallPreviewTrouble as UiCallPreviewTrouble, CallRefusal as UiCallRefusal,
+    CallScreen as UiCallScreen, CallScreenRefusal as UiCallScreenRefusal,
+    CallSheetPreview as UiCallSheetPreview, CallTileEntry, CallTileState as UiCallTileState,
     CallView, ChildAccess as UiChildAccess, ComposerDraft, ConnectionState,
     CreateRoomStatus as UiCreateRoomStatus, CreateRoomView,
     DecryptionFailure as UiDecryptionFailure, Delivery as UiDelivery, DeviceTrust as UiDeviceTrust,
@@ -68,7 +69,7 @@ use super::dto::{
     CallScreenMark, CallTileDto, CallTileMark, EmojiArt, InviteeDto, LogLineDto, MediaFailureKind,
     MediaState, MemberRowDto, MemberRowKind, MessageDto, PackCellDto, PackRowDto, PackSurface,
     PackTabDto, PollAnswerDto, ReactionDto, ReactorAvatarDto, RoomCallMark, RoomDto, RoomRowKind,
-    SpaceChildDto, SpaceDto, SpoilerState, UserDeviceDto, pack_surface_named,
+    SheetPreviewMark, SpaceChildDto, SpaceDto, SpoilerState, UserDeviceDto, pack_surface_named,
 };
 #[cfg(feature = "demo")]
 use super::dump;
@@ -99,14 +100,14 @@ use super::schema::{
     media_failures, media_states, member_roles, member_row_fields, member_row_kinds,
     message_fields, message_kinds, model_props, notify_modes, pack_cell_fields, pack_origins,
     pack_row_fields, pack_surfaces, pack_tab_fields, pending_moderations, people_search_statuses,
-    poll_answer_fields, poll_phases, presence_lines, preview_kinds, reaction_fields,
-    reaction_sends, reactor_fields, readers_statuses, recovery_statuses, removal_kinds,
-    room_accesses, room_call_marks, room_fields, room_info_placements, room_kinds,
+    poll_answer_fields, poll_phases, presence_lines, preview_kinds, preview_troubles,
+    reaction_fields, reaction_sends, reactor_fields, readers_statuses, recovery_statuses,
+    removal_kinds, room_accesses, room_call_marks, room_fields, room_info_placements, room_kinds,
     room_memberships, room_preview_statuses, room_row_kinds, room_scopes, roster_statuses,
-    send_states, service_kinds, shield_reasons, shields, simple_callbacks, source_encryptions,
-    source_statuses, space_child_fields, space_fields, space_index_statuses, spoiler_states,
-    string_props, timeline_states, upgrade_links, user_device_fields, user_message_kinds,
-    verification_activities, verification_phases, verify_offers,
+    send_states, service_kinds, sheet_previews, shield_reasons, shields, simple_callbacks,
+    source_encryptions, source_statuses, space_child_fields, space_fields, space_index_statuses,
+    spoiler_states, string_props, timeline_states, upgrade_links, user_device_fields,
+    user_message_kinds, verification_activities, verification_phases, verify_offers,
 };
 use super::session::active_models;
 use super::video::{self, millis_to_duration};
@@ -119,9 +120,9 @@ use crate::commands::view::{
     AccountActivity, AccountStep, AppViewState, AttachmentKind, AuthStage, CallPhase, CameraView,
     ChildAccess, CreateRoomStatus, DeviceStatus, DeviceTrouble, DirectChat, EncryptionActivity,
     EncryptionStep, InviteeState, JoinRefusal, LoginActivity, LoginStep, MicrophoneView,
-    PendingAnswer, PendingModeration, PeopleSearchStatus, ReadersStatus, RoomInfoPlacement,
-    RoomPreviewSheet, RoomScope, RosterStatus, SourceState, SpaceIndexStatus, UpgradeLink,
-    VerifyOffer,
+    PendingAnswer, PendingModeration, PeopleSearchStatus, PreviewTrouble, ReadersStatus,
+    RoomInfoPlacement, RoomPreviewSheet, RoomScope, RosterStatus, SourceState, SpaceIndexStatus,
+    UpgradeLink, VerifyOffer,
 };
 use crate::domain::auth::LoginMethod;
 use crate::domain::call::devices::DeviceKind;
@@ -338,6 +339,17 @@ impl UiProps for AppWindow {
         }
     }
 
+    fn apply_call_preview(&self, frame: Option<Image>) {
+        let call = self.global::<CallView>();
+        match frame {
+            Some(img) => {
+                call.set_sheet_preview_frame(img);
+                call.set_sheet_preview_has_frame(true);
+            }
+            None => call.set_sheet_preview_has_frame(false),
+        }
+    }
+
     fn apply_user_info_avatar(&self, avatar: Option<Image>) {
         let user_info = self.global::<UserInfoView>();
         match avatar {
@@ -478,6 +490,8 @@ member_row_kinds!(impl_slint_enum MemberRowKind UiMemberRowKind;);
 room_row_kinds!(impl_slint_enum RoomRowKind UiRoomRowKind;);
 room_call_marks!(impl_slint_enum RoomCallMark UiRoomCallMark;);
 call_offers!(impl_slint_enum CallOfferMark UiCallOffer;);
+sheet_previews!(impl_slint_enum SheetPreviewMark UiCallSheetPreview;);
+preview_troubles!(impl_slint_enum PreviewTrouble UiCallPreviewTrouble;);
 call_refusals!(impl_slint_enum JoinRefusal UiCallRefusal;);
 call_phases!(impl_slint_enum CallPhase UiCallPhase;);
 call_mics!(impl_slint_enum MicrophoneView UiCallMic;);
@@ -692,6 +706,12 @@ impl UiBackend for CompiledBackend {
 
     fn bind_call_media_shown(window: &AppWindow, shown: impl Fn(bool) + 'static) {
         actions(window).on_call_media_shown(shown);
+    }
+
+    fn bind_call_preview_seen(window: &AppWindow, seen: impl Fn(&str, i32, i32, bool) + 'static) {
+        actions(window).on_call_preview_seen(move |feed, width, height, shown| {
+            seen(&feed, width, height, shown);
+        });
     }
 
     fn notification_text(window: &AppWindow, words: &NoticeWords<'_>) -> SharedString {

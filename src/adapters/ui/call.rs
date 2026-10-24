@@ -6,7 +6,9 @@ use slint::{ComponentHandle, SharedString, Timer, TimerMode, VecModel};
 
 use super::backend::{Models, UiBackend, UiEventContext};
 use super::decode::{AvatarSlot, load_avatar_async};
-use super::dto::{call_failure_message, call_notice_mark, call_offer_mark, call_screen_mark};
+use super::dto::{
+    call_failure_message, call_notice_mark, call_offer_mark, call_screen_mark, sheet_preview_mark,
+};
 use super::fields::CallTileFields;
 use super::notices::NoticeWords;
 use super::present::{avatar_color_index, avatar_initials};
@@ -18,7 +20,7 @@ use crate::commands::messages::UserMessageKind;
 use crate::commands::view::{
     ActiveCall, AppViewState, CallDevices, CallNotice, CallPerson, CallPhase, CallSheetView,
     CallTile, CallView, DeviceNews, FailedCall, JoinOffer, OfferView, RingView, RoomCallSummary,
-    ScreenView, ShareNews, TileKind,
+    ScreenView, ShareNews, SheetPreview, TileKind,
 };
 use crate::domain::call::devices::DeviceKind;
 use crate::domain::call::video::{FeedId, Framing};
@@ -59,6 +61,11 @@ pub fn apply_call<B: UiBackend>(
     }
     if last.is_none_or(|last| last.sheet != next.sheet) {
         apply_sheet(w, next.sheet.as_ref());
+    }
+    let last_preview = last.and_then(previewed_feed);
+    let next_preview = previewed_feed(next);
+    if last.is_none() || last_preview != next_preview {
+        call_video::follow_preview::<B>(w, next_preview);
     }
     let last_active = last.and_then(|last| last.active.as_ref());
     if last_active != next.active.as_ref() {
@@ -124,6 +131,7 @@ fn apply_offer(w: &impl UiProps, offer: Option<&OfferView>) {
 fn apply_sheet(w: &impl UiProps, sheet: Option<&CallSheetView>) {
     let Some(sheet) = sheet else {
         w.set_bool(BoolProp::SheetVisible, false);
+        apply_sheet_preview(w, None);
         return;
     };
     w.set_string(
@@ -152,6 +160,7 @@ fn apply_sheet(w: &impl UiProps, sheet: Option<&CallSheetView>) {
     );
     w.set_bool(BoolProp::SheetMicrophone, sheet.proposed.microphone);
     w.set_bool(BoolProp::SheetCamera, sheet.proposed.camera);
+    apply_sheet_preview(w, sheet.preview.as_ref());
     let leaving = sheet.leaving.as_ref();
     w.set_string(
         StringProp::SheetLeavingId,
@@ -168,6 +177,33 @@ fn apply_sheet(w: &impl UiProps, sheet: Option<&CallSheetView>) {
     w.set_bool(BoolProp::SheetEnded, sheet.ended);
     w.set_int(IntProp::SheetSerial, sheet.serial);
     w.set_bool(BoolProp::SheetVisible, true);
+}
+
+fn apply_sheet_preview(w: &impl UiProps, preview: Option<&SheetPreview>) {
+    let call = match preview {
+        Some(SheetPreview::InCall { room_name, .. } | SheetPreview::Elsewhere { room_name }) => {
+            SharedString::from(room_name)
+        }
+        _ => SharedString::new(),
+    };
+    w.set_string(StringProp::SheetPreviewCall, call);
+    w.set_string(
+        StringProp::SheetPreviewFeed,
+        preview
+            .and_then(SheetPreview::feed)
+            .map_or_else(SharedString::new, |feed| SharedString::from(feed.as_ref())),
+    );
+    if let Some(SheetPreview::Failed(trouble)) = preview {
+        w.set_call_preview_trouble(*trouble);
+    }
+    w.set_call_sheet_preview(sheet_preview_mark(preview));
+}
+
+fn previewed_feed(call: &CallView) -> Option<&FeedId> {
+    call.sheet
+        .as_ref()
+        .and_then(|sheet| sheet.preview.as_ref())
+        .and_then(SheetPreview::feed)
 }
 
 fn apply_active<B: UiBackend>(w: &B::Window, last: Option<&ActiveCall>, next: Option<&ActiveCall>) {
@@ -308,10 +344,10 @@ fn apply_share_news(w: &impl UiProps, news: Option<&ShareNews>, who: StringProp,
 }
 
 fn shown_devices(call: &CallView) -> Option<&CallDevices> {
-    call.active
-        .as_ref()
-        .map(|active| &active.devices)
-        .or_else(|| call.sheet.as_ref().and_then(|sheet| sheet.devices.as_ref()))
+    match &call.sheet {
+        Some(sheet) => sheet.devices.as_ref(),
+        None => call.active.as_ref().map(|active| &active.devices),
+    }
 }
 
 fn apply_device_rows<B: UiBackend>(
@@ -337,6 +373,10 @@ fn apply_device_rows<B: UiBackend>(
     w.set_int(
         IntProp::CameraChosen,
         chosen_index(next, DeviceKind::Camera),
+    );
+    w.set_int(
+        IntProp::SpeakerChosen,
+        chosen_index(next, DeviceKind::Speaker),
     );
 }
 

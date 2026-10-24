@@ -323,8 +323,34 @@ pub struct CallSheetView {
     pub others: Arc<[NamedUser]>,
     pub devices: Option<CallDevices>,
     pub proposed: MediaChoice,
+    pub preview: Option<SheetPreview>,
     pub leaving: Option<LeavingCall>,
     pub ended: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SheetPreview {
+    Starting,
+    Local(FeedId),
+    InCall { feed: FeedId, room_name: String },
+    Elsewhere { room_name: String },
+    Failed(PreviewTrouble),
+}
+
+impl SheetPreview {
+    pub const fn feed(&self) -> Option<&FeedId> {
+        match self {
+            Self::Local(feed) | Self::InCall { feed, .. } => Some(feed),
+            Self::Starting | Self::Elsewhere { .. } | Self::Failed(_) => None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PreviewTrouble {
+    NoCamera,
+    NotStarted,
+    Stopped,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

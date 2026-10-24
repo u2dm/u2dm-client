@@ -11,10 +11,12 @@ use super::media::MediaCommand;
 use super::people;
 use super::stage::Stage;
 use crate::commands::view::{
-    ActiveCall, CallDevices, CallFailure, CallNotice, CallPhase, CallTile, CameraView, CantDecrypt,
+    ActiveCall, CallFailure, CallNotice, CallPhase, CallTile, CameraView, CantDecrypt,
     MicrophoneView, MissingMedia, ScreenView, TileKind, TileState,
 };
-use crate::domain::call::devices::{DeviceChoice, DeviceChoices, DeviceKey, DeviceKind};
+use crate::domain::call::devices::{
+    DeviceChoice, DeviceChoices, DeviceKey, DeviceKind, DeviceLists,
+};
 use crate::domain::call::identity::{IdentityTable, MediaIdentity, member_spellings, spellings};
 use crate::domain::call::keys::{
     KeyAction, KeyExchange, KeyHolder, MediaKey, OWN_KEY_LEN, ReceivedKey,
@@ -853,8 +855,17 @@ impl Joined {
         self.command(MediaCommand::RefreshDevices);
     }
 
-    pub(super) fn devices_view(&self) -> CallDevices {
-        self.devices.view()
+    pub(super) fn device_lists(&self) -> DeviceLists {
+        self.devices.lists().clone()
+    }
+
+    pub(super) fn camera_showing(&self, camera: &DeviceChoice) -> Option<FeedId> {
+        let OwnCamera::On(feed) = &self.camera else {
+            return None;
+        };
+        self.devices
+            .uses_alike(DeviceKind::Camera, camera)
+            .then(|| feed.clone())
     }
 
     pub(super) fn set_screen_share(&mut self, on: bool) {

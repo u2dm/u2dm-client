@@ -191,6 +191,11 @@ pub const CATALOG: Scenarios = Scenarios {
             note: "Try again starts it for good",
         },
         Flag {
+            value: "preview-lost",
+            effect: "the camera the call sheet previews stops sending pictures 3s after it starts",
+            note: "switching the sheet's camera off and on starts it again",
+        },
+        Flag {
             value: "screen-share",
             effect: "with active: Nadia shares her screen in the Design Team call",
             note: "her share takes the stage and the others move to the strip or rail beside it",
@@ -326,6 +331,7 @@ pub const UNPLUGGED_AFTER: Duration = Duration::from_secs(3);
 pub const PLUGGED_BACK_AFTER: Duration = Duration::from_secs(4);
 pub const SHARE_ENDS_AFTER: Duration = Duration::from_secs(5);
 pub const OWN_CAMERA_FEED: &str = "demo-own-camera";
+pub const PREVIEW_FEED: &str = "demo-camera-preview";
 const OTHER_OWN_DEVICE: &str = "DEMOOTHERDEVICE";
 const DEMO_SFU: &str = "https://sfu.demo.local/livekit/jwt";
 const REMOTE_SFU: &str = "https://sfu.remote.demo/livekit/jwt";
@@ -380,6 +386,7 @@ pub struct Scenario {
     pub camera_fails: bool,
     pub microphone_fails: bool,
     camera_lost: bool,
+    pub preview_lost: bool,
     screen_share: bool,
     screen_share_ends: bool,
     screen_share_restarts: bool,
@@ -450,6 +457,7 @@ fn apply(scenario: &mut Scenario, flag: &str) {
         "camera-fails" => scenario.camera_fails = true,
         "microphone-fails" => scenario.microphone_fails = true,
         "camera-lost" => scenario.camera_lost = true,
+        "preview-lost" => scenario.preview_lost = true,
         "screen-share" => scenario.screen_share = true,
         "screen-share-ends" => scenario.screen_share_ends = true,
         "screen-share-restarts" => scenario.screen_share_restarts = true,

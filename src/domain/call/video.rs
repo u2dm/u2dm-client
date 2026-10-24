@@ -95,6 +95,22 @@ impl fmt::Display for Camera {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(not(any(feature = "calls", feature = "demo")), allow(dead_code))]
+pub enum PreviewFailure {
+    NoCamera,
+    NotStarted(String),
+}
+
+impl fmt::Display for PreviewFailure {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::NoCamera => f.write_str("no camera was found"),
+            Self::NotStarted(why) => f.write_str(why),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[cfg_attr(not(any(feature = "calls", feature = "demo")), allow(dead_code))]
 pub enum ScreenRefusal {

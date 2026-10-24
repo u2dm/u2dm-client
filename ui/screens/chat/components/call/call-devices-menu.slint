@@ -45,7 +45,8 @@ component DeviceChoice inherits ChoiceRow {
 
     callback roved(length, length);
 
-    height: root.detail == "" ? Metrics.call-device-row : Metrics.choice-row;
+    height: max(root.detail == "" ? Metrics.call-device-row : Metrics.choice-row, self.content-height + Space.md);
+    wraps: true;
     text: CallWords.device-name(root.entry.status, root.entry.name);
     detail: CallWords.device-detail(root.entry.status, root.entry.name);
     checked: root.entry.chosen;

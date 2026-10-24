@@ -34,8 +34,7 @@ impl Listing {
                 .playout_devices()
                 .map(|device| (device.index, device.name)),
         );
-        let cameras = cameras();
-        let camera_names = numbered(cameras.iter().map(|camera| camera.name.clone()));
+        let (cameras, listed_cameras) = listed_cameras();
         let lists = DeviceLists {
             connected: ByKind {
                 microphone: microphones
@@ -43,14 +42,7 @@ impl Listing {
                     .map(|entry| entry.device.clone())
                     .collect(),
                 speaker: speakers.iter().map(|entry| entry.device.clone()).collect(),
-                camera: cameras
-                    .iter()
-                    .zip(camera_names)
-                    .map(|(camera, name)| MediaDevice {
-                        key: DeviceKey::new(camera.key.clone()),
-                        name,
-                    })
-                    .collect(),
+                camera: listed_cameras,
             },
             defaults: ByKind {
                 microphone: default_microphone,
@@ -91,6 +83,20 @@ impl Listing {
             .find(|camera| camera.key == device.key.as_ref())
             .cloned()
     }
+}
+
+pub(super) fn listed_cameras() -> (Vec<CameraDevice>, Vec<MediaDevice>) {
+    let cameras = cameras();
+    let names = numbered(cameras.iter().map(|camera| camera.name.clone()));
+    let listed = cameras
+        .iter()
+        .zip(names)
+        .map(|(camera, name)| MediaDevice {
+            key: DeviceKey::new(camera.key.clone()),
+            name,
+        })
+        .collect();
+    (cameras, listed)
 }
 
 fn indexed(listed: impl Iterator<Item = (usize, String)>) -> (Option<String>, Vec<Indexed>) {

@@ -1,6 +1,6 @@
 use slint::{Image, Rgb8Pixel, SharedPixelBuffer, SharedString, StyledText};
 
-use super::dto::{CallNoticeMark, CallOfferMark, CallScreenMark, PackSurface};
+use super::dto::{CallNoticeMark, CallOfferMark, CallScreenMark, PackSurface, SheetPreviewMark};
 use super::present::{IdentityAlertKind, ServiceKind, VerifyStep};
 use super::schema::{bool_props, enum_props, int_props, string_props};
 use crate::app::input::CommandSender;
@@ -11,8 +11,8 @@ use crate::commands::view::{
     AccountActivity, AccountStep, AttachmentKind, AuthStage, CallPhase, CameraView, ChildAccess,
     CreateRoomStatus, DeviceTrouble, DirectChat, EncryptionActivity, EncryptionStep, JoinRefusal,
     LoginActivity, LoginStep, MicrophoneView, PendingAnswer, PendingModeration, PeopleSearchStatus,
-    ReadersStatus, RoomInfoPlacement, RoomPreviewSheet, RoomScope, RosterStatus, SourceState,
-    SpaceIndexStatus, UpgradeLink, VerifyOffer,
+    PreviewTrouble, ReadersStatus, RoomInfoPlacement, RoomPreviewSheet, RoomScope, RosterStatus,
+    SourceState, SpaceIndexStatus, UpgradeLink, VerifyOffer,
 };
 use crate::domain::auth::LoginMethod;
 use crate::domain::call::devices::DeviceKind;
@@ -96,6 +96,7 @@ pub trait UiProps {
     fn apply_removal_avatar(&self, avatar: Option<Image>);
     fn apply_room_preview_avatar(&self, avatar: Option<Image>);
     fn apply_ring_avatar(&self, avatar: Option<Image>);
+    fn apply_call_preview(&self, frame: Option<Image>);
     fn apply_login_messages(&self, messages: &[UserMessage]);
     fn apply_emoji_model(&self, emojis: &[DomainVerificationEmoji]);
     fn clear_emoji_model(&self);

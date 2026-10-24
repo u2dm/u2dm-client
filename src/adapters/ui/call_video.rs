@@ -7,6 +7,7 @@ use slint::{ComponentHandle, Image, Model, Rgba8Pixel, SharedPixelBuffer, VecMod
 
 use super::backend::UiBackend;
 use super::fields::CallTileFields;
+use super::props::UiProps;
 use crate::domain::call::video::{FeedId, FrameSize, Framing};
 use crate::ports::call::{CallVideoPort, FrameSink, VideoFrame};
 
@@ -22,7 +23,21 @@ struct Feeds {
     media_shown: bool,
     tiled: HashMap<FeedId, Framing>,
     seen: HashMap<FeedId, FrameSize>,
+    preview: Preview,
     shown: HashMap<FeedId, Shown>,
+}
+
+#[derive(Default)]
+struct Preview {
+    feed: Option<FeedId>,
+    seen: Option<(FeedId, FrameSize)>,
+}
+
+impl Preview {
+    fn wanted(&self, feed: &FeedId) -> Option<FrameSize> {
+        let (seen, size) = self.seen.as_ref()?;
+        (self.feed.as_ref() == Some(feed) && seen == feed).then_some(*size)
+    }
 }
 
 struct Shown {
@@ -52,9 +67,15 @@ impl Feeds {
                 self.shown.remove(feed);
             }
         }
+        let previewed = self
+            .preview
+            .feed
+            .iter()
+            .filter(|feed| !self.tiled.contains_key(*feed));
         let wanted: Vec<(FeedId, FrameSize, Framing)> = self
             .tiled
             .keys()
+            .chain(previewed)
             .filter_map(|feed| {
                 let (size, framing) = self.wanted(feed)?;
                 Some((feed.clone(), size, framing))
@@ -86,11 +107,24 @@ impl Feeds {
     }
 
     fn wanted(&self, feed: &FeedId) -> Option<(FrameSize, Framing)> {
+        match (self.on_a_tile(feed), self.preview.wanted(feed)) {
+            (Some((tile, framing)), Some(preview)) => Some((larger(tile, preview), framing)),
+            (Some(tile), None) => Some(tile),
+            (None, Some(preview)) => Some((preview, Framing::Cover)),
+            (None, None) => None,
+        }
+    }
+
+    fn on_a_tile(&self, feed: &FeedId) -> Option<(FrameSize, Framing)> {
         if !self.media_shown {
             return None;
         }
         Some((*self.seen.get(feed)?, *self.tiled.get(feed)?))
     }
+}
+
+fn larger(one: FrameSize, other: FrameSize) -> FrameSize {
+    FrameSize::new(one.width.max(other.width), one.height.max(other.height))
 }
 
 pub fn install(port: Option<Arc<dyn CallVideoPort>>) {
@@ -123,6 +157,29 @@ pub fn seen<B: UiBackend>(window: &B::Window, feed: &str, width: i32, height: i3
             state.seen.remove(&feed);
         }
     });
+}
+
+pub fn preview_seen<B: UiBackend>(
+    window: &B::Window,
+    feed: &str,
+    width: i32,
+    height: i32,
+    shown: bool,
+) {
+    let feed = FeedId::new(feed);
+    let size = FrameSize::new(
+        u32::try_from(width).unwrap_or(0).max(1),
+        u32::try_from(height).unwrap_or(0).max(1),
+    );
+    settle_with::<B>(window, |state| {
+        state.preview.seen = shown.then_some((feed, size));
+    });
+}
+
+pub fn follow_preview<B: UiBackend>(window: &B::Window, feed: Option<&FeedId>) {
+    tracing::debug!(feed = ?feed, "the call sheet previews a camera");
+    settle_with::<B>(window, |state| state.preview.feed = feed.cloned());
+    window.apply_call_preview(feed.and_then(|feed| last_frame(feed.as_ref())));
 }
 
 pub fn media_shown<B: UiBackend>(window: &B::Window, on: bool) {
@@ -206,9 +263,9 @@ fn sink<B: UiBackend>(weak: slint::Weak<B::Window>, feed: FeedId, attachment: u6
         }
         let landed = Arc::clone(&in_flight);
         let feed = feed.clone();
-        let posted = weak.upgrade_in_event_loop(move |_| {
+        let posted = weak.upgrade_in_event_loop(move |window| {
             landed.store(false, Ordering::Release);
-            show::<B>(&feed, attachment, pixels);
+            show::<B>(&window, &feed, attachment, pixels);
         });
         if posted.is_err() {
             in_flight.store(false, Ordering::Release);
@@ -216,18 +273,31 @@ fn sink<B: UiBackend>(weak: slint::Weak<B::Window>, feed: FeedId, attachment: u6
     })
 }
 
-fn show<B: UiBackend>(feed: &FeedId, attachment: u64, pixels: SharedPixelBuffer<Rgba8Pixel>) {
+fn show<B: UiBackend>(
+    window: &B::Window,
+    feed: &FeedId,
+    attachment: u64,
+    pixels: SharedPixelBuffer<Rgba8Pixel>,
+) {
     let image = Image::from_rgba8(pixels);
-    let current = FEEDS.with(|cell| match cell.borrow_mut().shown.get_mut(feed) {
-        Some(entry) if entry.attachment == attachment => {
-            entry.frame = Some(image.clone());
-            entry.frames = entry.frames.saturating_add(1);
-            true
-        }
-        _ => false,
+    let (current, previewed) = FEEDS.with(|cell| {
+        let mut state = cell.borrow_mut();
+        let previewed = state.preview.feed.as_ref() == Some(feed);
+        let current = match state.shown.get_mut(feed) {
+            Some(entry) if entry.attachment == attachment => {
+                entry.frame = Some(image.clone());
+                entry.frames = entry.frames.saturating_add(1);
+                true
+            }
+            _ => false,
+        };
+        (current, previewed)
     });
     if !current {
         return;
+    }
+    if previewed {
+        window.apply_call_preview(Some(image.clone()));
     }
     let models = B::models();
     show_in::<B>(&models.call_stage, feed, &image);

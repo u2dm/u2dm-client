@@ -1,4 +1,4 @@
-import { CallCamera, CallDeviceKind, CallDeviceStatus, CallDeviceTrouble, CallMic, CallNotice, CallPhase, CallRefusal, CallScreen, CallScreenRefusal, CallTileState, Delivery, EmojiArt, MediaFailure, PresenceLine, PreviewKind, RoomCallMark, ServiceKind, ShieldReason, UpgradeLink, UserMessageKind } from "./enums.slint";
+import { CallCamera, CallDeviceKind, CallDeviceStatus, CallDeviceTrouble, CallMic, CallNotice, CallPhase, CallPreviewTrouble, CallRefusal, CallScreen, CallScreenRefusal, CallSheetPreview, CallTileState, Delivery, EmojiArt, MediaFailure, PresenceLine, PreviewKind, RoomCallMark, ServiceKind, ShieldReason, UpgradeLink, UserMessageKind } from "./enums.slint";
 import { CallStates } from "./call-states.slint";
 
 export global UserMessages {
@@ -1352,7 +1352,36 @@ export global CallWords {
         if kind == CallDeviceKind.camera {
             return @tr("Change the camera");
         }
+        if kind == CallDeviceKind.speaker {
+            return @tr("Change the speaker");
+        }
         return @tr("Change the microphone");
+    }
+
+    public pure function preview-note(preview: CallSheetPreview, call: string) -> string {
+        if preview == CallSheetPreview.starting {
+            return @tr("Starting your camera…");
+        }
+        if preview == CallSheetPreview.local {
+            return @tr("Only you can see this until you join");
+        }
+        if preview == CallSheetPreview.in-call {
+            return @tr("Camera is on in {}", call);
+        }
+        if preview == CallSheetPreview.elsewhere {
+            return @tr("You can check this camera after you leave {}", call);
+        }
+        return "";
+    }
+
+    public pure function preview-trouble(trouble: CallPreviewTrouble) -> string {
+        if trouble == CallPreviewTrouble.no-camera {
+            return @tr("No camera was found");
+        }
+        if trouble == CallPreviewTrouble.stopped {
+            return @tr("Your camera stopped sending pictures");
+        }
+        return @tr("Your camera could not be started");
     }
 
     public pure function device-label(kind: CallDeviceKind, status: CallDeviceStatus, name: string) -> string {

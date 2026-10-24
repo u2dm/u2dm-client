@@ -880,6 +880,7 @@ impl AppService {
             | UiCommand::SilenceRing
             | UiCommand::OpenCallSheet { .. }
             | UiCommand::CloseCallSheet
+            | UiCommand::SheetCamera(_)
             | UiCommand::StartCall { .. }
             | UiCommand::JoinCall { .. }
             | UiCommand::AnswerCall { .. }
@@ -2981,6 +2982,10 @@ impl AppService {
                 self.calls
                     .devices_listed(listing, lists, &self.room_directory);
             }
+            CallEvent::Preview { preview, outcome } => {
+                self.calls
+                    .preview_shown(preview, outcome, &self.room_directory);
+            }
             event => {
                 if event.call().is_some_and(|call| self.calls.is_current(call)) {
                     self.calls.call_event(event, &self.room_directory);
@@ -3003,6 +3008,7 @@ impl AppService {
                 self.calls.open_sheet(&room_id, video, directory);
             }
             UiCommand::CloseCallSheet => self.calls.close_sheet(directory),
+            UiCommand::SheetCamera(on) => self.calls.sheet_camera(on, directory),
             UiCommand::StartCall {
                 room_id,
                 video,

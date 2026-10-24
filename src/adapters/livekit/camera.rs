@@ -1,20 +1,25 @@
 use std::sync::Arc;
 use std::time::Instant;
 
+use async_trait::async_trait;
 use livekit::options::{TrackPublishOptions, VideoCodec, VideoEncoding, VideoPreset};
 use livekit::prelude::{LocalTrack, LocalVideoTrack, Room, TrackSource};
 use livekit::webrtc::video_frame::{I420Buffer, VideoFrame, VideoRotation};
 use livekit::webrtc::video_source::native::NativeVideoSource;
 use livekit::webrtc::video_source::{RtcVideoSource, VideoResolution};
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, oneshot};
 use tokio::task::spawn_blocking;
 
+use super::devices::listed_cameras;
 use super::feeds::Feeds;
 use crate::adapters::video::camera::{CameraDevice, Capture, Planes};
+use crate::domain::call::devices::{DeviceChoice, DeviceKind};
 use crate::domain::call::media::MediaEvent;
-use crate::domain::call::video::{Camera, FeedId};
+use crate::domain::call::video::{Camera, FeedId, PreviewFailure};
+use crate::ports::call::CameraPreview;
 
 pub(super) const OWN_FEED: &str = "own-camera";
+const PREVIEW_FEED: &str = "camera-preview";
 const TRACK_NAME: &str = "camera";
 const CAPTURED: VideoResolution = VideoResolution {
     width: 1280,
@@ -150,6 +155,63 @@ impl OwnCamera {
         if let Err(e) = unpublished {
             tracing::debug!("the camera track did not unpublish: {e}");
         }
+    }
+}
+
+pub(super) struct LocalPreview {
+    capture: Option<Capture>,
+}
+
+pub(super) async fn preview(
+    choice: DeviceChoice,
+    feeds: Arc<Feeds>,
+    lost: oneshot::Sender<String>,
+) -> Result<LocalPreview, PreviewFailure> {
+    let started = spawn_blocking(move || {
+        let device = chosen_camera(&choice).ok_or(PreviewFailure::NoCamera)?;
+        tracing::info!(device = %device.path.display(), name = device.name, "previewing the camera");
+        let lost = move |why: String| {
+            if lost.send(why).is_err() {
+                tracing::debug!("the camera preview had already closed");
+            }
+        };
+        Capture::start(&device, preview_pump(feeds), lost).map_err(PreviewFailure::NotStarted)
+    })
+    .await
+    .map_err(|e| PreviewFailure::NotStarted(format!("the camera did not start: {e}")))?;
+    Ok(LocalPreview {
+        capture: Some(started?),
+    })
+}
+
+fn chosen_camera(choice: &DeviceChoice) -> Option<CameraDevice> {
+    let (cameras, listed) = listed_cameras();
+    let chosen = choice.resolve(DeviceKind::Camera, &listed, None)?;
+    cameras
+        .into_iter()
+        .find(|camera| camera.key == chosen.key.as_ref())
+}
+
+fn preview_pump(feeds: Arc<Feeds>) -> impl FnMut(&Planes<'_>) + Send + 'static {
+    let feed = FeedId::new(PREVIEW_FEED);
+    move |planes: &Planes<'_>| {
+        let mut buffer = I420Buffer::new(planes.width, planes.height);
+        copy_planes(&mut buffer, planes);
+        feeds.push_local(&feed, &buffer);
+    }
+}
+
+#[async_trait]
+impl CameraPreview for LocalPreview {
+    fn feed(&self) -> FeedId {
+        FeedId::new(PREVIEW_FEED)
+    }
+
+    async fn close(mut self: Box<Self>) {
+        if let Some(capture) = self.capture.take() {
+            release(capture).await;
+        }
+        tracing::info!("stopped previewing the camera");
     }
 }
 

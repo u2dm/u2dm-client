@@ -199,6 +199,10 @@ pub struct CallDump {
     pub sheet_microphone: bool,
     pub sheet_camera: bool,
     pub sheet_leaving: String,
+    pub sheet_preview: String,
+    pub sheet_preview_feed: String,
+    pub sheet_preview_call: String,
+    pub sheet_preview_frames: u64,
     pub stage: Vec<CallTileDump>,
     pub stage_chosen: bool,
     pub tiles: Vec<CallTileDump>,
@@ -455,6 +459,12 @@ fn call_view<B: UiBackend>(window: &B::Window) -> CallDump {
         sheet_microphone: window.get_bool(BoolProp::SheetMicrophone),
         sheet_camera: window.get_bool(BoolProp::SheetCamera),
         sheet_leaving: window.get_string(StringProp::SheetLeavingId).to_string(),
+        sheet_preview: window.get_enum(EnumProp::CallSheetPreview).to_string(),
+        sheet_preview_feed: window.get_string(StringProp::SheetPreviewFeed).to_string(),
+        sheet_preview_call: window.get_string(StringProp::SheetPreviewCall).to_string(),
+        sheet_preview_frames: call_video::frames_of(
+            &window.get_string(StringProp::SheetPreviewFeed),
+        ),
         stage: B::models()
             .call_stage
             .iter()

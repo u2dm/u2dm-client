@@ -198,6 +198,10 @@ pub fn set_camera(tx: &Tx, on: bool) {
     send_command(tx, UiCommand::SetCamera(on));
 }
 
+pub fn sheet_camera(tx: &Tx, on: bool) {
+    send_command(tx, UiCommand::SheetCamera(on));
+}
+
 pub fn share_screen(tx: &Tx, on: bool) {
     send_command(tx, UiCommand::ShareScreen(on));
 }

@@ -70,6 +70,17 @@ impl Devices {
         self.lists = lists;
     }
 
+    pub(super) const fn lists(&self) -> &DeviceLists {
+        &self.lists
+    }
+
+    pub(super) fn uses_alike(&self, kind: DeviceKind, other: &DeviceChoice) -> bool {
+        let connected = self.lists.connected.of(kind);
+        let failed = self.failed.of(kind).as_ref();
+        let used = self.choices.of(kind).resolve(kind, connected, failed);
+        used.is_some() && used == other.resolve(kind, connected, failed)
+    }
+
     fn lost(&self, kind: DeviceKind, now: &DeviceLists) -> Option<MediaDevice> {
         let DeviceChoice::Device(chosen) = self.choices.of(kind) else {
             return None;
