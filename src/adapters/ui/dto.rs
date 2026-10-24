@@ -623,6 +623,8 @@ pub struct CallTileDto {
     pub feed: SharedString,
     pub has_frame: bool,
     pub frame: Option<Image>,
+    pub source_width: i32,
+    pub source_height: i32,
     pub mirrored: bool,
     pub screen: bool,
 }
@@ -1828,7 +1830,9 @@ pub fn call_tile_to_dto(tile: &CallTile) -> CallTileDto {
             .map_or_else(SharedString::new, |feed| SharedString::from(feed.as_ref())),
         has_frame: false,
         frame: None,
-        mirrored: tile.own && tile.kind == TileKind::Person,
+        source_width: 0,
+        source_height: 0,
+        mirrored: tile.is_self_view(),
         screen: tile.kind == TileKind::Screen,
     }
 }

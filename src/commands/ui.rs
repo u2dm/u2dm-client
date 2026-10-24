@@ -428,6 +428,7 @@ pub enum UiCommand {
     SetCamera(bool),
     #[strum(to_string = "ShareScreen({0})")]
     ShareScreen(bool),
+    ChangeScreenShare,
     #[strum(to_string = "UseCallDevice({kind})")]
     UseCallDevice {
         kind: DeviceKind,
@@ -441,6 +442,8 @@ pub enum UiCommand {
     ViewCallShare,
     #[strum(to_string = "ShowSelfView({0})")]
     ShowSelfView(bool),
+    #[strum(to_string = "ShowSharePreview({0})")]
+    ShowSharePreview(bool),
     DismissToast,
     Logout,
     ConfirmLogout,
@@ -632,6 +635,7 @@ impl UiCommand {
             | Self::SetMicrophone(_)
             | Self::SetCamera(_)
             | Self::ShareScreen(_)
+            | Self::ChangeScreenShare
             | Self::UseCallDevice { .. }
             | Self::RefreshCallDevices
             | Self::FocusCallTile(_)
@@ -639,6 +643,7 @@ impl UiCommand {
             | Self::ShowCallGallery
             | Self::ViewCallShare
             | Self::ShowSelfView(_)
+            | Self::ShowSharePreview(_)
             | Self::DismissToast
             | Self::Logout
             | Self::ConfirmLogout

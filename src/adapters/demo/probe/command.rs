@@ -162,6 +162,7 @@ pub enum ProbeCommand {
     ShareScreen {
         on: bool,
     },
+    ChangeScreenShare,
     UseCallDevice {
         #[serde(deserialize_with = "device_kind")]
         kind: DeviceKind,
@@ -176,6 +177,9 @@ pub enum ProbeCommand {
     ShowCallGallery,
     ViewCallShare,
     ShowSelfView {
+        on: bool,
+    },
+    ShowSharePreview {
         on: bool,
     },
     JoinSuccessor {
@@ -941,6 +945,7 @@ pub fn to_driven(command: ProbeCommand, selected: Selection<'_>) -> Result<Drive
         ProbeCommand::SetMicrophone { on } => UiCommand::SetMicrophone(on),
         ProbeCommand::SetCamera { on } => UiCommand::SetCamera(on),
         ProbeCommand::ShareScreen { on } => UiCommand::ShareScreen(on),
+        ProbeCommand::ChangeScreenShare => UiCommand::ChangeScreenShare,
         ProbeCommand::UseCallDevice { kind, key } => UiCommand::UseCallDevice {
             kind,
             key: key.filter(|key| !key.is_empty()).map(DeviceKey::new),
@@ -951,6 +956,7 @@ pub fn to_driven(command: ProbeCommand, selected: Selection<'_>) -> Result<Drive
         ProbeCommand::ShowCallGallery => UiCommand::ShowCallGallery,
         ProbeCommand::ViewCallShare => UiCommand::ViewCallShare,
         ProbeCommand::ShowSelfView { on } => UiCommand::ShowSelfView(on),
+        ProbeCommand::ShowSharePreview { on } => UiCommand::ShowSharePreview(on),
         ProbeCommand::JoinSuccessor { room_id } => {
             return in_room(room_id, selected, UiCommand::JoinSuccessor);
         }

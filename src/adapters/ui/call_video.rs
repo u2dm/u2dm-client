@@ -8,7 +8,7 @@ use slint::{ComponentHandle, Image, Model, Rgba8Pixel, SharedPixelBuffer, VecMod
 use super::backend::UiBackend;
 use super::fields::CallTileFields;
 use super::props::UiProps;
-use crate::domain::call::video::{FeedId, FrameSize, Framing};
+use crate::domain::call::video::{FeedId, FrameSize, Framing, LARGEST_SHOWN};
 use crate::ports::call::{CallVideoPort, FrameSink, VideoFrame};
 
 thread_local! {
@@ -44,6 +44,7 @@ struct Shown {
     attachment: u64,
     wanted: FrameSize,
     frame: Option<Image>,
+    source: FrameSize,
     frames: u64,
 }
 
@@ -96,6 +97,7 @@ impl Feeds {
                             attachment,
                             wanted: size,
                             frame: None,
+                            source: FrameSize::new(0, 0),
                             frames: 0,
                         },
                     );
@@ -144,12 +146,17 @@ pub fn follow<B: UiBackend>(window: &B::Window, feeds: &[(FeedId, Framing)]) {
     });
 }
 
-pub fn seen<B: UiBackend>(window: &B::Window, feed: &str, width: i32, height: i32, shown: bool) {
-    let feed = FeedId::new(feed);
-    let size = FrameSize::new(
+fn asked(width: i32, height: i32) -> FrameSize {
+    FrameSize::new(
         u32::try_from(width).unwrap_or(0).max(1),
         u32::try_from(height).unwrap_or(0).max(1),
-    );
+    )
+    .framed(LARGEST_SHOWN, Framing::Contain)
+}
+
+pub fn seen<B: UiBackend>(window: &B::Window, feed: &str, width: i32, height: i32, shown: bool) {
+    let feed = FeedId::new(feed);
+    let size = asked(width, height);
     settle_with::<B>(window, |state| {
         if shown {
             state.seen.insert(feed, size);
@@ -167,10 +174,7 @@ pub fn preview_seen<B: UiBackend>(
     shown: bool,
 ) {
     let feed = FeedId::new(feed);
-    let size = FrameSize::new(
-        u32::try_from(width).unwrap_or(0).max(1),
-        u32::try_from(height).unwrap_or(0).max(1),
-    );
+    let size = asked(width, height);
     settle_with::<B>(window, |state| {
         state.preview.seen = shown.then_some((feed, size));
     });
@@ -221,6 +225,24 @@ pub fn last_frame(feed: &str) -> Option<Image> {
     })
 }
 
+pub fn show_last<B: UiBackend>(tile: &mut B::CallTile) {
+    let last = FEEDS.with(|cell| {
+        let state = cell.borrow();
+        let shown = state.shown.get(&FeedId::new(tile.feed()))?;
+        Some((shown.frame.clone()?, shown.source))
+    });
+    if let Some((frame, source)) = last {
+        tile.set_frame(frame);
+        tile.set_has_frame(true);
+        put_source::<B>(tile, source);
+    }
+}
+
+fn put_source<B: UiBackend>(tile: &mut B::CallTile, source: FrameSize) {
+    tile.set_source_width(i32::try_from(source.width).unwrap_or(i32::MAX));
+    tile.set_source_height(i32::try_from(source.height).unwrap_or(i32::MAX));
+}
+
 #[cfg(feature = "demo")]
 pub fn frames_of(feed: &str) -> u64 {
     FEEDS.with(|cell| {
@@ -228,6 +250,16 @@ pub fn frames_of(feed: &str) -> u64 {
             .shown
             .get(&FeedId::new(feed))
             .map_or(0, |entry| entry.frames)
+    })
+}
+
+#[cfg(feature = "demo")]
+pub fn wanted_of(feed: &str) -> Option<FrameSize> {
+    FEEDS.with(|cell| {
+        cell.borrow()
+            .shown
+            .get(&FeedId::new(feed))
+            .map(|entry| entry.wanted)
     })
 }
 
@@ -256,6 +288,7 @@ fn sink<B: UiBackend>(weak: slint::Weak<B::Window>, feed: FeedId, attachment: u6
             return;
         }
         let size = frame.size();
+        let source = frame.source();
         let mut pixels = SharedPixelBuffer::<Rgba8Pixel>::new(size.width, size.height);
         if !frame.write_rgba(pixels.make_mut_bytes()) {
             in_flight.store(false, Ordering::Release);
@@ -265,7 +298,7 @@ fn sink<B: UiBackend>(weak: slint::Weak<B::Window>, feed: FeedId, attachment: u6
         let feed = feed.clone();
         let posted = weak.upgrade_in_event_loop(move |window| {
             landed.store(false, Ordering::Release);
-            show::<B>(&window, &feed, attachment, pixels);
+            show::<B>(&window, &feed, attachment, pixels, source);
         });
         if posted.is_err() {
             in_flight.store(false, Ordering::Release);
@@ -278,6 +311,7 @@ fn show<B: UiBackend>(
     feed: &FeedId,
     attachment: u64,
     pixels: SharedPixelBuffer<Rgba8Pixel>,
+    source: FrameSize,
 ) {
     let image = Image::from_rgba8(pixels);
     let (current, previewed) = FEEDS.with(|cell| {
@@ -286,6 +320,7 @@ fn show<B: UiBackend>(
         let current = match state.shown.get_mut(feed) {
             Some(entry) if entry.attachment == attachment => {
                 entry.frame = Some(image.clone());
+                entry.source = source;
                 entry.frames = entry.frames.saturating_add(1);
                 true
             }
@@ -300,11 +335,16 @@ fn show<B: UiBackend>(
         window.apply_call_preview(Some(image.clone()));
     }
     let models = B::models();
-    show_in::<B>(&models.call_stage, feed, &image);
-    show_in::<B>(&models.call_tiles, feed, &image);
+    show_in::<B>(&models.call_stage, feed, &image, source);
+    show_in::<B>(&models.call_tiles, feed, &image, source);
 }
 
-fn show_in<B: UiBackend>(tiles: &VecModel<B::CallTile>, feed: &FeedId, image: &Image) {
+fn show_in<B: UiBackend>(
+    tiles: &VecModel<B::CallTile>,
+    feed: &FeedId,
+    image: &Image,
+    source: FrameSize,
+) {
     for row in 0..tiles.row_count() {
         let Some(mut tile) = tiles.row_data(row) else {
             continue;
@@ -314,6 +354,7 @@ fn show_in<B: UiBackend>(tiles: &VecModel<B::CallTile>, feed: &FeedId, image: &I
         }
         tile.set_frame(image.clone());
         tile.set_has_frame(true);
+        put_source::<B>(&mut tile, source);
         tiles.set_row_data(row, tile);
     }
 }

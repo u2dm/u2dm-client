@@ -5,11 +5,12 @@ import { RovingKeys } from "../../../../components/a11y.slint";
 import { MenuRow } from "../../../../components/menu-row.slint";
 import { PickerCard } from "../../../../components/overlay.slint";
 import { Actions } from "../../../../actions.slint";
+import { CallScreen } from "../../../../enums.slint";
 import { CallMode, CallPanel } from "../../../../local.slint";
 import { CallView } from "../../../../views.slint";
 import { AppStyle, Metrics, Space, Stroke } from "../../../../theme.slint";
 
-enum CallViewChoice { call-and-chat, call-only, chat-only, gallery, focus, strip, self-view, fit }
+enum CallViewChoice { call-and-chat, call-only, chat-only, gallery, focus, strip, self-view, share-preview, fit }
 
 export component CallViewMenu inherits PickerCard {
     in property <bool> beside-chat;
@@ -18,9 +19,14 @@ export component CallViewMenu inherits PickerCard {
     callback chose();
 
     property <bool> focused: CallView.stage.length > 0;
+    property <bool> sharing: CallView.screen == CallScreen.on;
     property <[CallViewChoice]> modes: [CallViewChoice.call-and-chat, CallViewChoice.call-only, CallViewChoice.chat-only];
-    property <[CallViewChoice]> views: root.focused
+    property <[CallViewChoice]> views: root.focused && root.sharing
+        ? [CallViewChoice.gallery, CallViewChoice.focus, CallViewChoice.strip, CallViewChoice.self-view, CallViewChoice.share-preview, CallViewChoice.fit]
+        : root.focused
         ? [CallViewChoice.gallery, CallViewChoice.focus, CallViewChoice.strip, CallViewChoice.self-view, CallViewChoice.fit]
+        : root.sharing
+        ? [CallViewChoice.gallery, CallViewChoice.focus, CallViewChoice.self-view, CallViewChoice.share-preview, CallViewChoice.fit]
         : [CallViewChoice.gallery, CallViewChoice.focus, CallViewChoice.self-view, CallViewChoice.fit];
     property <int> cursor: -1;
     property <bool> keys-focused: keys.has-focus;
@@ -52,6 +58,9 @@ export component CallViewMenu inherits PickerCard {
         if choice == CallViewChoice.self-view {
             return CallView.self-view ? IconSet.EyeOff : IconSet.Eye;
         }
+        if choice == CallViewChoice.share-preview {
+            return CallView.share-preview ? IconSet.EyeOff : IconSet.Eye;
+        }
         return CallPanel.fits-videos ? IconSet.Expand : IconSet.Shrink;
     }
 
@@ -77,11 +86,15 @@ export component CallViewMenu inherits PickerCard {
         if choice == CallViewChoice.self-view {
             return CallView.self-view ? @tr("Hide self-view") : @tr("Show self-view");
         }
+        if choice == CallViewChoice.share-preview {
+            return CallView.share-preview ? @tr("Hide your shared screen") : @tr("Show your shared screen");
+        }
         return CallPanel.fits-videos ? @tr("Fill tiles with video") : @tr("Fit whole videos");
     }
 
     pure function checkable(choice: CallViewChoice) -> bool {
-        return choice != CallViewChoice.strip && choice != CallViewChoice.self-view && choice != CallViewChoice.fit;
+        return choice != CallViewChoice.strip && choice != CallViewChoice.self-view
+            && choice != CallViewChoice.share-preview && choice != CallViewChoice.fit;
     }
 
     pure function checked(choice: CallViewChoice) -> bool {
@@ -115,6 +128,8 @@ export component CallViewMenu inherits PickerCard {
             CallPanel.hides-strip = !CallPanel.hides-strip;
         } else if choice == CallViewChoice.self-view {
             Actions.show-self-view({ on: !CallView.self-view });
+        } else if choice == CallViewChoice.share-preview {
+            Actions.show-share-preview({ on: !CallView.share-preview });
         } else {
             CallPanel.fits-videos = !CallPanel.fits-videos;
         }

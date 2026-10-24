@@ -413,7 +413,11 @@ impl LiveKitSession {
             )));
             return;
         };
-        self.screen = Some(screen::start(room, self.events_tx.clone()));
+        self.screen = Some(screen::start(
+            room,
+            Arc::clone(&self.feeds),
+            self.events_tx.clone(),
+        ));
     }
 
     async fn stop_screen(&mut self) {

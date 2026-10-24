@@ -101,6 +101,8 @@ export struct CallTileEntry {
     feed: string,
     has-frame: bool,
     frame: image,
+    source-width: int,
+    source-height: int,
     mirrored: bool,
     screen: bool,
 }
@@ -196,6 +198,10 @@ export struct ScreenShareRequest {
 }
 
 export struct SelfViewRequest {
+    on: bool,
+}
+
+export struct SharePreviewRequest {
     on: bool,
 }
 

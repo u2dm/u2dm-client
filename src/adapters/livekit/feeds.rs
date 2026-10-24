@@ -265,6 +265,7 @@ async fn forward_frames(feeds: Weak<Feeds>, feed: FeedId, track: RemoteVideoTrac
 struct Converted<'a> {
     buffer: &'a dyn VideoBuffer,
     rotation: VideoRotation,
+    source: FrameSize,
     shown: FrameSize,
     upright: FrameSize,
 }
@@ -272,13 +273,14 @@ struct Converted<'a> {
 impl<'a> Converted<'a> {
     fn new(buffer: &'a dyn VideoBuffer, rotation: VideoRotation, attachment: &Attachment) -> Self {
         let turned = quarter_turned(rotation);
-        let source = FrameSize::new(buffer.width(), buffer.height());
-        let source_shown = if turned { swapped(source) } else { source };
-        let shown = source_shown.framed(attachment.wanted, attachment.framing);
+        let captured = FrameSize::new(buffer.width(), buffer.height());
+        let source = if turned { swapped(captured) } else { captured };
+        let shown = source.framed(attachment.wanted, attachment.framing);
         let upright = if turned { swapped(shown) } else { shown };
         Self {
             buffer,
             rotation,
+            source,
             shown,
             upright,
         }
@@ -288,6 +290,10 @@ impl<'a> Converted<'a> {
 impl VideoFrame for Converted<'_> {
     fn size(&self) -> FrameSize {
         self.shown
+    }
+
+    fn source(&self) -> FrameSize {
+        self.source
     }
 
     fn write_rgba(&self, rgba: &mut [u8]) -> bool {

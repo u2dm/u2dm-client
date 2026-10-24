@@ -24,6 +24,7 @@ import {
     CameraRequest,
     ScreenShareRequest,
     SelfViewRequest,
+    SharePreviewRequest,
     CallDeviceRequest,
     CallDeviceTestRequest,
     RenameSessionRequest,
@@ -192,6 +193,7 @@ export global Actions {
     callback set-microphone(MicrophoneRequest);
     callback set-camera(CameraRequest);
     callback share-screen(ScreenShareRequest);
+    callback change-screen-share();
     callback use-call-device(CallDeviceRequest);
     callback test-call-device(CallDeviceTestRequest);
     callback refresh-call-devices();
@@ -200,6 +202,7 @@ export global Actions {
     callback show-call-gallery();
     callback view-call-share();
     callback show-self-view(SelfViewRequest);
+    callback show-share-preview(SharePreviewRequest);
     callback call-tile-seen(string, int, int, bool);
     callback call-media-shown(bool);
     callback call-preview-seen(string, int, int, bool);

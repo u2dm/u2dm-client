@@ -161,8 +161,11 @@ export component CallDock inherits Rectangle {
     property <bool> offers-stage: CallView.active && !root.stage-shown && !root.failed;
     property <bool> explains-share;
     property <bool> tells-share-ended;
+    property <bool> tells-change-cancelled;
     property <bool> tells-device-news;
     property <int> ended-share-serial: CallView.ended-share-serial;
+    property <int> change-cancelled: CallView.share-change-cancelled;
+    property <int> share-takes-focus: CallPanel.share-takes-focus;
     property <int> device-news-serial: CallView.device-news-serial;
     property <int> dock-takes-focus: CallPanel.dock-takes-focus;
     property <int> people-returns: CallPanel.people-returns;
@@ -170,6 +173,7 @@ export component CallDock inherits Rectangle {
         && (CallView.notice != CallNotice.none
             || (root.explains-share && share.refused)
             || root.tells-device-news
+            || root.tells-change-cancelled
             || (root.tells-share-ended && root.stage-shown));
     property <bool> shares-unseen: !root.failed && CallView.share-count > 0 && !root.stage-shown;
     property <bool> tells-shares: root.shares-unseen && !root.status-taken;
@@ -325,6 +329,27 @@ export component CallDock inherits Rectangle {
         }
     }
 
+    changed change-cancelled => {
+        if root.change-cancelled != 0 {
+            root.tells-change-cancelled = true;
+            cancelled-timer.running = false;
+            cancelled-timer.running = true;
+        }
+    }
+
+    cancelled-timer := Timer {
+        interval: Motion.notice-hold;
+        running: false;
+        triggered => {
+            root.tells-change-cancelled = false;
+            self.running = false;
+        }
+    }
+
+    changed share-takes-focus => {
+        share.take-focus();
+    }
+
     changed device-news-serial => {
         if root.device-news-serial != 0 {
             root.tells-device-news = true;
@@ -355,6 +380,7 @@ export component CallDock inherits Rectangle {
         visible: root.status-taken;
         above-modal: root.above-modal;
         explains-share: root.explains-share && share.refused;
+        tells-change-cancelled: root.tells-change-cancelled;
         tells-device-news: root.tells-device-news;
         tells-share-ended: root.tells-share-ended && root.stage-shown;
         acted-by-keys(notice) => {

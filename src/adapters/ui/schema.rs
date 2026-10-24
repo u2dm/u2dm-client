@@ -260,6 +260,7 @@ macro_rules! simple_callbacks {
         on_set_microphone "set-microphone" set_microphone request(on "on" flag) SetMicrophone;
         on_set_camera "set-camera" set_camera request(on "on" flag) SetCamera;
         on_share_screen "share-screen" share_screen request(on "on" flag) ShareScreen;
+        on_change_screen_share "change-screen-share" change_screen_share plain ChangeScreenShare;
         on_use_call_device "use-call-device" use_call_device
             request(kind "kind" variant, key "key" text) UseCallDevice;
         on_refresh_call_devices "refresh-call-devices" refresh_call_devices plain
@@ -269,6 +270,8 @@ macro_rules! simple_callbacks {
         on_show_call_gallery "show-call-gallery" show_call_gallery plain ShowCallGallery;
         on_view_call_share "view-call-share" view_call_share plain ViewCallShare;
         on_show_self_view "show-self-view" show_self_view request(on "on" flag) ShowSelfView;
+        on_show_share_preview "show-share-preview" show_share_preview request(on "on" flag)
+            ShowSharePreview;
         on_select_room "select-room" select_room room SelectRoom;
         on_open_notification "open-notification" open_notification room OpenNotification;
         on_select_space "select-space" select_space opt_room SelectSpace;
@@ -421,6 +424,7 @@ macro_rules! bool_props {
         ActiveVideo CallView "CallView" "active-video" set_active_video get_active_video;
         VideoCall CallView "CallView" "video-call" set_video_call get_video_call;
         SelfView CallView "CallView" "self-view" set_self_view get_self_view;
+        SharePreview CallView "CallView" "share-preview" set_share_preview get_share_preview;
         StageChosen CallView "CallView" "stage-chosen" set_stage_chosen get_stage_chosen;
         FailureRetry CallView "CallView" "failure-retry" set_failure_retry get_failure_retry;
         VerificationVisible VerificationView "VerificationView" "visible" set_visible get_visible;
@@ -568,6 +572,7 @@ macro_rules! int_props {
         ShareCount CallView "CallView" "share-count" set_share_count get_share_count;
         StartedShareSerial CallView "CallView" "started-share-serial" set_started_share_serial get_started_share_serial;
         EndedShareSerial CallView "CallView" "ended-share-serial" set_ended_share_serial get_ended_share_serial;
+        ShareChangeCancelled CallView "CallView" "share-change-cancelled" set_share_change_cancelled get_share_change_cancelled;
         PeopleMore CallView "CallView" "people-more" set_people_more get_people_more;
         MicrophoneChosen CallView "CallView" "microphone-chosen" set_microphone_chosen get_microphone_chosen;
         CameraChosen CallView "CallView" "camera-chosen" set_camera_chosen get_camera_chosen;
@@ -2153,6 +2158,8 @@ macro_rules! call_tile_fields {
         feed set_feed "feed" text;
         has_frame set_has_frame "has-frame" flag;
         frame set_frame "frame" image;
+        source_width set_source_width "source-width" int;
+        source_height set_source_height "source-height" int;
         mirrored set_mirrored "mirrored" flag;
         screen set_screen "screen" flag;
     } };

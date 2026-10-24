@@ -13,6 +13,7 @@ export component CallAnnouncer {
     property <int> device-news: CallView.device-news-serial;
     property <int> started-share: CallView.started-share-serial;
     property <int> ended-share: CallView.ended-share-serial;
+    property <int> change-cancelled: CallView.share-change-cancelled;
     property <CallMic> mic: CallView.mic;
     property <CallCamera> camera: CallView.camera;
     property <bool> mic-keyed;
@@ -128,6 +129,12 @@ export component CallAnnouncer {
     changed ended-share => {
         if root.ended-share != 0 && root.active {
             calm.say(CallWords.share-ended(CallView.ended-share));
+        }
+    }
+
+    changed change-cancelled => {
+        if root.change-cancelled != 0 && root.active {
+            calm.say(CallWords.share-change-cancelled());
         }
     }
 

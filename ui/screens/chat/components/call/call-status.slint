@@ -12,6 +12,7 @@ import { AppStyle, Fonts, IconSize, Size, Space } from "../../../../theme.slint"
 export component CallStatus inherits VerticalLayout {
     in property <bool> above-modal;
     in property <bool> explains-share;
+    in property <bool> tells-change-cancelled;
     in property <bool> tells-device-news;
     in property <bool> tells-share-ended;
 
@@ -25,7 +26,9 @@ export component CallStatus inherits VerticalLayout {
     property <bool> undiagnosed: root.notice == CallNotice.sharing-never-started;
     property <bool> not-received: CallStates.not-received(root.notice);
     property <bool> own-poor: root.notice == CallNotice.connection-poor;
-    property <bool> device-news: !root.noticed && !root.explains-share && root.tells-device-news;
+    property <bool> change-cancelled: !root.noticed && !root.explains-share && root.tells-change-cancelled;
+    property <bool> device-news: !root.noticed && !root.explains-share && !root.change-cancelled
+        && root.tells-device-news;
     property <bool> unplugged: root.device-news && CallView.device-news-trouble == CallDeviceTrouble.disconnected;
     property <bool> trouble: (root.noticed && !root.pending && !root.about-others && !root.undiagnosed
         && !root.not-received && !root.own-poor)
@@ -86,6 +89,8 @@ export component CallStatus inherits VerticalLayout {
                 ? CallWords.notice(root.notice, CallView.active-room-name, CallView.notice-name, CallView.notice-others)
                 : root.explains-share
                 ? CallWords.share-state(CallView.screen, CallView.screen-refusal, root.share-waits)
+                : root.change-cancelled
+                ? CallWords.share-change-cancelled()
                 : root.device-news
                 ? CallWords.device-news(CallView.device-news-trouble, CallView.device-news-kind, CallView.device-news-name)
                 : CallWords.share-ended(CallView.ended-share);

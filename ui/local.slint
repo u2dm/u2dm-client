@@ -155,6 +155,13 @@ export global CallPanel {
     in-out property <int> people-returns;
     in-out property <bool> focus-stage: false;
     in-out property <string> focus-tile;
+    in-out property <int> gallery-takes-focus;
+    in-out property <int> share-takes-focus;
+    in-out property <string> screen-key;
+    in-out property <float> screen-scale: 0;
+    in-out property <float> screen-x: 0.5;
+    in-out property <float> screen-y: 0.5;
+    in-out property <bool> viewer-focused: false;
     in-out property <int> band-takes-focus;
     in-out property <int> dock-takes-focus;
     in-out property <CallSheetOpener> sheet-opener: CallSheetOpener.composer;
@@ -204,6 +211,13 @@ export global CallPanel {
         root.turn = CallSurface.call;
     }
 
+    public function fit-screen() {
+        root.screen-key = "";
+        root.screen-scale = 0;
+        root.screen-x = 0.5;
+        root.screen-y = 0.5;
+    }
+
     public function show-chat() {
         if root.mode == CallMode.call-only {
             root.mode = CallMode.chat-only;
@@ -222,6 +236,8 @@ export global CallPanel {
         root.people-open = false;
         root.focus-stage = false;
         root.focus-tile = "";
+        root.viewer-focused = false;
+        root.fit-screen();
     }
 
     public function forget() {

@@ -1186,6 +1186,38 @@ export global CallWords {
         return @tr("{}'s screen", name);
     }
 
+    public pure function your-screen() -> string {
+        return @tr("Your shared screen");
+    }
+
+    public pure function tile-title(screen: bool, own: bool, name: string) -> string {
+        if screen && own {
+            return root.your-screen();
+        }
+        if screen {
+            return root.screen-of(name);
+        }
+        if own {
+            return @tr("You");
+        }
+        return name;
+    }
+
+    public pure function zoom-percent(percent: int) -> string {
+        return @tr("{}%", percent);
+    }
+
+    public pure function zoom-state(percent: int, zoomed: bool) -> string {
+        if zoomed {
+            return @tr("Shown at {}%. The arrow keys move around it, minus zooms out and 0 fits the whole screen", percent);
+        }
+        return @tr("The whole screen, shown at {}%. Plus zooms in", percent);
+    }
+
+    public pure function share-change-cancelled() -> string {
+        return @tr("Screen sharing stopped: no screen or window was chosen");
+    }
+
     public pure function focus-on(title: string) -> string {
         return @tr("Focus on {}", title);
     }

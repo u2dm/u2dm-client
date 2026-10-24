@@ -371,6 +371,7 @@ pub(super) fn command_allowed(phase: AppPhase, cmd: &UiCommand) -> bool {
         | UiCommand::SetMicrophone(_)
         | UiCommand::SetCamera(_)
         | UiCommand::ShareScreen(_)
+        | UiCommand::ChangeScreenShare
         | UiCommand::UseCallDevice { .. }
         | UiCommand::RefreshCallDevices
         | UiCommand::FocusCallTile(_)
@@ -378,6 +379,7 @@ pub(super) fn command_allowed(phase: AppPhase, cmd: &UiCommand) -> bool {
         | UiCommand::ShowCallGallery
         | UiCommand::ViewCallShare
         | UiCommand::ShowSelfView(_)
+        | UiCommand::ShowSharePreview(_)
         | UiCommand::DismissToast => phase == AppPhase::Syncing,
     }
 }

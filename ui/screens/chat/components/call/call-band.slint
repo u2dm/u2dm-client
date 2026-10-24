@@ -88,13 +88,16 @@ export component CallBand inherits Rectangle {
 
     property <bool> covers-chat: root.size == CallSize.full;
     property <bool> shows-chat-button;
+    property <bool> staged: CallView.stage.length > 0;
+    property <string> staged-title: CallWords.tile-title(CallView.stage[0].screen, CallView.stage[0].own, CallView.stage[0].name);
     property <bool> elsewhere: CallView.active-room-id != DirectoryView.selected-room-id;
     property <string> people: CallWords.people(CallView.people-first, CallView.people-second, CallView.people-more);
     property <int> band-takes-focus: CallPanel.band-takes-focus;
-    property <length> name-room: max(0px, menu-button.x - Space.md);
+    property <int> gallery-takes-focus: CallPanel.gallery-takes-focus;
+    property <length> name-room: max(0px, (root.staged ? gallery-button.x : menu-button.x) - Space.md);
     property <length> name-width: min(root.elsewhere ? room-link.text-width : room-name.preferred-width, root.name-room / 2);
     property <length> rest-x: root.name-width + Space.sm;
-    property <length> rest-width: max(0px, menu-button.x - Space.md - root.rest-x);
+    property <length> rest-width: max(0px, (root.staged ? gallery-button.x : menu-button.x) - Space.md - root.rest-x);
 
     public function focus-menu() {
         menu-button.take-focus();
@@ -137,6 +140,12 @@ export component CallBand inherits Rectangle {
         root.focus-chat();
     }
 
+    changed gallery-takes-focus => {
+        if root.staged {
+            gallery-button.take-focus();
+        }
+    }
+
     background: AppStyle.call-band;
     accessible-role: groupbox;
     accessible-label: @tr("Call in {}", CallView.active-room-name);
@@ -177,6 +186,24 @@ export component CallBand inherits Rectangle {
                 clicked => {
                     CallPanel.menu-by-keys = self.has-focus;
                     CallPanel.menu-open = true;
+                }
+            }
+
+            gallery-button := AppButton {
+                x: menu-button.x - Space.sm - self.width;
+                y: (parent.height - self.height) / 2;
+                width: self.preferred-width;
+                height: Size.md;
+                visible: root.staged;
+                filled: false;
+                tint: AppStyle.foreground-strong;
+                icon: IconSet.LayoutGrid;
+                text: @tr("Gallery");
+                label: CallWords.show-gallery();
+                description: CallWords.in-focus(root.staged-title);
+                clicked => {
+                    CallPanel.focus-tile = self.has-focus ? CallView.stage[0].key : "";
+                    Actions.show-call-gallery();
                 }
             }
 

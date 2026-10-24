@@ -16,6 +16,7 @@ use super::fields::{
 use super::props::{BoolProp, EnumProp, IntProp, StringProp, UiProps};
 use super::ringtone;
 use super::{call_video, context_press};
+use crate::domain::call::video::FrameSize;
 
 #[derive(Serialize)]
 pub struct ReactionRowDump {
@@ -213,6 +214,8 @@ pub struct CallDump {
     pub media_shown: bool,
     pub attached: Vec<String>,
     pub self_view: bool,
+    pub share_preview: bool,
+    pub share_change_cancelled: i32,
     pub share_count: i32,
     pub first_sharer: String,
     pub offered_share: String,
@@ -252,12 +255,20 @@ pub struct CallDeviceDump {
 }
 
 #[derive(Serialize)]
+#[allow(clippy::struct_excessive_bools)]
 pub struct CallTileDump {
     pub key: String,
     pub member: String,
     pub feed: String,
     pub has_frame: bool,
     pub frame_serial: u64,
+    pub frame_width: u32,
+    pub frame_height: u32,
+    pub source_width: i32,
+    pub source_height: i32,
+    pub wanted_width: u32,
+    pub wanted_height: u32,
+    pub own: bool,
     pub mirrored: bool,
     pub screen: bool,
 }
@@ -487,6 +498,8 @@ fn call_view<B: UiBackend>(window: &B::Window) -> CallDump {
         media_shown: call_video::media_is_shown(),
         attached: call_video::attached(),
         self_view: window.get_bool(BoolProp::SelfView),
+        share_preview: window.get_bool(BoolProp::SharePreview),
+        share_change_cancelled: window.get_int(IntProp::ShareChangeCancelled),
         share_count: window.get_int(IntProp::ShareCount),
         first_sharer: window.get_string(StringProp::FirstSharer).to_string(),
         offered_share: window.get_string(StringProp::OfferedShare).to_string(),
@@ -540,12 +553,21 @@ fn call_devices<B: UiBackend>(rows: &impl Model<Data = B::CallDevice>) -> Vec<Ca
 }
 
 fn call_tile<B: UiBackend>(tile: &B::CallTile) -> CallTileDump {
+    let frame = tile.frame().size();
+    let wanted = call_video::wanted_of(tile.feed()).unwrap_or(FrameSize::new(0, 0));
     CallTileDump {
         key: tile.key().to_owned(),
         member: tile.member().to_owned(),
         feed: tile.feed().to_owned(),
         has_frame: tile.has_frame(),
         frame_serial: call_video::frames_of(tile.feed()),
+        frame_width: frame.width,
+        frame_height: frame.height,
+        source_width: tile.source_width(),
+        source_height: tile.source_height(),
+        wanted_width: wanted.width,
+        wanted_height: wanted.height,
+        own: tile.own(),
         mirrored: tile.mirrored(),
         screen: tile.screen(),
     }

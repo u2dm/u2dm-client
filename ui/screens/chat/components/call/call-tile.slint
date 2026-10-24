@@ -2,13 +2,13 @@ import { IconDisplay, IconSet } from "@lucide";
 
 import { Actions } from "../../../../actions.slint";
 import { Avatar } from "../../../../components/avatar.slint";
-import { ClickArea } from "../../../../components/a11y.slint";
+import { ClickArea, FocusRing } from "../../../../components/a11y.slint";
+import { IconButton, LinkButton } from "../../../../components/button.slint";
 import { CallStates } from "../../../../call-states.slint";
-import { CallPanel } from "../../../../local.slint";
+import { CallPanel, TipScope } from "../../../../local.slint";
 import { CallTileEntry } from "../../../../types.slint";
 import { CallWords } from "../../../../messages.slint";
-import { CallView } from "../../../../views.slint";
-import { AppStyle, Fonts, Glyph, IconSize, Metrics, Radius, Space, Weight } from "../../../../theme.slint";
+import { AppStyle, Fonts, Glyph, IconSize, Metrics, Radius, Size, Space, Weight } from "../../../../theme.slint";
 
 component TileName inherits HorizontalLayout {
     in property <CallTileEntry> tile;
@@ -55,6 +55,128 @@ component TileName inherits HorizontalLayout {
     }
 }
 
+component ZoomBar inherits HorizontalLayout {
+    in property <CallTileEntry> tile;
+    in property <string> title;
+    in property <int> percent;
+    in property <bool> zoomed;
+    in property <bool> closer;
+    in property <bool> tops-out;
+    in property <bool> fits-next;
+    in property <bool> above-modal;
+
+    callback zoom-in();
+    callback zoom-out();
+    callback fit();
+
+    padding-left: Space.sm;
+    padding-right: Space.xs;
+    spacing: Space.xs;
+
+    TileName {
+        horizontal-stretch: 1;
+        alignment: start;
+        tile: root.tile;
+        title: root.title;
+        text-color: AppStyle.foreground-muted;
+    }
+
+    zoom-out := IconButton {
+        size: Size.sm;
+        enabled: root.zoomed;
+        above-modal: root.above-modal;
+        icon: IconSet.ZoomOut;
+        tint: AppStyle.foreground-strong;
+        label: @tr("Zoom out");
+        tip: self.label;
+        tip-keys: "-";
+        tip-scope: TipScope.call;
+        clicked => {
+            if self.has-focus && root.fits-next {
+                zoom-in.take-focus();
+            }
+            root.zoom-out();
+        }
+    }
+
+    Text {
+        min-width: self.preferred-width;
+        text: CallWords.zoom-percent(root.percent);
+        font-size: Fonts.caption;
+        color: AppStyle.foreground-muted;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+        accessible-role: none;
+    }
+
+    zoom-in := IconButton {
+        size: Size.sm;
+        enabled: root.closer;
+        above-modal: root.above-modal;
+        icon: IconSet.ZoomIn;
+        tint: AppStyle.foreground-strong;
+        label: @tr("Zoom in");
+        tip: self.label;
+        tip-keys: "+";
+        tip-scope: TipScope.call;
+        clicked => {
+            if self.has-focus && root.tops-out {
+                zoom-out.take-focus();
+            }
+            root.zoom-in();
+        }
+    }
+
+    LinkButton {
+        min-height: Size.sm;
+        enabled: root.zoomed;
+        above-modal: root.above-modal;
+        text: @tr("Fit");
+        label: @tr("Fit the whole screen");
+        font-size: Fonts.caption;
+        pad: 2 * Space.sm;
+        clicked => {
+            if self.has-focus {
+                zoom-in.take-focus();
+            }
+            root.fit();
+        }
+    }
+}
+
+component OwnShareName inherits HorizontalLayout {
+    in property <CallTileEntry> tile;
+    in property <string> title;
+    in property <bool> above-modal;
+
+    padding-left: Space.sm;
+    padding-right: Space.xs;
+    spacing: Space.xs;
+
+    TileName {
+        horizontal-stretch: 1;
+        alignment: center;
+        tile: root.tile;
+        title: root.title;
+        text-color: AppStyle.foreground-muted;
+    }
+
+    LinkButton {
+        min-height: Size.sm;
+        above-modal: root.above-modal;
+        text: @tr("Change…");
+        label: @tr("Change shared screen…");
+        font-size: Fonts.caption;
+        pad: 2 * Space.sm;
+        clicked => {
+            if self.has-focus {
+                CallPanel.share-takes-focus += 1;
+            }
+            Actions.change-screen-share();
+        }
+    }
+}
+
 export component CallTileView inherits Rectangle {
     in property <CallTileEntry> tile;
     in property <bool> shown: true;
@@ -66,41 +188,164 @@ export component CallTileView inherits Rectangle {
     callback took-focus();
 
     property <string> state-text: CallWords.tile(root.tile.state);
-    property <string> title: root.tile.screen ? CallWords.screen-of(root.tile.name)
-        : root.tile.own ? @tr("You")
-        : root.tile.name;
+    property <string> title: CallWords.tile-title(root.tile.screen, root.tile.own, root.tile.name);
     property <bool> troubled: CallStates.troubled(root.tile.state);
     property <string> feed: root.tile.feed;
     property <bool> shows-video: root.tile.has-frame && CallStates.flows(root.tile.state);
     property <bool> named-outside: root.tile.screen && root.shows-video;
     property <length> picture-height: root.named-outside ? root.height - Metrics.call-tile-caption : root.height;
     property <bool> roomy: root.height >= Metrics.call-tile-roomy;
-    property <bool> leads-back: root.staged && CallView.stage-chosen;
+    property <bool> own-share: root.tile.screen && root.tile.own;
+    property <bool> zooms: root.staged && root.named-outside && !root.tile.own
+        && root.tile.source-width > 0 && root.tile.source-height > 0;
+    property <bool> zoom-mine: root.zooms && CallPanel.screen-key == root.tile.key;
+    property <float> source-width: root.tile.source-width;
+    property <float> source-height: root.tile.source-height;
+    property <float> fit-scale: root.zooms
+        ? min(root.width / 1phx / root.source-width, root.picture-height / 1phx / root.source-height)
+        : 1;
+    property <float> most: max(Metrics.call-screen-zoom-most, root.fit-scale);
+    property <float> quarter: pow(2, 0.25);
+    property <float> scale: root.zoom-mine ? clamp(CallPanel.screen-scale, root.fit-scale, root.most) : root.fit-scale;
+    property <bool> zoomed: root.zooms && root.scale > root.fit-scale;
+    property <length> picture-w: root.source-width * root.scale * 1phx;
+    property <length> picture-h: root.source-height * root.scale * 1phx;
+    property <float> centre-x: root.zoom-mine ? root.centred(CallPanel.screen-x, root.width, root.picture-w) : 0.5;
+    property <float> centre-y: root.zoom-mine
+        ? root.centred(CallPanel.screen-y, root.picture-height, root.picture-h)
+        : 0.5;
+    property <length> picture-x: root.width / 2 - root.centre-x * root.picture-w;
+    property <length> picture-y: root.picture-height / 2 - root.centre-y * root.picture-h;
+    property <int> percent: round(root.scale * 100);
+    property <float> step-in: min(pow(2, ceil(2 * log(root.scale, 2) + 0.5) * 0.5), root.most);
+    property <float> step-out: max(pow(2, floor(2 * log(root.scale, 2) - 0.5) * 0.5), root.fit-scale);
+    property <bool> can-zoom-in: root.zooms && root.step-in > max(root.scale, root.fit-scale * root.quarter);
+    property <bool> viewer-focused;
+    property <int> wanted-width: root.zoomed ? round(root.picture-w / 1phx) : round(root.width / 1phx);
+    property <int> wanted-height: root.zoomed ? round(root.picture-h / 1phx) : round(root.picture-height / 1phx);
+
+    pure function centred(wanted: float, view: length, picture: length) -> float {
+        if picture <= view {
+            return 0.5;
+        }
+        let half = view / picture / 2;
+        return clamp(wanted, half, 1 - half);
+    }
+
+    function pan-to(across: float, down: float) {
+        CallPanel.screen-key = root.tile.key;
+        CallPanel.screen-x = root.centred(across, root.width, root.picture-w);
+        CallPanel.screen-y = root.centred(down, root.picture-height, root.picture-h);
+    }
+
+    function pan-by(right: length, below: length) {
+        root.pan-to(root.centre-x + right / root.picture-w, root.centre-y + below / root.picture-h);
+    }
+
+    function zoom-at(scale: float, at-x: length, at-y: length) {
+        let across = (at-x - root.picture-x) / root.picture-w;
+        let down = (at-y - root.picture-y) / root.picture-h;
+        if scale <= root.fit-scale * root.quarter {
+            CallPanel.fit-screen();
+            return;
+        }
+        CallPanel.screen-key = root.tile.key;
+        CallPanel.screen-scale = scale;
+        root.pan-to(
+            across + (root.width / 2 - at-x) / root.picture-w,
+            down + (root.picture-height / 2 - at-y) / root.picture-h);
+    }
+
+    function zoom-to(scale: float) {
+        root.zoom-at(scale, root.width / 2, root.picture-height / 2);
+    }
 
     function report() {
         if root.feed != "" {
-            Actions.call-tile-seen(
-                root.feed,
-                round(root.width / 1phx),
-                round(root.picture-height / 1phx),
-                root.shown);
+            Actions.call-tile-seen(root.feed, root.wanted-width, root.wanted-height, root.shown);
         }
     }
 
     init => {
         root.report();
+        if root.staged && !root.zooms && CallPanel.focus-stage {
+            CallPanel.focus-stage = false;
+            CallPanel.gallery-takes-focus += 1;
+        }
     }
     changed feed => {
         root.report();
     }
-    changed width => {
+    changed wanted-width => {
         root.report();
     }
-    changed picture-height => {
+    changed wanted-height => {
         root.report();
     }
     changed shown => {
         root.report();
+    }
+
+    if root.zooms: keys := FocusScope {
+        x: 0;
+        y: 0;
+        width: 0;
+        height: root.picture-height;
+        focus-on-click: false;
+        accessible-role: image;
+        accessible-label: root.title;
+        accessible-description: CallWords.zoom-state(root.percent, root.zoomed);
+        init => {
+            if CallPanel.focus-stage {
+                CallPanel.focus-stage = false;
+                self.focus();
+            }
+        }
+        changed has-focus => {
+            root.viewer-focused = self.has-focus;
+            CallPanel.viewer-focused = self.has-focus;
+        }
+        key-pressed(event) => {
+            if event.modifiers.control || event.modifiers.alt || event.modifiers.meta {
+                return reject;
+            }
+            if event.text == "+" || event.text == "=" {
+                if root.can-zoom-in {
+                    root.zoom-to(root.step-in);
+                }
+                return accept;
+            }
+            if event.text == "-" {
+                if root.zoomed {
+                    root.zoom-to(root.step-out);
+                }
+                return accept;
+            }
+            if event.text == "0" {
+                CallPanel.fit-screen();
+                return accept;
+            }
+            if !root.zoomed {
+                return reject;
+            }
+            if event.text == Key.LeftArrow {
+                root.pan-by(-root.width * Metrics.call-screen-pan-share, 0px);
+                return accept;
+            }
+            if event.text == Key.RightArrow {
+                root.pan-by(root.width * Metrics.call-screen-pan-share, 0px);
+                return accept;
+            }
+            if event.text == Key.UpArrow {
+                root.pan-by(0px, -root.picture-height * Metrics.call-screen-pan-share);
+                return accept;
+            }
+            if event.text == Key.DownArrow {
+                root.pan-by(0px, root.picture-height * Metrics.call-screen-pan-share);
+                return accept;
+            }
+            return reject;
+        }
     }
 
     border-radius: Radius.md;
@@ -114,13 +359,72 @@ export component CallTileView inherits Rectangle {
         border-radius: root.border-radius;
         clip: true;
 
-        if root.shows-video: Image {
+        if root.shows-video && !root.zooms: Image {
+            x: 0;
+            y: 0;
             width: parent.width;
             height: root.picture-height;
             source: root.tile.frame;
             image-fit: root.tile.screen || root.fits-video ? ImageFit.contain : ImageFit.cover;
             transform-scale-x: root.tile.mirrored ? -1 : 1;
             accessible-role: none;
+        }
+
+        if root.zooms: Rectangle {
+            x: 0;
+            y: 0;
+            width: parent.width;
+            height: root.picture-height;
+            clip: true;
+
+            Image {
+                x: root.picture-x;
+                y: root.picture-y;
+                width: root.picture-w;
+                height: root.picture-h;
+                source: root.tile.frame;
+                image-fit: fill;
+                accessible-role: none;
+            }
+
+            TouchArea {
+                property <float> from-x;
+                property <float> from-y;
+
+                mouse-cursor: !root.zoomed ? MouseCursor.default : self.pressed ? MouseCursor.grabbing : MouseCursor.grab;
+                pointer-event(event) => {
+                    if event.kind == PointerEventKind.down {
+                        self.from-x = root.centre-x;
+                        self.from-y = root.centre-y;
+                    }
+                }
+                moved => {
+                    if self.pressed && root.zoomed {
+                        root.pan-to(
+                            self.from-x - (self.mouse-x - self.pressed-x) / root.picture-w,
+                            self.from-y - (self.mouse-y - self.pressed-y) / root.picture-h);
+                    }
+                }
+                scroll-event(event) => {
+                    if event.modifiers.control {
+                        if event.delta-y > 0 && root.can-zoom-in {
+                            root.zoom-at(root.step-in, self.mouse-x, self.mouse-y);
+                        } else if event.delta-y < 0 && root.zoomed {
+                            root.zoom-at(root.step-out, self.mouse-x, self.mouse-y);
+                        }
+                        return accept;
+                    }
+                    if !root.zoomed {
+                        return reject;
+                    }
+                    if event.modifiers.shift || root.picture-h <= root.picture-height {
+                        root.pan-by(-event.delta-x - event.delta-y, 0px);
+                    } else {
+                        root.pan-by(-event.delta-x, -event.delta-y);
+                    }
+                    return accept;
+                }
+            }
         }
 
         if root.shows-video && !root.named-outside: Rectangle {
@@ -151,7 +455,7 @@ export component CallTileView inherits Rectangle {
             }
         }
 
-        if root.named-outside: TileName {
+        if root.named-outside && !root.zooms && !root.own-share: TileName {
             y: root.picture-height;
             height: Metrics.call-tile-caption;
             padding-left: Space.sm;
@@ -160,6 +464,38 @@ export component CallTileView inherits Rectangle {
             tile: root.tile;
             title: root.title;
             text-color: AppStyle.foreground-muted;
+        }
+
+        if root.zooms: ZoomBar {
+            y: root.picture-height;
+            width: parent.width;
+            height: Metrics.call-tile-caption;
+            tile: root.tile;
+            title: root.title;
+            percent: root.percent;
+            zoomed: root.zoomed;
+            closer: root.can-zoom-in;
+            tops-out: root.step-in >= root.most;
+            fits-next: root.step-out <= root.fit-scale * root.quarter;
+            above-modal: root.above-modal;
+            zoom-in => {
+                root.zoom-to(root.step-in);
+            }
+            zoom-out => {
+                root.zoom-to(root.step-out);
+            }
+            fit => {
+                CallPanel.fit-screen();
+            }
+        }
+
+        if root.named-outside && root.own-share: OwnShareName {
+            y: root.picture-height;
+            width: parent.width;
+            height: Metrics.call-tile-caption;
+            tile: root.tile;
+            title: root.title;
+            above-modal: root.above-modal;
         }
 
         if !root.shows-video: VerticalLayout {
@@ -214,6 +550,14 @@ export component CallTileView inherits Rectangle {
         border-color: AppStyle.call-speaking;
     }
 
+    if root.zooms && root.viewer-focused: FocusRing {
+        x: 0;
+        y: 0;
+        width: root.width;
+        height: root.picture-height;
+        radius: Radius.md;
+    }
+
     if root.selectable: ClickArea {
         above-modal: root.above-modal;
         ring-radius: Radius.md;
@@ -232,23 +576,6 @@ export component CallTileView inherits Rectangle {
         clicked => {
             CallPanel.focus-stage = self.has-focus;
             Actions.focus-call-tile(root.tile.key);
-        }
-    }
-
-    if root.leads-back: ClickArea {
-        above-modal: root.above-modal;
-        ring-radius: Radius.md;
-        label: CallWords.show-gallery();
-        accessible-description: CallWords.in-focus(root.title);
-        init => {
-            if CallPanel.focus-stage {
-                CallPanel.focus-stage = false;
-                self.take-focus();
-            }
-        }
-        clicked => {
-            CallPanel.focus-tile = self.has-focus ? root.tile.key : "";
-            Actions.show-call-gallery();
         }
     }
 }

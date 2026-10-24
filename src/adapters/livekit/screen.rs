@@ -21,11 +21,12 @@ use tokio::time::timeout;
 use tracing::{Instrument, Span};
 use zbus::{Connection, Proxy};
 
-use super::feeds::signed;
+use super::feeds::{Feeds, signed};
 use crate::domain::call::media::MediaEvent;
-use crate::domain::call::video::{FrameSize, Framing, ScreenRefusal, ScreenShare};
+use crate::domain::call::video::{FeedId, FrameSize, Framing, ScreenRefusal, ScreenShare};
 
 const TRACK_NAME: &str = "screen";
+const OWN_FEED: &str = "own-screen";
 const LARGEST: FrameSize = FrameSize::new(1920, 1080);
 const FRAME_RATE: f64 = 30.0;
 const TOP_BITRATE: u64 = 5_000_000;
@@ -76,9 +77,13 @@ pub(super) struct OwnScreen {
     task: JoinHandle<()>,
 }
 
-pub(super) fn start(room: Arc<Room>, events_tx: mpsc::UnboundedSender<MediaEvent>) -> OwnScreen {
+pub(super) fn start(
+    room: Arc<Room>,
+    feeds: Arc<Feeds>,
+    events_tx: mpsc::UnboundedSender<MediaEvent>,
+) -> OwnScreen {
     let (stop_tx, stop_rx) = oneshot::channel();
-    let task = tokio::spawn(share(room, events_tx, stop_rx).in_current_span());
+    let task = tokio::spawn(share(room, feeds, events_tx, stop_rx).in_current_span());
     OwnScreen {
         stop_tx: Some(stop_tx),
         task,
@@ -135,10 +140,11 @@ struct Share {
 
 async fn share(
     room: Arc<Room>,
+    feeds: Arc<Feeds>,
     events_tx: mpsc::UnboundedSender<MediaEvent>,
     stop_rx: oneshot::Receiver<()>,
 ) {
-    let outlet = Arc::new(Outlet::default());
+    let outlet = Arc::new(Outlet::new(feeds));
     let Some((mut share, first_rx)) = Share::open(&outlet, events_tx, stop_rx) else {
         return;
     };
@@ -156,7 +162,7 @@ async fn share(
             return;
         }
     };
-    report(&share.events_tx, ScreenShare::On);
+    report(&share.events_tx, ScreenShare::On(outlet.preview.clone()));
     let stop = share.until_stopped().await;
     unpublish(&room, &track).await;
     share.end(stop.report()).await;
@@ -306,12 +312,21 @@ async fn unpublish(room: &Room, track: &LocalVideoTrack) {
     }
 }
 
-#[derive(Default)]
 struct Outlet {
     source: Mutex<Option<NativeVideoSource>>,
+    feeds: Arc<Feeds>,
+    preview: FeedId,
 }
 
 impl Outlet {
+    fn new(feeds: Arc<Feeds>) -> Self {
+        Self {
+            source: Mutex::new(None),
+            feeds,
+            preview: FeedId::new(OWN_FEED),
+        }
+    }
+
     fn install(&self, source: NativeVideoSource) {
         if let Ok(mut slot) = self.source.lock() {
             *slot = Some(source);
@@ -324,6 +339,7 @@ impl Outlet {
         {
             source.capture_frame(frame);
         }
+        self.feeds.push_local(&self.preview, &frame.buffer);
     }
 }
 

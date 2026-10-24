@@ -1,6 +1,7 @@
 import { IconSet } from "@lucide";
 
 import { IconButton } from "../../../../components/button.slint";
+import { CallPanel } from "../../../../local.slint";
 import { CallView } from "../../../../views.slint";
 import { AppStyle, Metrics, Size, Space } from "../../../../theme.slint";
 import { CallTileView } from "./call-tile.slint";
@@ -12,6 +13,7 @@ export component CallStage inherits Rectangle {
     property <length> gap: Space.sm;
     property <float> aspect: Metrics.call-tile-aspect;
     property <bool> focused: CallView.stage.length > 0;
+    property <string> staged-key: root.focused ? CallView.stage[0].key : "";
     property <int> count: CallView.tiles.length;
 
     property <int> grid-count: max(1, root.count);
@@ -94,6 +96,13 @@ export component CallStage inherits Rectangle {
         films.content-x = 0;
         films.content-y = 0;
     }
+    changed staged-key => {
+        CallPanel.fit-screen();
+        if CallPanel.viewer-focused {
+            CallPanel.viewer-focused = false;
+            CallPanel.band-takes-focus += 1;
+        }
+    }
     changed rail => {
         films.content-x = 0;
         films.content-y = 0;
@@ -138,7 +147,7 @@ export component CallStage inherits Rectangle {
             width: !root.focused ? root.tile-width : root.film-width;
             height: !root.focused ? root.tile-height : root.film-tile-height;
             tile: tile;
-            selectable: true;
+            selectable: !(tile.screen && tile.own);
             fits-video: root.fits-videos;
             shown: films.visible
                 && self.x + self.width > -films.content-x && self.x < films.width - films.content-x

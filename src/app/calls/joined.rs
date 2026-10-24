@@ -109,10 +109,16 @@ enum OwnCamera {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Pick {
+    First,
+    Replacement,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 enum OwnScreen {
     Off,
-    Choosing,
-    On,
+    Choosing(Pick),
+    On(FeedId),
     Failed,
     Unavailable(ScreenRefusal),
 }
@@ -313,6 +319,7 @@ pub(super) struct Joined {
     camera: OwnCamera,
     screen: OwnScreen,
     shares_missed: u8,
+    changes_cancelled: u64,
     outgoing_kind: Option<RingKind>,
     outgoing: Option<Outgoing>,
     stage: Stage,
@@ -359,6 +366,7 @@ impl Joined {
             camera: OwnCamera::Off,
             screen: OwnScreen::Off,
             shares_missed: 0,
+            changes_cancelled: 0,
             outgoing_kind: joining.outgoing,
             outgoing: None,
             stage: Stage::default(),
@@ -738,17 +746,13 @@ impl Joined {
 
     fn screen_reported(&mut self, screen: ScreenShare) {
         self.screen = match screen {
-            ScreenShare::On if self.screen != OwnScreen::Choosing => return,
-            ScreenShare::On => {
+            ScreenShare::On(_) if !matches!(self.screen, OwnScreen::Choosing(_)) => return,
+            ScreenShare::On(feed) => {
                 self.shares_missed = 0;
-                OwnScreen::On
+                OwnScreen::On(feed)
             }
             ScreenShare::Off if matches!(self.screen, OwnScreen::Unavailable(_)) => return,
-            ScreenShare::Off if self.screen == OwnScreen::Choosing => {
-                self.shares_missed = self.shares_missed.saturating_add(1);
-                OwnScreen::Off
-            }
-            ScreenShare::Off => OwnScreen::Off,
+            ScreenShare::Off => self.screen_ended(),
             ScreenShare::Failed(why) => {
                 tracing::warn!(call = self.call, why, "the screen share did not start");
                 self.shares_missed = self.shares_missed.saturating_add(1);
@@ -763,6 +767,23 @@ impl Joined {
                 OwnScreen::Unavailable(refusal)
             }
         };
+    }
+
+    fn screen_ended(&mut self) -> OwnScreen {
+        match self.screen {
+            OwnScreen::Choosing(Pick::Replacement) => {
+                tracing::info!(
+                    call = self.call,
+                    "no other screen was chosen, so your screen share stopped"
+                );
+                self.changes_cancelled = self.changes_cancelled.saturating_add(1);
+            }
+            OwnScreen::Choosing(Pick::First) => {
+                self.shares_missed = self.shares_missed.saturating_add(1);
+            }
+            OwnScreen::Off | OwnScreen::On(_) | OwnScreen::Failed | OwnScreen::Unavailable(_) => {}
+        }
+        OwnScreen::Off
     }
 
     fn sfu_state(&mut self, sfu: &SfuId, state: SfuState) -> Result<(), CallFailure> {
@@ -872,18 +893,32 @@ impl Joined {
         let unchanged = match self.screen {
             OwnScreen::Unavailable(_) => true,
             OwnScreen::Off | OwnScreen::Failed => !on,
-            OwnScreen::Choosing | OwnScreen::On => on,
+            OwnScreen::Choosing(_) | OwnScreen::On(_) => on,
         };
         if unchanged {
             return;
         }
         tracing::info!(call = self.call, on, "switching the screen share");
         self.screen = if on {
-            OwnScreen::Choosing
+            OwnScreen::Choosing(Pick::First)
         } else {
             OwnScreen::Off
         };
         self.command(MediaCommand::ScreenShare(on));
+    }
+
+    pub(super) fn change_screen_share(&mut self) {
+        if !matches!(self.screen, OwnScreen::On(_)) {
+            tracing::debug!(call = self.call, "no screen share to change");
+            return;
+        }
+        tracing::info!(
+            call = self.call,
+            "changing the shared screen: stopping the share, then asking again"
+        );
+        self.screen = OwnScreen::Choosing(Pick::Replacement);
+        self.command(MediaCommand::ScreenShare(false));
+        self.command(MediaCommand::ScreenShare(true));
     }
 
     fn apply_keys(&self, actions: Vec<KeyAction>) -> Vec<Effect> {
@@ -973,12 +1008,12 @@ impl Joined {
     fn screen_notice(&self) -> Option<CallNotice> {
         let missed_often = self.shares_missed >= SHARES_MISSED_BEFORE_HINT;
         match self.screen {
-            OwnScreen::Choosing => Some(CallNotice::ChoosingScreen),
+            OwnScreen::Choosing(_) => Some(CallNotice::ChoosingScreen),
             OwnScreen::Off | OwnScreen::Failed if missed_often => {
                 Some(CallNotice::SharingNeverStarted)
             }
             OwnScreen::Failed => Some(CallNotice::ScreenFailed),
-            OwnScreen::Off | OwnScreen::On | OwnScreen::Unavailable(_) => None,
+            OwnScreen::Off | OwnScreen::On(_) | OwnScreen::Unavailable(_) => None,
         }
     }
 
@@ -1014,10 +1049,20 @@ impl Joined {
         self.stage.show_self(on);
     }
 
+    pub(super) fn show_share_preview(&mut self, on: bool) {
+        tracing::info!(
+            call = self.call,
+            on,
+            "switching the preview of your shared screen"
+        );
+        self.stage.show_share_preview(on);
+    }
+
     pub(super) fn view(&self) -> ActiveCall {
         let tiles = self.tiles();
         let notice = self.notice(&tiles);
-        let people = people::of_tiles(&tiles, self.screen == OwnScreen::On, self.stage.self_view());
+        let sharing = matches!(self.screen, OwnScreen::On(_));
+        let people = people::of_tiles(&tiles, sharing, self.stage.self_view());
         let arranged = self.stage.arrange(tiles);
         ActiveCall {
             call: self.call,
@@ -1041,11 +1086,13 @@ impl Joined {
             },
             screen: match self.screen {
                 OwnScreen::Off => ScreenView::Off,
-                OwnScreen::Choosing => ScreenView::Choosing,
-                OwnScreen::On => ScreenView::On,
+                OwnScreen::Choosing(_) => ScreenView::Choosing,
+                OwnScreen::On(_) => ScreenView::On,
                 OwnScreen::Failed => ScreenView::Failed,
                 OwnScreen::Unavailable(refusal) => ScreenView::Unavailable(refusal),
             },
+            share_preview: self.stage.share_preview(),
+            share_change_cancelled: self.changes_cancelled,
             notice,
             stage: arranged.stage,
             stage_chosen: arranged.chosen,
@@ -1083,10 +1130,13 @@ impl Joined {
             .iter()
             .any(|member| MemberKey::of(member) == self.me)
         {
-            tiles.push(self.own_tile(NamedUser::unnamed(self.me.user.clone())));
+            let me = NamedUser::unnamed(self.me.user.clone());
+            tiles.extend(self.own_screen_tile(&me));
+            tiles.push(self.own_tile(me));
         }
         for member in &self.members {
             if MemberKey::of(member) == self.me {
+                tiles.extend(self.own_screen_tile(&member.user));
                 tiles.push(self.own_tile(member.user.clone()));
             } else {
                 tiles.push(self.remote_tile(member));
@@ -1122,6 +1172,22 @@ impl Joined {
             speaking,
             video,
         }
+    }
+
+    fn own_screen_tile(&self, name: &NamedUser) -> Option<CallTile> {
+        let OwnScreen::On(feed) = &self.screen else {
+            return None;
+        };
+        Some(CallTile {
+            member: self.me.clone(),
+            name: name.clone(),
+            own: true,
+            kind: TileKind::Screen,
+            state: TileState::Live,
+            muted: false,
+            speaking: false,
+            video: Some(feed.clone()),
+        })
     }
 
     fn remote_tile(&self, member: &CallMember) -> CallTile {

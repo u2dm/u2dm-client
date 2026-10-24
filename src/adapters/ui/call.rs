@@ -222,6 +222,7 @@ fn apply_active<B: UiBackend>(w: &B::Window, last: Option<&ActiveCall>, next: Op
         w.set_int(IntProp::ShareCount, 0);
         w.set_int(IntProp::StartedShareSerial, 0);
         w.set_int(IntProp::EndedShareSerial, 0);
+        w.set_int(IntProp::ShareChangeCancelled, 0);
         w.set_int(IntProp::DeviceNewsSerial, 0);
         apply_notice(w, None);
         let models = B::models();
@@ -277,6 +278,11 @@ fn shown_tiles(active: &ActiveCall) -> impl Iterator<Item = &CallTile> {
 
 fn apply_stage<B: UiBackend>(w: &B::Window, last: Option<&ActiveCall>, active: &ActiveCall) {
     w.set_bool(BoolProp::SelfView, active.self_view);
+    w.set_bool(BoolProp::SharePreview, active.share_preview);
+    w.set_int(
+        IntProp::ShareChangeCancelled,
+        i32::try_from(active.share_change_cancelled).unwrap_or(i32::MAX),
+    );
     w.set_bool(BoolProp::StageChosen, active.stage_chosen);
     w.set_string(StringProp::FirstSharer, shown_name(active.shares.first()));
     w.set_int(
@@ -313,10 +319,7 @@ fn apply_stage<B: UiBackend>(w: &B::Window, last: Option<&ActiveCall>, active: &
     let models = B::models();
     let convert = |tile: &CallTile| {
         let mut row = B::convert_call_tile(tile);
-        if let Some(frame) = call_video::last_frame(row.feed()) {
-            row.set_frame(frame);
-            row.set_has_frame(true);
-        }
+        call_video::show_last::<B>(&mut row);
         row
     };
     let last_stage = last.and_then(|last| last.stage.as_ref());

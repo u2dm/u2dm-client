@@ -69,6 +69,7 @@ pub trait MediaSession: Send {
 
 pub trait VideoFrame {
     fn size(&self) -> FrameSize;
+    fn source(&self) -> FrameSize;
     fn write_rgba(&self, rgba: &mut [u8]) -> bool;
 }
 

@@ -508,6 +508,14 @@ impl CallTile {
     pub const fn is_self_view(&self) -> bool {
         self.own && matches!(self.kind, TileKind::Person)
     }
+
+    pub const fn is_own_share(&self) -> bool {
+        self.own && matches!(self.kind, TileKind::Screen)
+    }
+
+    pub const fn is_remote_share(&self) -> bool {
+        !self.own && matches!(self.kind, TileKind::Screen)
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -601,6 +609,8 @@ pub struct ActiveCall {
     pub microphone: MicrophoneView,
     pub camera: CameraView,
     pub screen: ScreenView,
+    pub share_preview: bool,
+    pub share_change_cancelled: u64,
     pub notice: Option<CallNotice>,
     pub stage: Option<CallTile>,
     pub stage_chosen: bool,

@@ -1229,6 +1229,16 @@ impl Calls {
         self.publish(directory);
     }
 
+    pub(super) fn change_screen_share(&mut self, directory: &RoomDirectory) {
+        let Some(joined) = self.joined.as_mut() else {
+            return;
+        };
+        let span = joined.span.clone();
+        let _in_call = span.enter();
+        joined.change_screen_share();
+        self.publish(directory);
+    }
+
     pub(super) fn use_device(
         &mut self,
         kind: DeviceKind,
@@ -1313,6 +1323,10 @@ impl Calls {
 
     pub(super) fn show_self_view(&mut self, on: bool, directory: &RoomDirectory) {
         self.arrange_stage(directory, |joined| joined.show_self_view(on));
+    }
+
+    pub(super) fn show_share_preview(&mut self, on: bool, directory: &RoomDirectory) {
+        self.arrange_stage(directory, |joined| joined.show_share_preview(on));
     }
 
     fn arrange_stage(&mut self, directory: &RoomDirectory, arrange: impl FnOnce(&mut Joined)) {

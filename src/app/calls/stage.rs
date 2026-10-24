@@ -21,6 +21,7 @@ pub(super) struct Stage {
     shares: Vec<TileKey>,
     staged: Option<(TileKey, NamedUser)>,
     self_view: bool,
+    share_preview: bool,
     started: Option<ShareNews>,
     shares_started: u64,
     ended: Option<ShareNews>,
@@ -35,6 +36,7 @@ impl Default for Stage {
             shares: Vec::new(),
             staged: None,
             self_view: true,
+            share_preview: true,
             started: None,
             shares_started: 0,
             ended: None,
@@ -46,6 +48,10 @@ impl Default for Stage {
 impl Stage {
     pub(super) const fn self_view(&self) -> bool {
         self.self_view
+    }
+
+    pub(super) const fn share_preview(&self) -> bool {
+        self.share_preview
     }
 
     pub(super) const fn started_share(&self) -> Option<&ShareNews> {
@@ -76,10 +82,9 @@ impl Stage {
     }
 
     pub(super) fn focus(&mut self, key: &str, tiles: &[CallTile]) -> bool {
-        let Some(tile) = tiles
-            .iter()
-            .find(|tile| self.visible(tile) && tile.key().to_string() == key)
-        else {
+        let Some(tile) = tiles.iter().find(|tile| {
+            self.visible(tile) && !tile.is_own_share() && tile.key().to_string() == key
+        }) else {
             return false;
         };
         self.pick(tile.key(), tiles);
@@ -111,7 +116,7 @@ impl Stage {
             .or_else(|| {
                 tiles
                     .iter()
-                    .find(|tile| self.visible(tile))
+                    .find(|tile| self.visible(tile) && !tile.is_own_share())
                     .map(CallTile::key)
             });
         if let Some(key) = pick {
@@ -132,6 +137,10 @@ impl Stage {
 
     pub(super) const fn show_self(&mut self, on: bool) {
         self.self_view = on;
+    }
+
+    pub(super) const fn show_share_preview(&mut self, on: bool) {
+        self.share_preview = on;
     }
 
     pub(super) fn arrange(&self, tiles: Vec<CallTile>) -> Arranged {
@@ -185,7 +194,7 @@ impl Stage {
     fn follow_shares(&mut self, tiles: &[CallTile]) {
         let present: Vec<(TileKey, &NamedUser)> = tiles
             .iter()
-            .filter(|tile| tile.kind == TileKind::Screen)
+            .filter(|tile| tile.is_remote_share())
             .map(|tile| (tile.key(), &tile.name))
             .collect();
         self.shares
@@ -272,6 +281,6 @@ impl Stage {
     }
 
     const fn visible(&self, tile: &CallTile) -> bool {
-        self.self_view || !tile.is_self_view()
+        (self.self_view || !tile.is_self_view()) && (self.share_preview || !tile.is_own_share())
     }
 }

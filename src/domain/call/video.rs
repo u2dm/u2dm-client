@@ -2,6 +2,7 @@ use std::fmt;
 
 #[cfg_attr(not(any(feature = "calls", feature = "demo")), allow(dead_code))]
 const SMALLEST_SIDE: u32 = 2;
+pub const LARGEST_SHOWN: FrameSize = FrameSize::new(3840, 2160);
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct FeedId(String);
@@ -122,7 +123,7 @@ pub enum ScreenRefusal {
 #[cfg_attr(not(any(feature = "calls", feature = "demo")), allow(dead_code))]
 pub enum ScreenShare {
     Off,
-    On,
+    On(FeedId),
     Failed(String),
     Unavailable(ScreenRefusal),
 }

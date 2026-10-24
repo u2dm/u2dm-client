@@ -246,6 +246,11 @@ pub const CATALOG: Scenarios = Scenarios {
             note: "the share goes back to off without an error",
         },
         Flag {
+            value: "change-cancelled",
+            effect: "every picker after the first one of a call is closed without a choice",
+            note: "Change shared screen… stops the share and then says that sharing stopped",
+        },
+        Flag {
             value: "share-ends",
             effect: "the desktop ends your screen share 5s after it starts",
             note: "",
@@ -336,6 +341,7 @@ pub const UNPLUGGED_AFTER: Duration = Duration::from_secs(3);
 pub const PLUGGED_BACK_AFTER: Duration = Duration::from_secs(4);
 pub const SHARE_ENDS_AFTER: Duration = Duration::from_secs(5);
 pub const OWN_CAMERA_FEED: &str = "demo-own-camera";
+pub const OWN_SCREEN_FEED: &str = "demo-own-screen";
 pub const PREVIEW_FEED: &str = "demo-camera-preview";
 const OTHER_OWN_DEVICE: &str = "DEMOOTHERDEVICE";
 const DEMO_SFU: &str = "https://sfu.demo.local/livekit/jwt";
@@ -402,6 +408,7 @@ pub struct Scenario {
     member_leaves: bool,
     pub no_screen_capture: bool,
     pub share_cancelled: bool,
+    pub change_cancelled: bool,
     pub share_ends: bool,
     pub headset_unplugs: bool,
     pub headset_fails: bool,
@@ -474,6 +481,7 @@ fn apply(scenario: &mut Scenario, flag: &str) {
         "member-leaves" => scenario.member_leaves = true,
         "no-screen-capture" => scenario.no_screen_capture = true,
         "share-cancelled" => scenario.share_cancelled = true,
+        "change-cancelled" => scenario.change_cancelled = true,
         "share-ends" => scenario.share_ends = true,
         "headset-unplugs" => scenario.headset_unplugs = true,
         "headset-fails" => scenario.headset_fails = true,
