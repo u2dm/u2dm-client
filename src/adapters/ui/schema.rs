@@ -967,6 +967,7 @@ macro_rules! user_message_kinds {
         CallDeclineFailed         CallDeclineFailed       "call-decline-failed";
         CallJoinFailed            CallJoinFailed          "call-join-failed";
         CallServerUnreachable     CallServerUnreachable   "call-server-unreachable";
+        CallServerRefused         CallServerRefused       "call-server-refused";
         CallMediaFailed           CallMediaFailed         "call-media-failed";
         CallCutOff                CallCutOff              "call-cut-off";
         CallNoAnswer              CallNoAnswer            "call-no-answer";
@@ -1544,6 +1545,7 @@ macro_rules! call_refusals {
         NotBuilt          NotBuilt          "not-built";
         MediaBroken       MediaBroken       "media-broken";
         NoServer          NoServer          "no-server";
+        ServerRefused     ServerRefused     "server-refused";
         NotAllowed        NotAllowed        "not-allowed";
         SessionUnverified SessionUnverified "session-unverified";
     } };
@@ -2186,6 +2188,8 @@ macro_rules! call_person_fields {
         devices set_devices "devices" int;
         muted set_muted "muted" flag;
         sharing set_sharing "sharing" flag;
+        sees_no_video set_sees_no_video "sees-no-video" flag;
+        exposes_e2ee set_exposes_e2ee "exposes-e2ee" flag;
         state set_state "state" enumk(CallTileMark);
     } };
 }

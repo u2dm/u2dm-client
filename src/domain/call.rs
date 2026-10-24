@@ -7,7 +7,7 @@ pub mod ring;
 pub mod sfu;
 pub mod video;
 
-use std::collections::HashSet;
+use std::collections::{BTreeSet, HashSet};
 use std::sync::Arc;
 use std::{fmt, ops};
 
@@ -94,10 +94,56 @@ pub enum CallIntent {
     Video,
 }
 
+impl CallIntent {
+    pub const fn of_camera(sending_video: bool) -> Self {
+        if sending_video {
+            Self::Video
+        } else {
+            Self::Voice
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum Capability {
+    RenderAudio,
+    RenderVideo,
+    ExposesE2ee,
+}
+
+pub const OWN_CAPABILITIES: [Capability; 2] = [Capability::RenderAudio, Capability::RenderVideo];
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub enum Capabilities {
+    #[default]
+    Undetermined,
+    Declared(BTreeSet<Capability>),
+}
+
+impl Capabilities {
+    pub fn declared(capabilities: impl IntoIterator<Item = Capability>) -> Self {
+        Self::Declared(capabilities.into_iter().collect())
+    }
+
+    pub fn declares(&self, capability: Capability) -> Option<bool> {
+        match self {
+            Self::Undetermined => None,
+            Self::Declared(declared) => Some(declared.contains(&capability)),
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Transport {
     pub service_url: Option<String>,
     pub sfu_url: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum TransportLookup {
+    Found(Vec<Transport>),
+    NoneOffered,
+    Refused,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -115,6 +161,7 @@ pub struct CallMember {
     pub created_ms: u64,
     pub expires_ms: u64,
     pub intent: Option<CallIntent>,
+    pub capabilities: Capabilities,
     pub transport: Option<Transport>,
     pub selection: FocusSelection,
 }
@@ -145,7 +192,17 @@ impl RoomCall {
     }
 
     pub fn intent(&self) -> Option<CallIntent> {
-        self.members().first().and_then(|caller| caller.intent)
+        if self
+            .members
+            .iter()
+            .any(|member| member.intent == Some(CallIntent::Video))
+        {
+            return Some(CallIntent::Video);
+        }
+        self.members
+            .iter()
+            .all(|member| member.intent == Some(CallIntent::Voice))
+            .then_some(CallIntent::Voice)
     }
 
     pub fn is_video(&self) -> bool {
@@ -225,6 +282,7 @@ pub enum DeviceStanding {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ScheduleFailure {
     Unsupported,
+    Refused,
     TooLong { max_ms: Option<u64> },
     Failed(String),
 }

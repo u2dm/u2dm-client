@@ -290,6 +290,8 @@ struct CallPersonDto {
     devices: usize,
     muted: bool,
     sharing: bool,
+    sees_no_video: bool,
+    exposes_e2ee: bool,
     state: &'static str,
     tile: Option<String>,
 }
@@ -1097,6 +1099,7 @@ fn call(source: &CallView) -> CallDto {
             room_name: failed.room_name.clone(),
             failure: match failed.failure {
                 CallFailure::ServerUnreachable => "server-unreachable",
+                CallFailure::ServerRefused => "server-refused",
                 CallFailure::JoinFailed => "join-failed",
                 CallFailure::MediaFailed => "media-failed",
                 CallFailure::CutOff => "cut-off",
@@ -1189,6 +1192,7 @@ const fn refusal_word(refusal: JoinRefusal) -> &'static str {
         JoinRefusal::NotBuilt => "not-built",
         JoinRefusal::MediaBroken => "media-broken",
         JoinRefusal::NoServer => "no-server",
+        JoinRefusal::ServerRefused => "server-refused",
         JoinRefusal::NotAllowed => "not-allowed",
         JoinRefusal::SessionUnverified => "session-unverified",
     }
@@ -1338,6 +1342,8 @@ fn call_person(person: &CallPerson) -> CallPersonDto {
         devices: person.devices,
         muted: person.muted,
         sharing: person.sharing,
+        sees_no_video: person.sees_no_video,
+        exposes_e2ee: person.exposes_e2ee,
         state: tile_state_word(person.state),
         tile: person.tile.as_ref().map(ToString::to_string),
     }

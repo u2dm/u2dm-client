@@ -2,7 +2,7 @@ use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use std::time::Duration;
 
-use tokio::sync::{mpsc, oneshot};
+use tokio::sync::{mpsc, oneshot, watch};
 use tokio::time::Instant;
 use tracing::Span;
 
@@ -286,6 +286,7 @@ pub(super) struct Joining {
     pub(super) member_id: String,
     pub(super) transport: Transport,
     pub(super) leave_tx: oneshot::Sender<()>,
+    pub(super) intent_tx: watch::Sender<CallIntent>,
     pub(super) media_tx: mpsc::UnboundedSender<MediaCommand>,
     pub(super) media: MediaChoice,
     pub(super) devices: DeviceChoices,
@@ -306,6 +307,7 @@ pub(super) struct Joined {
     transport: Transport,
     membership: Option<SentMembership>,
     leave_tx: Option<oneshot::Sender<()>>,
+    intent_tx: watch::Sender<CallIntent>,
     media_tx: mpsc::UnboundedSender<MediaCommand>,
     keys: KeyExchange,
     identities: IdentityTable,
@@ -349,6 +351,7 @@ impl Joined {
             transport: joining.transport,
             membership: None,
             leave_tx: Some(joining.leave_tx),
+            intent_tx: joining.intent_tx,
             media_tx: joining.media_tx,
             keys: KeyExchange::default(),
             identities: IdentityTable::default(),
@@ -738,6 +741,7 @@ impl Joined {
                 tracing::warn!(call = self.call, why, "the camera did not start");
                 self.camera = OwnCamera::Failed;
                 self.command(MediaCommand::Camera(false));
+                self.tell_intent();
             }
         }
     }
@@ -853,6 +857,23 @@ impl Joined {
         }
         self.camera = wanted;
         self.command(MediaCommand::Camera(on));
+        self.tell_intent();
+    }
+
+    fn tell_intent(&self) {
+        let intent = CallIntent::of_camera(self.media_sent().camera);
+        self.intent_tx.send_if_modified(|told| {
+            if *told == intent {
+                return false;
+            }
+            tracing::info!(
+                call = self.call,
+                ?intent,
+                "the call membership's intent follows the camera"
+            );
+            *told = intent;
+            true
+        });
     }
 
     pub(super) fn use_device(
@@ -1088,7 +1109,12 @@ impl Joined {
         let tiles = self.tiles();
         let notice = self.notice(&tiles);
         let sharing = matches!(self.screen, OwnScreen::On(_));
-        let people = people::of_tiles(&tiles, sharing, self.stage.self_focusable(&tiles));
+        let people = people::of_tiles(
+            &tiles,
+            &self.members,
+            sharing,
+            self.stage.self_focusable(&tiles),
+        );
         let arranged = self.stage.arrange(tiles);
         ActiveCall {
             call: self.call,

@@ -1,5 +1,6 @@
 import { CallCamera, CallDeviceKind, CallDeviceStatus, CallDeviceTrouble, CallMic, CallNotice, CallPhase, CallPreviewTrouble, CallRefusal, CallScreen, CallScreenRefusal, CallSheetPreview, CallTestPhase, CallTileState, Delivery, EmojiArt, MediaFailure, PresenceLine, PreviewKind, RoomCallMark, ServiceKind, ShieldReason, UpgradeLink, UserMessageKind } from "./enums.slint";
 import { CallStates } from "./call-states.slint";
+import { CallPersonEntry } from "./types.slint";
 
 export global UserMessages {
     public pure function text(kind: UserMessageKind, detail: string) -> string {
@@ -131,6 +132,9 @@ export global UserMessages {
         }
         if kind == UserMessageKind.call-server-unreachable {
             return @tr("Could not reach the call server for {}", detail);
+        }
+        if kind == UserMessageKind.call-server-refused {
+            return @tr("Your homeserver doesn't let you use its call server for {}", detail);
         }
         if kind == UserMessageKind.call-media-failed {
             return @tr("Could not start the call's audio in {}", detail);
@@ -1123,6 +1127,9 @@ export global CallWords {
         if refusal == CallRefusal.no-server {
             return @tr("Your homeserver has no call server");
         }
+        if refusal == CallRefusal.server-refused {
+            return @tr("Your homeserver doesn't let you use its call server");
+        }
         if refusal == CallRefusal.not-allowed {
             return @tr("You may not join calls in this room");
         }
@@ -1266,13 +1273,15 @@ export global CallWords {
         return name;
     }
 
-    public pure function person-detail(state: CallTileState, muted: bool, sharing: bool, you: bool, devices: int) -> string {
-        let status = root.listed(root.tile(state), muted && CallStates.hears(state) ? @tr("Muted") : "");
-        let share = !sharing ? ""
-            : you ? @tr("Sharing your screen")
+    public pure function person-detail(person: CallPersonEntry) -> string {
+        let status = root.listed(root.tile(person.state), person.muted && CallStates.hears(person.state) ? @tr("Muted") : "");
+        let share = !person.sharing ? ""
+            : person.you ? @tr("Sharing your screen")
             : @tr("Sharing their screen");
-        let spread = devices > 1 ? @tr("{n} device" | "{n} devices" % devices) : "";
-        return root.listed(root.listed(status, share), spread);
+        let spread = person.devices > 1 ? @tr("{n} device" | "{n} devices" % person.devices) : "";
+        let video = person.sees-no-video ? @tr("Can't see video") : "";
+        let bridge = person.exposes-e2ee ? @tr("Bridges the call outside end-to-end encryption") : "";
+        return root.listed(root.listed(root.listed(status, share), spread), root.listed(video, bridge));
     }
 
     public pure function person-label(name: string, you: bool, detail: string) -> string {

@@ -14,14 +14,14 @@ use std::fmt;
 use std::sync::Arc;
 use std::time::Duration;
 
-use tokio::sync::{Semaphore, mpsc, oneshot};
+use tokio::sync::{Semaphore, mpsc, oneshot, watch};
 use tokio::time::{sleep, sleep_until, timeout};
 use tracing::{Instrument, Span};
 
 use self::device_test::{TestOutcome, TestState, TestTask, Testing, level_percent};
 use self::devices::Devices;
 use self::joined::{Effect, Joined, Joining};
-use self::lane::{LEAVE_WAIT, Lane, LaneEvent, MEMBERSHIP_LIFETIME, keep_membership};
+use self::lane::{LEAVE_DELAY, LEAVE_WAIT, Lane, LaneEvent, MEMBERSHIP_LIFETIME, keep_membership};
 use self::media::{MEDIA_TURN_SHARES, MediaDriver};
 use self::offer::{Media, OfferFacts, Transports, offer};
 use self::preview::{Preview, PreviewOutcome, PreviewState, PreviewTask};
@@ -49,7 +49,7 @@ use crate::domain::call::ring::{
 };
 use crate::domain::call::sfu::{GrantResult, SfuId};
 use crate::domain::call::{
-    CallIntent, DeviceId, KeySendReport, MemberKey, OwnMembership, Transport,
+    CallIntent, DeviceId, KeySendReport, MemberKey, OwnMembership, Transport, TransportLookup,
 };
 use crate::domain::room::{Room, RoomId};
 use crate::domain::user_info::UserId;
@@ -290,7 +290,7 @@ impl Calls {
         let events = self.events.clone();
         self.actions.spawn(async move {
             let found = match rtc.own_transports().await {
-                Ok(found) => Some(found),
+                Ok(lookup) => Some(lookup),
                 Err(e) => {
                     tracing::warn!("could not learn this homeserver's call server: {e}");
                     None
@@ -302,18 +302,24 @@ impl Calls {
 
     pub(super) fn transports_found(
         &mut self,
-        found: Option<Vec<Transport>>,
+        found: Option<TransportLookup>,
         directory: &RoomDirectory,
     ) {
         self.discovering = false;
         match found {
-            Some(found) if !found.is_empty() => {
+            Some(TransportLookup::Found(found)) if !found.is_empty() => {
                 tracing::info!(count = found.len(), "found this homeserver's call server");
                 self.transports = Transports::Found(found);
             }
-            Some(_) => {
+            Some(TransportLookup::Found(_) | TransportLookup::NoneOffered) => {
                 tracing::info!("this homeserver offers no call server, so calls cannot be joined");
                 self.transports = Transports::Missing;
+            }
+            Some(TransportLookup::Refused) => {
+                tracing::info!(
+                    "this homeserver refuses you its call server, so calls cannot be joined"
+                );
+                self.transports = Transports::Refused;
             }
             None => {}
         }
@@ -334,12 +340,17 @@ impl Calls {
                 directory,
             );
         } else {
-            tracing::info!(room_id = %request.room_id, "the call could not start without a call server");
+            let failure = if self.transports == Transports::Refused {
+                CallFailure::ServerRefused
+            } else {
+                CallFailure::ServerUnreachable
+            };
+            tracing::info!(room_id = %request.room_id, ?failure, "the call could not start without a call server");
             self.failed = Some(Failed {
                 room_id: request.room_id,
                 intent: request.intent,
                 media: request.media,
-                failure: CallFailure::ServerUnreachable,
+                failure,
             });
         }
     }
@@ -1106,17 +1117,21 @@ impl Calls {
         self.media_tasks
             .spawn(driver.run(media_rx).instrument(span.clone()));
         let (leave_tx, leave_rx) = oneshot::channel();
+        let first_intent = CallIntent::of_camera(request.media.camera);
+        let (intent_tx, intent_rx) = watch::channel(first_intent);
         let lane = Lane {
             port: Arc::clone(&own.rtc),
             room_id: room.id.clone(),
             membership: OwnMembership {
                 device: own.device.clone(),
                 member_id: member_id.clone(),
-                intent: request.intent,
+                intent: first_intent,
                 transport: transport.clone(),
                 created_ms: None,
                 lifetime_ms: u64::try_from(MEMBERSHIP_LIFETIME.as_millis()).unwrap_or(u64::MAX),
             },
+            intent: intent_rx,
+            leave_delay: LEAVE_DELAY,
             events: self.events.clone(),
             call,
         };
@@ -1149,6 +1164,7 @@ impl Calls {
             member_id,
             transport,
             leave_tx,
+            intent_tx,
             media_tx,
             media: request.media,
             devices: self.devices.clone(),

@@ -34,7 +34,7 @@ use crate::domain::call::ring::{CallSignal, OutgoingRing, RingId};
 use crate::domain::call::sfu::{GrantFailure, GrantRequest, GrantResult, SfuGrant};
 use crate::domain::call::{
     DelayedLeave, DeviceStanding, KeySendReport, MemberKey, OutgoingKey, OwnMembership,
-    RestartResult, ScheduleFailure, ScheduleResult, Secret, SentMembership, Transport,
+    RestartResult, ScheduleFailure, ScheduleResult, Secret, SentMembership, TransportLookup,
 };
 use crate::domain::capabilities::{AccountFacts, AccountPage};
 use crate::domain::departure::{AdminStanding, Removal};
@@ -2548,12 +2548,15 @@ impl CallSignalPort for DemoAuthed {
 
 #[async_trait]
 impl RtcMembershipPort for DemoAuthed {
-    async fn own_transports(&self) -> Result<Vec<Transport>> {
+    async fn own_transports(&self) -> Result<TransportLookup> {
         calls::pause().await;
-        if calls::scenario().no_sfu {
-            return Ok(Vec::new());
+        if calls::scenario().transports_refused {
+            return Ok(TransportLookup::Refused);
         }
-        Ok(vec![calls::own_transport()])
+        if calls::scenario().no_sfu {
+            return Ok(TransportLookup::NoneOffered);
+        }
+        Ok(TransportLookup::Found(vec![calls::own_transport()]))
     }
 
     async fn schedule_leave(&self, room_id: &RoomId, delay: Duration) -> ScheduleResult {
@@ -2589,7 +2592,7 @@ impl RtcMembershipPort for DemoAuthed {
         calls::pause().await;
         let first = membership.created_ms.is_none();
         calls::book().own_join(room_id.as_ref(), membership.intent);
-        tracing::info!(%room_id, first, "demo: you joined the call");
+        tracing::info!(%room_id, first, intent = ?membership.intent, "demo: you joined the call");
         self.echo_rooms();
         if first {
             spawn_others_keys(room_id);

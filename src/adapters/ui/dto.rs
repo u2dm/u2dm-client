@@ -645,6 +645,8 @@ pub struct CallPersonDto {
     pub devices: i32,
     pub muted: bool,
     pub sharing: bool,
+    pub sees_no_video: bool,
+    pub exposes_e2ee: bool,
     pub state: CallTileMark,
 }
 
@@ -1861,6 +1863,8 @@ pub fn call_person_to_dto(person: &CallPerson) -> CallPersonDto {
         devices: i32::try_from(person.devices).unwrap_or(i32::MAX),
         muted: person.muted,
         sharing: person.sharing,
+        sees_no_video: person.sees_no_video,
+        exposes_e2ee: person.exposes_e2ee,
         state: call_tile_mark(person.state),
     }
 }
@@ -1937,6 +1941,7 @@ pub const fn call_notice_mark(notice: Option<&CallNotice>) -> CallNoticeMark {
 pub const fn call_failure_message(failure: CallFailure) -> UserMessageKind {
     match failure {
         CallFailure::ServerUnreachable => UserMessageKind::CallServerUnreachable,
+        CallFailure::ServerRefused => UserMessageKind::CallServerRefused,
         CallFailure::JoinFailed => UserMessageKind::CallJoinFailed,
         CallFailure::MediaFailed => UserMessageKind::CallMediaFailed,
         CallFailure::CutOff => UserMessageKind::CallCutOff,

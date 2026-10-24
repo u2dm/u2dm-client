@@ -133,7 +133,7 @@ export component CallPeopleMenu inherits PickerCard {
     }
 
     pure function detail-of(person: CallPersonEntry) -> string {
-        return CallWords.person-detail(person.state, person.muted, person.sharing, person.you, person.devices);
+        return CallWords.person-detail(person);
     }
 
     pure function label-of(person: CallPersonEntry) -> string {

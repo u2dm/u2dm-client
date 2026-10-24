@@ -287,6 +287,7 @@ pub enum JoinRefusal {
     NotBuilt,
     MediaBroken,
     NoServer,
+    ServerRefused,
     NotAllowed,
     SessionUnverified,
 }
@@ -423,6 +424,7 @@ pub enum CallNotice {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CallFailure {
     ServerUnreachable,
+    ServerRefused,
     JoinFailed,
     MediaFailed,
     CutOff,
@@ -526,6 +528,7 @@ pub struct ShareNews {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[allow(clippy::struct_excessive_bools)]
 pub struct CallPerson {
     pub user: NamedUser,
     pub avatar_mxc: Option<String>,
@@ -533,6 +536,8 @@ pub struct CallPerson {
     pub devices: usize,
     pub muted: bool,
     pub sharing: bool,
+    pub sees_no_video: bool,
+    pub exposes_e2ee: bool,
     pub state: TileState,
     pub tile: Option<TileKey>,
 }

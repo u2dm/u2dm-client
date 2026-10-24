@@ -16,7 +16,8 @@ use crate::domain::call::ring::{CallSignal, Ring, RingId, RingKind};
 use crate::domain::call::sfu::{SfuId, SfuRole};
 use crate::domain::call::video::{FeedId, VideoKind};
 use crate::domain::call::{
-    CallIntent, CallMember, DeviceId, FocusSelection, MemberKey, RoomCall, Transport,
+    CallIntent, CallMember, Capabilities, Capability, DeviceId, FocusSelection, MemberKey,
+    RoomCall, Transport,
 };
 use crate::domain::member_name::{MemberName, NamedUser};
 use crate::domain::room::{Room, RoomId};
@@ -154,6 +155,26 @@ pub const CATALOG: Scenarios = Scenarios {
             value: "speeches",
             effect: "with active: Nadia speaks 4s, Jordan 0.5s, Nadia 3s, Jordan 4s, and again; you never speak",
             note: "Jordan's 0.5s interjection is shorter than the stage's speaker settle",
+        },
+        Flag {
+            value: "capabilities",
+            effect: "with active: Nadia's membership declares m.render_audio and m.render_video, Jordan's only m.render_audio",
+            note: "without it no member declares capabilities, as Element Call does",
+        },
+        Flag {
+            value: "bridge",
+            effect: "with active: Priya joins Design Team's call as a bridge declaring m.render_audio and m.exposes_e2ee",
+            note: "",
+        },
+        Flag {
+            value: "intent-changes",
+            effect: "with active: Kai's intent in Rust Programming's voice call turns to video 4s after sync",
+            note: "the room's call then reads as a video call",
+        },
+        Flag {
+            value: "transports-refused",
+            effect: "the homeserver refuses to name its call transports (a 403), so no call can be joined",
+            note: "",
         },
         Flag {
             value: "crowd",
@@ -341,6 +362,8 @@ const CAMERA_TOGGLES_EVERY: Duration = Duration::from_secs(5);
 const PORTRAIT_CAMERA_OF: &str = JORDAN;
 const LEAVER: &str = JORDAN;
 const MEMBER_LEAVES_AFTER: Duration = Duration::from_secs(15);
+const BRIDGE: &str = PRIYA;
+const INTENT_CHANGES_AFTER: Duration = Duration::from_secs(4);
 pub const PICKER_TIME: Duration = Duration::from_secs(1);
 pub const UNPLUGGED_AFTER: Duration = Duration::from_secs(3);
 pub const PLUGGED_BACK_AFTER: Duration = Duration::from_secs(4);
@@ -401,6 +424,10 @@ pub struct Scenario {
     announce_fails: bool,
     pub speaking: bool,
     pub speeches: bool,
+    capabilities: bool,
+    bridge: bool,
+    intent_changes: bool,
+    pub transports_refused: bool,
     crowd: bool,
     second_device: bool,
     remote_sfu: bool,
@@ -475,6 +502,10 @@ fn apply(scenario: &mut Scenario, flag: &str) {
         "announce-fails" => scenario.announce_fails = true,
         "speaking" => scenario.speaking = true,
         "speeches" => scenario.speeches = true,
+        "capabilities" => scenario.capabilities = true,
+        "bridge" => scenario.bridge = true,
+        "intent-changes" => scenario.intent_changes = true,
+        "transports-refused" => scenario.transports_refused = true,
         "crowd" => scenario.crowd = true,
         "second-device" => scenario.second_device = true,
         "remote-sfu" => scenario.remote_sfu = true,
@@ -508,10 +539,34 @@ fn apply(scenario: &mut Scenario, flag: &str) {
 }
 
 #[derive(Clone, Copy)]
+enum Declares {
+    Nothing,
+    AudioAndVideo,
+    AudioOnly,
+    Bridge,
+}
+
+impl Declares {
+    fn capabilities(self) -> Capabilities {
+        match self {
+            Self::Nothing => Capabilities::Undetermined,
+            Self::AudioAndVideo => {
+                Capabilities::declared([Capability::RenderAudio, Capability::RenderVideo])
+            }
+            Self::AudioOnly => Capabilities::declared([Capability::RenderAudio]),
+            Self::Bridge => {
+                Capabilities::declared([Capability::RenderAudio, Capability::ExposesE2ee])
+            }
+        }
+    }
+}
+
+#[derive(Clone, Copy)]
 struct Joiner {
     user: &'static str,
     device: &'static str,
     intent: CallIntent,
+    declares: Declares,
     expires_after: Option<Duration>,
     sfu: &'static str,
 }
@@ -522,6 +577,7 @@ impl Joiner {
             user,
             device: MEMBER_DEVICE,
             intent,
+            declares: Declares::Nothing,
             expires_after: None,
             sfu: DEMO_SFU,
         }
@@ -559,6 +615,7 @@ impl Joiner {
             created_ms,
             expires_ms,
             intent: Some(self.intent),
+            capabilities: self.declares.capabilities(),
             transport: Some(Transport {
                 service_url: Some(self.sfu.to_owned()),
                 sfu_url: None,
@@ -621,15 +678,33 @@ impl CallBook {
                 expires_after: shaped.expiring.then_some(EXPIRES_AFTER),
                 ..Joiner::member(KAI, CallIntent::Voice)
             };
+            let declares = |declares| {
+                if shaped.capabilities {
+                    declares
+                } else {
+                    Declares::Nothing
+                }
+            };
             let jordan = Joiner {
                 sfu: if shaped.remote_sfu {
                     REMOTE_SFU
                 } else {
                     DEMO_SFU
                 },
+                declares: declares(Declares::AudioOnly),
                 ..Joiner::member(JORDAN, CallIntent::Video)
             };
-            let mut design = vec![Joiner::member(NADIA, CallIntent::Video), jordan];
+            let nadia = Joiner {
+                declares: declares(Declares::AudioAndVideo),
+                ..Joiner::member(NADIA, CallIntent::Video)
+            };
+            let mut design = vec![nadia, jordan];
+            if shaped.bridge {
+                design.push(Joiner {
+                    declares: Declares::Bridge,
+                    ..Joiner::member(BRIDGE, CallIntent::Voice)
+                });
+            }
             if shaped.second_device {
                 design.push(Joiner {
                     device: SECOND_DEVICE,
@@ -707,12 +782,40 @@ impl CallBook {
     }
 
     pub fn own_join(&self, room_id: &str, intent: CallIntent) {
-        self.leave_own(room_id);
+        if self.say_own_intent(room_id, intent) {
+            return;
+        }
         let own = Joiner {
             device: own_device(),
             ..Joiner::member(data::own_user(), intent)
         };
         self.join(room_id, own);
+    }
+
+    fn say_own_intent(&self, room_id: &str, intent: CallIntent) -> bool {
+        let Ok(mut calls) = self.calls.lock() else {
+            return false;
+        };
+        calls
+            .rooms
+            .get_mut(room_id)
+            .and_then(|joiners| {
+                joiners
+                    .iter_mut()
+                    .find(|joiner| joiner.user == data::own_user() && joiner.device == own_device())
+            })
+            .map(|own| own.intent = intent)
+            .is_some()
+    }
+
+    fn say_intent(&self, room_id: &str, user: &str, intent: CallIntent) {
+        if let Ok(mut calls) = self.calls.lock()
+            && let Some(joiners) = calls.rooms.get_mut(room_id)
+        {
+            for joiner in joiners.iter_mut().filter(|joiner| joiner.user == user) {
+                joiner.intent = intent;
+            }
+        }
     }
 
     pub fn leave_own(&self, room_id: &str) {
@@ -927,6 +1030,16 @@ pub fn script() -> Vec<ScriptedChange> {
         changes.push(ScriptedChange {
             after: EXPIRES_AFTER + EXPIRY_LAG,
             change: Box::new(|_: &CallBook| vec![Step::Rooms]),
+        });
+    }
+    if shaped.active && shaped.intent_changes {
+        changes.push(ScriptedChange {
+            after: INTENT_CHANGES_AFTER,
+            change: Box::new(|book: &CallBook| {
+                tracing::info!(user = KAI, "demo: a member's call intent turns to video");
+                book.say_intent(RUST, KAI, CallIntent::Video);
+                vec![Step::Rooms]
+            }),
         });
     }
     if shaped.active && shaped.member_leaves {

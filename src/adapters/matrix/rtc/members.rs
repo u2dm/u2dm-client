@@ -11,16 +11,18 @@ use matrix_sdk::ruma::{MilliSecondsSinceUnixEpoch, OwnedUserId};
 use serde::Deserialize;
 use serde_json::{Map, Value};
 
-use super::CALL_MEMBER_TYPE;
 use super::http::host_of;
+use super::{CALL_MEMBER_TYPE, capability_named};
 use crate::adapters::matrix::member_name::named_member_with_avatar;
-use crate::domain::call::{CallIntent, CallMember, DeviceId, FocusSelection, RoomCall, Transport};
+use crate::domain::call::{
+    CallIntent, CallMember, Capabilities, DeviceId, FocusSelection, RoomCall, Transport,
+};
 
 const MEMBERSHIP_LIFETIME_MS: u64 = 14_400_000;
 const CALL_APPLICATION: &str = "m.call";
 const ROOM_SCOPE: &str = "m.room";
 const ROOM_CALL_ID: &str = "";
-const LIVEKIT: &str = "livekit";
+const LIVEKIT_TYPES: [&str; 2] = ["livekit", "m.livekit"];
 const MULTI_SFU: &str = "multi_sfu";
 const OLDEST_MEMBERSHIP: &str = "oldest_membership";
 const AUDIO_INTENT: &str = "audio";
@@ -182,6 +184,7 @@ async fn read(room: &Room, event: &MembershipEvent, now_ms: u64) -> Reading {
         created_ms,
         expires_ms,
         intent: intent(content),
+        capabilities: capabilities(content),
         transport: preferred_transport(content),
         selection: selection(content),
     }))
@@ -203,13 +206,27 @@ fn intent(content: &Map<String, Value>) -> Option<CallIntent> {
     }
 }
 
+fn capabilities(content: &Map<String, Value>) -> Capabilities {
+    let Some(declared) = content.get("capabilities") else {
+        return Capabilities::Undetermined;
+    };
+    let words: Option<Vec<&str>> = declared
+        .as_array()
+        .and_then(|list| list.iter().map(Value::as_str).collect());
+    let Some(words) = words else {
+        tracing::debug!(%declared, "a call membership's capabilities do not parse, so they stay undetermined");
+        return Capabilities::Undetermined;
+    };
+    Capabilities::declared(words.into_iter().filter_map(capability_named))
+}
+
 fn preferred_transport(content: &Map<String, Value>) -> Option<Transport> {
     let first = content
         .get("foci_preferred")?
         .as_array()?
         .first()?
         .as_object()?;
-    if text(first, "type") != Some(LIVEKIT) {
+    if !text(first, "type").is_some_and(|kind| LIVEKIT_TYPES.contains(&kind)) {
         return None;
     }
     let transport = Transport {

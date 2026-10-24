@@ -247,6 +247,8 @@ pub struct CallPersonDump {
     pub devices: i32,
     pub muted: bool,
     pub sharing: bool,
+    pub sees_no_video: bool,
+    pub exposes_e2ee: bool,
     pub state: String,
 }
 
@@ -550,6 +552,8 @@ fn call_people<B: UiBackend>(rows: &impl Model<Data = B::CallPerson>) -> Vec<Cal
             devices: person.devices(),
             muted: person.muted(),
             sharing: person.sharing(),
+            sees_no_video: person.sees_no_video(),
+            exposes_e2ee: person.exposes_e2ee(),
             state: person.state().to_owned(),
         })
         .collect()

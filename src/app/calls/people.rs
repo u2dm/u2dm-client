@@ -1,18 +1,21 @@
 use crate::commands::view::{CallPerson, CallTile, CantDecrypt, TileKey, TileKind, TileState};
+use crate::domain::call::{CallMember, Capabilities, Capability, MemberKey};
 
 pub(super) fn of_tiles(
     tiles: &[CallTile],
+    members: &[CallMember],
     shared_by_you: bool,
     self_focusable: bool,
 ) -> Vec<CallPerson> {
     let mut people: Vec<CallPerson> = Vec::new();
     for tile in tiles.iter().filter(|tile| tile.kind == TileKind::Person) {
+        let declared = declared_by(tile, members);
         match people
             .iter_mut()
             .find(|person| person.user.user_id == tile.member.user)
         {
-            Some(person) => add_device(person, tile, self_focusable),
-            None => people.push(first_device(tile, self_focusable)),
+            Some(person) => add_device(person, tile, declared, self_focusable),
+            None => people.push(first_device(tile, declared, self_focusable)),
         }
     }
     for tile in tiles.iter().filter(|tile| tile.kind == TileKind::Screen) {
@@ -31,7 +34,21 @@ pub(super) fn of_tiles(
     people
 }
 
-fn first_device(tile: &CallTile, self_focusable: bool) -> CallPerson {
+fn declared_by<'a>(tile: &CallTile, members: &'a [CallMember]) -> Option<&'a Capabilities> {
+    if tile.own {
+        return None;
+    }
+    members
+        .iter()
+        .find(|member| MemberKey::of(member) == tile.member)
+        .map(|member| &member.capabilities)
+}
+
+fn first_device(
+    tile: &CallTile,
+    declared: Option<&Capabilities>,
+    self_focusable: bool,
+) -> CallPerson {
     CallPerson {
         user: tile.name.clone(),
         avatar_mxc: tile.avatar_mxc.clone(),
@@ -39,14 +56,23 @@ fn first_device(tile: &CallTile, self_focusable: bool) -> CallPerson {
         devices: 1,
         muted: tile.muted,
         sharing: false,
+        sees_no_video: sees_no_video(declared),
+        exposes_e2ee: exposes_e2ee(declared),
         state: tile.state,
         tile: focusable(tile, self_focusable),
     }
 }
 
-fn add_device(person: &mut CallPerson, tile: &CallTile, self_focusable: bool) {
+fn add_device(
+    person: &mut CallPerson,
+    tile: &CallTile,
+    declared: Option<&Capabilities>,
+    self_focusable: bool,
+) {
     person.devices += 1;
     person.muted &= tile.muted;
+    person.sees_no_video &= sees_no_video(declared);
+    person.exposes_e2ee |= exposes_e2ee(declared);
     if person.avatar_mxc.is_none() {
         person.avatar_mxc.clone_from(&tile.avatar_mxc);
     }
@@ -57,6 +83,14 @@ fn add_device(person: &mut CallPerson, tile: &CallTile, self_focusable: bool) {
         person.you = true;
         person.tile = focusable(tile, self_focusable);
     }
+}
+
+fn sees_no_video(declared: Option<&Capabilities>) -> bool {
+    declared.and_then(|declared| declared.declares(Capability::RenderVideo)) == Some(false)
+}
+
+fn exposes_e2ee(declared: Option<&Capabilities>) -> bool {
+    declared.and_then(|declared| declared.declares(Capability::ExposesE2ee)) == Some(true)
 }
 
 fn focusable(tile: &CallTile, self_focusable: bool) -> Option<TileKey> {

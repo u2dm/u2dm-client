@@ -1,3 +1,5 @@
+use std::sync::atomic::{AtomicBool, Ordering};
+
 use matrix_sdk::config::RequestConfig;
 use matrix_sdk::reqwest::{Method, StatusCode};
 use matrix_sdk::ruma::api::client::rtc::livekit::get_token;
@@ -6,7 +8,7 @@ use matrix_sdk::ruma::{OwnedRoomId, OwnedServerName};
 use matrix_sdk::{Client, HttpError};
 use serde_json::{Value, json};
 
-use super::http::{Auth, JsonRequest, REQUEST_TIMEOUT, Reply, host_of, send_json};
+use super::http::{Auth, JsonRequest, REQUEST_TIMEOUT, Reply, homeserver_url, host_of, send_json};
 use crate::domain::call::Secret;
 use crate::domain::call::identity::{MediaIdentity, spellings};
 use crate::domain::call::sfu::{GrantFailure, GrantRequest, GrantResult, SfuGrant, SfuRole};
@@ -14,12 +16,14 @@ use crate::domain::call::sfu::{GrantFailure, GrantRequest, GrantResult, SfuGrant
 const ROOM_SLOT: &str = "m.call#ROOM";
 const UNRECOGNIZED: &str = "M_UNRECOGNIZED";
 const NOT_FOUND: &str = "M_NOT_FOUND";
+const STABLE_TOKEN_PATH: &str = "/_matrix/client/v1/rtc/livekit/get_token";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Route {
     ServiceSfuGet,
     ServiceGetToken,
     HomeserverGetToken,
+    HomeserverGetTokenV1,
 }
 
 impl Route {
@@ -28,7 +32,35 @@ impl Route {
             Self::ServiceSfuGet => "/sfu/get",
             Self::ServiceGetToken => "/get_token",
             Self::HomeserverGetToken => "MSC4195 get_token",
+            Self::HomeserverGetTokenV1 => "MSC4195 v1 get_token",
         }
+    }
+}
+
+pub(super) struct TokenRoutes {
+    discovered_stable: AtomicBool,
+    stable_missing: AtomicBool,
+}
+
+impl TokenRoutes {
+    pub(super) const fn new() -> Self {
+        Self {
+            discovered_stable: AtomicBool::new(false),
+            stable_missing: AtomicBool::new(false),
+        }
+    }
+
+    pub(super) fn follow_discovery(&self, stable: bool) {
+        self.discovered_stable.store(stable, Ordering::Relaxed);
+    }
+
+    fn stable(&self) -> bool {
+        self.discovered_stable.load(Ordering::Relaxed)
+            && !self.stable_missing.load(Ordering::Relaxed)
+    }
+
+    fn stable_is_missing(&self) {
+        self.stable_missing.store(true, Ordering::Relaxed);
     }
 }
 
@@ -37,9 +69,15 @@ struct Asker<'a> {
     room_id: &'a str,
     user: String,
     request: &'a GrantRequest,
+    routes: &'a TokenRoutes,
 }
 
-pub(super) async fn grant(client: &Client, room_id: &str, request: &GrantRequest) -> GrantResult {
+pub(super) async fn grant(
+    client: &Client,
+    room_id: &str,
+    request: &GrantRequest,
+    routes: &TokenRoutes,
+) -> GrantResult {
     let user = client
         .user_id()
         .map(ToString::to_string)
@@ -49,6 +87,7 @@ pub(super) async fn grant(client: &Client, room_id: &str, request: &GrantRequest
         room_id,
         user,
         request,
+        routes,
     };
     let transport = &request.target.transport;
     match request.target.role {
@@ -85,12 +124,46 @@ impl Asker<'_> {
             spellings(&self.user, &self.request.device, &self.request.member_id);
         match route {
             Route::ServiceSfuGet => legacy,
-            Route::HomeserverGetToken => hashed_member,
+            Route::HomeserverGetToken | Route::HomeserverGetTokenV1 => hashed_member,
             Route::ServiceGetToken => hashed_device,
         }
     }
 
     async fn ask_homeserver(&self, sfu: &str) -> GrantResult {
+        if self.routes.stable() {
+            match self.ask_homeserver_v1(sfu).await {
+                Err(GrantFailure::NoRoute) => {
+                    tracing::info!(
+                        "the homeserver has no v1 call token endpoint, asking the unstable one"
+                    );
+                    self.routes.stable_is_missing();
+                }
+                answered => return answered,
+            }
+        }
+        self.ask_homeserver_unstable(sfu).await
+    }
+
+    async fn ask_homeserver_v1(&self, sfu: &str) -> GrantResult {
+        let route = Route::HomeserverGetTokenV1;
+        let (room_id, server_name) = self.names()?;
+        let body = json!({
+            "server_name": server_name.as_str(),
+            "url": sfu,
+            "room_id": room_id.as_str(),
+            "slot_id": ROOM_SLOT,
+            "member_id": self.request.member_id,
+        });
+        let url =
+            homeserver_url(self.client, STABLE_TOKEN_PATH, &[]).map_err(GrantFailure::Malformed)?;
+        let reply = self.ask(route, &url, &body, Auth::Homeserver).await?;
+        if lacks_route(reply.status, reply.errcode()) {
+            return Err(GrantFailure::NoRoute);
+        }
+        self.granted(route, &reply)
+    }
+
+    async fn ask_homeserver_unstable(&self, sfu: &str) -> GrantResult {
         let route = Route::HomeserverGetToken;
         let homeserver = self.client.homeserver();
         let answer = self
@@ -111,12 +184,17 @@ impl Asker<'_> {
         }
     }
 
-    fn token_request(&self, sfu: &str) -> Result<get_token::v1::Request, GrantFailure> {
+    fn names(&self) -> Result<(OwnedRoomId, OwnedServerName), GrantFailure> {
         let room_id = OwnedRoomId::try_from(self.room_id)
             .map_err(|e| GrantFailure::Malformed(format!("{} is no room id: {e}", self.room_id)))?;
         let server = &self.request.target.server_name;
         let server_name = OwnedServerName::try_from(server.as_str())
             .map_err(|e| GrantFailure::Malformed(format!("{server} is no server name: {e}")))?;
+        Ok((room_id, server_name))
+    }
+
+    fn token_request(&self, sfu: &str) -> Result<get_token::v1::Request, GrantFailure> {
+        let (room_id, server_name) = self.names()?;
         let mut request = get_token::v1::Request::new(
             sfu.to_owned(),
             room_id,
@@ -163,7 +241,7 @@ impl Asker<'_> {
                     "device_id": device,
                 }),
             ),
-            Route::ServiceGetToken | Route::HomeserverGetToken => (
+            Route::ServiceGetToken | Route::HomeserverGetToken | Route::HomeserverGetTokenV1 => (
                 "get_token",
                 json!({
                     "room_id": self.room_id,

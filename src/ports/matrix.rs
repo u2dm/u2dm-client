@@ -12,7 +12,7 @@ use crate::domain::call::ring::{CallSignal, OutgoingRing, RingId};
 use crate::domain::call::sfu::{GrantRequest, GrantResult};
 use crate::domain::call::{
     DelayedLeave, DeviceStanding, KeySendReport, MemberKey, OutgoingKey, OwnMembership,
-    RestartResult, ScheduleResult, SentMembership, Transport,
+    RestartResult, ScheduleResult, SentMembership, TransportLookup,
 };
 use crate::domain::capabilities::{AccountFacts, AccountPage};
 use crate::domain::departure::AdminStanding;
@@ -328,7 +328,7 @@ pub trait CallSignalPort: Send + Sync {
 
 #[async_trait]
 pub trait RtcMembershipPort: Send + Sync {
-    async fn own_transports(&self) -> Result<Vec<Transport>>;
+    async fn own_transports(&self) -> Result<TransportLookup>;
     async fn schedule_leave(&self, room_id: &RoomId, delay: Duration) -> ScheduleResult;
     async fn restart_leave(&self, leave: &DelayedLeave) -> RestartResult;
     async fn send_leave(&self, leave: &DelayedLeave) -> Result<()>;

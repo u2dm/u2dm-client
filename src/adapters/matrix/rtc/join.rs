@@ -6,15 +6,15 @@ use matrix_sdk::ruma::api::client::delayed_events::update_delayed_event::UpdateA
 use matrix_sdk::{Client, Room};
 use serde_json::{Map, Value, json};
 
-use super::CALL_MEMBER_TYPE;
-use super::delayed::{DelayedEvents, restart_failure, schedule_leave};
-use super::grants::grant;
+use super::delayed::DelayedEvents;
+use super::grants::{TokenRoutes, grant};
 use super::transports::own_transports;
+use super::{CALL_MEMBER_TYPE, capability_word};
 use crate::adapters::matrix::session::ClientHandle;
 use crate::domain::call::sfu::{GrantFailure, GrantRequest, GrantResult};
 use crate::domain::call::{
-    CallIntent, DelayedLeave, OwnMembership, RestartFailure, RestartResult, ScheduleFailure,
-    ScheduleResult, Secret, SentMembership, Transport,
+    CallIntent, DelayedLeave, OWN_CAPABILITIES, OwnMembership, RestartFailure, RestartResult,
+    ScheduleFailure, ScheduleResult, Secret, SentMembership, Transport, TransportLookup,
 };
 use crate::domain::room::RoomId;
 use crate::error::{AppError, Result};
@@ -27,6 +27,7 @@ const CALL_SUFFIX: &str = "m.call";
 pub(in crate::adapters::matrix) struct MatrixRtcMembership {
     matrix: Arc<ClientHandle>,
     delayed: DelayedEvents,
+    tokens: TokenRoutes,
 }
 
 impl MatrixRtcMembership {
@@ -34,6 +35,7 @@ impl MatrixRtcMembership {
         Self {
             matrix,
             delayed: DelayedEvents::new(),
+            tokens: TokenRoutes::new(),
         }
     }
 
@@ -82,6 +84,7 @@ fn membership_content(room_id: &str, membership: &OwnMembership, now_ms: u64) ->
         "membershipID": membership.member_id,
         "expires": expires_ms,
         "m.call.intent": intent_word(membership.intent),
+        "capabilities": OWN_CAPABILITIES.map(capability_word),
         "focus_active": { "type": "livekit", "focus_selection": "multi_sfu" },
         "foci_preferred": [preferred_focus(room_id, &membership.transport)],
         "created_ts": created_ms,
@@ -111,9 +114,11 @@ const fn intent_word(intent: CallIntent) -> &'static str {
 
 #[async_trait]
 impl RtcMembershipPort for MatrixRtcMembership {
-    async fn own_transports(&self) -> Result<Vec<Transport>> {
+    async fn own_transports(&self) -> Result<TransportLookup> {
         let client = self.matrix.client().await?;
-        Ok(own_transports(&client).await)
+        let discovered = own_transports(&client).await.map_err(AppError::Other)?;
+        self.tokens.follow_discovery(discovered.stable);
+        Ok(discovered.lookup)
     }
 
     async fn schedule_leave(&self, room_id: &RoomId, delay: Duration) -> ScheduleResult {
@@ -121,7 +126,10 @@ impl RtcMembershipPort for MatrixRtcMembership {
             .joined_room(room_id)
             .await
             .map_err(|e| ScheduleFailure::Failed(e.to_string()))?;
-        let delay_id = schedule_leave(&client, room.room_id().to_owned(), key, delay).await?;
+        let delay_id = self
+            .delayed
+            .schedule_leave(&client, room.room_id().to_owned(), key, delay)
+            .await?;
         Ok(DelayedLeave {
             room_id: room_id.clone(),
             delay_id: Secret::new(delay_id),
@@ -137,7 +145,6 @@ impl RtcMembershipPort for MatrixRtcMembership {
         self.delayed
             .update(&client, leave.delay_id.expose(), UpdateAction::Restart)
             .await
-            .map_err(|e| restart_failure(&e))
     }
 
     async fn send_leave(&self, leave: &DelayedLeave) -> Result<()> {
@@ -145,7 +152,7 @@ impl RtcMembershipPort for MatrixRtcMembership {
         self.delayed
             .update(&client, leave.delay_id.expose(), UpdateAction::Send)
             .await
-            .map_err(|e| AppError::Other(e.to_string()))
+            .map_err(|failure| AppError::Other(format!("{failure:?}")))
     }
 
     async fn clear_membership(&self, room_id: &RoomId) -> Result<()> {
@@ -179,6 +186,6 @@ impl RtcMembershipPort for MatrixRtcMembership {
             .client()
             .await
             .map_err(|e| GrantFailure::Unreachable(e.to_string()))?;
-        grant(&client, room_id.as_ref(), request).await
+        grant(&client, room_id.as_ref(), request, &self.tokens).await
     }
 }

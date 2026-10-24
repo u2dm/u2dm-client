@@ -1,13 +1,13 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use tokio::sync::oneshot;
+use tokio::sync::{oneshot, watch};
 use tokio::time::{Instant, sleep, sleep_until};
 
 use crate::app::event::{AppEvent, CallEvent};
 use crate::app::input::EventSender;
 use crate::domain::call::{
-    DelayedLeave, OwnMembership, RestartFailure, ScheduleFailure, SentMembership,
+    CallIntent, DelayedLeave, OwnMembership, RestartFailure, ScheduleFailure, SentMembership,
 };
 use crate::domain::room::RoomId;
 use crate::ports::matrix::RtcMembershipPort;
@@ -31,6 +31,8 @@ pub(super) struct Lane {
     pub(super) port: Arc<dyn RtcMembershipPort>,
     pub(super) room_id: RoomId,
     pub(super) membership: OwnMembership,
+    pub(super) intent: watch::Receiver<CallIntent>,
+    pub(super) leave_delay: Duration,
     pub(super) events: EventSender,
     pub(super) call: u64,
 }
@@ -58,6 +60,7 @@ pub(super) async fn keep_membership(mut lane: Lane, mut leave_rx: oneshot::Recei
     }
     let mut last_good = Instant::now();
     let mut refresh_at = Instant::now() + refresh_after(&lane.membership);
+    let mut intent_told = true;
     loop {
         tokio::select! {
             _ = &mut leave_rx => {
@@ -72,6 +75,13 @@ pub(super) async fn keep_membership(mut lane: Lane, mut leave_rx: oneshot::Recei
             () = sleep_until(refresh_at) => {
                 lane.refresh().await;
                 refresh_at = Instant::now() + refresh_after(&lane.membership);
+            }
+            changed = lane.intent.changed(), if intent_told => {
+                if changed.is_ok() {
+                    lane.retell_intent().await;
+                } else {
+                    intent_told = false;
+                }
             }
         }
     }
@@ -94,12 +104,13 @@ impl Lane {
         }
     }
 
-    async fn schedule_leave(&self) -> Option<DelayedLeave> {
+    async fn schedule_leave(&mut self) -> Option<DelayedLeave> {
         let mut delay = LEAVE_DELAY;
         loop {
             match self.port.schedule_leave(&self.room_id, delay).await {
                 Ok(leave) => {
                     tracing::debug!(room_id = %self.room_id, delay_ms = delay.as_millis(), "scheduled the call's delayed leave");
+                    self.leave_delay = delay;
                     return Some(leave);
                 }
                 Err(ScheduleFailure::TooLong {
@@ -121,6 +132,7 @@ impl Lane {
         leave_rx: &mut oneshot::Receiver<()>,
     ) -> Result<SentMembership, Ended> {
         for attempt in 1..=JOIN_ATTEMPTS {
+            self.take_intent();
             let sent = tokio::select! {
                 _ = &mut *leave_rx => return Err(Ended::Ordered),
                 sent = self.port.send_membership(&self.room_id, &self.membership) => sent,
@@ -153,7 +165,7 @@ impl Lane {
                 Some(leave)
             }
             Err(failure) => {
-                let lapsed = last_good.elapsed() >= LEAVE_DELAY;
+                let lapsed = last_good.elapsed() >= self.leave_delay;
                 tracing::info!(room_id = %self.room_id, ?failure, lapsed, "the call's delayed leave did not restart");
                 match (failure, lapsed) {
                     (_, true) => self.rejoin(last_good).await,
@@ -170,6 +182,7 @@ impl Lane {
 
     async fn rejoin(&mut self, last_good: &mut Instant) -> Option<DelayedLeave> {
         let leave = self.schedule_leave().await;
+        self.take_intent();
         match self
             .port
             .send_membership(&self.room_id, &self.membership)
@@ -186,6 +199,7 @@ impl Lane {
     }
 
     async fn refresh(&mut self) {
+        self.take_intent();
         match self
             .port
             .send_membership(&self.room_id, &self.membership)
@@ -194,6 +208,31 @@ impl Lane {
             Ok(_) => tracing::debug!(room_id = %self.room_id, "refreshed the call membership"),
             Err(e) => {
                 tracing::warn!(room_id = %self.room_id, "could not refresh the call membership: {e}");
+            }
+        }
+    }
+
+    fn take_intent(&mut self) {
+        self.membership.intent = *self.intent.borrow_and_update();
+    }
+
+    async fn retell_intent(&mut self) {
+        let told = self.membership.intent;
+        self.take_intent();
+        let intent = self.membership.intent;
+        if intent == told {
+            return;
+        }
+        match self
+            .port
+            .send_membership(&self.room_id, &self.membership)
+            .await
+        {
+            Ok(_) => {
+                tracing::info!(room_id = %self.room_id, ?intent, "the call membership says the new intent");
+            }
+            Err(e) => {
+                tracing::warn!(room_id = %self.room_id, ?intent, "could not update the call membership's intent: {e}");
             }
         }
     }

@@ -15,13 +15,14 @@ pub(super) enum Transports {
     Unknown,
     Found(Vec<Transport>),
     Missing,
+    Refused,
 }
 
 impl Transports {
     pub(super) fn first(&self) -> Option<&Transport> {
         match self {
             Self::Found(found) => found.first(),
-            Self::Unknown | Self::Missing => None,
+            Self::Unknown | Self::Missing | Self::Refused => None,
         }
     }
 }
@@ -51,8 +52,10 @@ fn refusal(facts: &OfferFacts<'_>) -> Option<JoinRefusal> {
         Media::Broken => return Some(JoinRefusal::MediaBroken),
         Media::Ready => {}
     }
-    if *facts.transports == Transports::Missing {
-        return Some(JoinRefusal::NoServer);
+    match facts.transports {
+        Transports::Missing => return Some(JoinRefusal::NoServer),
+        Transports::Refused => return Some(JoinRefusal::ServerRefused),
+        Transports::Unknown | Transports::Found(_) => {}
     }
     if !facts.room.may_join_calls {
         return Some(JoinRefusal::NotAllowed);

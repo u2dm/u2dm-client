@@ -20,7 +20,7 @@ use crate::domain::call::devices::DeviceLists;
 use crate::domain::call::media::MediaEvent;
 use crate::domain::call::ring::{CallSignal, RingId};
 use crate::domain::call::sfu::{GrantResult, SfuId};
-use crate::domain::call::{DeviceStanding, KeySendReport, MemberKey, Transport};
+use crate::domain::call::{DeviceStanding, KeySendReport, MemberKey, TransportLookup};
 use crate::domain::capabilities::AccountFacts;
 use crate::domain::departure::AdminStanding;
 use crate::domain::encryption::{AccountEncryption, IdentityOutcome};
@@ -228,7 +228,7 @@ pub(super) enum CallEvent {
     },
     Transports {
         session: u64,
-        found: Option<Vec<Transport>>,
+        found: Option<TransportLookup>,
     },
     Lane {
         call: u64,

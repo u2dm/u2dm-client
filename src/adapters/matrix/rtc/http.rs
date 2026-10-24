@@ -9,6 +9,7 @@ const BODY_MAX_BYTES: usize = 64 * 1024;
 pub(super) const REQUEST_TIMEOUT: Duration = Duration::from_secs(10);
 const JSON: &str = "application/json";
 const UNKNOWN_TOKEN: &str = "M_UNKNOWN_TOKEN";
+const UNRECOGNIZED: &str = "M_UNRECOGNIZED";
 
 #[derive(Debug)]
 pub(super) struct Reply {
@@ -23,6 +24,27 @@ impl Reply {
 
     pub(super) fn text(&self, key: &str) -> Option<&str> {
         self.body.get(key).and_then(Value::as_str)
+    }
+
+    pub(super) fn lacks_endpoint(&self) -> bool {
+        matches!(
+            self.status,
+            StatusCode::NOT_FOUND | StatusCode::METHOD_NOT_ALLOWED
+        ) || self.errcode() == Some(UNRECOGNIZED)
+    }
+
+    pub(super) fn refuses(&self) -> bool {
+        matches!(
+            self.status,
+            StatusCode::UNAUTHORIZED | StatusCode::FORBIDDEN
+        )
+    }
+
+    pub(super) fn described(&self) -> String {
+        match self.errcode() {
+            Some(errcode) => format!("{} {errcode}", self.status),
+            None => self.status.to_string(),
+        }
     }
 }
 
@@ -96,6 +118,18 @@ async fn read_capped(mut response: Response) -> Result<Vec<u8>, String> {
         body.extend_from_slice(&chunk);
     }
     Ok(body)
+}
+
+pub(super) fn homeserver_url(
+    client: &Client,
+    path: &str,
+    segments: &[&str],
+) -> Result<String, String> {
+    let mut url = client.homeserver().join(path).map_err(|e| e.to_string())?;
+    url.path_segments_mut()
+        .map_err(|()| format!("{path} takes no path segments"))?
+        .extend(segments);
+    Ok(url.into())
 }
 
 pub(super) fn host_of(url: &str) -> &str {
