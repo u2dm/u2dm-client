@@ -101,6 +101,10 @@ macro_rules! string_props {
         PeopleSecond CallView "CallView" "people-second" set_people_second get_people_second;
         SheetPeopleFirst CallView "CallView" "sheet-people-first" set_sheet_people_first get_sheet_people_first;
         SheetPeopleSecond CallView "CallView" "sheet-people-second" set_sheet_people_second get_sheet_people_second;
+        BridgesFirst CallView "CallView" "bridges-first" set_bridges_first get_bridges_first;
+        BridgesSecond CallView "CallView" "bridges-second" set_bridges_second get_bridges_second;
+        SheetBridgesFirst CallView "CallView" "sheet-bridges-first" set_sheet_bridges_first get_sheet_bridges_first;
+        SheetBridgesSecond CallView "CallView" "sheet-bridges-second" set_sheet_bridges_second get_sheet_bridges_second;
         DeviceNewsName CallView "CallView" "device-news-name" set_device_news_name get_device_news_name;
         SpaceIndexName SpaceIndexView "SpaceIndexView" "space-name" set_space_name get_space_name;
         RoomInfoRoomId RoomInfoView "RoomInfoView" "room-id" set_room_id get_room_id;
@@ -569,6 +573,7 @@ macro_rules! int_props {
         SheetSerial CallView "CallView" "sheet-serial" set_sheet_serial get_sheet_serial;
         SheetPeople CallView "CallView" "sheet-people" set_sheet_people get_sheet_people;
         SheetPeopleMore CallView "CallView" "sheet-people-more" set_sheet_people_more get_sheet_people_more;
+        SheetBridgesMore CallView "CallView" "sheet-bridges-more" set_sheet_bridges_more get_sheet_bridges_more;
         HerePeople CallView "CallView" "here-people" set_here_people get_here_people;
         NoticeOthers CallView "CallView" "notice-others" set_notice_others get_notice_others;
         ActiveCall CallView "CallView" "active-call" set_active_call get_active_call;
@@ -577,6 +582,7 @@ macro_rules! int_props {
         EndedShareSerial CallView "CallView" "ended-share-serial" set_ended_share_serial get_ended_share_serial;
         ShareChangeCancelled CallView "CallView" "share-change-cancelled" set_share_change_cancelled get_share_change_cancelled;
         PeopleMore CallView "CallView" "people-more" set_people_more get_people_more;
+        BridgesMore CallView "CallView" "bridges-more" set_bridges_more get_bridges_more;
         MicrophoneChosen CallView "CallView" "microphone-chosen" set_microphone_chosen get_microphone_chosen;
         CameraChosen CallView "CallView" "camera-chosen" set_camera_chosen get_camera_chosen;
         SpeakerChosen CallView "CallView" "speaker-chosen" set_speaker_chosen get_speaker_chosen;

@@ -17,7 +17,7 @@ use crate::domain::call::sfu::{SfuId, SfuRole};
 use crate::domain::call::video::{FeedId, VideoKind};
 use crate::domain::call::{
     CallIntent, CallMember, Capabilities, Capability, DeviceId, FocusSelection, MemberKey,
-    RoomCall, Transport,
+    MemberSession, RoomCall, Transport,
 };
 use crate::domain::member_name::{MemberName, NamedUser};
 use crate::domain::room::{Room, RoomId};
@@ -764,6 +764,19 @@ impl CallBook {
         self.tell_watchers(room_id, joiner, true);
     }
 
+    fn session_of(&self, room_id: &str, user: &str) -> Option<MemberSession> {
+        let calls = self.calls.lock().ok()?;
+        let joiners = calls.rooms.get(room_id)?;
+        let offset = joiners.iter().position(|joiner| joiner.user == user)?;
+        let member = joiners
+            .get(offset)?
+            .to_member(calls.started_ms, u64::try_from(offset).unwrap_or(0));
+        Some(MemberSession {
+            member_id: member.member_id,
+            created_ms: member.created_ms,
+        })
+    }
+
     fn leave(&self, room_id: &str, user: &str) {
         let mut left = Vec::new();
         if let Ok(mut calls) = self.calls.lock()
@@ -1020,7 +1033,7 @@ pub fn script() -> Vec<ScriptedChange> {
                 }
                 vec![
                     Step::Rooms,
-                    Step::Signal(ring(SARAH_CHAT, SARAH, intent, RingKind::Ring)),
+                    Step::Signal(ring(book, SARAH_CHAT, SARAH, intent, RingKind::Ring)),
                 ]
             }),
         });
@@ -1059,7 +1072,13 @@ pub fn script() -> Vec<ScriptedChange> {
                 book.join(MATRIX_HQ, Joiner::member(KAI, CallIntent::Voice));
                 vec![
                     Step::Rooms,
-                    Step::Signal(ring(MATRIX_HQ, KAI, CallIntent::Voice, RingKind::Notify)),
+                    Step::Signal(ring(
+                        book,
+                        MATRIX_HQ,
+                        KAI,
+                        CallIntent::Voice,
+                        RingKind::Notify,
+                    )),
                 ]
             }),
         });
@@ -1110,7 +1129,13 @@ fn ring_id(room_id: &str) -> RingId {
     RingId::new(format!("$demo-ring-{room_id}"))
 }
 
-fn ring(room_id: &str, caller: &str, intent: CallIntent, kind: RingKind) -> CallSignal {
+fn ring(
+    book: &CallBook,
+    room_id: &str,
+    caller: &str,
+    intent: CallIntent,
+    kind: RingKind,
+) -> CallSignal {
     CallSignal::Rang(Box::new(Ring {
         id: ring_id(room_id),
         room_id: RoomId::new(room_id),
@@ -1118,6 +1143,7 @@ fn ring(room_id: &str, caller: &str, intent: CallIntent, kind: RingKind) -> Call
             caller,
             MemberName::new(data::person_name(caller).as_deref(), false),
         ),
+        session: book.session_of(room_id, caller),
         intent: Some(intent),
         kind,
         expires_ms: unix_now_ms().saturating_add(RING_LIFETIME_MS),

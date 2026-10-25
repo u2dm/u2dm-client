@@ -166,6 +166,32 @@ pub struct CallMember {
     pub selection: FocusSelection,
 }
 
+impl CallMember {
+    pub fn holds(&self, session: &MemberSession) -> bool {
+        self.member_id == session.member_id && self.created_ms == session.created_ms
+    }
+
+    pub fn bridges(&self) -> bool {
+        self.capabilities.declares(Capability::ExposesE2ee) == Some(true)
+    }
+}
+
+pub fn bridges_in_order(members: &[CallMember]) -> Vec<NamedUser> {
+    let mut seen = HashSet::new();
+    members
+        .iter()
+        .filter(|member| member.bridges())
+        .filter(|member| seen.insert(member.user.user_id.as_str()))
+        .map(|member| member.user.clone())
+        .collect()
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MemberSession {
+    pub member_id: String,
+    pub created_ms: u64,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RoomCall {
     members: Arc<[CallMember]>,
@@ -219,6 +245,10 @@ impl RoomCall {
             .iter()
             .map(|member| &member.user)
             .filter(move |user| seen.insert(user.user_id.as_str()))
+    }
+
+    pub fn bridges(&self) -> Vec<NamedUser> {
+        bridges_in_order(&self.members)
     }
 
     pub fn joined_by(&self, user_id: &str) -> bool {

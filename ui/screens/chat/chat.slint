@@ -109,6 +109,7 @@ export component ChatScreen inherits FocusScope {
     property <bool> has-toast: RoomView.toast-message != UserMessageKind.none;
     property <bool> shows-dock: CallView.active || CallView.failed;
     property <length> dock-height: root.shows-dock ? dock.height : 0px;
+    property <length> dock-height-with-stage: root.shows-dock ? dock.height-with-stage : 0px;
     property <length> menu-room-above: dock.devices-y - Space.xs - Space.md;
     property <length> menu-room-below: root.height - dock.devices-y - dock.devices-size - Space.xs - Space.md;
     property <bool> menu-above: root.menu-room-above >= root.menu-room-below;
@@ -265,6 +266,7 @@ export component ChatScreen inherits FocusScope {
         compact: root.compact && root.has-room;
         overlay-width: root.width;
         dock-height: root.dock-height;
+        dock-height-with-stage: root.dock-height-with-stage;
         room-info-pane-fits: root.room-info-pane-fits;
         room-info-pane-shown: root.room-info-pane-shown;
         room-info-pane-width: root.room-info-pane-inset;

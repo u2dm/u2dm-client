@@ -137,6 +137,8 @@ export global CallPanel {
     in-out property <CallMode> mode: CallMode.chat-only;
     in-out property <CallMode> last-call-mode: CallMode.call-and-chat;
     in-out property <CallSurface> turn: CallSurface.call;
+    in-out property <bool> kept-chat: false;
+    in-out property <bool> space-uncovered: false;
     in-out property <float> stage-share: Metrics.call-stage-share;
     in-out property <float> split-share: Metrics.call-split-share;
     in-out property <bool> fits-videos: false;
@@ -196,7 +198,13 @@ export global CallPanel {
         root.people-open = true;
     }
 
+    function take-over() {
+        root.kept-chat = false;
+        root.space-uncovered = false;
+    }
+
     public function choose(mode: CallMode) {
+        root.take-over();
         root.mode = mode;
         if mode != CallMode.chat-only {
             root.last-call-mode = mode;
@@ -205,6 +213,7 @@ export global CallPanel {
     }
 
     public function show-call() {
+        root.take-over();
         if root.mode == CallMode.chat-only {
             root.mode = root.last-call-mode;
         }
@@ -219,6 +228,7 @@ export global CallPanel {
     }
 
     public function show-chat() {
+        root.take-over();
         if root.mode == CallMode.call-only {
             root.mode = CallMode.chat-only;
         }
@@ -226,6 +236,7 @@ export global CallPanel {
     }
 
     public function begin(video: bool) {
+        root.take-over();
         root.mode = video ? CallMode.call-and-chat : CallMode.chat-only;
         root.last-call-mode = CallMode.call-and-chat;
         root.turn = CallSurface.call;

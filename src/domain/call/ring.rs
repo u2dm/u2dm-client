@@ -1,7 +1,7 @@
 use std::{fmt, ops};
 
-use crate::domain::call::CallIntent;
 use crate::domain::call::keys::ReceivedKey;
+use crate::domain::call::{CallIntent, MemberSession, RoomCall};
 use crate::domain::member_name::NamedUser;
 use crate::domain::room::RoomId;
 use crate::domain::user_info::UserId;
@@ -50,6 +50,7 @@ pub struct Ring {
     pub id: RingId,
     pub room_id: RoomId,
     pub caller: NamedUser,
+    pub session: Option<MemberSession>,
     pub intent: Option<CallIntent>,
     pub kind: RingKind,
     pub expires_ms: u64,
@@ -58,6 +59,24 @@ pub struct Ring {
 impl Ring {
     pub fn is_video(&self) -> bool {
         self.intent == Some(CallIntent::Video)
+    }
+
+    pub fn caller_in(&self, call: &RoomCall) -> bool {
+        let caller = self.caller.user_id.as_str();
+        match &self.session {
+            Some(session) => call
+                .members()
+                .iter()
+                .any(|member| member.user.user_id == caller && member.holds(session)),
+            None => call.joined_by(caller),
+        }
+    }
+
+    pub fn same_call(&self, other: &Self) -> bool {
+        self.room_id == other.room_id
+            && self.caller.user_id == other.caller.user_id
+            && self.session.is_some()
+            && self.session == other.session
     }
 }
 

@@ -9,7 +9,7 @@ pub(super) mod preview;
 mod sheet;
 mod stage;
 
-use std::collections::HashSet;
+use std::collections::{HashSet, VecDeque};
 use std::fmt;
 use std::sync::Arc;
 use std::time::Duration;
@@ -60,6 +60,7 @@ use crate::util::unix_now_ms;
 
 const SIGNAL_CHANNEL_CAP: usize = 16;
 const RING_CONFIRM_WAIT: Duration = Duration::from_secs(3);
+const RINGS_REMEMBERED: usize = 16;
 const RING_OUT_WAIT: Duration = Duration::from_millis(OUTGOING_RING_LIFETIME_MS);
 
 struct Own {
@@ -171,6 +172,7 @@ pub(super) struct Calls {
     own: Option<Own>,
     focus: WindowFocus,
     incoming: Option<Incoming>,
+    rung: VecDeque<Ring>,
     serial: u64,
     selected: Option<RoomId>,
     verified: bool,
@@ -217,6 +219,7 @@ impl Calls {
             own: None,
             focus: WindowFocus::default(),
             incoming: None,
+            rung: VecDeque::new(),
             serial: 0,
             selected: None,
             verified: false,
@@ -409,9 +412,12 @@ impl Calls {
         if self
             .incoming
             .as_ref()
-            .is_some_and(|incoming| incoming.ring.id == ring.id)
+            .is_some_and(|incoming| incoming.ring.id == ring.id || incoming.ring.same_call(ring))
         {
             return Some("it already rings");
+        }
+        if self.rung.iter().any(|rung| rung.same_call(ring)) {
+            return Some("this call already rang here");
         }
         let Some(room) = directory.room(&ring.room_id) else {
             return Some("its room is not listed");
@@ -562,7 +568,7 @@ impl Calls {
         {
             return Some(RingEnd::AnsweredElsewhere);
         }
-        let caller_in = call.is_some_and(|call| call.joined_by(&incoming.ring.caller.user_id));
+        let caller_in = call.is_some_and(|call| incoming.ring.caller_in(call));
         match (incoming.answering, caller_in) {
             (Answering::Pending, true) => {
                 tracing::debug!(%room_id, ring = %incoming.ring.id, "the caller is in the call, so it rings");
@@ -1745,6 +1751,10 @@ impl Calls {
             "the call stopped ringing"
         );
         self.rings.cancel_and_detach();
+        if self.rung.len() == RINGS_REMEMBERED {
+            self.rung.pop_front();
+        }
+        self.rung.push_back(incoming.ring);
     }
 
     fn arm_windows(&mut self, ring: &Ring) {

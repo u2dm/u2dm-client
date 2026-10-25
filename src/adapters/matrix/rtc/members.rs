@@ -1,24 +1,29 @@
 use std::collections::BTreeMap;
 use std::sync::Arc;
+use std::time::Duration;
 
 use matrix_sdk::Room;
+use matrix_sdk::config::RequestConfig;
 use matrix_sdk::deserialized_responses::RawAnySyncOrStrippedState;
 use matrix_sdk::ruma::events::AnySyncStateEvent;
 use matrix_sdk::ruma::events::StateEventType;
 use matrix_sdk::ruma::events::room::member::MembershipState;
 use matrix_sdk::ruma::serde::Raw;
-use matrix_sdk::ruma::{MilliSecondsSinceUnixEpoch, OwnedUserId};
+use matrix_sdk::ruma::{EventId, MilliSecondsSinceUnixEpoch, OwnedEventId, OwnedUserId, UserId};
 use serde::Deserialize;
 use serde_json::{Map, Value};
+use tokio::time::timeout;
 
 use super::http::host_of;
 use super::{CALL_MEMBER_TYPE, capability_named};
 use crate::adapters::matrix::member_name::named_member_with_avatar;
 use crate::domain::call::{
-    CallIntent, CallMember, Capabilities, DeviceId, FocusSelection, RoomCall, Transport,
+    CallIntent, CallMember, Capabilities, DeviceId, FocusSelection, MemberSession, RoomCall,
+    Transport,
 };
 
 const MEMBERSHIP_LIFETIME_MS: u64 = 14_400_000;
+const REFERENCE_WAIT: Duration = Duration::from_secs(3);
 const CALL_APPLICATION: &str = "m.call";
 const ROOM_SCOPE: &str = "m.room";
 const ROOM_CALL_ID: &str = "";
@@ -31,16 +36,58 @@ const NO_TRANSPORT: &str = "no transport";
 
 #[derive(Deserialize)]
 struct MembershipEvent {
+    #[serde(default)]
+    event_id: Option<OwnedEventId>,
     sender: OwnedUserId,
     origin_server_ts: MilliSecondsSinceUnixEpoch,
     #[serde(default)]
     content: Map<String, Value>,
 }
 
+#[derive(Deserialize)]
+struct FetchedEvent {
+    #[serde(rename = "type")]
+    event_type: String,
+    state_key: Option<String>,
+    #[serde(flatten)]
+    membership: MembershipEvent,
+}
+
 enum Reading {
     Member(Box<CallMember>),
+    Unfit(Unfit),
+}
+
+enum Unfit {
     Gone(&'static str),
     Rejected(&'static str),
+}
+
+impl Unfit {
+    const fn reason(&self) -> &'static str {
+        match self {
+            Self::Gone(reason) | Self::Rejected(reason) => reason,
+        }
+    }
+}
+
+struct Session<'a> {
+    device: &'a str,
+    member_id: String,
+    created_ms: u64,
+    expires_ms: u64,
+}
+
+pub(in crate::adapters::matrix) enum Referenced {
+    Current(MemberSession),
+    Replaced(MemberSession),
+    Unknown,
+}
+
+#[derive(Clone, Copy)]
+enum Standing {
+    Current,
+    Replaced,
 }
 
 pub(in crate::adapters::matrix) async fn room_call(
@@ -87,8 +134,8 @@ impl Gathered {
         }
         match read(room, &event, now_ms).await {
             Reading::Member(member) => self.members.push(*member),
-            Reading::Gone(reason) => *self.gone.entry(reason).or_default() += 1,
-            Reading::Rejected(reason) => {
+            Reading::Unfit(Unfit::Gone(reason)) => *self.gone.entry(reason).or_default() += 1,
+            Reading::Unfit(Unfit::Rejected(reason)) => {
                 tracing::debug!(sender = %event.sender, reason, "a call membership was rejected");
                 self.rejected += 1;
             }
@@ -147,47 +194,124 @@ async fn left_the_room(room: &Room, sender: &OwnedUserId) -> bool {
     }
 }
 
-async fn read(room: &Room, event: &MembershipEvent, now_ms: u64) -> Reading {
+fn session_of(event: &MembershipEvent) -> Result<Session<'_>, Unfit> {
     let content = &event.content;
     if content.is_empty() {
-        return Reading::Gone("it is empty, so its member left");
+        return Err(Unfit::Gone("it is empty, so its member left"));
     }
     if content.contains_key("memberships") {
-        return Reading::Rejected("it uses the legacy list format");
+        return Err(Unfit::Rejected("it uses the legacy list format"));
     }
     if text(content, "application") != Some(CALL_APPLICATION) {
-        return Reading::Gone("it belongs to another application");
+        return Err(Unfit::Gone("it belongs to another application"));
     }
     if text(content, "scope").is_some_and(|scope| scope != ROOM_SCOPE)
         || text(content, "call_id") != Some(ROOM_CALL_ID)
     {
-        return Reading::Gone("it is not the room's call");
+        return Err(Unfit::Gone("it is not the room's call"));
     }
     let Some(device) = text(content, "device_id").filter(|device| !device.is_empty()) else {
-        return Reading::Rejected("it names no device");
+        return Err(Unfit::Rejected("it names no device"));
     };
     let created_ms =
         number(content, "created_ts").unwrap_or_else(|| event.origin_server_ts.0.into());
-    let expires_ms =
-        created_ms.saturating_add(number(content, "expires").unwrap_or(MEMBERSHIP_LIFETIME_MS));
-    if expires_ms <= now_ms {
-        return Reading::Gone("it expired");
+    Ok(Session {
+        device,
+        member_id: text(content, "membershipID")
+            .map_or_else(|| format!("{}:{device}", event.sender), str::to_owned),
+        created_ms,
+        expires_ms: created_ms
+            .saturating_add(number(content, "expires").unwrap_or(MEMBERSHIP_LIFETIME_MS)),
+    })
+}
+
+async fn read(room: &Room, event: &MembershipEvent, now_ms: u64) -> Reading {
+    let session = match session_of(event) {
+        Ok(session) => session,
+        Err(unfit) => return Reading::Unfit(unfit),
+    };
+    if session.expires_ms <= now_ms {
+        return Reading::Unfit(Unfit::Gone("it expired"));
     }
-    let member_id = text(content, "membershipID")
-        .map_or_else(|| format!("{}:{device}", event.sender), str::to_owned);
+    let content = &event.content;
     let (user, avatar_mxc) = named_member_with_avatar(room, &event.sender).await;
     Reading::Member(Box::new(CallMember {
         user,
         avatar_mxc,
-        device: DeviceId::new(device),
-        member_id,
-        created_ms,
-        expires_ms,
+        device: DeviceId::new(session.device),
+        member_id: session.member_id,
+        created_ms: session.created_ms,
+        expires_ms: session.expires_ms,
         intent: intent(content),
         capabilities: capabilities(content),
         transport: preferred_transport(content),
         selection: selection(content),
     }))
+}
+
+pub(in crate::adapters::matrix) async fn referenced_membership(
+    room: &Room,
+    event_id: &EventId,
+    sender: &UserId,
+    now_ms: u64,
+) -> Result<Referenced, &'static str> {
+    if let Some(event) = current_membership(room, event_id).await {
+        return judged(&event, sender, now_ms, Standing::Current);
+    }
+    let fetching = room.load_or_fetch_event(event_id, Some(RequestConfig::short_retry()));
+    let fetched = match timeout(REFERENCE_WAIT, fetching).await {
+        Ok(Ok(fetched)) => fetched,
+        Ok(Err(e)) => {
+            tracing::debug!(%event_id, "could not fetch the call membership a notification references: {e}");
+            return Ok(Referenced::Unknown);
+        }
+        Err(_) => {
+            tracing::debug!(%event_id, "the call membership a notification references did not arrive in time");
+            return Ok(Referenced::Unknown);
+        }
+    };
+    let Ok(event) = fetched.raw().deserialize_as_unchecked::<FetchedEvent>() else {
+        return Err("it does not parse");
+    };
+    if event.event_type != CALL_MEMBER_TYPE || event.state_key.is_none() {
+        return Err("it is no call membership");
+    }
+    judged(&event.membership, sender, now_ms, Standing::Replaced)
+}
+
+async fn current_membership(room: &Room, event_id: &EventId) -> Option<MembershipEvent> {
+    let events = room
+        .get_state_events(StateEventType::from(CALL_MEMBER_TYPE))
+        .await
+        .inspect_err(|e| tracing::debug!("could not read the room's call memberships: {e}"))
+        .ok()?;
+    events.into_iter().find_map(|event| match event {
+        RawAnySyncOrStrippedState::Sync(raw) => {
+            parsed(&raw).filter(|event| event.event_id.as_deref() == Some(event_id))
+        }
+        RawAnySyncOrStrippedState::Stripped(_) => None,
+    })
+}
+
+fn judged(
+    event: &MembershipEvent,
+    sender: &UserId,
+    now_ms: u64,
+    standing: Standing,
+) -> Result<Referenced, &'static str> {
+    if *event.sender != *sender {
+        return Err("it belongs to someone else");
+    }
+    let session = session_of(event).map_err(|unfit| unfit.reason())?;
+    let held = MemberSession {
+        member_id: session.member_id,
+        created_ms: session.created_ms,
+    };
+    match standing {
+        Standing::Current if session.expires_ms <= now_ms => Err("it expired"),
+        Standing::Current => Ok(Referenced::Current(held)),
+        Standing::Replaced => Ok(Referenced::Replaced(held)),
+    }
 }
 
 fn text<'a>(content: &'a Map<String, Value>, key: &str) -> Option<&'a str> {

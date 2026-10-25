@@ -14,14 +14,11 @@ import { CallStatus, ShareStatus } from "./call-status.slint";
 
 component CallLine inherits HorizontalLayout {
     in property <bool> names-room;
-    in property <bool> names-people;
 
     property <bool> sharing: CallView.screen == CallScreen.on;
+    property <string> sharing-words: @tr("Sharing your screen");
+    property <string> bridges: CallWords.bridges(CallView.bridges-first, CallView.bridges-second, CallView.bridges-more);
     property <string> phase: CallWords.phase(CallView.phase, CallView.elapsed);
-    property <string> people: CallWords.people(CallView.people-first, CallView.people-second, CallView.people-more);
-    property <string> detail: root.sharing ? @tr("Sharing your screen")
-        : root.names-people ? root.people
-        : "";
 
     padding-left: Space.sm;
     padding-right: Space.sm;
@@ -37,11 +34,11 @@ component CallLine inherits HorizontalLayout {
 
     if CallView.active-encrypted: IconDisplay {
         cross-axis-self-alignment: center;
-        icon: IconSet.Lock;
+        icon: root.bridges == "" ? IconSet.Lock : IconSet.ShieldAlert;
         size: IconSize.xs;
         stroke: AppStyle.foreground-muted;
         accessible-role: image;
-        accessible-label: @tr("The call is end-to-end encrypted");
+        accessible-label: CallWords.encryption(root.bridges);
     }
 
     HorizontalLayout {
@@ -67,15 +64,14 @@ component CallLine inherits HorizontalLayout {
             vertical-alignment: center;
         }
 
-        if root.detail != "": Text {
-            min-width: root.sharing ? self.preferred-width : 0px;
-            text: @tr("· {}", root.detail);
+        if root.sharing: Text {
+            min-width: self.preferred-width;
+            text: @tr("· {}", root.sharing-words);
             font-family: Fonts.emoji;
             font-size: Fonts.body-small;
-            font-weight: root.sharing ? Weight.semibold : Weight.regular;
-            color: root.sharing ? AppStyle.call-sharing : AppStyle.foreground-muted;
+            font-weight: Weight.semibold;
+            color: AppStyle.call-sharing;
             vertical-alignment: center;
-            overflow: elide;
         }
     }
 }
@@ -100,7 +96,12 @@ component CallReturn inherits ClickArea {
 
 component CallHere inherits ClickArea {
     in property <bool> names-people;
-    out property <length> label-width: line.preferred-width;
+    out property <length> bare-width: line.preferred-width;
+    out property <length> label-width: root.tells-people ? line.preferred-width + Space.sm + people.preferred-width
+        : line.preferred-width;
+
+    property <string> names: CallWords.people(CallView.people-first, CallView.people-second, CallView.people-more);
+    property <bool> tells-people: root.names-people && CallView.screen != CallScreen.on && root.names != "";
 
     ring-radius: Radius.sm;
     label: @tr("People in the call");
@@ -112,7 +113,20 @@ component CallHere inherits ClickArea {
     }
 
     line := CallLine {
-        names-people: root.names-people;
+        x: 0;
+        width: root.tells-people ? min(self.preferred-width, root.width) : root.width;
+    }
+
+    people := Text {
+        x: line.width;
+        width: max(0px, root.width - self.x - Space.sm);
+        visible: root.tells-people;
+        text: @tr("· {}", root.names);
+        font-family: Fonts.emoji;
+        font-size: Fonts.body-small;
+        color: AppStyle.foreground-muted;
+        vertical-alignment: center;
+        overflow: elide;
     }
 }
 
@@ -195,6 +209,19 @@ export component CallDock inherits Rectangle {
     property <bool> stacked: root.width
         < 2 * root.pad + min(root.line-width, Metrics.call-dock-label-min) + root.show-width + root.gap + root.controls-width;
     property <length> row-height: root.stacked ? Metrics.call-dock-stacked : Metrics.call-dock;
+    property <bool> status-taken-with-stage: !root.failed
+        && (CallView.notice != CallNotice.none
+            || (root.explains-share && share.refused)
+            || root.tells-device-news
+            || root.tells-change-cancelled
+            || root.tells-share-ended);
+    property <length> line-width-with-stage: root.failed ? failure.label-width
+        : root.here ? here-line.bare-width
+        : back.label-width;
+    property <bool> stacked-with-stage: root.width
+        < 2 * root.pad + min(root.line-width-with-stage, Metrics.call-dock-label-min) + root.gap + root.controls-width;
+    out property <length> height-with-stage: (root.status-taken-with-stage ? status.preferred-height + root.gap : 0px)
+        + (root.stacked-with-stage ? Metrics.call-dock-stacked : Metrics.call-dock);
     property <length> label-span: max(0px, root.stacked
         ? root.width - 2 * root.pad - root.show-width
         : root.width - 2 * root.pad - root.show-width - root.gap - root.controls-width);
@@ -256,6 +283,7 @@ export component CallDock inherits Rectangle {
         } else if SpaceIndexView.visible {
             Actions.close-space-index();
         }
+        CallPanel.show-chat();
         root.returned();
     }
 

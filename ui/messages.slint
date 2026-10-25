@@ -1301,6 +1301,26 @@ export global CallWords {
         return @tr("{} · {}", first, second);
     }
 
+    public pure function bridges(first: string, second: string, more: int) -> string {
+        if first == "" {
+            return "";
+        }
+        if second == "" {
+            return @tr("{} bridges the call outside end-to-end encryption", first);
+        }
+        if more > 0 {
+            return @tr("{}, {} and {n} other bridge the call outside end-to-end encryption" | "{}, {} and {n} others bridge the call outside end-to-end encryption" % more, first, second);
+        }
+        return @tr("{} and {} bridge the call outside end-to-end encryption", first, second);
+    }
+
+    public pure function encryption(bridges: string) -> string {
+        if bridges == "" {
+            return @tr("The call is end-to-end encrypted");
+        }
+        return @tr("The call is end-to-end encrypted, but {}", bridges);
+    }
+
     public pure function people(first: string, second: string, more: int) -> string {
         if first == "" {
             return "";

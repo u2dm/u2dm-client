@@ -69,6 +69,9 @@ impl Sheet {
                         .collect()
                 },
             ),
+            bridges: call
+                .filter(|_| room.is_encrypted)
+                .map_or_else(|| Arc::from(Vec::new()), |call| Arc::from(call.bridges())),
             devices: facts.devices,
             proposed: self.proposed,
             preview: facts.preview,

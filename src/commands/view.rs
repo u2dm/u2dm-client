@@ -322,6 +322,7 @@ pub struct CallSheetView {
     pub video: bool,
     pub people: usize,
     pub others: Arc<[NamedUser]>,
+    pub bridges: Arc<[NamedUser]>,
     pub devices: Option<CallDevices>,
     pub proposed: MediaChoice,
     pub preview: Option<SheetPreview>,
@@ -632,6 +633,7 @@ pub struct ActiveCall {
     pub started_share: Option<ShareNews>,
     pub ended_share: Option<ShareNews>,
     pub others: Arc<[NamedUser]>,
+    pub bridges: Arc<[NamedUser]>,
     pub people: Arc<[CallPerson]>,
     pub devices: CallDevices,
 }

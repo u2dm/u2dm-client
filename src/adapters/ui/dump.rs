@@ -229,6 +229,8 @@ pub struct CallDump {
     pub people_summary: String,
     pub people: Vec<CallPersonDump>,
     pub sheet_people: String,
+    pub bridges: String,
+    pub sheet_bridges: String,
     pub microphones: Vec<CallDeviceDump>,
     pub speakers: Vec<CallDeviceDump>,
     pub cameras: Vec<CallDeviceDump>,
@@ -521,6 +523,18 @@ fn call_view<B: UiBackend>(window: &B::Window) -> CallDump {
             window.get_string(StringProp::SheetPeopleFirst),
             window.get_string(StringProp::SheetPeopleSecond),
             window.get_int(IntProp::SheetPeopleMore)
+        ),
+        bridges: format!(
+            "{} | {} | +{}",
+            window.get_string(StringProp::BridgesFirst),
+            window.get_string(StringProp::BridgesSecond),
+            window.get_int(IntProp::BridgesMore)
+        ),
+        sheet_bridges: format!(
+            "{} | {} | +{}",
+            window.get_string(StringProp::SheetBridgesFirst),
+            window.get_string(StringProp::SheetBridgesSecond),
+            window.get_int(IntProp::SheetBridgesMore)
         ),
         microphones: call_devices::<B>(&B::models().call_microphones),
         speakers: call_devices::<B>(&B::models().call_speakers),

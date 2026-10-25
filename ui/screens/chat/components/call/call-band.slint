@@ -127,7 +127,7 @@ component CallRoomLink inherits ClickArea {
     caption := Text {
         x: Space.sm;
         width: parent.width - 2 * Space.sm;
-        text: CallView.active-room-name;
+        text: @tr("Call in {}", CallView.active-room-name);
         font-family: Fonts.emoji;
         font-size: Fonts.body-small;
         font-weight: Weight.semibold;
@@ -140,6 +140,8 @@ component CallRoomLink inherits ClickArea {
 export component CallBand inherits Rectangle {
     in property <CallSize> size;
     in property <bool> beside-chat;
+    in property <length> top-row;
+    in property <length> lead-inset;
 
     callback chat-opened();
 
@@ -154,8 +156,10 @@ export component CallBand inherits Rectangle {
     property <bool> follows-back: CallView.follows-speaker && CallView.view-chosen;
     property <bool> offers-return: root.staged || root.follows-back;
     property <bool> compact-self: CallView.compact-self.length > 0;
+    property <length> lead: max(0px, root.lead-inset - Space.md);
     property <bool> return-worded: menu-button.x - Space.sm - gallery-button.preferred-width
-        - (root.compact-self ? Metrics.call-self-chip + Space.sm : 0px) - Space.md >= Metrics.call-header-label-min;
+        - (root.compact-self ? Metrics.call-self-chip + Space.sm : 0px) - Space.md - root.lead
+        >= Metrics.call-header-label-min;
     property <length> return-x: root.return-worded ? gallery-button.x : gallery-icon.x;
     property <length> buttons-x: root.compact-self ? self-chip.x
         : root.offers-return ? root.return-x
@@ -164,9 +168,10 @@ export component CallBand inherits Rectangle {
     property <string> people: CallWords.people(CallView.people-first, CallView.people-second, CallView.people-more);
     property <int> band-takes-focus: CallPanel.band-takes-focus;
     property <int> gallery-takes-focus: CallPanel.gallery-takes-focus;
-    property <length> name-room: max(0px, root.buttons-x - Space.md);
-    property <length> name-width: min(root.elsewhere ? room-link.text-width : room-name.preferred-width, root.name-room / 2);
-    property <length> rest-x: root.name-width + Space.sm;
+    property <length> name-room: max(0px, root.buttons-x - Space.md - root.lead);
+    property <length> name-width: root.elsewhere && CallView.offered-share == "" ? min(room-link.text-width, root.name-room)
+        : min(root.elsewhere ? room-link.text-width : room-name.preferred-width, root.name-room / 2);
+    property <length> rest-x: root.lead + root.name-width + Space.sm;
     property <length> rest-width: max(0px, root.buttons-x - Space.md - root.rest-x);
 
     public function focus-menu() {
@@ -189,12 +194,11 @@ export component CallBand inherits Rectangle {
         root.shows-chat-button = root.covers-chat;
     }
 
-    function open-chat(by-keys: bool) {
+    function open-chat() {
         Actions.select-room(CallView.active-room-id);
+        CallPanel.show-chat();
         if !root.covers-chat {
             root.chat-opened();
-        } else if by-keys {
-            chat-button.take-focus();
         }
     }
 
@@ -230,12 +234,26 @@ export component CallBand inherits Rectangle {
         }
     }
 
-    background: AppStyle.call-band;
+    background: root.lead-inset > 0 ? transparent : AppStyle.call-band;
     accessible-role: groupbox;
     accessible-label: @tr("Call in {}", CallView.active-room-name);
 
+    if root.lead-inset > 0: Rectangle {
+        x: root.lead-inset;
+        width: parent.width - self.x;
+        height: root.top-row;
+        background: AppStyle.call-band;
+    }
+
+    if root.lead-inset > 0: Rectangle {
+        y: root.top-row;
+        height: parent.height - self.y;
+        background: AppStyle.call-band;
+    }
+
     VerticalLayout {
         padding: Space.md;
+        padding-top: root.top-row > 0 ? (root.top-row - Size.md) / 2 : Space.md;
         spacing: Space.sm;
 
         Rectangle {
@@ -313,17 +331,17 @@ export component CallBand inherits Rectangle {
             }
 
             room-link := CallRoomLink {
-                x: 0;
+                x: root.lead;
                 width: root.name-width;
                 height: parent.height;
                 visible: root.elsewhere;
                 clicked => {
-                    root.open-chat(self.has-focus);
+                    root.open-chat();
                 }
             }
 
             room-name := Text {
-                x: 0;
+                x: root.lead;
                 width: root.name-width;
                 height: parent.height;
                 visible: !root.elsewhere;
@@ -348,6 +366,7 @@ export component CallBand inherits Rectangle {
             if CallView.offered-share == "": Text {
                 x: root.rest-x;
                 width: root.rest-width;
+                visible: !root.elsewhere || self.preferred-width <= root.rest-width;
                 text: root.people == "" ? "" : @tr("· {}", root.people);
                 font-family: Fonts.emoji;
                 font-size: Fonts.body-small;

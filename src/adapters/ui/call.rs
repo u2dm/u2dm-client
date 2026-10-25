@@ -161,6 +161,15 @@ fn apply_sheet(w: &impl UiProps, sheet: Option<&CallSheetView>) {
         [StringProp::SheetPeopleFirst, StringProp::SheetPeopleSecond],
         IntProp::SheetPeopleMore,
     );
+    apply_names(
+        w,
+        &sheet.bridges,
+        [
+            StringProp::SheetBridgesFirst,
+            StringProp::SheetBridgesSecond,
+        ],
+        IntProp::SheetBridgesMore,
+    );
     w.set_bool(BoolProp::SheetMicrophone, sheet.proposed.microphone);
     w.set_bool(BoolProp::SheetCamera, sheet.proposed.camera);
     apply_sheet_preview(w, sheet.preview.as_ref());
@@ -230,6 +239,12 @@ fn apply_active<B: UiBackend>(
         w.set_int(IntProp::EndedShareSerial, 0);
         w.set_int(IntProp::ShareChangeCancelled, 0);
         w.set_int(IntProp::DeviceNewsSerial, 0);
+        apply_names(
+            w,
+            &[],
+            [StringProp::BridgesFirst, StringProp::BridgesSecond],
+            IntProp::BridgesMore,
+        );
         apply_notice(w, None);
         let models = B::models();
         models.call_stage.set_vec(Vec::new());
@@ -325,6 +340,12 @@ fn apply_stage<B: UiBackend>(
         &active.others,
         [StringProp::PeopleFirst, StringProp::PeopleSecond],
         IntProp::PeopleMore,
+    );
+    apply_names(
+        w,
+        &active.bridges,
+        [StringProp::BridgesFirst, StringProp::BridgesSecond],
+        IntProp::BridgesMore,
     );
     let unchanged = last.is_some_and(|last| {
         last.stage == active.stage

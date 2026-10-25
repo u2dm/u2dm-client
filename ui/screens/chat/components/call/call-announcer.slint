@@ -14,6 +14,7 @@ export component CallAnnouncer {
     property <int> started-share: CallView.started-share-serial;
     property <int> ended-share: CallView.ended-share-serial;
     property <int> change-cancelled: CallView.share-change-cancelled;
+    property <string> bridges: CallWords.bridges(CallView.bridges-first, CallView.bridges-second, CallView.bridges-more);
     property <CallMic> mic: CallView.mic;
     property <CallCamera> camera: CallView.camera;
     property <bool> mic-keyed;
@@ -43,8 +44,14 @@ export component CallAnnouncer {
     }
 
     function say-phase() {
-        if root.active {
-            calm.say(CallWords.phase-said(root.phase));
+        if !root.active {
+            return;
+        }
+        let words = CallWords.phase-said(root.phase);
+        if root.bridges != "" && (root.phase == CallPhase.live || root.phase == CallPhase.waiting) {
+            calm.say(@tr("{}. {}", words, root.bridges));
+        } else {
+            calm.say(words);
         }
     }
 
@@ -129,6 +136,12 @@ export component CallAnnouncer {
     changed ended-share => {
         if root.ended-share != 0 && root.active {
             calm.say(CallWords.share-ended(CallView.ended-share));
+        }
+    }
+
+    changed bridges => {
+        if root.bridges != "" && root.active {
+            calm.say(root.bridges);
         }
     }
 

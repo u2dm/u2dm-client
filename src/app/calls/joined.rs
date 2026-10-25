@@ -29,7 +29,7 @@ use crate::domain::call::sfu::{GrantRequest, GrantResult, SfuId, SfuRole, SfuTar
 use crate::domain::call::video::{Camera, FeedId, ScreenRefusal, ScreenShare, VideoKind};
 use crate::domain::call::{
     CallIntent, CallMember, DeviceStanding, FocusSelection, MemberKey, OutgoingKey, SentMembership,
-    Transport,
+    Transport, bridges_in_order,
 };
 use crate::domain::member_name::NamedUser;
 use crate::domain::room::RoomId;
@@ -1159,6 +1159,11 @@ impl Joined {
             started_share: self.stage.started_share().cloned(),
             ended_share: self.stage.ended_share().cloned(),
             others: Arc::from(self.others()),
+            bridges: Arc::from(if self.encrypted {
+                bridges_in_order(&self.members)
+            } else {
+                Vec::new()
+            }),
             people: Arc::from(people),
             devices: self.devices.view(),
         }

@@ -15,6 +15,27 @@ import { Actions } from "../../../../actions.slint";
 import { CallPanel, MetaTip, Reactions, Shell } from "../../../../local.slint";
 import { DialogNote } from "../verification.slint";
 
+component BridgeNote inherits HorizontalLayout {
+    in property <string> text;
+
+    alignment: center;
+    spacing: Space.sm;
+
+    IconDisplay {
+        cross-axis-self-alignment: start;
+        icon: IconSet.ShieldAlert;
+        size: IconSize.sm;
+        stroke: AppStyle.foreground-muted;
+        accessible-role: none;
+    }
+
+    DialogNote {
+        horizontal-stretch: 1;
+        text: root.text;
+        horizontal-alignment: left;
+    }
+}
+
 component MediaChoiceRow inherits ClickArea {
     in property <Icon> on-icon;
     in property <Icon> off-icon;
@@ -392,6 +413,7 @@ export component CallSheet inherits ModalHost {
     property <bool> joining: CallView.sheet-people > 0;
     property <bool> refused: CallView.sheet-offer == CallOffer.refused;
     property <string> remedy: CallWords.refusal-action(CallView.sheet-refusal);
+    property <string> bridges: CallWords.bridges(CallView.sheet-bridges-first, CallView.sheet-bridges-second, CallView.sheet-bridges-more);
     property <bool> leaving: CallView.sheet-leaving-id != "";
     property <bool> microphone: CallView.sheet-microphone;
     property <bool> camera: CallView.sheet-camera;
@@ -574,6 +596,10 @@ export component CallSheet inherits ModalHost {
                             CallView.sheet-people-second,
                             CallView.sheet-people-more,
                             CallView.sheet-people);
+                    }
+
+                    if root.joining && !root.refused && root.bridges != "": BridgeNote {
+                        text: root.bridges;
                     }
                 }
 

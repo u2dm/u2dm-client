@@ -40,6 +40,7 @@ export component TimelineView inherits Rectangle {
     in property <bool> compact: false;
     in property <length> overlay-width;
     in property <length> dock-height;
+    in property <length> dock-height-with-stage;
     in property <bool> room-info-pane-fits: false;
     in property <bool> room-info-pane-shown: false;
     in property <length> room-info-pane-width;
@@ -53,14 +54,13 @@ export component TimelineView inherits Rectangle {
     property <length> pinned-height: root.has-pins ? Metrics.pinned-bar + Space.md : 0px;
     property <length> now-playing-height: AudioView.visible ? Metrics.now-playing-bar : 0px;
     out property <bool> in-call-room: CallView.active && CallView.active-room-id == root.room-id;
-    property <bool> call-stack-fits: root.height >= Metrics.call-stage-column;
     out property <bool> call-split-fits: root.width >= Metrics.call-split-min;
-    property <bool> call-stage-fits: root.call-stack-fits || root.call-split-fits;
-    property <CallSize> call-size: !CallView.active ? CallSize.hidden
+    property <bool> call-stage-fitted;
+    property <CallSize> call-size: !CallView.active || !root.has-room ? CallSize.hidden
         : CallPanel.mode == CallMode.chat-only ? CallSize.hidden
         : CallPanel.mode == CallMode.call-only ? CallSize.full
-        : root.call-stage-fits ? CallSize.stage
-        : CallPanel.turn == CallSurface.call ? CallSize.full
+        : root.call-stage-fitted ? CallSize.stage
+        : CallPanel.turn == CallSurface.call && !CallPanel.kept-chat ? CallSize.full
         : CallSize.hidden;
     property <bool> shows-band: CallView.active && root.call-size != CallSize.hidden;
     property <bool> call-split: root.shows-band && root.call-size == CallSize.stage && root.call-split-fits;
@@ -71,6 +71,7 @@ export component TimelineView inherits Rectangle {
         root.widest-stage);
     property <length> chat-x: root.call-split ? root.split-width : 0px;
     out property <bool> call-covers-timeline: root.shows-band && root.call-size == CallSize.full;
+    property <bool> call-owns-header: root.call-covers-timeline && !root.in-call-room;
     out property <bool> shows-call-media: root.shows-band;
     property <int> composer-requests;
     property <bool> call-here: CallView.here-room-id == root.room-id && CallView.here-people > 0;
@@ -103,8 +104,8 @@ export component TimelineView inherits Rectangle {
         if !RoomSearch.opened(root.room-id) {
             RoomSearch.opened-room = "";
         }
-        if CallView.active && CallPanel.mode == CallMode.call-and-chat {
-            CallPanel.turn = CallSurface.chat;
+        if CallView.active && root.room-id != CallView.active-room-id {
+            CallPanel.show-chat();
         }
     }
 
@@ -161,12 +162,31 @@ export component TimelineView inherits Rectangle {
         property <int> menu-returns: RoomMenu.focus-returns;
         property <int> sheet-returns: CallPanel.sheet-returns;
         property <int> people-returns: CallPanel.people-returns;
+        property <bool> call-takes-row: root.call-owns-header;
+        property <bool> row-given;
 
         x: root.chat-x;
         y: 0;
         width: root.width - root.chat-x;
         height: root.header-height;
+        visible: !self.row-given;
         background: root.background;
+
+        init => {
+            self.row-given = self.call-takes-row;
+        }
+
+        changed call-takes-row => {
+            if self.call-takes-row && self.holds-focus() {
+                CallPanel.band-takes-focus += 1;
+            }
+            self.row-given = self.call-takes-row;
+        }
+
+        function holds-focus() -> bool {
+            return title-area.has-focus || call-pill.has-focus || start-button.has-focus || join-button.has-focus
+                || pane-button.has-focus || room-menu-button.has-focus;
+        }
 
         changed menu-returns => {
             if RoomMenu.returns-to(RoomMenuReturn.header, DirectoryView.selected-room-id) {
@@ -188,7 +208,7 @@ export component TimelineView inherits Rectangle {
             }
         }
 
-        ClickArea {
+        title-area := ClickArea {
             x: root.compact ? root.nav-slot : 0;
             width: parent.width - self.x - parent.menu-slot - parent.pane-slot - parent.call-slot - parent.action-slot;
             height: parent.height;
@@ -279,9 +299,10 @@ export component TimelineView inherits Rectangle {
             }
         }
 
-        if root.room-info-pane-fits: RoomHeaderButton {
+        pane-button := RoomHeaderButton {
             x: parent.width - parent.menu-slot - self.width;
             y: (parent.height - self.height) / 2;
+            visible: root.room-info-pane-fits;
             icon: IconSet.PanelRight;
             active: Shell.room-info-pane-open;
             label: Shell.room-info-pane-open
@@ -314,7 +335,7 @@ export component TimelineView inherits Rectangle {
         width: root.compact ? root.nav-slot : 0;
         height: root.header-height;
         visible: root.compact;
-        background: root.background;
+        background: root.call-owns-header ? AppStyle.call-band : root.background;
 
         nav-button := RoomHeaderButton {
             x: Space.lg;
@@ -337,11 +358,16 @@ export component TimelineView inherits Rectangle {
         property <int> composer-requests: root.composer-requests;
         property <length> stage-room: self.height - root.header-height - input.height - root.dock-height
             - root.pinned-height - root.now-playing-height;
+        property <length> stack-room: self.height - root.header-height - input.height - root.dock-height-with-stage
+            - root.pinned-height - root.now-playing-height;
+        property <bool> stage-fits: self.stack-room >= Metrics.call-stage-min + Metrics.call-chat-min
+            || root.call-split-fits;
         property <length> tallest-stage: max(Metrics.call-stage-min, self.stage-room - Metrics.call-chat-min);
         property <length> stage-height: min(
             self.stage-room,
             clamp(self.stage-room * CallPanel.stage-share, Metrics.call-stage-min, self.tallest-stage));
-        property <length> call-top: root.call-split ? 0px : root.header-height;
+        property <bool> call-on-top: root.call-split || root.call-owns-header;
+        property <length> call-top: self.call-on-top ? 0px : root.header-height;
         property <length> call-height: !root.shows-band ? 0px
             : root.call-size == CallSize.full || root.call-split ? self.height - self.call-top - root.dock-height
             : self.stage-height;
@@ -356,10 +382,25 @@ export component TimelineView inherits Rectangle {
         height: root.height;
 
         init => {
+            root.call-stage-fitted = self.stage-fits;
             self.composer-covered = self.call-covered;
             if self.opened-from-search {
                 self.take-keyboard-from-search();
             }
+        }
+
+        changed stage-fits => {
+            self.follow-fit();
+        }
+
+        function follow-fit() {
+            if self.stage-fits {
+                CallPanel.kept-chat = false;
+                CallPanel.space-uncovered = root.call-covers-timeline && CallPanel.mode == CallMode.call-and-chat;
+            } else if input.input-focused && CallPanel.mode == CallMode.call-and-chat {
+                CallPanel.kept-chat = true;
+            }
+            root.call-stage-fitted = self.stage-fits;
         }
 
         changed opened-from-search => {
@@ -535,18 +576,17 @@ export component TimelineView inherits Rectangle {
             }
         }
 
-        CloseWatch {
-            open: root.call-covers-timeline;
-            closed => {
-                stage.refocus-composer();
-            }
-        }
-
         changed call-covered => {
             if self.call-covered && input.input-focused {
                 band.focus-chat();
             }
+            let uncovered = self.composer-covered && !self.call-covered;
             self.composer-covered = self.call-covered;
+            if uncovered && CallPanel.space-uncovered {
+                CallPanel.space-uncovered = false;
+            } else if uncovered {
+                self.refocus-composer();
+            }
         }
 
         content := TimelineContent {
@@ -569,6 +609,8 @@ export component TimelineView inherits Rectangle {
             visible: root.shows-band;
             size: root.call-size;
             beside-chat: root.call-split;
+            top-row: stage.call-on-top ? root.header-height : 0px;
+            lead-inset: root.compact && root.call-owns-header ? root.nav-slot : 0px;
             chat-opened => {
                 stage.refocus-composer();
             }
