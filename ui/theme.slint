@@ -365,6 +365,7 @@ export global Metrics {
     out property <length> call-dock: root.call-control + 2 * Space.md;
     out property <length> call-dock-stacked: Size.md + root.call-control + Space.sm + 2 * Space.md;
     out property <length> call-dock-label-min: 128px;
+    out property <length> call-dock-room-min: 48px;
     out property <length> call-tile-min-width: 120px;
     out property <length> call-tile-roomy: 96px;
     out property <float> call-tile-aspect: 16 / 9;
@@ -378,6 +379,7 @@ export global Metrics {
     out property <length> call-menu-width: root.room-menu-width;
     out property <length> call-menu-row: root.room-menu-row;
     out property <length> call-menu-group-gap: Space.md;
+    out property <length> call-menu-heading: Size.sm;
     out property <length> call-devices-width: 320px;
     out property <length> call-devices-heading: Size.md;
     out property <length> call-device-row: Size.target;
@@ -450,6 +452,7 @@ export global Metrics {
     out property <length> timeline-min: 380px;
     out property <length> compact-breakpoint: root.sidebar-default + root.timeline-min;
     out property <length> divider: Space.sm;
+    out property <length> divider-grab: Space.md;
     out property <length> resize-step: Space.xl;
 
     out property <length> window-min-width: 360px;

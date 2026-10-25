@@ -93,6 +93,7 @@ export struct CallTileEntry {
     member: string,
     user-id: string,
     name: string,
+    device: int,
     initial: string,
     color-index: int,
     has-avatar: bool,
@@ -214,6 +215,10 @@ export struct SharePreviewRequest {
 
 export struct FollowSpeakerRequest {
     on: bool,
+}
+
+export struct RingDevicesRequest {
+    open: bool,
 }
 
 export struct CallDeviceRequest {

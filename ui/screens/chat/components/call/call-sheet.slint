@@ -6,7 +6,7 @@ import { ClickArea } from "../../../../components/a11y.slint";
 import { DialogCard, ModalHost, Placement } from "../../../../components/overlay.slint";
 import { StateLayer } from "../../../../components/state-layer.slint";
 import { AppStyle, Fonts, IconSize, Metrics, Radius, Size, Space, Weight } from "../../../../theme.slint";
-import { CallDeviceKind, CallOffer, CallSheetPreview, CallTestPhase } from "../../../../enums.slint";
+import { CallDeviceKind, CallDeviceStatus, CallOffer, CallSheetPreview, CallTestPhase } from "../../../../enums.slint";
 import { CallDeviceEntry } from "../../../../types.slint";
 import { CallDevicesMenu } from "./call-devices-menu.slint";
 import { CallView, DirectoryView, SpaceIndexView } from "../../../../views.slint";
@@ -36,70 +36,119 @@ component BridgeNote inherits HorizontalLayout {
     }
 }
 
-component MediaChoiceRow inherits ClickArea {
+component MediaChoiceRow inherits HorizontalLayout {
     in property <Icon> on-icon;
     in property <Icon> off-icon;
+    in property <string> label;
     in property <string> text;
     in property <string> detail;
+    in property <CallDeviceKind> kind;
+    in property <int> index;
+    in property <bool> lists-devices;
     in-out property <bool> on;
 
-    height: Metrics.choice-row;
-    border-radius: Radius.md;
-    ring-radius: Radius.md;
-    above-modal: true;
-    accessible-role: switch;
-    accessible-checkable: true;
-    accessible-checked: root.on;
-    accessible-description: root.detail;
-    clicked => {
-        root.on = !root.on;
+    out property <bool> has-focus: choice.has-focus || change.has-focus;
+    out property <length> change-x: change.absolute-position.x;
+    out property <length> change-y: change.absolute-position.y;
+    out property <length> change-width: change.width;
+    out property <length> change-height: change.height;
+
+    callback change(bool);
+
+    property <CallDeviceEntry> entry: root.kind == CallDeviceKind.camera ? CallView.cameras[root.index]
+        : CallView.microphones[root.index];
+    property <string> device: !root.lists-devices ? ""
+        : root.index >= 0 ? CallWords.device-chosen(root.entry.status, root.entry.name)
+        : root.kind == CallDeviceKind.camera ? @tr("No camera was found")
+        : "";
+
+    public function take-focus() {
+        choice.take-focus();
     }
 
-    StateLayer {
-        border-radius: root.border-radius;
-        hovered: root.has-hover && root.enabled;
-        pressed: root.pressed && root.enabled;
+    public function focus-change() {
+        change.take-focus();
     }
 
-    HorizontalLayout {
-        padding-left: Space.md;
-        padding-right: Space.md;
-        spacing: Space.lg;
+    spacing: Space.sm;
 
-        Rectangle {
-            cross-axis-self-alignment: center;
-            width: Metrics.call-control;
-            height: Metrics.call-control;
-            border-radius: self.width / 2;
-            background: AppStyle.control;
-
-            IconDisplay {
-                icon: root.on ? root.on-icon : root.off-icon;
-                size: IconSize.md;
-                stroke: AppStyle.foreground-strong;
-            }
+    choice := ClickArea {
+        horizontal-stretch: 1;
+        height: Metrics.choice-row;
+        border-radius: Radius.md;
+        ring-radius: Radius.md;
+        above-modal: true;
+        label: root.label;
+        accessible-role: switch;
+        accessible-checkable: true;
+        accessible-checked: root.on;
+        accessible-description: root.device == "" ? root.detail : @tr("{}. {}", root.detail, root.device);
+        clicked => {
+            root.on = !root.on;
         }
 
-        VerticalLayout {
-            horizontal-stretch: 1;
-            alignment: center;
-            spacing: Space.xs;
+        StateLayer {
+            border-radius: parent.border-radius;
+            hovered: parent.has-hover && parent.enabled;
+            pressed: parent.pressed && parent.enabled;
+        }
 
-            Text {
-                text: root.text;
-                font-size: Fonts.label;
-                font-weight: Weight.semibold;
-                overflow: elide;
-                accessible-role: none;
+        HorizontalLayout {
+            padding-left: Space.md;
+            padding-right: Space.md;
+            spacing: Space.lg;
+
+            Rectangle {
+                cross-axis-self-alignment: center;
+                width: Metrics.call-control;
+                height: Metrics.call-control;
+                border-radius: self.width / 2;
+                background: AppStyle.control;
+
+                IconDisplay {
+                    icon: root.on ? root.on-icon : root.off-icon;
+                    size: IconSize.md;
+                    stroke: AppStyle.foreground-strong;
+                }
             }
 
-            Text {
-                text: root.detail;
-                font-size: Fonts.body-small;
-                color: AppStyle.foreground-muted;
-                overflow: elide;
-                accessible-role: none;
+            VerticalLayout {
+                horizontal-stretch: 1;
+                alignment: center;
+                spacing: Space.xs;
+
+                Text {
+                    text: root.text;
+                    font-size: Fonts.label;
+                    font-weight: Weight.semibold;
+                    overflow: elide;
+                    accessible-role: none;
+                }
+
+                Text {
+                    text: root.device == "" ? root.detail : root.device;
+                    font-family: Fonts.emoji;
+                    font-size: Fonts.body-small;
+                    color: AppStyle.foreground-muted;
+                    overflow: elide;
+                    accessible-role: none;
+                }
             }
+        }
+    }
+
+    change := LinkButton {
+        width: root.lists-devices ? self.preferred-width : 0;
+        cross-axis-self-alignment: center;
+        min-height: Size.sm;
+        visible: root.lists-devices;
+        above-modal: true;
+        text: @tr("Change");
+        label: CallWords.device-change(root.kind);
+        accessible-description: root.device;
+        pad: 2 * Space.sm;
+        clicked => {
+            root.change(self.has-focus);
         }
     }
 }
@@ -259,6 +308,115 @@ component SpeakerLine inherits Rectangle {
                     root.change(by-keys);
                 }
             }
+        }
+    }
+}
+
+component DeviceChecks inherits VerticalLayout {
+    in property <int> serial;
+    in property <bool> tests;
+
+    out property <length> change-x: speaker-line.change-x;
+    out property <length> change-y: speaker-line.change-y;
+    out property <length> change-width: speaker-line.change-width;
+    out property <length> change-height: speaker-line.change-height;
+
+    callback change-speaker(bool);
+    callback unfolded();
+
+    property <bool> open;
+    property <CallDeviceEntry> speaker: CallView.speakers[CallView.speaker-chosen];
+    property <bool> speaker-trouble: CallView.speaker-chosen >= 0
+        && (root.speaker.status == CallDeviceStatus.missing || root.speaker.status == CallDeviceStatus.failed);
+    property <bool> shown: root.open || root.speaker-trouble;
+    property <bool> testing: CallView.sheet-test-phase == CallTestPhase.starting
+        || CallView.sheet-test-phase == CallTestPhase.running;
+
+    public function focus-change() {
+        speaker-line.focus-change();
+    }
+
+    changed serial => {
+        root.open = false;
+    }
+
+    function toggle() {
+        if root.shown && root.testing {
+            Actions.test-call-device({ kind: CallView.sheet-test-kind, on: false });
+        }
+        root.open = !root.shown;
+        if root.open {
+            root.unfolded();
+        }
+    }
+
+    spacing: Space.xs;
+
+    ClickArea {
+        height: Size.lg;
+        border-radius: Radius.md;
+        ring-radius: Radius.md;
+        enabled: !root.speaker-trouble;
+        above-modal: true;
+        label: @tr("Check devices");
+        accessible-expandable: true;
+        accessible-expanded: root.shown;
+        clicked => {
+            root.toggle();
+        }
+
+        StateLayer {
+            border-radius: parent.border-radius;
+            hovered: parent.has-hover && parent.enabled;
+            pressed: parent.pressed && parent.enabled;
+        }
+
+        HorizontalLayout {
+            padding-left: Space.md;
+            padding-right: Space.md;
+            spacing: Space.md;
+
+            IconDisplay {
+                cross-axis-self-alignment: center;
+                icon: root.shown ? IconSet.ChevronDown : IconSet.ChevronRight;
+                size: IconSize.sm;
+                stroke: AppStyle.foreground-muted;
+                accessible-role: none;
+            }
+
+            Text {
+                horizontal-stretch: 1;
+                text: @tr("Check devices");
+                font-size: Fonts.body-small;
+                font-weight: Weight.semibold;
+                color: AppStyle.foreground-muted;
+                vertical-alignment: center;
+                accessible-role: none;
+            }
+        }
+    }
+
+    VerticalLayout {
+        height: root.shown ? self.preferred-height : 0;
+        visible: root.shown;
+        spacing: Space.xs;
+
+        speaker-line := SpeakerLine {
+            change(by-keys) => {
+                root.change-speaker(by-keys);
+            }
+        }
+
+        DeviceTestLine {
+            height: root.tests ? self.preferred-height : 0;
+            visible: root.tests;
+            kind: CallDeviceKind.microphone;
+        }
+
+        DeviceTestLine {
+            height: root.tests ? self.preferred-height : 0;
+            visible: root.tests;
+            kind: CallDeviceKind.speaker;
         }
     }
 }
@@ -424,21 +582,21 @@ export component CallSheet inherits ModalHost {
     property <CallDeviceKind> devices-kind: CallDeviceKind.microphone;
     property <bool> devices-from-preview;
     property <length> anchor-x: root.devices-from-preview ? preview.change-x
-        : root.devices-kind == CallDeviceKind.camera ? camera-line.change-x
-        : root.devices-kind == CallDeviceKind.speaker ? speaker-line.change-x
-        : microphone-line.change-x;
+        : root.devices-kind == CallDeviceKind.camera ? camera-row.change-x
+        : root.devices-kind == CallDeviceKind.speaker ? checks.change-x
+        : microphone-row.change-x;
     property <length> anchor-y: root.devices-from-preview ? preview.change-y
-        : root.devices-kind == CallDeviceKind.camera ? camera-line.change-y
-        : root.devices-kind == CallDeviceKind.speaker ? speaker-line.change-y
-        : microphone-line.change-y;
+        : root.devices-kind == CallDeviceKind.camera ? camera-row.change-y
+        : root.devices-kind == CallDeviceKind.speaker ? checks.change-y
+        : microphone-row.change-y;
     property <length> anchor-width: root.devices-from-preview ? preview.change-width
-        : root.devices-kind == CallDeviceKind.camera ? camera-line.change-width
-        : root.devices-kind == CallDeviceKind.speaker ? speaker-line.change-width
-        : microphone-line.change-width;
+        : root.devices-kind == CallDeviceKind.camera ? camera-row.change-width
+        : root.devices-kind == CallDeviceKind.speaker ? checks.change-width
+        : microphone-row.change-width;
     property <length> anchor-height: root.devices-from-preview ? preview.change-height
-        : root.devices-kind == CallDeviceKind.camera ? camera-line.change-height
-        : root.devices-kind == CallDeviceKind.speaker ? speaker-line.change-height
-        : microphone-line.change-height;
+        : root.devices-kind == CallDeviceKind.camera ? camera-row.change-height
+        : root.devices-kind == CallDeviceKind.speaker ? checks.change-height
+        : microphone-row.change-height;
     property <length> devices-room-above: root.anchor-y - Space.xs - Space.md;
     property <length> devices-room-below: root.height - root.anchor-y - root.anchor-height - Space.xs - Space.md;
     property <bool> devices-above: root.devices-room-above > root.devices-room-below;
@@ -494,11 +652,11 @@ export component CallSheet inherits ModalHost {
         if root.devices-from-preview && CallView.sheet-preview == CallSheetPreview.failed {
             preview.focus-change();
         } else if root.devices-kind == CallDeviceKind.camera {
-            camera-line.focus-change();
+            camera-row.focus-change();
         } else if root.devices-kind == CallDeviceKind.speaker {
-            speaker-line.focus-change();
+            checks.focus-change();
         } else {
-            microphone-line.focus-change();
+            microphone-row.focus-change();
         }
     }
 
@@ -615,37 +773,13 @@ export component CallSheet inherits ModalHost {
                             off-icon: IconSet.MicOff;
                             text: CallWords.microphone-choice(self.on);
                             detail: CallWords.microphone-effect(self.on);
-                            on <=> root.microphone;
-                        }
-
-                        microphone-line := DeviceLine {
-                            height: root.lists-devices ? Size.sm : 0;
-                            visible: root.lists-devices;
                             kind: CallDeviceKind.microphone;
                             index: CallView.microphone-chosen;
+                            lists-devices: root.lists-devices;
+                            on <=> root.microphone;
                             change(by-keys) => {
                                 root.open-devices(CallDeviceKind.microphone, by-keys, false);
                             }
-                        }
-
-                        DeviceTestLine {
-                            height: root.offers-tests ? self.preferred-height : 0;
-                            visible: root.offers-tests;
-                            kind: CallDeviceKind.microphone;
-                        }
-
-                        speaker-line := SpeakerLine {
-                            height: root.lists-devices ? Metrics.choice-row : 0;
-                            visible: root.lists-devices;
-                            change(by-keys) => {
-                                root.open-devices(CallDeviceKind.speaker, by-keys, false);
-                            }
-                        }
-
-                        DeviceTestLine {
-                            height: root.offers-tests ? self.preferred-height : 0;
-                            visible: root.offers-tests;
-                            kind: CallDeviceKind.speaker;
                         }
 
                         camera-row := MediaChoiceRow {
@@ -654,14 +788,10 @@ export component CallSheet inherits ModalHost {
                             off-icon: IconSet.VideoOff;
                             text: CallWords.camera-choice(self.on);
                             detail: CallWords.camera-effect(self.on);
-                            on <=> root.camera;
-                        }
-
-                        camera-line := DeviceLine {
-                            height: root.lists-devices ? Size.sm : 0;
-                            visible: root.lists-devices;
                             kind: CallDeviceKind.camera;
                             index: CallView.camera-chosen;
+                            lists-devices: root.lists-devices;
+                            on <=> root.camera;
                             change(by-keys) => {
                                 root.open-devices(CallDeviceKind.camera, by-keys, false);
                             }
@@ -677,6 +807,19 @@ export component CallSheet inherits ModalHost {
                             }
                             appeared => {
                                 root.reveal(self.absolute-position.y - body.absolute-position.y, self.height);
+                            }
+                        }
+
+                        checks := DeviceChecks {
+                            height: root.lists-devices ? self.preferred-height : 0;
+                            visible: root.lists-devices;
+                            serial: root.serial;
+                            tests: root.offers-tests;
+                            change-speaker(by-keys) => {
+                                root.open-devices(CallDeviceKind.speaker, by-keys, false);
+                            }
+                            unfolded => {
+                                root.reveal(self.absolute-position.y - body.absolute-position.y, min(self.height, scroll.visible-height));
                             }
                         }
                     }

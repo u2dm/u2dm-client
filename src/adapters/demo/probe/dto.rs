@@ -331,6 +331,7 @@ struct CallTileDto {
     key: String,
     member: String,
     name: String,
+    device: u8,
     avatar: Option<String>,
     own: bool,
     kind: &'static str,
@@ -354,6 +355,7 @@ struct RingDto {
     desktop: bool,
     answerable: bool,
     refusal: Option<&'static str>,
+    devices: Option<CallDevicesDto>,
 }
 
 #[derive(Serialize)]
@@ -1080,6 +1082,7 @@ fn call(source: &CallView) -> CallDto {
             desktop: ring.desktop,
             answerable: ring.answerable,
             refusal: ring.refusal.map(refusal_word),
+            devices: ring.devices.as_ref().map(call_devices),
         }),
         here: source.here.as_ref().map(|here| CallHereDto {
             room_id: here.room_id.to_string(),
@@ -1313,6 +1316,7 @@ fn call_tile(tile: &CallTile) -> CallTileDto {
         key: tile.key().to_string(),
         member: tile.member.to_string(),
         name: tile.name.shown(),
+        device: tile.device,
         avatar: tile.avatar_mxc.clone(),
         own: tile.own,
         kind: match tile.kind {

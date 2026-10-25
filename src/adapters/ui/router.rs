@@ -218,6 +218,10 @@ pub fn follow_speaker(tx: &Tx, on: bool) {
     send_command(tx, UiCommand::FollowSpeaker(on));
 }
 
+pub fn ring_devices(tx: &Tx, open: bool) {
+    send_command(tx, UiCommand::RingDevices(open));
+}
+
 call_device_kinds!(variant_named call_device_kind_named DeviceKind;);
 
 pub fn test_call_device(tx: &Tx, kind: &str, on: bool) {

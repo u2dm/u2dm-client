@@ -9,9 +9,41 @@ import { CallScreen } from "../../../../enums.slint";
 import { CallWords } from "../../../../messages.slint";
 import { CallMode, CallPanel } from "../../../../local.slint";
 import { CallView } from "../../../../views.slint";
-import { AppStyle, Metrics, Space, Stroke } from "../../../../theme.slint";
+import { AppStyle, Fonts, Metrics, Space, Stroke, Weight } from "../../../../theme.slint";
 
-enum CallViewChoice { call-and-chat, call-only, chat-only, gallery, focus, follow, strip, self-view, share-preview, fit }
+enum CallViewChoice { call-and-chat, call-only, chat-only, automatic, gallery, follow, pinned, strip, self-view, share-preview, fit }
+
+component MenuGroup inherits VerticalLayout {
+    in property <string> heading;
+    in property <bool> first;
+
+    padding-top: root.first ? 0 : Space.xs;
+
+    if !root.first: Rectangle {
+        height: Metrics.call-menu-group-gap;
+
+        Rectangle {
+            y: (parent.height - self.height) / 2;
+            height: Stroke.hairline;
+            background: AppStyle.border;
+        }
+    }
+
+    HorizontalLayout {
+        padding-left: Space.lg;
+        padding-right: Space.lg;
+
+        Text {
+            height: Metrics.call-menu-heading;
+            text: root.heading;
+            font-size: Fonts.caption;
+            font-weight: Weight.semibold;
+            color: AppStyle.foreground-muted;
+            vertical-alignment: center;
+            overflow: elide;
+        }
+    }
+}
 
 export component CallViewMenu inherits PickerCard {
     in property <bool> beside-chat;
@@ -20,15 +52,22 @@ export component CallViewMenu inherits PickerCard {
     callback chose();
 
     property <bool> focused: CallView.stage.length > 0;
+    property <bool> pinned: CallView.stage-chosen && root.focused;
     property <bool> sharing: CallView.screen == CallScreen.on;
+    property <string> staged-title: root.focused
+        ? CallWords.tile-title(CallView.stage[0])
+        : "";
     property <[CallViewChoice]> modes: [CallViewChoice.call-and-chat, CallViewChoice.call-only, CallViewChoice.chat-only];
+    property <[CallViewChoice]> stages: root.pinned
+        ? [CallViewChoice.automatic, CallViewChoice.gallery, CallViewChoice.follow, CallViewChoice.pinned]
+        : [CallViewChoice.automatic, CallViewChoice.gallery, CallViewChoice.follow];
     property <[CallViewChoice]> views: root.focused && root.sharing
-        ? [CallViewChoice.gallery, CallViewChoice.focus, CallViewChoice.follow, CallViewChoice.strip, CallViewChoice.self-view, CallViewChoice.share-preview, CallViewChoice.fit]
+        ? [CallViewChoice.strip, CallViewChoice.self-view, CallViewChoice.share-preview, CallViewChoice.fit]
         : root.focused
-        ? [CallViewChoice.gallery, CallViewChoice.focus, CallViewChoice.follow, CallViewChoice.strip, CallViewChoice.self-view, CallViewChoice.fit]
+        ? [CallViewChoice.strip, CallViewChoice.self-view, CallViewChoice.fit]
         : root.sharing
-        ? [CallViewChoice.gallery, CallViewChoice.focus, CallViewChoice.follow, CallViewChoice.self-view, CallViewChoice.share-preview, CallViewChoice.fit]
-        : [CallViewChoice.gallery, CallViewChoice.focus, CallViewChoice.follow, CallViewChoice.self-view, CallViewChoice.fit];
+        ? [CallViewChoice.self-view, CallViewChoice.share-preview, CallViewChoice.fit]
+        : [CallViewChoice.self-view, CallViewChoice.fit];
     property <int> cursor: -1;
     property <bool> keys-focused: keys.has-focus;
 
@@ -47,14 +86,17 @@ export component CallViewMenu inherits PickerCard {
         if choice == CallViewChoice.chat-only {
             return IconSet.MessageSquare;
         }
+        if choice == CallViewChoice.automatic {
+            return IconSet.Sparkles;
+        }
         if choice == CallViewChoice.gallery {
             return IconSet.LayoutGrid;
         }
-        if choice == CallViewChoice.focus {
-            return IconSet.Focus;
-        }
         if choice == CallViewChoice.follow {
             return IconSet.AudioLines;
+        }
+        if choice == CallViewChoice.pinned {
+            return IconSet.Pin;
         }
         if choice == CallViewChoice.strip {
             return IconSet.UsersRound;
@@ -78,14 +120,17 @@ export component CallViewMenu inherits PickerCard {
         if choice == CallViewChoice.chat-only {
             return @tr("Chat only");
         }
+        if choice == CallViewChoice.automatic {
+            return @tr("Automatic");
+        }
         if choice == CallViewChoice.gallery {
             return @tr("Gallery");
         }
-        if choice == CallViewChoice.focus {
-            return @tr("Focus");
-        }
         if choice == CallViewChoice.follow {
             return CallWords.follow-speaker();
+        }
+        if choice == CallViewChoice.pinned {
+            return CallWords.pinned(root.staged-title);
         }
         if choice == CallViewChoice.strip {
             return CallPanel.hides-strip ? @tr("Show everyone else") : @tr("Hide everyone else");
@@ -108,13 +153,20 @@ export component CallViewMenu inherits PickerCard {
         return (choice == CallViewChoice.call-and-chat && CallPanel.mode == CallMode.call-and-chat)
             || (choice == CallViewChoice.call-only && CallPanel.mode == CallMode.call-only)
             || (choice == CallViewChoice.chat-only && CallPanel.mode == CallMode.chat-only)
-            || (choice == CallViewChoice.gallery && !root.focused)
-            || (choice == CallViewChoice.focus && root.focused)
-            || (choice == CallViewChoice.follow && CallView.follows-speaker);
+            || (choice == CallViewChoice.automatic && !CallView.view-chosen && !CallView.follows-speaker)
+            || (choice == CallViewChoice.gallery && CallView.view-chosen && !root.focused)
+            || (choice == CallViewChoice.follow && CallView.follows-speaker && !CallView.view-chosen)
+            || (choice == CallViewChoice.pinned && root.pinned);
     }
 
     pure function choice-at(index: int) -> CallViewChoice {
-        return index < root.modes.length ? root.modes[index] : root.views[index - root.modes.length];
+        if index < root.modes.length {
+            return root.modes[index];
+        }
+        if index < root.modes.length + root.stages.length {
+            return root.stages[index - root.modes.length];
+        }
+        return root.views[index - root.modes.length - root.stages.length];
     }
 
     pure function cursor-choice() -> CallViewChoice {
@@ -128,12 +180,15 @@ export component CallViewMenu inherits PickerCard {
             CallPanel.choose(CallMode.call-only);
         } else if choice == CallViewChoice.chat-only {
             CallPanel.choose(CallMode.chat-only);
+        } else if choice == CallViewChoice.automatic {
+            Actions.follow-speaker({ on: false });
+            Actions.unpin-call-tile();
         } else if choice == CallViewChoice.gallery {
             Actions.show-call-gallery();
-        } else if choice == CallViewChoice.focus {
-            Actions.show-call-focus();
         } else if choice == CallViewChoice.follow {
-            Actions.follow-speaker({ on: !CallView.follows-speaker });
+            Actions.follow-speaker({ on: true });
+        } else if choice == CallViewChoice.pinned {
+            Actions.unpin-call-tile();
         } else if choice == CallViewChoice.strip {
             CallPanel.hides-strip = !CallPanel.hides-strip;
         } else if choice == CallViewChoice.self-view {
@@ -160,7 +215,7 @@ export component CallViewMenu inherits PickerCard {
     TouchArea { }
 
     keys := RovingKeys {
-        count: root.modes.length + root.views.length;
+        count: root.modes.length + root.stages.length + root.views.length;
         cursor <=> root.cursor;
         accessible-label: root.cursor >= 0 ? root.label(root.cursor-choice()) : @tr("Call layout");
         accessible-checkable: root.cursor >= 0 && root.checkable(root.cursor-choice());
@@ -193,6 +248,11 @@ export component CallViewMenu inherits PickerCard {
             padding-right: Space.sm;
             spacing: Space.xs;
 
+            MenuGroup {
+                heading: @tr("Layout");
+                first: true;
+            }
+
             for choice[index] in root.modes: MenuRow {
                 height: Metrics.call-menu-row;
                 icon: root.icon(choice);
@@ -212,14 +272,31 @@ export component CallViewMenu inherits PickerCard {
                 }
             }
 
-            Rectangle {
-                height: Metrics.call-menu-group-gap;
+            MenuGroup {
+                heading: @tr("Stage");
+            }
 
-                Rectangle {
-                    y: (parent.height - self.height) / 2;
-                    height: Stroke.hairline;
-                    background: AppStyle.border;
+            for choice[index] in root.stages: MenuRow {
+                height: Metrics.call-menu-row;
+                icon: root.icon(choice);
+                label: root.label(choice);
+                checkable: true;
+                checked: root.checked(choice);
+                trailing: root.checked(choice) ? IconSet.Check : { };
+                focusable: false;
+                roving-focus: root.keys-focused && root.cursor == root.modes.length + index;
+                changed roving-focus => {
+                    if self.roving-focus {
+                        root.reveal(self.y, self.height);
+                    }
                 }
+                clicked => {
+                    root.choose(choice);
+                }
+            }
+
+            MenuGroup {
+                heading: @tr("Display");
             }
 
             for choice[index] in root.views: MenuRow {
@@ -230,7 +307,7 @@ export component CallViewMenu inherits PickerCard {
                 checked: root.checked(choice);
                 trailing: root.checked(choice) ? IconSet.Check : { };
                 focusable: false;
-                roving-focus: root.keys-focused && root.cursor == root.modes.length + index;
+                roving-focus: root.keys-focused && root.cursor == root.modes.length + root.stages.length + index;
                 changed roving-focus => {
                     if self.roving-focus {
                         root.reveal(self.y, self.height);

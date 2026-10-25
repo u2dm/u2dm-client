@@ -272,6 +272,7 @@ pub struct RingView {
     pub desktop: bool,
     pub answerable: bool,
     pub refusal: Option<JoinRefusal>,
+    pub devices: Option<CallDevices>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -492,6 +493,7 @@ impl fmt::Display for TileKey {
 pub struct CallTile {
     pub member: MemberKey,
     pub name: NamedUser,
+    pub device: u8,
     pub avatar_mxc: Option<String>,
     pub own: bool,
     pub kind: TileKind,

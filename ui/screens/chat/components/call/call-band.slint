@@ -1,5 +1,5 @@
 import { Palette } from "std-widgets.slint";
-import { IconDisplay, IconSet } from "@lucide";
+import { Icon, IconDisplay, IconSet } from "@lucide";
 
 import { ClickArea } from "../../../../components/a11y.slint";
 import { Avatar } from "../../../../components/avatar.slint";
@@ -152,8 +152,14 @@ export component CallBand inherits Rectangle {
     property <bool> covers-chat: root.size == CallSize.full;
     property <bool> shows-chat-button;
     property <bool> staged: CallView.stage.length > 0;
-    property <string> staged-title: CallWords.tile-title(CallView.stage[0].screen, CallView.stage[0].own, CallView.stage[0].name);
+    property <string> staged-title: CallWords.tile-title(CallView.stage[0]);
     property <bool> follows-back: CallView.follows-speaker && CallView.view-chosen;
+    property <bool> pinned: CallView.stage-chosen && root.staged;
+    property <Icon> return-icon: root.pinned ? IconSet.PinOff : root.follows-back ? IconSet.AudioLines : IconSet.LayoutGrid;
+    property <string> return-text: root.pinned ? @tr("Unpin") : root.follows-back ? @tr("Follow speaker") : @tr("Gallery");
+    property <string> return-label: root.pinned ? CallWords.unpin(root.staged-title)
+        : root.follows-back ? CallWords.follow-speaker()
+        : CallWords.show-gallery();
     property <bool> offers-return: root.staged || root.follows-back;
     property <bool> compact-self: CallView.compact-self.length > 0;
     property <length> lead: max(0px, root.lead-inset - Space.md);
@@ -223,7 +229,12 @@ export component CallBand inherits Rectangle {
     }
 
     function take-return(by-keys: bool) {
-        if root.follows-back {
+        if root.pinned {
+            if by-keys {
+                menu-button.take-focus();
+            }
+            Actions.unpin-call-tile();
+        } else if root.follows-back {
             if by-keys {
                 menu-button.take-focus();
             }
@@ -299,10 +310,12 @@ export component CallBand inherits Rectangle {
                 visible: root.offers-return && root.return-worded;
                 filled: false;
                 tint: AppStyle.foreground-strong;
-                icon: root.follows-back ? IconSet.AudioLines : IconSet.LayoutGrid;
-                text: root.follows-back ? @tr("Follow speaker") : @tr("Gallery");
-                label: root.follows-back ? CallWords.follow-speaker() : CallWords.show-gallery();
-                description: root.staged ? CallWords.in-focus(root.staged-title) : "";
+                icon: root.return-icon;
+                text: root.return-text;
+                label: root.return-label;
+                description: root.pinned ? CallWords.pinned(root.staged-title)
+                    : root.staged ? CallWords.in-focus(root.staged-title)
+                    : "";
                 clicked => {
                     root.take-return(self.has-focus);
                 }
@@ -313,8 +326,8 @@ export component CallBand inherits Rectangle {
                 y: (parent.height - self.height) / 2;
                 size: Size.md;
                 visible: root.offers-return && !root.return-worded;
-                icon: root.follows-back ? IconSet.AudioLines : IconSet.LayoutGrid;
-                label: root.follows-back ? CallWords.follow-speaker() : CallWords.show-gallery();
+                icon: root.return-icon;
+                label: root.return-label;
                 tip: self.label;
                 tip-below: true;
                 tip-scope: TipScope.call;

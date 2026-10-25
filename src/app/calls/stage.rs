@@ -121,37 +121,9 @@ impl Stage {
         true
     }
 
-    pub(super) fn focus_any(&mut self, tiles: &[CallTile]) {
-        if let Shown::Focus(key) = self.shown(tiles) {
-            self.chosen = Some(Shown::Focus(key));
-            return;
-        }
-        let others = || {
-            tiles
-                .iter()
-                .filter(|tile| tile.kind == TileKind::Person && !tile.own)
-        };
-        let pick = self
-            .shares
-            .iter()
-            .rev()
-            .find(|key| self.shows(key, tiles))
-            .cloned()
-            .or_else(|| {
-                others()
-                    .find(|tile| tile.video.is_some())
-                    .map(CallTile::key)
-            })
-            .or_else(|| others().next().map(CallTile::key))
-            .or_else(|| {
-                tiles
-                    .iter()
-                    .find(|tile| self.seen(tile, tiles) && !tile.is_own_share())
-                    .map(CallTile::key)
-            });
-        if let Some(key) = pick {
-            self.pick(key, tiles);
-        }
+    pub(super) fn unpin(&mut self) {
+        self.chosen = None;
+        self.before_share = None;
     }
 
     pub(super) fn gallery(&mut self) {

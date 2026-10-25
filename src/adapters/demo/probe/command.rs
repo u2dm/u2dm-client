@@ -173,7 +173,10 @@ pub enum ProbeCommand {
     FocusCallTile {
         key: String,
     },
-    ShowCallFocus,
+    UnpinCallTile,
+    RingDevices {
+        open: bool,
+    },
     ShowCallGallery,
     ViewCallShare,
     ShowSelfView {
@@ -955,7 +958,8 @@ pub fn to_driven(command: ProbeCommand, selected: Selection<'_>) -> Result<Drive
         },
         ProbeCommand::RefreshCallDevices => UiCommand::RefreshCallDevices,
         ProbeCommand::FocusCallTile { key } => UiCommand::FocusCallTile(key),
-        ProbeCommand::ShowCallFocus => UiCommand::ShowCallFocus,
+        ProbeCommand::UnpinCallTile => UiCommand::UnpinCallTile,
+        ProbeCommand::RingDevices { open } => UiCommand::RingDevices(open),
         ProbeCommand::ShowCallGallery => UiCommand::ShowCallGallery,
         ProbeCommand::ViewCallShare => UiCommand::ViewCallShare,
         ProbeCommand::ShowSelfView { on } => UiCommand::ShowSelfView(on),

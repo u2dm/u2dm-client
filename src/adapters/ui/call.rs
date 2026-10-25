@@ -407,6 +407,9 @@ fn apply_share_news(w: &impl UiProps, news: Option<&ShareNews>, who: StringProp,
 }
 
 fn shown_devices(call: &CallView) -> Option<&CallDevices> {
+    if let Some(devices) = call.ring.as_ref().and_then(|ring| ring.devices.as_ref()) {
+        return Some(devices);
+    }
     match &call.sheet {
         Some(sheet) => sheet.devices.as_ref(),
         None => call.active.as_ref().map(|active| &active.devices),

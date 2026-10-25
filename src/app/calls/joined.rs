@@ -1071,9 +1071,12 @@ impl Joined {
         }
     }
 
-    pub(super) fn focus_any_tile(&mut self) {
-        let tiles = self.tiles();
-        self.stage.focus_any(&tiles);
+    pub(super) fn unpin_tile(&mut self) {
+        tracing::info!(
+            call = self.call,
+            "the call's stage goes back to its own rule"
+        );
+        self.stage.unpin();
     }
 
     pub(super) fn show_gallery(&mut self) {
@@ -1203,6 +1206,7 @@ impl Joined {
                 tiles.push(self.remote_tile(member));
             }
         }
+        number_devices(&mut tiles);
         tiles
     }
 
@@ -1226,6 +1230,7 @@ impl Joined {
         CallTile {
             member: self.me.clone(),
             name,
+            device: 0,
             avatar_mxc,
             own: true,
             kind: TileKind::Person,
@@ -1243,6 +1248,7 @@ impl Joined {
         Some(CallTile {
             member: self.me.clone(),
             name: name.clone(),
+            device: 0,
             avatar_mxc: None,
             own: true,
             kind: TileKind::Screen,
@@ -1272,6 +1278,7 @@ impl Joined {
                 .any(|identity| self.heard.is_speaking(identity)),
             member: key,
             name: member.user.clone(),
+            device: 0,
             avatar_mxc: member.avatar_mxc.clone(),
             own: false,
             kind: TileKind::Person,
@@ -1294,6 +1301,7 @@ impl Joined {
             speaking: false,
             member: key,
             name: member.user.clone(),
+            device: 0,
             avatar_mxc: None,
             own: false,
             kind: TileKind::Screen,
@@ -1425,4 +1433,27 @@ fn undecryptable(tiles: &[CallTile]) -> Option<CallNotice> {
         why,
         others: troubled.count(),
     })
+}
+
+fn remote_person(tile: &CallTile) -> bool {
+    !tile.own && tile.kind == TileKind::Person
+}
+
+fn number_devices(tiles: &mut [CallTile]) {
+    let mut devices: HashMap<String, u8> = HashMap::new();
+    for tile in tiles.iter().filter(|tile| remote_person(tile)) {
+        let count = devices.entry(tile.member.user.clone()).or_default();
+        *count = count.saturating_add(1);
+    }
+    let mut numbered: HashMap<String, u8> = HashMap::new();
+    for tile in tiles.iter_mut().filter(|tile| remote_person(tile)) {
+        if devices
+            .get(&tile.member.user)
+            .is_some_and(|count| *count > 1)
+        {
+            let number = numbered.entry(tile.member.user.clone()).or_default();
+            *number = number.saturating_add(1);
+            tile.device = *number;
+        }
+    }
 }

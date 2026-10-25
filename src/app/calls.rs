@@ -88,6 +88,8 @@ struct Incoming {
     ring: Ring,
     answering: Answering,
     serial: u64,
+    devices: Option<DeviceChoices>,
+    choosing: bool,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -401,6 +403,8 @@ impl Calls {
             ring,
             answering: Answering::Pending,
             serial: self.serial,
+            devices: None,
+            choosing: false,
         });
         self.directory_changed(directory);
     }
@@ -1053,14 +1057,7 @@ impl Calls {
                 return;
             }
         };
-        let sheet = self.sheet.take();
-        if let Some(draft) = sheet
-            .filter(|sheet| sheet.room_id == request.room_id)
-            .and_then(|sheet| sheet.draft)
-        {
-            tracing::info!("the call opens on the devices chosen in its sheet");
-            self.devices = draft;
-        }
+        self.take_chosen_devices(&request.room_id);
         self.failed = None;
         if self.rings_in(&request.room_id) {
             self.stop(RingEnd::Answered);
@@ -1093,6 +1090,27 @@ impl Calls {
         self.joined = Some(joined);
         self.run_effects(effects);
         self.publish(directory);
+    }
+
+    fn take_chosen_devices(&mut self, room_id: &RoomId) {
+        if let Some(draft) = self
+            .sheet
+            .take()
+            .filter(|sheet| sheet.room_id == *room_id)
+            .and_then(|sheet| sheet.draft)
+        {
+            tracing::info!("the call opens on the devices chosen in its sheet");
+            self.devices = draft;
+        }
+        if let Some(draft) = self
+            .incoming
+            .as_mut()
+            .filter(|incoming| incoming.ring.room_id == *room_id)
+            .and_then(|incoming| incoming.devices.take())
+        {
+            tracing::info!("the call opens on the devices chosen while it rang");
+            self.devices = draft;
+        }
     }
 
     fn joining(
@@ -1275,6 +1293,10 @@ impl Calls {
         key: Option<&DeviceKey>,
         directory: &RoomDirectory,
     ) {
+        if self.ring_choosing() {
+            self.choose_for_ring(kind, key, directory);
+            return;
+        }
         if self
             .sheet
             .as_ref()
@@ -1330,17 +1352,71 @@ impl Calls {
     pub(super) fn refresh_devices(&mut self) {
         if let Some(joined) = &self.joined {
             joined.refresh_devices();
-        } else if self.sheet.is_some() {
+        } else if self.sheet.is_some() || self.ring_choosing() {
             self.list_devices();
         }
+    }
+
+    fn ring_choosing(&self) -> bool {
+        self.incoming
+            .as_ref()
+            .is_some_and(|incoming| incoming.choosing)
+    }
+
+    pub(super) fn ring_devices(&mut self, open: bool, directory: &RoomDirectory) {
+        let choices = self.devices.clone();
+        let Some(incoming) = self.incoming.as_mut() else {
+            tracing::debug!("nothing rings to choose devices for");
+            return;
+        };
+        tracing::debug!(open, "choosing devices for the call that rings");
+        incoming.choosing = open;
+        incoming.devices.get_or_insert(choices);
+        if open && self.joined.is_none() {
+            self.list_devices();
+        }
+        self.publish(directory);
+    }
+
+    fn ring_choices(&self) -> Option<Devices> {
+        let mut devices = Devices::new(self.incoming.as_ref()?.devices.clone()?);
+        match &self.joined {
+            Some(joined) => devices.listed(joined.device_lists()),
+            None => devices.listed(self.listed.clone()?),
+        }
+        Some(devices)
+    }
+
+    fn choose_for_ring(
+        &mut self,
+        kind: DeviceKind,
+        key: Option<&DeviceKey>,
+        directory: &RoomDirectory,
+    ) {
+        let Some(choice) = self
+            .ring_choices()
+            .and_then(|devices| devices.choice_for(kind, key))
+        else {
+            tracing::debug!(%kind, "no device of that key to choose for the call that rings");
+            return;
+        };
+        tracing::info!(%kind, device = ?choice.key(), "choosing a device for the call that rings");
+        if let Some(draft) = self
+            .incoming
+            .as_mut()
+            .and_then(|incoming| incoming.devices.as_mut())
+        {
+            *draft.of_mut(kind) = choice;
+        }
+        self.publish(directory);
     }
 
     pub(super) fn focus_call_tile(&mut self, key: &str, directory: &RoomDirectory) {
         self.arrange_stage(directory, |joined| joined.focus_tile(key));
     }
 
-    pub(super) fn show_call_focus(&mut self, directory: &RoomDirectory) {
-        self.arrange_stage(directory, Joined::focus_any_tile);
+    pub(super) fn unpin_call_tile(&mut self, directory: &RoomDirectory) {
+        self.arrange_stage(directory, Joined::unpin_tile);
     }
 
     pub(super) fn show_call_gallery(&mut self, directory: &RoomDirectory) {
@@ -1933,6 +2009,11 @@ impl Calls {
             refusal: match offer {
                 JoinOffer::Refused(refusal) => Some(refusal),
                 JoinOffer::Start | JoinOffer::Join | JoinOffer::InCall => None,
+            },
+            devices: if incoming.choosing {
+                self.ring_choices().map(|devices| devices.view())
+            } else {
+                None
             },
         })
     }

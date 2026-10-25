@@ -26,6 +26,7 @@ import {
     SelfViewRequest,
     SharePreviewRequest,
     FollowSpeakerRequest,
+    RingDevicesRequest,
     CallDeviceRequest,
     CallDeviceTestRequest,
     RenameSessionRequest,
@@ -199,7 +200,8 @@ export global Actions {
     callback test-call-device(CallDeviceTestRequest);
     callback refresh-call-devices();
     callback focus-call-tile(string);
-    callback show-call-focus();
+    callback unpin-call-tile();
+    callback ring-devices(RingDevicesRequest);
     callback show-call-gallery();
     callback view-call-share();
     callback show-self-view(SelfViewRequest);

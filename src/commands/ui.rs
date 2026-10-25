@@ -437,7 +437,9 @@ pub enum UiCommand {
     RefreshCallDevices,
     #[strum(to_string = "FocusCallTile({0})")]
     FocusCallTile(String),
-    ShowCallFocus,
+    UnpinCallTile,
+    #[strum(to_string = "RingDevices({0})")]
+    RingDevices(bool),
     ShowCallGallery,
     ViewCallShare,
     #[strum(to_string = "ShowSelfView({0})")]
@@ -641,7 +643,8 @@ impl UiCommand {
             | Self::UseCallDevice { .. }
             | Self::RefreshCallDevices
             | Self::FocusCallTile(_)
-            | Self::ShowCallFocus
+            | Self::UnpinCallTile
+            | Self::RingDevices(_)
             | Self::ShowCallGallery
             | Self::ViewCallShare
             | Self::ShowSelfView(_)

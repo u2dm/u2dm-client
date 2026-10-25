@@ -131,8 +131,6 @@ export enum CallSurface { call, chat }
 
 export enum CallSheetOpener { composer, header, room-menu }
 
-export enum CallPeopleOpener { pill, dock }
-
 export global CallPanel {
     in-out property <CallMode> mode: CallMode.chat-only;
     in-out property <CallMode> last-call-mode: CallMode.call-and-chat;
@@ -149,7 +147,6 @@ export global CallPanel {
     in-out property <bool> devices-by-keys: false;
     in-out property <bool> people-open: false;
     in-out property <bool> people-by-keys: false;
-    in-out property <CallPeopleOpener> people-opener: CallPeopleOpener.pill;
     in-out property <length> people-left;
     in-out property <length> people-right;
     in-out property <length> people-top;
@@ -166,6 +163,11 @@ export global CallPanel {
     in-out property <bool> viewer-focused: false;
     in-out property <int> band-takes-focus;
     in-out property <int> dock-takes-focus;
+    in-out property <bool> ring-devices-open: false;
+    in-out property <bool> ring-devices-by-keys: false;
+    in-out property <length> ring-devices-right;
+    in-out property <length> ring-devices-bottom;
+    in-out property <int> ring-devices-returns;
     in-out property <CallSheetOpener> sheet-opener: CallSheetOpener.composer;
     in-out property <bool> sheet-dismissed: false;
     in-out property <int> sheet-returns;
@@ -176,20 +178,28 @@ export global CallPanel {
         Actions.open-call-sheet({ room-id: room-id, video: video });
     }
 
+    public function open-ring-devices(by-keys: bool, right: length, bottom: length) {
+        root.ring-devices-by-keys = by-keys;
+        root.ring-devices-right = right;
+        root.ring-devices-bottom = bottom;
+        root.ring-devices-open = true;
+        Actions.ring-devices({ open: true });
+    }
+
+    public function close-ring-devices() {
+        root.ring-devices-open = false;
+        Actions.ring-devices({ open: false });
+        if root.ring-devices-by-keys {
+            root.ring-devices-returns += 1;
+        }
+    }
+
     public function dismiss-sheet() {
         root.sheet-dismissed = true;
         Actions.close-call-sheet();
     }
 
-    public function open-people(
-        opener: CallPeopleOpener,
-        by-keys: bool,
-        left: length,
-        right: length,
-        top: length,
-        bottom: length
-    ) {
-        root.people-opener = opener;
+    public function open-people(by-keys: bool, left: length, right: length, top: length, bottom: length) {
         root.people-by-keys = by-keys;
         root.people-left = left;
         root.people-right = right;

@@ -375,7 +375,8 @@ pub(super) fn command_allowed(phase: AppPhase, cmd: &UiCommand) -> bool {
         | UiCommand::UseCallDevice { .. }
         | UiCommand::RefreshCallDevices
         | UiCommand::FocusCallTile(_)
-        | UiCommand::ShowCallFocus
+        | UiCommand::UnpinCallTile
+        | UiCommand::RingDevices(_)
         | UiCommand::ShowCallGallery
         | UiCommand::ViewCallShare
         | UiCommand::ShowSelfView(_)

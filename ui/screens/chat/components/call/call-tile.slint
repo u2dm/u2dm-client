@@ -184,11 +184,12 @@ export component CallTileView inherits Rectangle {
     in property <bool> staged: false;
     in property <bool> fits-video: false;
     in property <bool> above-modal: false;
+    in property <bool> cursor-on: false;
 
-    callback took-focus();
+    callback wants-focus();
 
     property <string> state-text: CallWords.tile(root.tile.state);
-    property <string> title: CallWords.tile-title(root.tile.screen, root.tile.own, root.tile.name);
+    property <string> title: CallWords.tile-title(root.tile);
     property <bool> troubled: CallStates.troubled(root.tile.state);
     property <string> feed: root.tile.feed;
     property <bool> shows-video: root.tile.has-frame && CallStates.flows(root.tile.state);
@@ -560,23 +561,28 @@ export component CallTileView inherits Rectangle {
         radius: Radius.md;
     }
 
+    if root.cursor-on && !root.selectable: FocusRing {
+        x: 0;
+        y: 0;
+        width: root.width;
+        height: root.height;
+        radius: Radius.md;
+    }
+
     if root.selectable: ClickArea {
         above-modal: root.above-modal;
         ring-radius: Radius.md;
         label: CallWords.focus-on(root.title);
+        focusable: false;
+        roving-focus: root.cursor-on;
         init => {
             if CallPanel.focus-tile != "" && CallPanel.focus-tile == root.tile.key {
                 CallPanel.focus-tile = "";
-                self.take-focus();
-            }
-        }
-        changed has-focus => {
-            if self.has-focus {
-                root.took-focus();
+                root.wants-focus();
             }
         }
         clicked => {
-            CallPanel.focus-stage = self.has-focus;
+            CallPanel.focus-stage = false;
             Actions.focus-call-tile(root.tile.key);
         }
     }

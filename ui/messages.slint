@@ -1,6 +1,6 @@
 import { CallCamera, CallDeviceKind, CallDeviceStatus, CallDeviceTrouble, CallMic, CallNotice, CallPhase, CallPreviewTrouble, CallRefusal, CallScreen, CallScreenRefusal, CallSheetPreview, CallTestPhase, CallTileState, Delivery, EmojiArt, MediaFailure, PresenceLine, PreviewKind, RoomCallMark, ServiceKind, ShieldReason, UpgradeLink, UserMessageKind } from "./enums.slint";
 import { CallStates } from "./call-states.slint";
-import { CallPersonEntry } from "./types.slint";
+import { CallPersonEntry, CallTileEntry } from "./types.slint";
 
 export global UserMessages {
     public pure function text(kind: UserMessageKind, detail: string) -> string {
@@ -839,6 +839,18 @@ export global CallWords {
         return @tr("{n} in the call" | "{n} in the call" % people);
     }
 
+    public pure function unpin(title: string) -> string {
+        return @tr("Unpin {}", title);
+    }
+
+    public pure function pinned(title: string) -> string {
+        return @tr("Pinned: {}", title);
+    }
+
+    public pure function people-count(people: int) -> string {
+        return @tr("{n} person" | "{n} people" % people);
+    }
+
     public pure function in-call-named(first: string, second: string, more: int, people: int) -> string {
         if first == "" {
             return root.in-call(people);
@@ -1211,17 +1223,20 @@ export global CallWords {
         return @tr("You");
     }
 
-    public pure function tile-title(screen: bool, own: bool, name: string) -> string {
-        if screen && own {
+    public pure function tile-title(tile: CallTileEntry) -> string {
+        if tile.screen && tile.own {
             return root.your-screen();
         }
-        if screen {
-            return root.screen-of(name);
+        if tile.screen {
+            return root.screen-of(tile.name);
         }
-        if own {
+        if tile.own {
             return @tr("You");
         }
-        return name;
+        if tile.device > 0 {
+            return @tr("{} ({})", tile.name, tile.device);
+        }
+        return tile.name;
     }
 
     public pure function zoom-percent(percent: int) -> string {

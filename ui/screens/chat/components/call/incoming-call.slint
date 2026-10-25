@@ -8,7 +8,7 @@ import { AppStyle, Fonts, Glyph, IconSize, Metrics, Size, Space, Weight } from "
 import { CallView } from "../../../../views.slint";
 import { CallWords } from "../../../../messages.slint";
 import { Actions } from "../../../../actions.slint";
-import { Shell, TipScope } from "../../../../local.slint";
+import { CallPanel, Shell, TipScope } from "../../../../local.slint";
 
 export component IncomingCallCard inherits PickerCard {
     in property <length> available-width;
@@ -21,13 +21,23 @@ export component IncomingCallCard inherits PickerCard {
     property <bool> answer-takes-focus: false;
     property <bool> question-focused: false;
     property <string> remedy: CallWords.refusal-action(CallView.ring-refusal);
+    property <int> devices-returns: CallPanel.ring-devices-returns;
 
     width: min(Metrics.incoming-call-width, root.available-width - 2 * Metrics.incoming-call-inset);
     height: card-layout.preferred-height;
     accessible-role: groupbox;
     accessible-label: CallWords.incoming(CallView.ring-video);
 
+    init => {
+        CallPanel.ring-devices-open = false;
+    }
+
+    changed devices-returns => {
+        devices-button.take-focus();
+    }
+
     changed serial => {
+        CallPanel.ring-devices-open = false;
         root.confirming = false;
         root.with-camera = false;
         root.question-takes-focus = false;
@@ -131,6 +141,24 @@ export component IncomingCallCard inherits PickerCard {
                         color: AppStyle.foreground-muted;
                         overflow: elide;
                     }
+                }
+            }
+
+            devices-button := IconButton {
+                cross-axis-self-alignment: start;
+                width: CallView.ring-answerable ? Size.md : 0;
+                visible: CallView.ring-answerable;
+                icon: IconSet.Settings;
+                size: Size.md;
+                above-modal: true;
+                label: @tr("Choose the microphone, speaker and camera to answer with");
+                tip: self.label;
+                tip-scope: TipScope.ring;
+                clicked => {
+                    CallPanel.open-ring-devices(
+                        self.has-focus,
+                        self.absolute-position.x + self.width,
+                        self.absolute-position.y + self.height);
                 }
             }
 

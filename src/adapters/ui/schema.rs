@@ -270,7 +270,8 @@ macro_rules! simple_callbacks {
         on_refresh_call_devices "refresh-call-devices" refresh_call_devices plain
             RefreshCallDevices;
         on_focus_call_tile "focus-call-tile" focus_call_tile pass FocusCallTile;
-        on_show_call_focus "show-call-focus" show_call_focus plain ShowCallFocus;
+        on_unpin_call_tile "unpin-call-tile" unpin_call_tile plain UnpinCallTile;
+        on_ring_devices "ring-devices" ring_devices request(open "open" flag) RingDevices;
         on_show_call_gallery "show-call-gallery" show_call_gallery plain ShowCallGallery;
         on_view_call_share "view-call-share" view_call_share plain ViewCallShare;
         on_show_self_view "show-self-view" show_self_view request(on "on" flag) ShowSelfView;
@@ -2162,6 +2163,7 @@ macro_rules! call_tile_fields {
         member set_member "member" text;
         user_id set_user_id "user-id" text;
         name set_name "name" text;
+        device set_device "device" int;
         initial set_initial "initial" text;
         color_index set_color_index "color-index" int;
         has_avatar set_has_avatar "has-avatar" flag;

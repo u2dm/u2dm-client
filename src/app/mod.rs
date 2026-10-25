@@ -896,7 +896,8 @@ impl AppService {
             | UiCommand::UseCallDevice { .. }
             | UiCommand::RefreshCallDevices
             | UiCommand::FocusCallTile(_)
-            | UiCommand::ShowCallFocus
+            | UiCommand::UnpinCallTile
+            | UiCommand::RingDevices(_)
             | UiCommand::ShowCallGallery
             | UiCommand::ViewCallShare
             | UiCommand::ShowSelfView(_)
@@ -3048,7 +3049,8 @@ impl AppService {
             }
             UiCommand::RefreshCallDevices => self.calls.refresh_devices(),
             UiCommand::FocusCallTile(key) => self.calls.focus_call_tile(&key, directory),
-            UiCommand::ShowCallFocus => self.calls.show_call_focus(directory),
+            UiCommand::UnpinCallTile => self.calls.unpin_call_tile(directory),
+            UiCommand::RingDevices(open) => self.calls.ring_devices(open, directory),
             UiCommand::ShowCallGallery => self.calls.show_call_gallery(directory),
             UiCommand::ViewCallShare => self.calls.view_call_share(directory),
             UiCommand::ShowSelfView(on) => self.calls.show_self_view(on, directory),

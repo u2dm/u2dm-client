@@ -3,29 +3,87 @@ import { IconDisplay, IconSet } from "@lucide";
 import { AppButton, IconButton } from "../../../../components/button.slint";
 import { ClickArea } from "../../../../components/a11y.slint";
 import { StateLayer } from "../../../../components/state-layer.slint";
-import { CallNotice, CallScreen } from "../../../../enums.slint";
+import { CallNotice, CallPhase, CallScreen } from "../../../../enums.slint";
 import { CallWords, UserMessages } from "../../../../messages.slint";
 import { Actions } from "../../../../actions.slint";
-import { CallPanel, CallPeopleOpener, Shell, TipScope } from "../../../../local.slint";
+import { CallPanel, Shell, TipScope } from "../../../../local.slint";
 import { CallView, DirectoryView, SpaceIndexView } from "../../../../views.slint";
 import { AppStyle, Fonts, IconSize, Metrics, Motion, Radius, Size, Space, Stroke, Weight } from "../../../../theme.slint";
 import { CallCameraButton, CallKey, CallLeaveButton, CallMicButton, CallShareButton } from "./call-controls.slint";
 import { CallStatus, ShareStatus } from "./call-status.slint";
 
-component CallLine inherits HorizontalLayout {
-    in property <bool> names-room;
+component LineTarget inherits ClickArea {
+    in property <string> text;
+    in property <color> tint;
+    in property <int> weight: Weight.regular;
+    out property <length> text-width: words.preferred-width + 2 * Space.xs;
 
-    property <bool> sharing: CallView.screen == CallScreen.on;
+    ring-radius: Radius.sm;
+
+    StateLayer {
+        border-radius: Radius.sm;
+        ink: root.tint;
+        hovered: root.has-hover && root.enabled;
+        pressed: root.pressed && root.enabled;
+    }
+
+    words := Text {
+        x: Space.xs;
+        width: max(0px, parent.width - 2 * Space.xs);
+        text: root.text;
+        font-family: Fonts.emoji;
+        font-size: Fonts.body-small;
+        font-weight: root.weight;
+        color: root.tint;
+        vertical-alignment: center;
+        overflow: elide;
+    }
+}
+
+component CallLine inherits Rectangle {
+    in property <bool> above-modal;
+
+    callback open-chat();
+    callback open-people(bool);
+
+    out property <length> people-left: people.absolute-position.x;
+    out property <length> people-right: people.absolute-position.x + people.width;
+    out property <length> people-top: people.absolute-position.y;
+    out property <length> people-bottom: people.absolute-position.y + people.height;
+    in property <bool> share-apart;
+    out property <length> least-alone: root.lead + root.room-least + (root.clock ? 0px : root.phase-room) + root.gap + root.people-tail;
+    out property <length> share-width: root.gap + sharing.preferred-width;
+
+    property <bool> shows-sharing: CallView.screen == CallScreen.on && !root.share-apart;
     property <string> sharing-words: @tr("Sharing your screen");
     property <string> bridges: CallWords.bridges(CallView.bridges-first, CallView.bridges-second, CallView.bridges-more);
-    property <string> phase: CallWords.phase(CallView.phase, CallView.elapsed);
+    property <bool> clock: CallView.phase == CallPhase.live;
+    property <length> gap: Space.sm;
+    property <length> lead: Space.sm + IconSize.sm + Space.md + (CallView.active-encrypted ? IconSize.xs + Space.md : 0px);
+    property <length> phase-room: root.gap + phase.preferred-width;
+    property <length> people-tail: dot.preferred-width + root.gap + people.text-width + Space.sm;
+    property <length> tail: root.people-tail + (root.shows-sharing ? root.share-width : 0px);
+    property <length> room-least: min(room.text-width, Metrics.call-dock-room-min);
+    property <bool> keeps-phase: !root.clock
+        || root.width >= root.lead + root.room-least + root.phase-room + root.gap + root.tail;
+    property <length> phase-width: root.keeps-phase
+        ? clamp(root.width - root.lead - root.room-least - root.gap - root.gap - root.tail, 0px, phase.preferred-width)
+        : 0px;
+    property <length> room-width: clamp(
+        root.width - root.lead - (root.keeps-phase ? root.gap + root.phase-width : 0px) - root.gap - root.tail,
+        0px,
+        room.text-width);
 
-    padding-left: Space.sm;
-    padding-right: Space.sm;
-    spacing: Space.md;
+    public function focus-room() {
+        room.take-focus();
+    }
+
+    public function focus-people() {
+        people.take-focus();
+    }
 
     IconDisplay {
-        cross-axis-self-alignment: center;
+        x: Space.sm;
         icon: CallView.active-video ? IconSet.Video : IconSet.Phone;
         size: IconSize.sm;
         stroke: AppStyle.call-live;
@@ -33,7 +91,7 @@ component CallLine inherits HorizontalLayout {
     }
 
     if CallView.active-encrypted: IconDisplay {
-        cross-axis-self-alignment: center;
+        x: Space.sm + IconSize.sm + Space.md;
         icon: root.bridges == "" ? IconSet.Lock : IconSet.ShieldAlert;
         size: IconSize.xs;
         stroke: AppStyle.foreground-muted;
@@ -41,92 +99,65 @@ component CallLine inherits HorizontalLayout {
         accessible-label: CallWords.encryption(root.bridges);
     }
 
-    HorizontalLayout {
-        alignment: start;
-        spacing: Space.sm;
-
-        if root.names-room: Text {
-            text: CallView.active-room-name;
-            font-family: Fonts.emoji;
-            font-size: Fonts.body-small;
-            font-weight: Weight.semibold;
-            color: AppStyle.call-live;
-            vertical-alignment: center;
-            overflow: elide;
-        }
-
-        Text {
-            min-width: self.preferred-width;
-            text: root.names-room ? @tr("· {}", root.phase) : root.phase;
-            font-size: Fonts.body-small;
-            font-weight: root.names-room ? Weight.regular : Weight.semibold;
-            color: AppStyle.foreground-muted;
-            vertical-alignment: center;
-        }
-
-        if root.sharing: Text {
-            min-width: self.preferred-width;
-            text: @tr("· {}", root.sharing-words);
-            font-family: Fonts.emoji;
-            font-size: Fonts.body-small;
-            font-weight: Weight.semibold;
-            color: AppStyle.call-sharing;
-            vertical-alignment: center;
+    room := LineTarget {
+        x: root.lead - Space.xs;
+        width: root.room-width;
+        height: root.height;
+        above-modal: root.above-modal;
+        text: CallView.active-room-name;
+        tint: AppStyle.call-live;
+        weight: Weight.semibold;
+        label: CallWords.open-call-chat(CallView.active-room-name);
+        clicked => {
+            root.open-chat();
         }
     }
-}
 
-component CallReturn inherits ClickArea {
-    out property <length> label-width: line.preferred-width;
-
-    ring-radius: Radius.sm;
-    label: CallWords.open-call-chat(CallView.active-room-name);
-
-    StateLayer {
-        border-radius: Radius.sm;
-        ink: AppStyle.call-live;
-        hovered: root.has-hover && root.enabled;
-        pressed: root.pressed && root.enabled;
-    }
-
-    line := CallLine {
-        names-room: true;
-    }
-}
-
-component CallHere inherits ClickArea {
-    in property <bool> names-people;
-    out property <length> bare-width: line.preferred-width;
-    out property <length> label-width: root.tells-people ? line.preferred-width + Space.sm + people.preferred-width
-        : line.preferred-width;
-
-    property <string> names: CallWords.people(CallView.people-first, CallView.people-second, CallView.people-more);
-    property <bool> tells-people: root.names-people && CallView.screen != CallScreen.on && root.names != "";
-
-    ring-radius: Radius.sm;
-    label: @tr("People in the call");
-
-    StateLayer {
-        border-radius: Radius.sm;
-        hovered: root.has-hover && root.enabled;
-        pressed: root.pressed && root.enabled;
-    }
-
-    line := CallLine {
-        x: 0;
-        width: root.tells-people ? min(self.preferred-width, root.width) : root.width;
-    }
-
-    people := Text {
-        x: line.width;
-        width: max(0px, root.width - self.x - Space.sm);
-        visible: root.tells-people;
-        text: @tr("· {}", root.names);
-        font-family: Fonts.emoji;
+    phase := Text {
+        x: room.x + room.width - Space.xs + root.gap;
+        width: root.phase-width;
+        visible: root.keeps-phase;
+        text: @tr("· {}", CallWords.phase(CallView.phase, CallView.elapsed));
         font-size: Fonts.body-small;
         color: AppStyle.foreground-muted;
         vertical-alignment: center;
         overflow: elide;
+    }
+
+    dot := Text {
+        x: (root.keeps-phase ? phase.x + phase.width : room.x + room.width - Space.xs) + root.gap;
+        width: self.preferred-width;
+        text: "·";
+        font-size: Fonts.body-small;
+        color: AppStyle.foreground-muted;
+        vertical-alignment: center;
+        accessible-role: none;
+    }
+
+    people := LineTarget {
+        x: dot.x + dot.width + root.gap - Space.xs;
+        width: self.text-width;
+        height: root.height;
+        above-modal: root.above-modal;
+        text: CallWords.people-count(CallView.people.length);
+        tint: AppStyle.foreground-muted;
+        label: CallWords.in-call(CallView.people.length);
+        accessible-description: @tr("Shows who is in the call");
+        clicked => {
+            root.open-people(self.has-focus);
+        }
+    }
+
+    sharing := Text {
+        x: people.x + people.width - Space.xs + root.gap;
+        width: self.preferred-width;
+        visible: root.shows-sharing;
+        text: @tr("· {}", root.sharing-words);
+        font-family: Fonts.emoji;
+        font-size: Fonts.body-small;
+        font-weight: Weight.semibold;
+        color: AppStyle.call-sharing;
+        vertical-alignment: center;
     }
 }
 
@@ -160,7 +191,6 @@ component FailedCallLabel inherits Rectangle {
 
 export component CallDock inherits Rectangle {
     in property <bool> above-modal;
-    in property <bool> here;
     in property <bool> stage-shown;
 
     callback returned();
@@ -203,11 +233,14 @@ export component CallDock inherits Rectangle {
     property <length> controls-width: root.failed
         ? (CallView.failure-retry ? retry.preferred-width + root.gap : 0px) + dismiss.width
         : 4 * (Metrics.call-control + root.gap) + leave.preferred-width;
-    property <length> line-width: root.failed ? failure.label-width
-        : root.here ? here-line.label-width
-        : back.label-width;
-    property <bool> stacked: root.width
-        < 2 * root.pad + min(root.line-width, Metrics.call-dock-label-min) + root.show-width + root.gap + root.controls-width;
+    property <bool> sharing: !root.failed && CallView.screen == CallScreen.on;
+    property <length> line-with-share: line.least-alone + (root.sharing ? line.share-width : 0px);
+    property <bool> share-apart: root.sharing && root.width - 2 * root.pad - root.show-width < root.line-with-share;
+    property <length> share-extra: root.share-apart ? Size.sm + root.gap : 0px;
+    property <length> line-least: root.failed ? min(failure.label-width, Metrics.call-dock-label-min)
+        : root.share-apart ? line.least-alone
+        : root.line-with-share;
+    property <bool> stacked: root.width < 2 * root.pad + root.line-least + root.show-width + root.gap + root.controls-width;
     property <length> row-height: root.stacked ? Metrics.call-dock-stacked : Metrics.call-dock;
     property <bool> status-taken-with-stage: !root.failed
         && (CallView.notice != CallNotice.none
@@ -215,17 +248,18 @@ export component CallDock inherits Rectangle {
             || root.tells-device-news
             || root.tells-change-cancelled
             || root.tells-share-ended);
-    property <length> line-width-with-stage: root.failed ? failure.label-width
-        : root.here ? here-line.bare-width
-        : back.label-width;
-    property <bool> stacked-with-stage: root.width
-        < 2 * root.pad + min(root.line-width-with-stage, Metrics.call-dock-label-min) + root.gap + root.controls-width;
+    property <bool> share-apart-with-stage: root.sharing && root.width - 2 * root.pad < root.line-with-share;
+    property <length> line-least-with-stage: root.failed ? root.line-least
+        : root.share-apart-with-stage ? line.least-alone
+        : root.line-with-share;
+    property <bool> stacked-with-stage: root.width < 2 * root.pad + root.line-least-with-stage + root.gap + root.controls-width;
     out property <length> height-with-stage: (root.status-taken-with-stage ? status.preferred-height + root.gap : 0px)
+        + (root.share-apart-with-stage ? Size.sm + root.gap : 0px)
         + (root.stacked-with-stage ? Metrics.call-dock-stacked : Metrics.call-dock);
     property <length> label-span: max(0px, root.stacked
         ? root.width - 2 * root.pad - root.show-width
         : root.width - 2 * root.pad - root.show-width - root.gap - root.controls-width);
-    property <length> label-y: root.status-extra + root.pad;
+    property <length> label-y: root.status-extra + root.share-extra + root.pad;
     property <length> label-height: root.stacked ? Size.md : Metrics.call-control;
     property <length> controls-y: root.height - root.pad - Metrics.call-control;
 
@@ -238,11 +272,7 @@ export component CallDock inherits Rectangle {
     }
 
     function focus-line() {
-        if root.here {
-            here-line.take-focus();
-        } else {
-            back.take-focus();
-        }
+        line.focus-room();
     }
 
     function focus-control-for(notice: CallNotice) {
@@ -335,9 +365,7 @@ export component CallDock inherits Rectangle {
     }
 
     changed people-returns => {
-        if CallPanel.people-opener == CallPeopleOpener.dock {
-            here-line.take-focus();
-        }
+        line.focus-people();
     }
 
     changed ended-share-serial => {
@@ -395,7 +423,7 @@ export component CallDock inherits Rectangle {
         }
     }
 
-    height: root.status-extra + root.row-height;
+    height: root.status-extra + root.share-extra + root.row-height;
     background: root.failed ? AppStyle.danger-background : AppStyle.call-band;
     accessible-role: groupbox;
     accessible-label: root.failed ? failure.text : @tr("Call in {}", CallView.active-room-name);
@@ -428,34 +456,48 @@ export component CallDock inherits Rectangle {
         }
     }
 
-    back := CallReturn {
+    share-row := HorizontalLayout {
         x: root.pad;
-        y: root.label-y;
-        width: root.label-span;
-        height: root.label-height;
-        visible: !root.failed && !root.here;
-        above-modal: root.above-modal;
-        clicked => {
-            root.open-call-chat();
+        y: root.status-extra + root.pad;
+        width: root.width - 2 * root.pad;
+        height: Size.sm;
+        visible: root.share-apart;
+        padding-left: Space.sm;
+        spacing: Space.md;
+
+        IconDisplay {
+            cross-axis-self-alignment: center;
+            icon: IconSet.ScreenShare;
+            size: IconSize.sm;
+            stroke: AppStyle.call-sharing;
+            accessible-role: none;
+        }
+
+        Text {
+            horizontal-stretch: 1;
+            text: @tr("Sharing your screen");
+            font-family: Fonts.emoji;
+            font-size: Fonts.body-small;
+            font-weight: Weight.semibold;
+            color: AppStyle.call-sharing;
+            vertical-alignment: center;
+            overflow: elide;
         }
     }
 
-    here-line := CallHere {
+    line := CallLine {
         x: root.pad;
         y: root.label-y;
         width: root.label-span;
         height: root.label-height;
-        visible: !root.failed && root.here;
+        visible: !root.failed;
         above-modal: root.above-modal;
-        names-people: !root.stage-shown;
-        clicked => {
-            CallPanel.open-people(
-                CallPeopleOpener.dock,
-                self.has-focus,
-                self.absolute-position.x,
-                self.absolute-position.x + self.width,
-                self.absolute-position.y,
-                self.absolute-position.y + self.height);
+        share-apart: root.share-apart;
+        open-chat => {
+            root.open-call-chat();
+        }
+        open-people(by-keys) => {
+            CallPanel.open-people(by-keys, self.people-left, self.people-right, self.people-top, self.people-bottom);
         }
     }
 

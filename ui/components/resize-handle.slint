@@ -1,5 +1,6 @@
 import { FocusRing, FocusTrail } from "./a11y.slint";
 import { Shell } from "../local.slint";
+import { AppStyle, Motion } from "../theme.slint";
 
 export enum ResizeEdge { right, left, bottom }
 
@@ -10,6 +11,8 @@ export component ResizeHandle inherits Rectangle {
     in property <length> minimum;
     in property <length> maximum;
     in property <length> step;
+    in property <length> grab-before;
+    in property <length> grab-after;
 
     callback dragged(length);
     callback stepped(length);
@@ -54,7 +57,20 @@ export component ResizeHandle inherits Rectangle {
         }
     }
 
-    TouchArea {
+    Rectangle {
+        background: touch.has-hover || touch.pressed ? AppStyle.accent-divider : transparent;
+
+        animate background {
+            duration: Motion.fast;
+            easing: ease-out;
+        }
+    }
+
+    touch := TouchArea {
+        x: root.vertical ? 0 : -root.grab-before;
+        y: root.vertical ? -root.grab-before : 0;
+        width: root.vertical ? root.width : root.width + root.grab-before + root.grab-after;
+        height: root.vertical ? root.height + root.grab-before + root.grab-after : root.height;
         mouse-cursor: root.vertical ? MouseCursor.row-resize : MouseCursor.col-resize;
         moved => {
             root.dragged((root.vertical ? self.mouse-y - self.pressed-y : self.mouse-x - self.pressed-x) * root.outward);

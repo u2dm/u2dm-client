@@ -1,6 +1,9 @@
 import { IconSet } from "@lucide";
 
+import { RovingKeys } from "../../../../components/a11y.slint";
 import { IconButton } from "../../../../components/button.slint";
+import { Actions } from "../../../../actions.slint";
+import { CallWords } from "../../../../messages.slint";
 import { CallPanel } from "../../../../local.slint";
 import { CallView } from "../../../../views.slint";
 import { AppStyle, Metrics, Size, Space } from "../../../../theme.slint";
@@ -63,6 +66,11 @@ export component CallStage inherits Rectangle {
         : films.content-height - films.height;
     property <bool> scrolls-back: films.visible && root.scrolled > 0;
     property <bool> scrolls-on: films.visible && root.scrolled < root.scroll-span;
+    property <int> cursor: -1;
+    property <bool> keys-focused: tile-keys.has-focus;
+    property <length> tile-size: !root.focused ? root.tile-height
+        : root.rail ? root.film-tile-height
+        : root.film-width;
 
     pure function width-for(columns: int) -> length {
         min(
@@ -82,6 +90,33 @@ export component CallStage inherits Rectangle {
     function page(forward: bool) {
         let step = max(root.pitch, root.scroll-room - root.pitch);
         root.scroll-to(root.scrolled + (forward ? step : -step));
+    }
+
+    pure function tile-start(index: int) -> length {
+        if !root.focused {
+            return root.grid-top + floor(index / root.columns) * (root.tile-height + root.gap);
+        }
+        return root.film-lead + index * root.film-pitch;
+    }
+
+    function show-tile(index: int) {
+        root.reveal(root.tile-start(index), root.tile-size);
+    }
+
+    function step-rows(rows: int) {
+        let next = root.cursor + rows * root.columns;
+        if next >= 0 && next < root.count {
+            root.cursor = next;
+            root.show-tile(next);
+        }
+    }
+
+    function activate(index: int) {
+        if index < 0 || index >= root.count || (CallView.tiles[index].screen && CallView.tiles[index].own) {
+            return;
+        }
+        CallPanel.focus-stage = true;
+        Actions.focus-call-tile(CallView.tiles[index].key);
     }
 
     function reveal(start: length, size: length) {
@@ -110,6 +145,11 @@ export component CallStage inherits Rectangle {
     changed scroll-span => {
         root.scroll-to(root.scrolled);
     }
+    changed count => {
+        if root.cursor >= root.count {
+            root.cursor = root.count - 1;
+        }
+    }
 
     for tile in CallView.stage: CallTileView {
         property <bool> boxed: !tile.screen && !root.fits-videos;
@@ -122,6 +162,40 @@ export component CallStage inherits Rectangle {
         tile: tile;
         staged: true;
         fits-video: root.fits-videos;
+    }
+
+    tile-keys := RovingKeys {
+        count: root.count;
+        horizontal: !root.rail;
+        enabled: films.visible && root.count > 0;
+        cursor <=> root.cursor;
+        accessible-label: root.cursor < 0 || root.cursor >= root.count ? @tr("People in the call")
+            : CallView.tiles[root.cursor].screen && CallView.tiles[root.cursor].own
+            ? CallWords.tile-title(CallView.tiles[root.cursor])
+            : CallWords.focus-on(CallWords.tile-title(CallView.tiles[root.cursor]));
+        accessible-description: root.cursor >= 0 && root.cursor < root.count
+            ? CallWords.tile(CallView.tiles[root.cursor].state)
+            : "";
+        intercept(event) => {
+            if root.focused || event.modifiers.control || event.modifiers.alt || event.modifiers.meta {
+                return reject;
+            }
+            if event.text == Key.UpArrow {
+                root.step-rows(-1);
+                return accept;
+            }
+            if event.text == Key.DownArrow {
+                root.step-rows(1);
+                return accept;
+            }
+            return reject;
+        }
+        moved(index) => {
+            root.show-tile(index);
+        }
+        activated(index) => {
+            root.activate(index);
+        }
     }
 
     films := Flickable {
@@ -149,11 +223,14 @@ export component CallStage inherits Rectangle {
             tile: tile;
             selectable: !(tile.screen && tile.own);
             fits-video: root.fits-videos;
+            cursor-on: root.keys-focused && root.cursor == i;
             shown: films.visible
                 && self.x + self.width > -films.content-x && self.x < films.width - films.content-x
                 && self.y + self.height > -films.content-y && self.y < films.height - films.content-y;
-            took-focus => {
-                root.reveal(root.across ? self.x : self.y, root.across ? self.width : self.height);
+            wants-focus => {
+                root.cursor = i;
+                tile-keys.focus();
+                root.show-tile(i);
             }
         }
     }

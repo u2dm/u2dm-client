@@ -51,8 +51,8 @@ import {
 import { Actions } from "./actions.slint";
 import { EmojiStore } from "./emoji-store.slint";
 import { NotificationText, SpoilerCover } from "./messages.slint";
-import { Polls, Probe, ReplySwipe, RoomMenu, RoomSearch, Shell } from "./local.slint";
-import { Metrics, Motion } from "./theme.slint";
+import { CallPanel, Polls, Probe, ReplySwipe, RoomMenu, RoomSearch, Shell } from "./local.slint";
+import { Metrics, Motion, Space } from "./theme.slint";
 import { LoadingScreen } from "./screens/login/loading.slint";
 import { RestorePausedScreen } from "./screens/login/restore-paused.slint";
 import { HomeserverScreen } from "./screens/login/homeserver.slint";
@@ -79,6 +79,8 @@ import { RoomLogDialog } from "./screens/chat/components/room-log.slint";
 import { ReadersDialog } from "./screens/chat/components/readers.slint";
 import { IncomingCallCard } from "./screens/chat/components/call/incoming-call.slint";
 import { CallSheet } from "./screens/chat/components/call/call-sheet.slint";
+import { CallDevicesMenu } from "./screens/chat/components/call/call-devices-menu.slint";
+import { ModalHost, Placement } from "./components/overlay.slint";
 import { TipLayer } from "./components/tip.slint";
 
 export { EmojiStore }
@@ -195,6 +197,28 @@ export component AppWindow inherits Window {
         x: root.width - self.width - Metrics.incoming-call-inset;
         y: Metrics.header-row + Metrics.incoming-call-top;
         available-width: root.width;
+    }
+
+    if LoginView.step == LoginPhase.logged-in && CallView.ring-visible && CallPanel.ring-devices-open: ModalHost {
+        x: 0;
+        y: 0;
+        width: root.width;
+        height: root.height;
+        dim: false;
+        label: @tr("Devices");
+        dismissed => {
+            CallPanel.close-ring-devices();
+        }
+        opened => {
+            ring-devices.open(CallPanel.ring-devices-by-keys);
+        }
+
+        ring-devices := CallDevicesMenu {
+            x: Placement.fit(CallPanel.ring-devices-right - self.width, self.width, root.width, Space.md);
+            y: CallPanel.ring-devices-bottom + Space.xs;
+            room: root.height - CallPanel.ring-devices-bottom - Space.xs - Space.md;
+            above-modal: true;
+        }
     }
 
     if Shell.verification-open: VerificationDialog { }

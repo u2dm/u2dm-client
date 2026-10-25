@@ -16,14 +16,13 @@ import { CopyNotifier } from "../../../../components/copier.slint";
 import { AudioView, CallView, DirectoryView, PresenceView, RoomView, TypingView } from "../../../../views.slint";
 import { PresenceWords, TypingLine } from "../../../../messages.slint";
 import { Actions } from "../../../../actions.slint";
-import { CallMode, CallPanel, CallPeopleOpener, CallSheetOpener, CallSize, CallSurface, LocalState, ReplySwipe, RoomMenu, RoomMenuOrigin, RoomMenuReturn, RoomSearch, Shell } from "../../../../local.slint";
+import { CallMode, CallPanel, CallSheetOpener, CallSize, CallSurface, LocalState, ReplySwipe, RoomMenu, RoomMenuOrigin, RoomMenuReturn, RoomSearch, Shell } from "../../../../local.slint";
 import { StatusPill } from "../../../../components/status-pill.slint";
 import { NowPlayingBar } from "./now-playing-bar.slint";
 import { PinnedBar } from "./pinned-bar.slint";
 import { HeaderTitle } from "../header-title.slint";
 import { Avatar } from "../../../../components/avatar.slint";
 import { RoomInfoPane } from "../room-info.slint";
-import { CallPill } from "../call/call-pill.slint";
 import { CallBand } from "../call/call-band.slint";
 import { CallViewMenu } from "../call/call-view-menu.slint";
 import { CallOffer } from "../../../../enums.slint";
@@ -53,7 +52,7 @@ export component TimelineView inherits Rectangle {
     property <bool> has-pins: RoomView.pinned-count > 0;
     property <length> pinned-height: root.has-pins ? Metrics.pinned-bar + Space.md : 0px;
     property <length> now-playing-height: AudioView.visible ? Metrics.now-playing-bar : 0px;
-    out property <bool> in-call-room: CallView.active && CallView.active-room-id == root.room-id;
+    property <bool> in-call-room: CallView.active && CallView.active-room-id == root.room-id;
     out property <bool> call-split-fits: root.width >= Metrics.call-split-min;
     property <bool> call-stage-fitted;
     property <CallSize> call-size: !CallView.active || !root.has-room ? CallSize.hidden
@@ -154,14 +153,11 @@ export component TimelineView inherits Rectangle {
     if root.has-room: room-header := Rectangle {
         property <length> menu-slot: Space.md + Size.lg + Space.lg;
         property <length> pane-slot: root.room-info-pane-fits ? Space.md + Size.lg : 0;
-        property <bool> shows-call: root.call-here && !root.offers-call-join;
-        property <length> call-slot: self.shows-call ? call-pill.width + Space.md : 0;
         property <length> action-slot: root.offers-call-start
             ? Size.lg + Space.md
             : root.offers-call-join ? join-button.preferred-width + Space.md : 0;
         property <int> menu-returns: RoomMenu.focus-returns;
         property <int> sheet-returns: CallPanel.sheet-returns;
-        property <int> people-returns: CallPanel.people-returns;
         property <bool> call-takes-row: root.call-owns-header;
         property <bool> row-given;
 
@@ -184,8 +180,8 @@ export component TimelineView inherits Rectangle {
         }
 
         function holds-focus() -> bool {
-            return title-area.has-focus || call-pill.has-focus || start-button.has-focus || join-button.has-focus
-                || pane-button.has-focus || room-menu-button.has-focus;
+            return title-area.has-focus || start-button.has-focus || join-button.has-focus || pane-button.has-focus
+                || room-menu-button.has-focus;
         }
 
         changed menu-returns => {
@@ -202,15 +198,9 @@ export component TimelineView inherits Rectangle {
             }
         }
 
-        changed people-returns => {
-            if CallPanel.people-opener == CallPeopleOpener.pill && self.shows-call {
-                call-pill.take-focus();
-            }
-        }
-
         title-area := ClickArea {
             x: root.compact ? root.nav-slot : 0;
-            width: parent.width - self.x - parent.menu-slot - parent.pane-slot - parent.call-slot - parent.action-slot;
+            width: parent.width - self.x - parent.menu-slot - parent.pane-slot - parent.action-slot;
             height: parent.height;
             enabled: !root.room-info-pane-shown;
             label: @tr("Room info");
@@ -252,24 +242,8 @@ export component TimelineView inherits Rectangle {
             }
         }
 
-        call-pill := CallPill {
-            x: parent.width - parent.menu-slot - parent.pane-slot - self.width;
-            y: (parent.height - self.height) / 2;
-            visible: parent.shows-call;
-            enabled: root.in-call-room;
-            clicked => {
-                CallPanel.open-people(
-                    CallPeopleOpener.pill,
-                    self.has-focus,
-                    self.absolute-position.x,
-                    self.absolute-position.x + self.width,
-                    self.absolute-position.y,
-                    self.absolute-position.y + self.height);
-            }
-        }
-
         start-button := RoomHeaderButton {
-            x: parent.width - parent.menu-slot - parent.pane-slot - parent.call-slot - self.width;
+            x: parent.width - parent.menu-slot - parent.pane-slot - self.width;
             y: (parent.height - self.height) / 2;
             visible: root.offers-call-start;
             icon: IconSet.Phone;
@@ -283,7 +257,7 @@ export component TimelineView inherits Rectangle {
         }
 
         join-button := AppButton {
-            x: parent.width - parent.menu-slot - parent.pane-slot - parent.call-slot - self.width;
+            x: parent.width - parent.menu-slot - parent.pane-slot - self.width;
             y: (parent.height - self.height) / 2;
             width: self.preferred-width;
             height: self.preferred-height;
@@ -623,6 +597,7 @@ export component TimelineView inherits Rectangle {
             height: Metrics.divider;
             edge: ResizeEdge.bottom;
             label: @tr("Call height");
+            grab-before: Space.md - Metrics.divider;
             value: stage.call-height;
             minimum: Metrics.call-stage-min;
             maximum: stage.tallest-stage;
@@ -641,6 +616,8 @@ export component TimelineView inherits Rectangle {
             width: Metrics.divider;
             height: stage.call-height;
             label: @tr("Call width");
+            grab-before: Space.md - Metrics.divider;
+            grab-after: Metrics.divider-grab;
             value: stage.call-width;
             minimum: Metrics.call-split-stage-min;
             maximum: root.widest-stage;
