@@ -22,14 +22,15 @@ use super::calls::{
     SHARE_ENDS_AFTER, SPEAKING_TURN, Trouble, UNTRUSTED,
 };
 use super::data;
-use crate::domain::call::device_test::{DeviceTest, TestNews};
+use crate::domain::call::device_test::{DeviceTest, TestNews, loudness_percent};
 use crate::domain::call::devices::{DeviceChoice, DeviceKind, DeviceLists};
 use crate::domain::call::identity::{MediaIdentity, spellings};
 use crate::domain::call::keys::{KeyIndex, MediaKey};
 use crate::domain::call::media::{Decryption, MediaEvent, MediaSetup, Microphone, SfuState};
 use crate::domain::call::sfu::{SfuGrant, SfuId, SfuRole};
+use crate::domain::call::stats::{ConnectionReading, ReceivedVideo, SentVideo};
 use crate::domain::call::video::{
-    Camera, FeedId, FrameSize, Framing, PreviewFailure, ScreenRefusal, ScreenShare,
+    Camera, FeedId, FrameSize, Framing, PreviewFailure, ScreenRefusal, ScreenShare, VideoKind,
 };
 use crate::domain::room::RoomId;
 use crate::error::{AppError, Result};
@@ -42,6 +43,11 @@ const DEMO_FPS: u64 = 10;
 const DEMO_LEVEL_EVERY: Duration = Duration::from_millis(100);
 const DEMO_LEVEL_PERIOD: f64 = 20.0;
 const DEMO_TEST_SOUND: Duration = Duration::from_secs(1);
+const DEMO_SENT_BYTES: u64 = 80_000;
+const DEMO_RECEIVED_BYTES: u64 = 180_000;
+const DEMO_PACKETS: u64 = 400;
+const DEMO_LOST_PACKETS: u64 = 1;
+const DEMO_ROUND_TRIP_MS: u32 = 48;
 const SOURCE: FrameSize = FrameSize::new(1280, 720);
 const PORTRAIT_SOURCE: FrameSize = FrameSize::new(720, 1280);
 const SCREEN_SOURCE: FrameSize = FrameSize::new(2560, 1440);
@@ -342,7 +348,12 @@ impl CallMediaPort for DemoCallMedia {
             dialling: HashMap::new(),
             connected: HashMap::new(),
             microphone_published: false,
+            microphone_on: false,
+            microphone_samples: 0,
+            camera_sends: None,
+            connection_samples: 0,
             keyed: HashSet::new(),
+            unheard: HashSet::new(),
             tasks: Vec::new(),
             screen: None,
             pickers: 0,
@@ -417,7 +428,12 @@ struct DemoMediaSession {
     dialling: HashMap<SfuId, DemoDial>,
     connected: HashMap<SfuId, SfuRole>,
     microphone_published: bool,
+    microphone_on: bool,
+    microphone_samples: u32,
+    camera_sends: Option<FrameSize>,
+    connection_samples: u64,
     keyed: HashSet<MediaIdentity>,
+    unheard: HashSet<MediaIdentity>,
     tasks: Vec<JoinHandle<()>>,
     screen: Option<JoinHandle<()>>,
     pickers: u32,
@@ -429,6 +445,18 @@ impl DemoMediaSession {
         if self.events_tx.send(event).is_err() {
             tracing::debug!("demo: the app stopped listening to the call media");
         }
+    }
+
+    fn sent_videos(&self) -> Vec<SentVideo> {
+        let camera = self.camera_sends.map(|size| SentVideo {
+            kind: VideoKind::Camera,
+            size,
+        });
+        let screen = self.screen.is_some().then_some(SentVideo {
+            kind: VideoKind::Screen,
+            size: SENT_SCREEN_SOURCE,
+        });
+        camera.into_iter().chain(screen).collect()
     }
 
     fn own_identity() -> MediaIdentity {
@@ -705,6 +733,7 @@ impl MediaSession for DemoMediaSession {
     }
 
     async fn set_microphone(&mut self, on: bool) {
+        self.microphone_on = on;
         if self.microphone_published {
             tracing::info!(on, "demo: the microphone switches");
             self.emit(MediaEvent::Microphone(if on {
@@ -731,6 +760,7 @@ impl MediaSession for DemoMediaSession {
         if !on {
             tracing::info!(camera = "off", "demo: the camera switches");
             self.devices.stop_camera();
+            self.camera_sends = None;
             return;
         }
         if !self.publishes() {
@@ -750,6 +780,7 @@ impl MediaSession for DemoMediaSession {
         };
         tracing::info!(%camera, "demo: the camera switches");
         let started = matches!(camera, Camera::On(_));
+        self.camera_sends = started.then_some(SOURCE);
         self.emit(MediaEvent::Camera(camera));
         if started && calls::loses_camera() {
             self.spawn_camera_loss();
@@ -802,6 +833,77 @@ impl MediaSession for DemoMediaSession {
         };
         self.keyed.insert(identity.clone());
         self.emit(MediaEvent::Decryption { identity, state });
+    }
+
+    #[allow(clippy::cast_possible_truncation)]
+    async fn sample_microphone(&mut self) {
+        if !self.microphone_published || !self.microphone_on {
+            return;
+        }
+        let step = f64::from(self.microphone_samples);
+        self.microphone_samples = self.microphone_samples.wrapping_add(1);
+        let loudness = 0.5 + 0.4 * (step * TAU / DEMO_LEVEL_PERIOD).sin();
+        self.emit(MediaEvent::MicrophoneLevel(loudness_percent(
+            loudness as f32,
+        )));
+    }
+
+    async fn sample_connections(&mut self) {
+        self.connection_samples = self.connection_samples.saturating_add(1);
+        let samples = self.connection_samples;
+        let readings = self
+            .connected
+            .iter()
+            .map(|(sfu, role)| {
+                let publishes = *role == SfuRole::Publish;
+                ConnectionReading {
+                    sfu: sfu.clone(),
+                    sent_bytes: publishes.then(|| samples.saturating_mul(DEMO_SENT_BYTES)),
+                    received_bytes: Some(samples.saturating_mul(DEMO_RECEIVED_BYTES)),
+                    received_packets: Some(samples.saturating_mul(DEMO_PACKETS)),
+                    lost_packets: Some(samples.saturating_mul(DEMO_LOST_PACKETS)),
+                    round_trip_ms: Some(DEMO_ROUND_TRIP_MS),
+                    sent_video: if publishes {
+                        self.sent_videos()
+                    } else {
+                        Vec::new()
+                    },
+                    received_video: calls::book()
+                        .cameras_on(self.room_id.as_ref(), sfu.as_ref())
+                        .into_iter()
+                        .map(|(identity, feed)| ReceivedVideo {
+                            identity,
+                            kind: VideoKind::Camera,
+                            size: if calls::is_portrait(&feed) {
+                                PORTRAIT_SOURCE
+                            } else {
+                                SOURCE
+                            },
+                        })
+                        .collect(),
+                }
+            })
+            .collect();
+        self.emit(MediaEvent::Connections(readings));
+    }
+
+    async fn set_unheard(&mut self, identities: &[MediaIdentity]) {
+        let unheard: HashSet<MediaIdentity> = identities.iter().cloned().collect();
+        for (member, identity) in calls::book().others_in(self.room_id.as_ref()) {
+            match (
+                self.unheard.contains(&identity),
+                unheard.contains(&identity),
+            ) {
+                (false, true) => {
+                    tracing::info!(%member, "demo: you no longer hear someone in the call");
+                }
+                (true, false) => {
+                    tracing::info!(%member, "demo: you hear someone in the call again");
+                }
+                _ => {}
+            }
+        }
+        self.unheard = unheard;
     }
 
     async fn close(self: Box<Self>) {

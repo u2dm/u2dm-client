@@ -26,6 +26,9 @@ import {
     SelfViewRequest,
     SharePreviewRequest,
     FollowSpeakerRequest,
+    MuteForMeRequest,
+    WatchMicrophoneRequest,
+    WatchConnectionsRequest,
     RingDevicesRequest,
     CallDeviceRequest,
     CallDeviceTestRequest,
@@ -202,6 +205,9 @@ export global Actions {
     callback focus-call-tile(string);
     callback unpin-call-tile();
     callback ring-devices(RingDevicesRequest);
+    callback mute-for-me(MuteForMeRequest);
+    callback watch-microphone(WatchMicrophoneRequest);
+    callback watch-connections(WatchConnectionsRequest);
     callback show-call-gallery();
     callback view-call-share();
     callback show-self-view(SelfViewRequest);

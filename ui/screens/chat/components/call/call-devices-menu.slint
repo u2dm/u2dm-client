@@ -3,13 +3,14 @@ import { Icon, IconDisplay, IconSet } from "@lucide";
 
 import { RovingKeys } from "../../../../components/a11y.slint";
 import { ChoiceRow } from "../../../../components/choice-row.slint";
+import { MenuRow } from "../../../../components/menu-row.slint";
 import { PickerCard } from "../../../../components/overlay.slint";
 import { Actions } from "../../../../actions.slint";
 import { CallDeviceKind } from "../../../../enums.slint";
 import { CallWords } from "../../../../messages.slint";
 import { CallDeviceEntry } from "../../../../types.slint";
 import { CallView } from "../../../../views.slint";
-import { AppStyle, Fonts, IconSize, Metrics, Space, Weight } from "../../../../theme.slint";
+import { AppStyle, Fonts, IconSize, Metrics, Space, Stroke, Weight } from "../../../../theme.slint";
 
 component DeviceHeading inherits HorizontalLayout {
     in property <Icon> icon;
@@ -62,15 +63,41 @@ component DeviceChoice inherits ChoiceRow {
     }
 }
 
+component MicrophoneMeter inherits HorizontalLayout {
+    padding-left: Space.md + IconSize.sm + Space.md;
+    padding-right: Space.md;
+    padding-bottom: Space.xs;
+
+    Rectangle {
+        height: Metrics.call-test-meter-height;
+        border-radius: self.height / 2;
+        background: AppStyle.control;
+        accessible-role: none;
+
+        Rectangle {
+            x: 0;
+            width: parent.width * clamp(CallView.microphone-level / 100, 0, 1);
+            height: parent.height;
+            border-radius: parent.border-radius;
+            background: AppStyle.call-live;
+        }
+    }
+}
+
 export component CallDevicesMenu inherits PickerCard {
     in property <length> room;
     in property <bool> above-modal;
+    in property <bool> in-call;
+
+    callback details(bool);
 
     property <int> cursor: -1;
     property <int> microphones: CallView.microphones.length;
     property <int> speakers: CallView.speakers.length;
-    property <int> count: root.microphones + root.speakers + CallView.cameras.length;
+    property <int> devices: root.microphones + root.speakers + CallView.cameras.length;
+    property <int> count: root.devices + (root.in-call ? 1 : 0);
     property <bool> keys-focused: keys.has-focus;
+    property <string> details-label: @tr("Connection details…");
 
     public function open(by-keys: bool) {
         root.open-at(CallDeviceKind.microphone, by-keys);
@@ -108,12 +135,17 @@ export component CallDevicesMenu inherits PickerCard {
         if root.cursor < 0 || root.cursor >= root.count {
             return @tr("Devices");
         }
+        if root.cursor >= root.devices {
+            return root.details-label;
+        }
         let entry = root.entry-at(root.cursor);
         return CallWords.device-label(root.kind-at(root.cursor), entry.status, entry.name);
     }
 
     function choose-at(index: int) {
-        if index >= 0 && index < root.count {
+        if index >= root.devices && index < root.count {
+            root.details(true);
+        } else if index >= 0 && index < root.devices {
             Actions.use-call-device({ kind: root.kind-at(index), key: root.entry-at(index).key });
         }
     }
@@ -135,8 +167,8 @@ export component CallDevicesMenu inherits PickerCard {
         count: root.count;
         cursor <=> root.cursor;
         accessible-label: root.spoken-label();
-        accessible-checkable: root.cursor >= 0;
-        accessible-checked: root.cursor >= 0 && root.entry-at(root.cursor).chosen;
+        accessible-checkable: root.cursor >= 0 && root.cursor < root.devices;
+        accessible-checked: root.cursor >= 0 && root.cursor < root.devices && root.entry-at(root.cursor).chosen;
         accessible-action-default => {
             root.choose-at(max(root.cursor, 0));
         }
@@ -169,6 +201,8 @@ export component CallDevicesMenu inherits PickerCard {
                 icon: IconSet.Mic;
                 text: CallWords.device-kind(CallDeviceKind.microphone);
             }
+
+            if root.in-call && CallView.microphone-metered: MicrophoneMeter { }
 
             for entry[index] in CallView.microphones: DeviceChoice {
                 kind: CallDeviceKind.microphone;
@@ -217,6 +251,33 @@ export component CallDevicesMenu inherits PickerCard {
                 roving-focus: root.keys-focused && root.cursor == root.microphones + root.speakers + index;
                 roved(top, size) => {
                     root.reveal(top, size);
+                }
+            }
+
+            if root.in-call: Rectangle {
+                height: Space.md;
+
+                Rectangle {
+                    y: (parent.height - self.height) / 2;
+                    height: Stroke.hairline;
+                    background: AppStyle.border;
+                }
+            }
+
+            if root.in-call: MenuRow {
+                height: Metrics.call-device-row;
+                icon: IconSet.Activity;
+                label: root.details-label;
+                focusable: false;
+                above-modal: root.above-modal;
+                roving-focus: root.keys-focused && root.cursor == root.devices;
+                changed roving-focus => {
+                    if self.roving-focus {
+                        root.reveal(self.y, self.height);
+                    }
+                }
+                clicked => {
+                    root.details(false);
                 }
             }
         }

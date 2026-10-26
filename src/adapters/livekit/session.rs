@@ -9,18 +9,23 @@ use livekit::e2ee::key_provider::KeyProvider;
 use livekit::id::ParticipantIdentity;
 use livekit::options::TrackPublishOptions;
 use livekit::prelude::{LocalAudioTrack, LocalTrack, PlatformAudio, TrackSource};
+use livekit::webrtc::stats::RtcStats;
 use tokio::sync::mpsc;
 use tokio::task::spawn_blocking;
 use tokio_util::task::AbortOnDropHandle;
 use tracing::Instrument;
 
 use super::camera::{self, OwnCamera};
-use super::connection::{self, Connection, Dialled, OwnIndex, Wiring, use_own_index};
+use super::connection::{
+    self, Connection, Dialled, OwnIndex, Unheard, Wiring, hear_as_chosen, use_own_index,
+};
 use super::devices::{Listing, select_microphone, select_speaker};
 use super::e2ee;
 use super::feeds::Feeds;
 use super::screen::{self, OwnScreen};
+use super::stats;
 use crate::adapters::video::camera::CameraDevice;
+use crate::domain::call::device_test::{amplitude_loudness, loudness_percent};
 use crate::domain::call::devices::{
     ByKind, DeviceChoice, DeviceChoices, DeviceKey, DeviceKind, DeviceLists, MediaDevice,
 };
@@ -49,6 +54,7 @@ pub(super) struct LiveKitSession {
     keys: Option<KeyProvider>,
     own_keys: Vec<(KeyIndex, MediaKey)>,
     own_index: OwnIndex,
+    unheard: Unheard,
     dialling: HashMap<SfuId, Dialling>,
     connections: HashMap<SfuId, Connection>,
     microphone: Option<LocalAudioTrack>,
@@ -78,6 +84,7 @@ impl LiveKitSession {
             keys: encrypted.then(e2ee::key_provider),
             own_keys: Vec::new(),
             own_index: OwnIndex::default(),
+            unheard: Unheard::default(),
             dialling: HashMap::new(),
             connections: HashMap::new(),
             microphone: None,
@@ -134,6 +141,7 @@ impl LiveKitSession {
             sfu: sfu.clone(),
             role,
             own_index: &self.own_index,
+            unheard: &self.unheard,
             feeds: &self.feeds,
             events_tx: &self.events_tx,
             encrypted: self.keys.is_some(),
@@ -575,6 +583,49 @@ impl MediaSession for LiveKitSession {
         for identity in identities {
             let identity = ParticipantIdentity(identity.as_ref().to_owned());
             e2ee::install(provider, &identity, index, key);
+        }
+    }
+
+    async fn sample_microphone(&mut self) {
+        let Some(track) = self.microphone.as_ref().filter(|_| self.wants_microphone) else {
+            return;
+        };
+        let stats = match track.get_stats().await {
+            Ok(stats) => stats,
+            Err(e) => {
+                tracing::debug!("your microphone's level could not be read: {e}");
+                return;
+            }
+        };
+        let amplitude = stats.iter().find_map(|stats| match stats {
+            RtcStats::MediaSource(source) if source.source.kind == "audio" => {
+                Some(source.audio.audio_level)
+            }
+            _ => None,
+        });
+        if let Some(amplitude) = amplitude {
+            self.emit(MediaEvent::MicrophoneLevel(loudness_percent(
+                amplitude_loudness(amplitude),
+            )));
+        }
+    }
+
+    async fn sample_connections(&mut self) {
+        let mut readings = Vec::new();
+        for (sfu, connection) in &self.connections {
+            if let Some(reading) = stats::reading(sfu, &connection.room).await {
+                readings.push(reading);
+            }
+        }
+        self.emit(MediaEvent::Connections(readings));
+    }
+
+    async fn set_unheard(&mut self, identities: &[MediaIdentity]) {
+        if let Ok(mut unheard) = self.unheard.lock() {
+            *unheard = identities.iter().cloned().collect();
+        }
+        for (sfu, connection) in &self.connections {
+            hear_as_chosen(&connection.room, &self.unheard, sfu);
         }
     }
 

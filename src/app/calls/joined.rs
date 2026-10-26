@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeSet, HashMap, HashSet};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -6,13 +6,14 @@ use tokio::sync::{mpsc, oneshot, watch};
 use tokio::time::Instant;
 use tracing::Span;
 
+use super::device_test::{PERCENT, level_percent};
 use super::devices::Devices;
 use super::media::MediaCommand;
 use super::people;
 use super::stage::Stage;
 use crate::commands::view::{
-    ActiveCall, CallFailure, CallNotice, CallPhase, CallTile, CameraView, CantDecrypt,
-    MicrophoneView, MissingMedia, ScreenView, TileKey, TileKind, TileState,
+    ActiveCall, CallFailure, CallNotice, CallPhase, CallTile, CameraView, CantDecrypt, LinkView,
+    MicrophoneView, MissingMedia, ScreenView, ServerDetails, TileKey, TileKind, TileState,
 };
 use crate::domain::call::devices::{
     DeviceChoice, DeviceChoices, DeviceKey, DeviceKind, DeviceLists,
@@ -26,7 +27,10 @@ use crate::domain::call::media::{
 };
 use crate::domain::call::ring::{RingId, RingKind};
 use crate::domain::call::sfu::{GrantRequest, GrantResult, SfuId, SfuRole, SfuTarget, plan};
-use crate::domain::call::video::{Camera, FeedId, ScreenRefusal, ScreenShare, VideoKind};
+use crate::domain::call::stats::{ConnectionReading, Rates, ReceivedVideo, SentVideo, rates};
+use crate::domain::call::video::{
+    Camera, FeedId, FrameSize, ScreenRefusal, ScreenShare, VideoKind,
+};
 use crate::domain::call::{
     CallIntent, CallMember, DeviceStanding, FocusSelection, MemberKey, OutgoingKey, SentMembership,
     Transport, bridges_in_order,
@@ -67,6 +71,7 @@ struct Heard {
     screens: HashMap<SfuId, HashMap<MediaIdentity, FeedId>>,
     missing: HashMap<SfuId, HashMap<MediaIdentity, HashSet<MediaSource>>>,
     quality: HashMap<SfuId, HashMap<MediaIdentity, ConnectionQuality>>,
+    stalled: HashMap<SfuId, HashSet<MediaIdentity>>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -166,6 +171,12 @@ impl Heard {
         kind: VideoKind,
         feed: Option<FeedId>,
     ) {
+        if kind == VideoKind::Camera
+            && feed.is_none()
+            && let Some(stalled) = self.stalled.get_mut(&sfu)
+        {
+            stalled.remove(&identity);
+        }
         let feeds = match kind {
             VideoKind::Camera => &mut self.video,
             VideoKind::Screen => &mut self.screens,
@@ -237,7 +248,23 @@ impl Heard {
         }
     }
 
+    fn stalled_heard(&mut self, sfu: SfuId, identity: MediaIdentity, stalled: bool) {
+        let identities = self.stalled.entry(sfu).or_default();
+        if stalled {
+            identities.insert(identity);
+        } else {
+            identities.remove(&identity);
+        }
+    }
+
+    fn is_stalled_on(&self, sfu: &SfuId, identities: &[MediaIdentity]) -> bool {
+        self.stalled
+            .get(sfu)
+            .is_some_and(|stalled| identities.iter().any(|identity| stalled.contains(identity)))
+    }
+
     fn forget(&mut self, sfu: &SfuId) {
+        self.stalled.remove(sfu);
         self.present.remove(sfu);
         self.muted.remove(sfu);
         self.speaking.remove(sfu);
@@ -326,6 +353,28 @@ pub(super) struct Joined {
     outgoing: Option<Outgoing>,
     stage: Stage,
     devices: Devices,
+    unheard: BTreeSet<String>,
+    unheard_sent: Vec<MediaIdentity>,
+    microphone_meter: Meter,
+    readings: Option<Readings>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Meter {
+    Off,
+    Waiting,
+    Level(u8),
+}
+
+type Readings = HashMap<SfuId, (Instant, ConnectionReading, Rates)>;
+
+fn sent_videos(videos: &[SentVideo]) -> Vec<(VideoKind, FrameSize)> {
+    let mut videos: Vec<(VideoKind, FrameSize)> = videos
+        .iter()
+        .map(|video| (video.kind, video.size))
+        .collect();
+    videos.sort_by_key(|(kind, _)| *kind == VideoKind::Screen);
+    videos
 }
 
 pub(super) fn fresh_key() -> MediaKey {
@@ -374,6 +423,10 @@ impl Joined {
             outgoing: None,
             stage: Stage::default(),
             devices: Devices::new(joining.devices),
+            unheard: BTreeSet::new(),
+            unheard_sent: Vec::new(),
+            microphone_meter: Meter::Off,
+            readings: None,
         };
         joined.command(MediaCommand::Microphone(media.microphone));
         if media.camera {
@@ -450,6 +503,7 @@ impl Joined {
         }
         self.identities = IdentityTable::build(&members);
         self.members = members;
+        self.tell_unheard();
         let mut effects = self.replan();
         if self.membership.is_some() && self.encrypted {
             let actions = self
@@ -661,10 +715,26 @@ impl Joined {
                 quality,
             } => self.quality_heard(sfu, identity, quality),
             MediaEvent::OwnQuality { sfu, quality } => self.own_quality_heard(&sfu, quality),
+            MediaEvent::Stalled {
+                sfu,
+                identity,
+                stalled,
+            } => {
+                if self.links.contains_key(&sfu) {
+                    self.heard.stalled_heard(sfu, identity, stalled);
+                }
+            }
             MediaEvent::Decryption { identity, state } => {
                 self.heard.decryption.insert(identity, state);
             }
             MediaEvent::Microphone(microphone) => self.microphone_reported(&microphone),
+            MediaEvent::Connections(readings) => self.connections_read(readings),
+            MediaEvent::MicrophoneLevel(percent) => {
+                if self.microphone_meter != Meter::Off {
+                    self.microphone_meter =
+                        Meter::Level(level_percent(f32::from(percent) / PERCENT));
+                }
+            }
             MediaEvent::Camera(camera) => self.camera_reported(camera),
             MediaEvent::Screen(screen) => self.screen_reported(screen),
             MediaEvent::Video {
@@ -1094,6 +1164,138 @@ impl Joined {
         self.stage.show_self(on);
     }
 
+    pub(super) fn watch_microphone(&mut self, on: bool) {
+        if (self.microphone_meter != Meter::Off) == on {
+            return;
+        }
+        tracing::debug!(call = self.call, on, "watching your microphone's activity");
+        self.microphone_meter = if on { Meter::Waiting } else { Meter::Off };
+        self.command(MediaCommand::WatchMicrophone(on));
+    }
+
+    pub(super) fn watch_connections(&mut self, on: bool) {
+        if self.readings.is_some() == on {
+            return;
+        }
+        tracing::info!(
+            call = self.call,
+            on,
+            "watching the call's connection details"
+        );
+        self.readings = on.then(HashMap::new);
+        self.command(MediaCommand::WatchConnections(on));
+    }
+
+    fn connections_read(&mut self, readings: Vec<ConnectionReading>) {
+        let Some(kept) = self.readings.as_mut() else {
+            return;
+        };
+        let now = Instant::now();
+        for reading in readings {
+            let rates = kept
+                .get(&reading.sfu)
+                .map(|(at, previous, _)| {
+                    let elapsed = now.saturating_duration_since(*at);
+                    rates(
+                        previous,
+                        &reading,
+                        u64::try_from(elapsed.as_millis()).unwrap_or(u64::MAX),
+                    )
+                })
+                .unwrap_or_default();
+            kept.insert(reading.sfu.clone(), (now, reading, rates));
+        }
+    }
+
+    fn connection_details(&self, readings: &Readings) -> Vec<ServerDetails> {
+        let mut links: Vec<(&SfuId, &Link)> = self.links.iter().collect();
+        links.sort_by_cached_key(|(sfu, link)| (link.role != SfuRole::Publish, sfu.host()));
+        links
+            .into_iter()
+            .map(|(sfu, link)| {
+                let reading = readings.get(sfu);
+                let rates = reading.map(|(_, _, rates)| *rates).unwrap_or_default();
+                ServerDetails {
+                    host: sfu.host(),
+                    publishing: link.role == SfuRole::Publish,
+                    state: match link.state {
+                        LinkState::Asking | LinkState::Connecting => LinkView::Connecting,
+                        LinkState::Connected => LinkView::Connected,
+                        LinkState::Reconnecting => LinkView::Reconnecting,
+                        LinkState::Failed(_) => LinkView::Failed,
+                    },
+                    sent_kbps: rates.sent_kbps,
+                    received_kbps: rates.received_kbps,
+                    loss_permille: rates.loss_permille,
+                    round_trip_ms: reading.and_then(|(_, reading, _)| reading.round_trip_ms),
+                    sent_video: reading
+                        .map(|(_, reading, _)| sent_videos(&reading.sent_video))
+                        .unwrap_or_default(),
+                    received_video: reading
+                        .map(|(_, reading, _)| self.named_videos(&reading.received_video))
+                        .unwrap_or_default(),
+                }
+            })
+            .collect()
+    }
+
+    fn named_videos(&self, videos: &[ReceivedVideo]) -> Vec<(NamedUser, VideoKind, FrameSize)> {
+        videos
+            .iter()
+            .filter_map(|video| {
+                let key = self.identities.member_of(&video.identity)?;
+                let member = self
+                    .members
+                    .iter()
+                    .find(|member| MemberKey::of(member) == *key)?;
+                Some((member.user.clone(), video.kind, video.size))
+            })
+            .collect()
+    }
+
+    pub(super) fn mute_for_me(&mut self, user_id: &str, on: bool) {
+        if user_id == self.me.user {
+            tracing::debug!(call = self.call, "you cannot mute yourself for you");
+            return;
+        }
+        let changed = if on {
+            self.unheard.insert(user_id.to_owned())
+        } else {
+            self.unheard.remove(user_id)
+        };
+        if changed {
+            tracing::info!(
+                call = self.call,
+                user_id,
+                on,
+                "muting a call participant for you"
+            );
+            self.tell_unheard();
+        }
+    }
+
+    fn tell_unheard(&mut self) {
+        let mut identities: Vec<MediaIdentity> = self
+            .members
+            .iter()
+            .filter(|member| self.unheard.contains(&member.user.user_id))
+            .flat_map(|member| self.identities.identities_of(&MemberKey::of(member)))
+            .collect();
+        identities.sort();
+        identities.dedup();
+        if identities == self.unheard_sent {
+            return;
+        }
+        tracing::debug!(
+            call = self.call,
+            people = self.unheard.len(),
+            identities = identities.len(),
+            "telling the media whom you do not hear"
+        );
+        self.unheard_sent.clone_from(&identities);
+        self.command(MediaCommand::Unheard(identities));
+    }
+
     pub(super) fn follow_speaker(&mut self, on: bool) {
         tracing::info!(call = self.call, on, "switching speaker following");
         self.stage.follow_speaker(on);
@@ -1133,6 +1335,10 @@ impl Joined {
                 OwnMicrophone::On => MicrophoneView::On,
                 OwnMicrophone::Failed => MicrophoneView::Failed,
             },
+            microphone_level: match self.microphone_meter {
+                Meter::Level(level) if self.microphone == OwnMicrophone::On => Some(level),
+                Meter::Off | Meter::Waiting | Meter::Level(_) => None,
+            },
             camera: match self.camera {
                 OwnCamera::Off => CameraView::Off,
                 OwnCamera::Starting => CameraView::Starting,
@@ -1169,6 +1375,10 @@ impl Joined {
             }),
             people: Arc::from(people),
             devices: self.devices.view(),
+            connection: self
+                .readings
+                .as_ref()
+                .map(|readings| Arc::from(self.connection_details(readings))),
         }
     }
 
@@ -1207,6 +1417,9 @@ impl Joined {
             }
         }
         number_devices(&mut tiles);
+        for tile in tiles.iter_mut().filter(|tile| !tile.own) {
+            tile.muted_for_you = self.unheard.contains(&tile.member.user);
+        }
         tiles
     }
 
@@ -1236,6 +1449,7 @@ impl Joined {
             kind: TileKind::Person,
             state,
             muted: self.microphone != OwnMicrophone::On,
+            muted_for_you: false,
             speaking,
             video,
         }
@@ -1254,6 +1468,7 @@ impl Joined {
             kind: TileKind::Screen,
             state: TileState::Live,
             muted: false,
+            muted_for_you: false,
             speaking: false,
             video: Some(feed.clone()),
         })
@@ -1273,6 +1488,7 @@ impl Joined {
         CallTile {
             state: self.remote_state(member, &key, &identities),
             muted,
+            muted_for_you: false,
             speaking: identities
                 .iter()
                 .any(|identity| self.heard.is_speaking(identity)),
@@ -1292,12 +1508,15 @@ impl Joined {
         let feed = self.heard.video_on(&sfu, &identities, VideoKind::Screen)?;
         let key = MemberKey::of(member);
         let state = match self.remote_state(member, &key, &identities) {
-            TileState::NotReceived(_) | TileState::PoorConnection => TileState::Live,
+            TileState::NotReceived(_) | TileState::PoorConnection | TileState::VideoStalled => {
+                TileState::Live
+            }
             state => state,
         };
         Some(CallTile {
             state,
             muted: false,
+            muted_for_you: false,
             speaking: false,
             member: key,
             name: member.user.clone(),
@@ -1360,6 +1579,9 @@ impl Joined {
         }
         if let Some(what) = missing(&self.heard.missing_on(sfu, identities)) {
             return Some(TileState::NotReceived(what));
+        }
+        if self.heard.is_stalled_on(sfu, identities) {
+            return Some(TileState::VideoStalled);
         }
         (quality == ConnectionQuality::Poor).then_some(TileState::PoorConnection)
     }

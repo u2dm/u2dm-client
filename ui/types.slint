@@ -1,4 +1,4 @@
-import { AudioKind, CallDeviceKind, CallDeviceStatus, CallTileState, ChildAccess, DecryptionFailure, Delivery, DeviceTrust, EmojiArt, InviteeState, InviteKind, LogLevel, MediaFailure, MediaState, MemberRole, MemberRowKind, MessageKind, PackOrigin, PollPhase, PreviewKind, ReactionSend, RemovalKind, RoomAccess, RoomCallMark, RoomKind, RoomRowKind, SendState, ServiceKind, Shield, ShieldReason, SpoilerState, UserMessageKind } from "./enums.slint";
+import { AudioKind, CallDeviceKind, CallDeviceStatus, CallLinkState, CallTileState, ChildAccess, DecryptionFailure, Delivery, DeviceTrust, EmojiArt, InviteeState, InviteKind, LogLevel, MediaFailure, MediaState, MemberRole, MemberRowKind, MessageKind, PackOrigin, PollPhase, PreviewKind, ReactionSend, RemovalKind, RoomAccess, RoomCallMark, RoomKind, RoomRowKind, SendState, ServiceKind, Shield, ShieldReason, SpoilerState, UserMessageKind } from "./enums.slint";
 
 export struct RoomEntry {
     id: string,
@@ -101,6 +101,7 @@ export struct CallTileEntry {
     own: bool,
     state: CallTileState,
     muted: bool,
+    muted-for-you: bool,
     speaking: bool,
     feed: string,
     has-frame: bool,
@@ -122,10 +123,27 @@ export struct CallPersonEntry {
     you: bool,
     devices: int,
     muted: bool,
+    muted-for-you: bool,
     sharing: bool,
     sees-no-video: bool,
     exposes-e2ee: bool,
     state: CallTileState,
+}
+
+export struct CallConnectionEntry {
+    video: bool,
+    you: bool,
+    screen: bool,
+    host: string,
+    publishing: bool,
+    state: CallLinkState,
+    sent-kbps: int,
+    received-kbps: int,
+    loss-permille: int,
+    round-trip-ms: int,
+    width: int,
+    height: int,
+    name: string,
 }
 
 export struct CallDeviceEntry {
@@ -214,6 +232,19 @@ export struct SharePreviewRequest {
 }
 
 export struct FollowSpeakerRequest {
+    on: bool,
+}
+
+export struct WatchConnectionsRequest {
+    on: bool,
+}
+
+export struct WatchMicrophoneRequest {
+    on: bool,
+}
+
+export struct MuteForMeRequest {
+    user-id: string,
     on: bool,
 }
 

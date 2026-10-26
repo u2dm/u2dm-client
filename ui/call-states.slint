@@ -4,7 +4,12 @@ export global CallStates {
     public pure function flows(state: CallTileState) -> bool {
         return state == CallTileState.live
             || state == CallTileState.poor-connection
+            || state == CallTileState.video-stalled
             || root.misses-media(state);
+    }
+
+    public pure function pictures(state: CallTileState) -> bool {
+        return root.flows(state) && state != CallTileState.video-stalled;
     }
 
     public pure function misses-audio(state: CallTileState) -> bool {
@@ -22,6 +27,7 @@ export global CallStates {
             || state == CallTileState.unverified-device
             || state == CallTileState.unreachable
             || state == CallTileState.connection-lost
+            || state == CallTileState.video-stalled
             || root.misses-media(state);
     }
 

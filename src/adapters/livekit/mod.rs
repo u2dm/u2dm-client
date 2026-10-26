@@ -8,6 +8,7 @@ mod quality;
 mod reception;
 mod screen;
 mod session;
+mod stats;
 
 use std::result;
 use std::sync::{Arc, Mutex, Once};

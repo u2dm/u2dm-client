@@ -9,15 +9,16 @@ use crate::commands::view::{
     CallDevices, CallFailure, CallNotice, CallPerson, CallPhase, CallSheetView, CallTile, CallView,
     CameraView, CantDecrypt, CardStatus, CopiedLink, CreateRoomView, DeviceOption, DirectoryView,
     EncryptionStep, EncryptionView, IdentityAlertView, InvitePeopleView, InviteView, InviteeRow,
-    InvitesSection, JoinOffer, JoinRefusal, LeaveSpaceView, LifecycleView, LoginStep, LogoutView,
-    MentionsView, MicrophoneView, MissingMedia, NotificationsView, PackView, PaginationView,
-    PinnedView, PresenceView, PreviewTrouble, ReadersView, RemovalView, RoomInfoView, RoomLogView,
-    RoomMenuTarget, RoomPreviewSheet, RoomPreviewView, RosterRow, ScreenView, ShareNews,
-    SheetPreview, SourceState, SpaceIndexRow, SpaceIndexView, SpaceMatch, TestPhase, TileKind,
-    TileState, Toast, TrackFile, TypingView, UnsentMessage, UpgradeView, UserInfoView, VideoView,
+    InvitesSection, JoinOffer, JoinRefusal, LeaveSpaceView, LifecycleView, LinkView, LoginStep,
+    LogoutView, MentionsView, MicrophoneView, MissingMedia, NotificationsView, PackView,
+    PaginationView, PinnedView, PresenceView, PreviewTrouble, ReadersView, RemovalView,
+    RoomInfoView, RoomLogView, RoomMenuTarget, RoomPreviewSheet, RoomPreviewView, RosterRow,
+    ScreenView, ServerDetails, ShareNews, SheetPreview, SourceState, SpaceIndexRow, SpaceIndexView,
+    SpaceMatch, TestPhase, TileKind, TileState, Toast, TrackFile, TypingView, UnsentMessage,
+    UpgradeView, UserInfoView, VideoView,
 };
 use crate::domain::call::ring::RingKind;
-use crate::domain::call::video::ScreenRefusal;
+use crate::domain::call::video::{FrameSize, ScreenRefusal, VideoKind};
 use crate::domain::call::{CallIntent, RoomCall};
 use crate::domain::capabilities::{AVATAR_FIELD, AccountApi, AccountFacts, DISPLAY_NAME_FIELD};
 use crate::domain::departure::{AdminStanding, Removal};
@@ -257,6 +258,7 @@ struct ActiveCallDto {
     encrypted: bool,
     video: bool,
     microphone: &'static str,
+    microphone_level: Option<u8>,
     camera: &'static str,
     screen: &'static str,
     screen_refusal: Option<&'static str>,
@@ -278,6 +280,20 @@ struct ActiveCallDto {
     others: Vec<String>,
     people: Vec<CallPersonDto>,
     devices: CallDevicesDto,
+    connection: Option<Vec<ServerDetailsDto>>,
+}
+
+#[derive(Serialize)]
+struct ServerDetailsDto {
+    host: String,
+    publishing: bool,
+    state: &'static str,
+    sent_kbps: Option<u32>,
+    received_kbps: Option<u32>,
+    loss_permille: Option<u16>,
+    round_trip_ms: Option<u32>,
+    sent_video: Vec<String>,
+    received_video: Vec<String>,
 }
 
 #[derive(Serialize)]
@@ -289,6 +305,7 @@ struct CallPersonDto {
     you: bool,
     devices: usize,
     muted: bool,
+    muted_for_you: bool,
     sharing: bool,
     sees_no_video: bool,
     exposes_e2ee: bool,
@@ -327,6 +344,7 @@ struct ShareNewsDto {
 }
 
 #[derive(Serialize)]
+#[allow(clippy::struct_excessive_bools)]
 struct CallTileDto {
     key: String,
     member: String,
@@ -337,6 +355,7 @@ struct CallTileDto {
     kind: &'static str,
     state: &'static str,
     muted: bool,
+    muted_for_you: bool,
     speaking: bool,
     video: Option<String>,
 }
@@ -1222,6 +1241,7 @@ fn active_call(active: &ActiveCall) -> ActiveCallDto {
             MicrophoneView::Starting => "starting",
             MicrophoneView::Failed => "failed",
         },
+        microphone_level: active.microphone_level,
         camera: match active.camera {
             CameraView::Off => "off",
             CameraView::Starting => "starting",
@@ -1258,6 +1278,44 @@ fn active_call(active: &ActiveCall) -> ActiveCallDto {
         others: active.others.iter().map(NamedUser::shown).collect(),
         people: active.people.iter().map(call_person).collect(),
         devices: call_devices(&active.devices),
+        connection: active
+            .connection
+            .as_ref()
+            .map(|servers| servers.iter().map(server_details).collect()),
+    }
+}
+
+fn server_details(server: &ServerDetails) -> ServerDetailsDto {
+    let size = |size: FrameSize| format!("{}x{}", size.width, size.height);
+    let kind = |kind: &VideoKind| match kind {
+        VideoKind::Camera => "camera",
+        VideoKind::Screen => "screen",
+    };
+    ServerDetailsDto {
+        host: server.host.clone(),
+        publishing: server.publishing,
+        state: match server.state {
+            LinkView::Connecting => "connecting",
+            LinkView::Connected => "connected",
+            LinkView::Reconnecting => "reconnecting",
+            LinkView::Failed => "failed",
+        },
+        sent_kbps: server.sent_kbps,
+        received_kbps: server.received_kbps,
+        loss_permille: server.loss_permille,
+        round_trip_ms: server.round_trip_ms,
+        sent_video: server
+            .sent_video
+            .iter()
+            .map(|(video, sent)| format!("{} {}", kind(video), size(*sent)))
+            .collect(),
+        received_video: server
+            .received_video
+            .iter()
+            .map(|(name, video, received)| {
+                format!("{} {} {}", name.shown(), kind(video), size(*received))
+            })
+            .collect(),
     }
 }
 
@@ -1325,6 +1383,7 @@ fn call_tile(tile: &CallTile) -> CallTileDto {
         },
         state: tile_state_word(tile.state),
         muted: tile.muted,
+        muted_for_you: tile.muted_for_you,
         speaking: tile.speaking,
         video: tile.video.as_ref().map(ToString::to_string),
     }
@@ -1345,6 +1404,7 @@ fn call_person(person: &CallPerson) -> CallPersonDto {
         you: person.you,
         devices: person.devices,
         muted: person.muted,
+        muted_for_you: person.muted_for_you,
         sharing: person.sharing,
         sees_no_video: person.sees_no_video,
         exposes_e2ee: person.exposes_e2ee,
@@ -1369,6 +1429,7 @@ const fn tile_state_word(state: TileState) -> &'static str {
         TileState::WaitingForKeys => "waiting-for-keys",
         TileState::Live => "live",
         TileState::PoorConnection => "poor-connection",
+        TileState::VideoStalled => "video-stalled",
         TileState::NotReceived(what) => not_received_word(what),
         TileState::ConnectionLost => "connection-lost",
         TileState::CantDecrypt(CantDecrypt::NoKey) => "cant-decrypt",

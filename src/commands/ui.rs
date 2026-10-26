@@ -448,6 +448,15 @@ pub enum UiCommand {
     ShowSharePreview(bool),
     #[strum(to_string = "FollowSpeaker({0})")]
     FollowSpeaker(bool),
+    #[strum(to_string = "WatchMicrophone({0})")]
+    WatchMicrophone(bool),
+    #[strum(to_string = "WatchConnections({0})")]
+    WatchConnections(bool),
+    #[strum(to_string = "MuteForMe({on})")]
+    MuteForMe {
+        user_id: String,
+        on: bool,
+    },
     DismissToast,
     Logout,
     ConfirmLogout,
@@ -650,6 +659,9 @@ impl UiCommand {
             | Self::ShowSelfView(_)
             | Self::ShowSharePreview(_)
             | Self::FollowSpeaker(_)
+            | Self::MuteForMe { .. }
+            | Self::WatchMicrophone(_)
+            | Self::WatchConnections(_)
             | Self::DismissToast
             | Self::Logout
             | Self::ConfirmLogout

@@ -11,7 +11,7 @@ use crate::domain::call::MemberKey;
 use crate::domain::call::devices::{ByKind, DeviceKey, DeviceKind};
 use crate::domain::call::media::MediaChoice;
 use crate::domain::call::ring::RingKind;
-use crate::domain::call::video::{FeedId, ScreenRefusal};
+use crate::domain::call::video::{FeedId, FrameSize, ScreenRefusal, VideoKind};
 use crate::domain::capabilities::AccountFacts;
 use crate::domain::departure::{AdminStanding, Removal, RemovalList};
 use crate::domain::encryption::{KeyStorage, Recovery, RecoveryKey, Standing};
@@ -461,6 +461,7 @@ pub enum TileState {
     WaitingForKeys,
     Live,
     PoorConnection,
+    VideoStalled,
     NotReceived(MissingMedia),
     ConnectionLost,
     CantDecrypt(CantDecrypt),
@@ -490,6 +491,7 @@ impl fmt::Display for TileKey {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[allow(clippy::struct_excessive_bools)]
 pub struct CallTile {
     pub member: MemberKey,
     pub name: NamedUser,
@@ -499,6 +501,7 @@ pub struct CallTile {
     pub kind: TileKind,
     pub state: TileState,
     pub muted: bool,
+    pub muted_for_you: bool,
     pub speaking: bool,
     pub video: Option<FeedId>,
 }
@@ -538,6 +541,7 @@ pub struct CallPerson {
     pub you: bool,
     pub devices: usize,
     pub muted: bool,
+    pub muted_for_you: bool,
     pub sharing: bool,
     pub sees_no_video: bool,
     pub exposes_e2ee: bool,
@@ -617,6 +621,7 @@ pub struct ActiveCall {
     pub encrypted: bool,
     pub video: bool,
     pub microphone: MicrophoneView,
+    pub microphone_level: Option<u8>,
     pub camera: CameraView,
     pub screen: ScreenView,
     pub share_preview: bool,
@@ -638,6 +643,28 @@ pub struct ActiveCall {
     pub bridges: Arc<[NamedUser]>,
     pub people: Arc<[CallPerson]>,
     pub devices: CallDevices,
+    pub connection: Option<Arc<[ServerDetails]>>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ServerDetails {
+    pub host: String,
+    pub publishing: bool,
+    pub state: LinkView,
+    pub sent_kbps: Option<u32>,
+    pub received_kbps: Option<u32>,
+    pub loss_permille: Option<u16>,
+    pub round_trip_ms: Option<u32>,
+    pub sent_video: Vec<(VideoKind, FrameSize)>,
+    pub received_video: Vec<(NamedUser, VideoKind, FrameSize)>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LinkView {
+    Connecting,
+    Connected,
+    Reconnecting,
+    Failed,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]

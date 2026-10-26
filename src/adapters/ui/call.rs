@@ -8,8 +8,8 @@ use slint::{ComponentHandle, Image, Model, SharedString, Timer, TimerMode, VecMo
 use super::backend::{Models, UiBackend, UiEventContext};
 use super::decode::{AvatarSlot, load_avatar_async, peek_avatar};
 use super::dto::{
-    call_failure_message, call_notice_mark, call_offer_mark, call_screen_mark, sheet_preview_mark,
-    test_phase_mark,
+    call_connection_rows, call_failure_message, call_notice_mark, call_offer_mark,
+    call_screen_mark, sheet_preview_mark, test_phase_mark,
 };
 use super::fields::{CallPersonFields, CallTileFields};
 use super::notices::NoticeWords;
@@ -233,6 +233,7 @@ fn apply_active<B: UiBackend>(
 ) {
     let Some(active) = next else {
         w.set_bool(BoolProp::ActiveVisible, false);
+        w.set_bool(BoolProp::MicrophoneMetered, false);
         w.set_int(IntProp::ActiveCall, 0);
         w.set_int(IntProp::ShareCount, 0);
         w.set_int(IntProp::StartedShareSerial, 0);
@@ -251,6 +252,7 @@ fn apply_active<B: UiBackend>(
         models.call_tiles.set_vec(Vec::new());
         models.call_self.set_vec(Vec::new());
         models.call_people.set_vec(Vec::new());
+        models.call_connections.set_vec(Vec::new());
         call_video::follow::<B>(w, &[]);
         stop_elapsed(w);
         ringtone::stop_if(Tone::Ringback);
@@ -278,6 +280,14 @@ fn apply_active<B: UiBackend>(
     w.set_bool(BoolProp::ActiveVideo, shows_video);
     w.set_call_phase(active.phase);
     w.set_call_mic(active.microphone);
+    w.set_bool(
+        BoolProp::MicrophoneMetered,
+        active.microphone_level.is_some(),
+    );
+    w.set_int(
+        IntProp::MicrophoneLevel,
+        active.microphone_level.map_or(0, i32::from),
+    );
     w.set_call_camera(active.camera);
     w.set_call_screen(call_screen_mark(active.screen));
     if let ScreenView::Unavailable(refusal) = active.screen {
@@ -286,6 +296,18 @@ fn apply_active<B: UiBackend>(
     apply_notice(w, active.notice.as_ref());
     apply_stage::<B>(w, last, active, media);
     apply_people::<B>(last.map(|last| last.people.as_ref()), &active.people, media);
+    if last.map(|last| &last.connection) != Some(&active.connection) {
+        B::models().call_connections.set_vec(
+            active
+                .connection
+                .as_deref()
+                .map(call_connection_rows)
+                .unwrap_or_default()
+                .into_iter()
+                .map(Into::into)
+                .collect::<Vec<B::CallConnection>>(),
+        );
+    }
     request_faces::<B>(active, media);
     apply_device_news(w, active.devices.news.as_ref());
     if last.is_none_or(|last| last.live_since_ms != active.live_since_ms) {

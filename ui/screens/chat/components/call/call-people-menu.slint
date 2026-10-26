@@ -2,6 +2,7 @@ import { ScrollView } from "std-widgets.slint";
 import { IconDisplay, IconSet } from "@lucide";
 
 import { ClickArea, RovingKeys } from "../../../../components/a11y.slint";
+import { Actions } from "../../../../actions.slint";
 import { Avatar } from "../../../../components/avatar.slint";
 import { PickerCard } from "../../../../components/overlay.slint";
 import { StateLayer } from "../../../../components/state-layer.slint";
@@ -16,9 +17,11 @@ component PersonRow inherits Rectangle {
     in property <string> detail;
     in property <string> label;
     in property <bool> roving-focus;
+    in property <bool> action-focus;
     in property <bool> above-modal;
 
     callback picked();
+    callback toggled();
     callback roved(length, length);
 
     property <bool> troubled: CallStates.troubled(root.person.state);
@@ -28,6 +31,12 @@ component PersonRow inherits Rectangle {
 
     changed roving-focus => {
         if self.roving-focus {
+            root.roved(self.y, self.height);
+        }
+    }
+
+    changed action-focus => {
+        if self.action-focus {
             root.roved(self.y, self.height);
         }
     }
@@ -114,6 +123,37 @@ component PersonRow inherits Rectangle {
             stroke: AppStyle.danger-muted;
             accessible-role: none;
         }
+
+        if !root.person.you: mute := ClickArea {
+            cross-axis-self-alignment: center;
+            width: Metrics.call-person-action;
+            height: Metrics.call-person-action;
+            border-radius: self.width / 2;
+            ring-radius: self.width / 2;
+            above-modal: root.above-modal;
+            focusable: false;
+            roving-focus: root.action-focus;
+            label: CallWords.mute-for-me(root.person.name);
+            accessible-role: switch;
+            accessible-checkable: true;
+            accessible-checked: root.person.muted-for-you;
+            clicked => {
+                root.toggled();
+            }
+
+            StateLayer {
+                border-radius: parent.border-radius;
+                hovered: parent.has-hover && parent.enabled;
+                pressed: parent.pressed && parent.enabled;
+            }
+
+            IconDisplay {
+                icon: root.person.muted-for-you ? IconSet.VolumeOff : IconSet.Volume2;
+                size: IconSize.sm;
+                stroke: root.person.muted-for-you ? AppStyle.foreground-strong : AppStyle.foreground-muted;
+                accessible-role: none;
+            }
+        }
     }
 }
 
@@ -126,10 +166,23 @@ export component CallPeopleMenu inherits PickerCard {
     property <int> cursor: -1;
     property <int> count: CallView.people.length;
     property <bool> keys-focused: keys.has-focus;
+    property <bool> on-action;
+    property <bool> acts: root.on-action && root.cursor >= 0 && root.cursor < root.count
+        && !CallView.people[root.cursor].you;
 
     public function open(by-keys: bool) {
         root.cursor = by-keys && root.count > 0 ? 0 : -1;
+        root.on-action = false;
         keys.focus();
+    }
+
+    function toggle-at(index: int) {
+        if index >= 0 && index < root.count && !CallView.people[index].you {
+            Actions.mute-for-me({
+                user-id: CallView.people[index].user-id,
+                on: !CallView.people[index].muted-for-you,
+            });
+        }
     }
 
     pure function detail-of(person: CallPersonEntry) -> string {
@@ -143,6 +196,9 @@ export component CallPeopleMenu inherits PickerCard {
     pure function spoken-label() -> string {
         if root.cursor < 0 || root.cursor >= root.count {
             return @tr("People in the call");
+        }
+        if root.acts {
+            return CallWords.mute-for-me(CallView.people[root.cursor].name);
         }
         return root.label-of(CallView.people[root.cursor]);
     }
@@ -170,17 +226,39 @@ export component CallPeopleMenu inherits PickerCard {
         count: root.count;
         cursor <=> root.cursor;
         accessible-label: root.spoken-label();
+        accessible-description: root.acts ? @tr("Left arrow goes back to the person")
+            : root.cursor >= 0 && root.cursor < root.count && !CallView.people[root.cursor].you
+            ? @tr("Right arrow reaches Mute for you")
+            : "";
+        accessible-checkable: root.acts;
+        accessible-checked: root.acts && CallView.people[root.cursor].muted-for-you;
         accessible-action-default => {
-            root.pick-at(max(root.cursor, 0), true);
+            if root.acts {
+                root.toggle-at(root.cursor);
+            } else {
+                root.pick-at(max(root.cursor, 0), true);
+            }
         }
         intercept(event) => {
             if event.text == Key.Tab || event.text == Key.Backtab {
                 return accept;
             }
+            if event.text == Key.RightArrow && root.cursor >= 0 {
+                root.on-action = true;
+                return accept;
+            }
+            if event.text == Key.LeftArrow {
+                root.on-action = false;
+                return accept;
+            }
             return reject;
         }
         activated(index) => {
-            root.pick-at(index, true);
+            if root.acts {
+                root.toggle-at(index);
+            } else {
+                root.pick-at(index, true);
+            }
         }
     }
 
@@ -203,12 +281,16 @@ export component CallPeopleMenu inherits PickerCard {
                 detail: root.detail-of(person);
                 label: root.label-of(person);
                 above-modal: root.above-modal;
-                roving-focus: root.keys-focused && root.cursor == index;
+                roving-focus: root.keys-focused && root.cursor == index && !(root.acts);
+                action-focus: root.keys-focused && root.cursor == index && root.acts;
                 roved(top, size) => {
                     root.reveal(top, size);
                 }
                 picked => {
                     root.pick-at(index, false);
+                }
+                toggled => {
+                    root.toggle-at(index);
                 }
             }
         }

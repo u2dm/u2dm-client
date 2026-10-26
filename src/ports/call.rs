@@ -64,6 +64,9 @@ pub trait MediaSession: Send {
     async fn set_own_key(&mut self, index: KeyIndex, key: &MediaKey);
     async fn use_own_key(&mut self, index: KeyIndex);
     async fn set_key(&mut self, identities: &[MediaIdentity], index: KeyIndex, key: &MediaKey);
+    async fn set_unheard(&mut self, identities: &[MediaIdentity]);
+    async fn sample_microphone(&mut self);
+    async fn sample_connections(&mut self);
     async fn close(self: Box<Self>);
 }
 

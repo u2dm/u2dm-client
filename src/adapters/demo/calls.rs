@@ -316,6 +316,11 @@ pub const CATALOG: Scenarios = Scenarios {
             effect: "Jordan's connection is rated poor 3s after you connect, lost at 7s and good again at 12s",
             note: "his tile hides its frozen picture while the connection is lost",
         },
+        Flag {
+            value: "video-stalls",
+            effect: "Jordan's camera stops arriving 3s after you connect, for 8s, then flows again",
+            note: "with cameras; his tile shows his avatar and says the video stopped arriving",
+        },
     ],
     notes: &[
         "each decline logs `demo: the call is declined`",
@@ -393,6 +398,7 @@ const UNRECEIVED_FOR: Duration = Duration::from_secs(8);
 const POOR_FOR: Duration = Duration::from_secs(8);
 const LOST_AFTER: Duration = Duration::from_secs(7);
 const LOST_FOR: Duration = Duration::from_secs(5);
+const STALLED_FOR: Duration = Duration::from_secs(8);
 pub const UNTRUSTED: &str = JORDAN;
 const DEMO_KEY: [u8; OWN_KEY_LEN] = [7; OWN_KEY_LEN];
 
@@ -456,6 +462,7 @@ pub struct Scenario {
     unreceived_media: bool,
     poor_connection: bool,
     connection_lost: bool,
+    video_stalls: bool,
 }
 
 pub fn scenario() -> Scenario {
@@ -534,6 +541,7 @@ fn apply(scenario: &mut Scenario, flag: &str) {
         "unreceived-media" => scenario.unreceived_media = true,
         "poor-connection" => scenario.poor_connection = true,
         "connection-lost" => scenario.connection_lost = true,
+        "video-stalls" => scenario.video_stalls = true,
         other => tracing::warn!("unknown {ENV_VAR} flag: {other}"),
     }
 }
@@ -940,6 +948,7 @@ impl CallBook {
         for joiner in here {
             troubles.extend(missing_media(&id, joiner));
             troubles.extend(lost_connection(&id, joiner));
+            troubles.extend(stalled_video(&id, joiner));
         }
         if scenario().poor_connection && role == SfuRole::Publish {
             troubles.push(Trouble::own(
@@ -957,6 +966,36 @@ impl CallBook {
         }
         troubles.sort_by_key(|trouble| trouble.after);
         troubles
+    }
+
+    pub fn cameras_on(&self, room_id: &str, sfu: &str) -> Vec<(MediaIdentity, FeedId)> {
+        let Some(id) = sfu_id(sfu) else {
+            return Vec::new();
+        };
+        let here: Vec<Joiner> = self
+            .calls
+            .lock()
+            .map(|calls| {
+                calls
+                    .rooms
+                    .get(room_id)
+                    .into_iter()
+                    .flatten()
+                    .filter(|joiner| joiner.sfu == sfu && joiner.user != data::own_user())
+                    .copied()
+                    .collect()
+            })
+            .unwrap_or_default();
+        here.into_iter()
+            .filter_map(|joiner| match camera_news(&id, joiner, true)? {
+                MediaEvent::Video {
+                    identity,
+                    feed: Some(feed),
+                    ..
+                } => Some((identity, feed)),
+                _ => None,
+            })
+            .collect()
     }
 
     pub fn others_in(&self, room_id: &str) -> Vec<(MemberKey, MediaIdentity)> {
@@ -1383,6 +1422,29 @@ fn missing_media(sfu: &SfuId, joiner: Joiner) -> Vec<Trouble> {
         ));
     }
     troubles
+}
+
+fn stalled_video(sfu: &SfuId, joiner: Joiner) -> Vec<Trouble> {
+    if !(scenario().video_stalls && joiner.user == JORDAN) {
+        return Vec::new();
+    }
+    let stall = |after: Duration, stalled: bool, says: &'static str| Trouble {
+        after,
+        event: MediaEvent::Stalled {
+            sfu: sfu.clone(),
+            identity: joiner.identity(),
+            stalled,
+        },
+        says,
+    };
+    vec![
+        stall(TROUBLE_AFTER, true, "demo: Jordan's camera stops arriving"),
+        stall(
+            TROUBLE_AFTER + STALLED_FOR,
+            false,
+            "demo: Jordan's camera flows again",
+        ),
+    ]
 }
 
 fn lost_connection(sfu: &SfuId, joiner: Joiner) -> Vec<Trouble> {

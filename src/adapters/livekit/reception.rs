@@ -8,6 +8,7 @@ use crate::domain::call::media::MediaSource;
 
 pub(super) const RECEIVE_WAIT: Duration = Duration::from_secs(15);
 pub(super) const RECEIVE_CHECK: Duration = Duration::from_secs(3);
+const STALL_CHECKS: u8 = 2;
 
 pub(super) struct Wanted {
     pub(super) sid: String,
@@ -95,5 +96,80 @@ impl Reception {
         self.missing
             .values()
             .any(|(reported, reported_source)| reported == identity && *reported_source == source)
+    }
+}
+
+pub(super) struct Flowing {
+    pub(super) sid: String,
+    pub(super) identity: MediaIdentity,
+    pub(super) packets: u64,
+}
+
+struct Watched {
+    identity: MediaIdentity,
+    packets: u64,
+    still: u8,
+    stalled: bool,
+}
+
+#[derive(Default)]
+pub(super) struct Flow {
+    watched: HashMap<String, Watched>,
+}
+
+impl Flow {
+    pub(super) fn check(&mut self, flowing: Vec<Flowing>) -> Vec<(MediaIdentity, bool)> {
+        let still_flowing: HashSet<&str> = flowing.iter().map(|track| track.sid.as_str()).collect();
+        let gone: Vec<String> = self
+            .watched
+            .keys()
+            .filter(|sid| !still_flowing.contains(sid.as_str()))
+            .cloned()
+            .collect();
+        let mut changes = Vec::new();
+        for sid in gone {
+            if let Some(watched) = self.watched.remove(&sid)
+                && watched.stalled
+            {
+                changes.push((watched.identity, false));
+            }
+        }
+        for track in flowing {
+            let Some(watched) = self.watched.get_mut(&track.sid) else {
+                self.watched.insert(
+                    track.sid,
+                    Watched {
+                        identity: track.identity,
+                        packets: track.packets,
+                        still: 0,
+                        stalled: false,
+                    },
+                );
+                continue;
+            };
+            if track.packets > watched.packets {
+                watched.packets = track.packets;
+                watched.still = 0;
+                if watched.stalled {
+                    watched.stalled = false;
+                    changes.push((watched.identity.clone(), false));
+                }
+                continue;
+            }
+            watched.still = watched.still.saturating_add(1);
+            if watched.still >= STALL_CHECKS && !watched.stalled {
+                watched.stalled = true;
+                changes.push((watched.identity.clone(), true));
+            }
+        }
+        changes
+    }
+
+    pub(super) fn restart(&mut self) -> Vec<(MediaIdentity, bool)> {
+        self.watched
+            .drain()
+            .filter(|(_, watched)| watched.stalled)
+            .map(|(_, watched)| (watched.identity, false))
+            .collect()
     }
 }

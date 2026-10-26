@@ -278,6 +278,12 @@ macro_rules! simple_callbacks {
         on_show_share_preview "show-share-preview" show_share_preview request(on "on" flag)
             ShowSharePreview;
         on_follow_speaker "follow-speaker" follow_speaker request(on "on" flag) FollowSpeaker;
+        on_mute_for_me "mute-for-me" mute_for_me request(user_id "user-id" text, on "on" flag)
+            MuteForMe;
+        on_watch_microphone "watch-microphone" watch_microphone request(on "on" flag)
+            WatchMicrophone;
+        on_watch_connections "watch-connections" watch_connections request(on "on" flag)
+            WatchConnections;
         on_select_room "select-room" select_room room SelectRoom;
         on_open_notification "open-notification" open_notification room OpenNotification;
         on_select_space "select-space" select_space opt_room SelectSpace;
@@ -427,6 +433,7 @@ macro_rules! bool_props {
         HereJoined CallView "CallView" "here-joined" set_here_joined get_here_joined;
         ActiveVisible CallView "CallView" "active" set_active get_active;
         ActiveEncrypted CallView "CallView" "active-encrypted" set_active_encrypted get_active_encrypted;
+        MicrophoneMetered CallView "CallView" "microphone-metered" set_microphone_metered get_microphone_metered;
         ActiveVideo CallView "CallView" "active-video" set_active_video get_active_video;
         VideoCall CallView "CallView" "video-call" set_video_call get_video_call;
         SelfView CallView "CallView" "self-view" set_self_view get_self_view;
@@ -588,6 +595,7 @@ macro_rules! int_props {
         CameraChosen CallView "CallView" "camera-chosen" set_camera_chosen get_camera_chosen;
         SpeakerChosen CallView "CallView" "speaker-chosen" set_speaker_chosen get_speaker_chosen;
         SheetTestLevel CallView "CallView" "sheet-test-level" set_sheet_test_level get_sheet_test_level;
+        MicrophoneLevel CallView "CallView" "microphone-level" set_microphone_level get_microphone_level;
         DeviceNewsSerial CallView "CallView" "device-news-serial" set_device_news_serial get_device_news_serial;
         CallDeclines WindowView "WindowView" "call-declines" set_call_declines get_call_declines;
         CallAnswers WindowView "WindowView" "call-answers" set_call_answers get_call_answers;
@@ -813,6 +821,7 @@ macro_rules! model_props {
         call_tiles CallTile VecModel CallView "CallView" "tiles" set_tiles;
         call_self CallTile VecModel CallView "CallView" "compact-self" set_compact_self;
         call_people CallPerson VecModel CallView "CallView" "people" set_people;
+        call_connections CallConnection VecModel CallView "CallView" "connections" set_connections;
         call_microphones CallDevice VecModel CallView "CallView" "microphones" set_microphones;
         call_speakers CallDevice VecModel CallView "CallView" "speakers" set_speakers;
         call_cameras CallDevice VecModel CallView "CallView" "cameras" set_cameras;
@@ -1571,6 +1580,16 @@ macro_rules! call_phases {
 }
 pub(crate) use call_phases;
 
+macro_rules! call_link_states {
+    ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
+        Connecting   Connecting   "connecting";
+        Connected    Connected    "connected";
+        Reconnecting Reconnecting "reconnecting";
+        Failed       Failed       "failed";
+    } };
+}
+pub(crate) use call_link_states;
+
 macro_rules! call_notices {
     ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
         None                  None                  "none";
@@ -1665,6 +1684,7 @@ macro_rules! call_tile_marks {
         WaitingForKeys        WaitingForKeys        "waiting-for-keys";
         Live                  Live                  "live";
         PoorConnection        PoorConnection        "poor-connection";
+        VideoStalled          VideoStalled          "video-stalled";
         AudioNotReceived      AudioNotReceived      "audio-not-received";
         VideoNotReceived      VideoNotReceived      "video-not-received";
         AudioVideoNotReceived AudioVideoNotReceived "audio-video-not-received";
@@ -2171,6 +2191,7 @@ macro_rules! call_tile_fields {
         own set_own "own" flag;
         state set_state "state" enumk(CallTileMark);
         muted set_muted "muted" flag;
+        muted_for_you set_muted_for_you "muted-for-you" flag;
         speaking set_speaking "speaking" flag;
         feed set_feed "feed" text;
         has_frame set_has_frame "has-frame" flag;
@@ -2195,6 +2216,7 @@ macro_rules! call_person_fields {
         you set_you "you" flag;
         devices set_devices "devices" int;
         muted set_muted "muted" flag;
+        muted_for_you set_muted_for_you "muted-for-you" flag;
         sharing set_sharing "sharing" flag;
         sees_no_video set_sees_no_video "sees-no-video" flag;
         exposes_e2ee set_exposes_e2ee "exposes-e2ee" flag;
@@ -2202,6 +2224,25 @@ macro_rules! call_person_fields {
     } };
 }
 pub(crate) use call_person_fields;
+
+macro_rules! call_connection_fields {
+    ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
+        video set_video "video" flag;
+        you set_you "you" flag;
+        screen set_screen "screen" flag;
+        host set_host "host" text;
+        publishing set_publishing "publishing" flag;
+        state set_state "state" enumk(LinkView);
+        sent_kbps set_sent_kbps "sent-kbps" int;
+        received_kbps set_received_kbps "received-kbps" int;
+        loss_permille set_loss_permille "loss-permille" int;
+        round_trip_ms set_round_trip_ms "round-trip-ms" int;
+        width set_width "width" int;
+        height set_height "height" int;
+        name set_name "name" text;
+    } };
+}
+pub(crate) use call_connection_fields;
 
 macro_rules! call_device_fields {
     ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*

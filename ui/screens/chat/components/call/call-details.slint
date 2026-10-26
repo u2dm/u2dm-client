@@ -1,0 +1,221 @@
+import { ScrollView } from "std-widgets.slint";
+import { IconDisplay, IconSet } from "@lucide";
+
+import { LinkButton } from "../../../../components/button.slint";
+import { DialogHeader } from "../../../../components/dialog-header.slint";
+import { DialogCard, ModalHost } from "../../../../components/overlay.slint";
+import { Actions } from "../../../../actions.slint";
+import { CallLinkState } from "../../../../enums.slint";
+import { CallWords } from "../../../../messages.slint";
+import { CallPanel, Shell } from "../../../../local.slint";
+import { CallConnectionEntry } from "../../../../types.slint";
+import { CallView } from "../../../../views.slint";
+import { AppStyle, Fonts, IconSize, Metrics, Size, Space, Weight } from "../../../../theme.slint";
+
+component Figure inherits HorizontalLayout {
+    in property <string> label;
+    in property <string> value;
+
+    spacing: Space.md;
+    accessible-role: text;
+    accessible-label: @tr("{}: {}", root.label, root.value);
+
+    Text {
+        width: Metrics.call-details-label;
+        text: root.label;
+        font-size: Fonts.body-small;
+        color: AppStyle.foreground-muted;
+        overflow: elide;
+        accessible-role: none;
+    }
+
+    Text {
+        horizontal-stretch: 1;
+        text: root.value;
+        font-family: Fonts.emoji;
+        font-size: Fonts.body-small;
+        color: AppStyle.foreground-strong;
+        wrap: word-wrap;
+        accessible-role: none;
+    }
+}
+
+component ServerFigures inherits VerticalLayout {
+    in property <CallConnectionEntry> entry;
+
+    spacing: Space.xs;
+
+    HorizontalLayout {
+        padding-top: Space.sm;
+        spacing: Space.md;
+
+        Text {
+            horizontal-stretch: 1;
+            text: root.entry.host;
+            font-size: Fonts.body;
+            font-weight: Weight.semibold;
+            color: AppStyle.foreground-strong;
+            overflow: elide;
+        }
+
+        Text {
+            text: CallWords.link-state(root.entry.state);
+            font-size: Fonts.body-small;
+            color: root.entry.state == CallLinkState.failed ? AppStyle.danger-muted : AppStyle.foreground-muted;
+            vertical-alignment: center;
+        }
+    }
+
+    Text {
+        text: root.entry.publishing ? @tr("Sends your media and receives the others'") : @tr("Receives the others' media");
+        font-size: Fonts.caption;
+        color: AppStyle.foreground-muted;
+        wrap: word-wrap;
+    }
+
+    if root.entry.publishing: Figure {
+        label: @tr("Sending");
+        value: CallWords.bitrate(root.entry.sent-kbps);
+    }
+
+    Figure {
+        label: @tr("Receiving");
+        value: CallWords.bitrate(root.entry.received-kbps);
+    }
+
+    Figure {
+        label: @tr("Packet loss");
+        value: CallWords.loss(root.entry.loss-permille);
+    }
+
+    Figure {
+        label: @tr("Round trip");
+        value: CallWords.round-trip(root.entry.round-trip-ms);
+    }
+}
+
+component EncryptionLine inherits HorizontalLayout {
+    property <string> bridges: CallWords.bridges(CallView.bridges-first, CallView.bridges-second, CallView.bridges-more);
+
+    spacing: Space.sm;
+    padding-bottom: Space.xs;
+
+    IconDisplay {
+        cross-axis-self-alignment: start;
+        icon: root.bridges == "" ? IconSet.Lock : IconSet.ShieldAlert;
+        size: IconSize.xs;
+        stroke: AppStyle.foreground-muted;
+        accessible-role: none;
+    }
+
+    Text {
+        horizontal-stretch: 1;
+        text: CallWords.encryption(root.bridges);
+        font-size: Fonts.body-small;
+        color: AppStyle.foreground-muted;
+        wrap: word-wrap;
+    }
+}
+
+export component CallDetailsDialog inherits ModalHost {
+    property <length> card-width: min(AppStyle.card-width, root.width - AppStyle.card-inset);
+    property <length> card-height: min(body.preferred-height, root.height - AppStyle.card-inset);
+
+    dim-opacity: AppStyle.dialog-scrim;
+    label: @tr("Connection details");
+    dismissed => {
+        CallPanel.close-details();
+    }
+    opened => {
+        header.focus-close();
+    }
+
+    DialogCard {
+        x: (root.width - self.width) / 2;
+        y: (root.height - self.height) / 2;
+        width: root.card-width;
+        height: root.card-height;
+        clip: true;
+
+        body := VerticalLayout {
+            padding-top: Space.xl;
+            padding-bottom: Space.lg;
+            spacing: Space.md;
+
+            HorizontalLayout {
+                padding-left: Space.xl;
+                padding-right: Space.xl;
+
+                header := DialogHeader {
+                    title: @tr("Connection details");
+                    copyable: false;
+                    close-label: @tr("Close the connection details");
+                    close-clicked => {
+                        CallPanel.close-details();
+                    }
+                }
+            }
+
+            scroll := ScrollView {
+                vertical-stretch: 1;
+                min-height: Size.xl;
+                preferred-height: rows.preferred-height;
+                content-width: self.visible-width;
+                content-height: rows.preferred-height;
+
+                rows := VerticalLayout {
+                    width: scroll.visible-width;
+                    padding-left: Space.xl;
+                    padding-right: Space.xl;
+                    spacing: Space.xs;
+
+                    if CallView.active-encrypted: EncryptionLine { }
+
+                    if CallView.connections.length == 0: Text {
+                        text: @tr("No media server is connected yet.");
+                        font-size: Fonts.body-small;
+                        color: AppStyle.foreground-muted;
+                        wrap: word-wrap;
+                    }
+
+                    for row in CallView.connections: VerticalLayout {
+                        if !row.video: ServerFigures {
+                            entry: row;
+                        }
+
+                        if row.video: Figure {
+                            label: row.you ? CallWords.own-video(row.screen) : CallWords.video-of(row.name, row.screen);
+                            value: CallWords.frame-size(row.width, row.height);
+                        }
+                    }
+                }
+            }
+
+            HorizontalLayout {
+                padding-left: Space.xl;
+                padding-right: Space.xl;
+                spacing: Space.md;
+
+                Text {
+                    horizontal-stretch: 1;
+                    text: @tr("Measured every second while this is open.");
+                    font-size: Fonts.caption;
+                    color: AppStyle.foreground-muted;
+                    vertical-alignment: center;
+                    wrap: word-wrap;
+                }
+
+                LinkButton {
+                    min-height: Size.sm;
+                    text: @tr("Room logs");
+                    label: @tr("Open the room logs of {}", CallView.active-room-name);
+                    font-size: Fonts.body-small;
+                    pad: 2 * Space.sm;
+                    clicked => {
+                        Actions.open-room-log(CallView.active-room-id);
+                    }
+                }
+            }
+        }
+    }
+}

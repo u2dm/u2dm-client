@@ -1,5 +1,7 @@
 use std::fmt;
 
+use url::Url;
+
 use super::identity::MediaIdentity;
 use super::{CallMember, DeviceId, FocusSelection, MemberKey, Secret, Transport};
 use crate::domain::user_info::server_part;
@@ -14,6 +16,13 @@ impl SfuId {
             .as_ref()
             .or(transport.sfu_url.as_ref())
             .map(|url| Self(url.clone()))
+    }
+
+    pub fn host(&self) -> String {
+        Url::parse(&self.0)
+            .ok()
+            .and_then(|url| url.host_str().map(str::to_owned))
+            .unwrap_or_else(|| self.0.clone())
     }
 }
 

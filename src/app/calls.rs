@@ -1412,40 +1412,52 @@ impl Calls {
     }
 
     pub(super) fn focus_call_tile(&mut self, key: &str, directory: &RoomDirectory) {
-        self.arrange_stage(directory, |joined| joined.focus_tile(key));
+        self.change_joined(directory, |joined| joined.focus_tile(key));
     }
 
     pub(super) fn unpin_call_tile(&mut self, directory: &RoomDirectory) {
-        self.arrange_stage(directory, Joined::unpin_tile);
+        self.change_joined(directory, Joined::unpin_tile);
     }
 
     pub(super) fn show_call_gallery(&mut self, directory: &RoomDirectory) {
-        self.arrange_stage(directory, Joined::show_gallery);
+        self.change_joined(directory, Joined::show_gallery);
     }
 
     pub(super) fn view_call_share(&mut self, directory: &RoomDirectory) {
-        self.arrange_stage(directory, Joined::view_share);
+        self.change_joined(directory, Joined::view_share);
     }
 
     pub(super) fn show_self_view(&mut self, on: bool, directory: &RoomDirectory) {
-        self.arrange_stage(directory, |joined| joined.show_self_view(on));
+        self.change_joined(directory, |joined| joined.show_self_view(on));
     }
 
     pub(super) fn show_share_preview(&mut self, on: bool, directory: &RoomDirectory) {
-        self.arrange_stage(directory, |joined| joined.show_share_preview(on));
+        self.change_joined(directory, |joined| joined.show_share_preview(on));
     }
 
     pub(super) fn follow_speaker(&mut self, on: bool, directory: &RoomDirectory) {
-        self.arrange_stage(directory, |joined| joined.follow_speaker(on));
+        self.change_joined(directory, |joined| joined.follow_speaker(on));
     }
 
-    fn arrange_stage(&mut self, directory: &RoomDirectory, arrange: impl FnOnce(&mut Joined)) {
+    pub(super) fn watch_connections(&mut self, on: bool, directory: &RoomDirectory) {
+        self.change_joined(directory, |joined| joined.watch_connections(on));
+    }
+
+    pub(super) fn watch_microphone(&mut self, on: bool, directory: &RoomDirectory) {
+        self.change_joined(directory, |joined| joined.watch_microphone(on));
+    }
+
+    pub(super) fn mute_for_me(&mut self, user_id: &str, on: bool, directory: &RoomDirectory) {
+        self.change_joined(directory, |joined| joined.mute_for_me(user_id, on));
+    }
+
+    fn change_joined(&mut self, directory: &RoomDirectory, change: impl FnOnce(&mut Joined)) {
         let Some(joined) = self.joined.as_mut() else {
             return;
         };
         let span = joined.span.clone();
         let _in_call = span.enter();
-        arrange(joined);
+        change(joined);
         self.publish(directory);
     }
 

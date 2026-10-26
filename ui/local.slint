@@ -163,6 +163,9 @@ export global CallPanel {
     in-out property <bool> viewer-focused: false;
     in-out property <int> band-takes-focus;
     in-out property <int> dock-takes-focus;
+    in-out property <bool> details-open: false;
+    in-out property <bool> details-by-keys: false;
+    in-out property <int> details-returns;
     in-out property <bool> ring-devices-open: false;
     in-out property <bool> ring-devices-by-keys: false;
     in-out property <length> ring-devices-right;
@@ -176,6 +179,23 @@ export global CallPanel {
         root.sheet-opener = opener;
         root.sheet-dismissed = false;
         Actions.open-call-sheet({ room-id: room-id, video: video });
+    }
+
+    public function open-details(by-keys: bool) {
+        root.menu-open = false;
+        root.devices-open = false;
+        root.people-open = false;
+        root.details-by-keys = by-keys;
+        root.details-open = true;
+        Actions.watch-connections({ on: true });
+    }
+
+    public function close-details() {
+        root.details-open = false;
+        Actions.watch-connections({ on: false });
+        if root.details-by-keys {
+            root.details-returns += 1;
+        }
     }
 
     public function open-ring-devices(by-keys: bool, right: length, bottom: length) {
@@ -255,6 +275,7 @@ export global CallPanel {
         root.menu-open = false;
         root.devices-open = false;
         root.people-open = false;
+        root.details-open = false;
         root.focus-stage = false;
         root.focus-tile = "";
         root.viewer-focused = false;
@@ -331,7 +352,8 @@ export global Shell {
         || root.source-open
         || root.room-log-open
         || root.readers-open
-        || root.call-sheet-open;
+        || root.call-sheet-open
+        || (CallPanel.details-open && CallView.active);
     out property <bool> modal-open: root.nav-open || root.modal-over-nav;
     out property <bool> nav-on-top: root.nav-open && !root.modal-over-nav;
     out property <bool> background-reachable: !root.modal-open;

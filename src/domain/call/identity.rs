@@ -63,6 +63,10 @@ impl IdentityTable {
         Self { members }
     }
 
+    pub fn member_of(&self, identity: &MediaIdentity) -> Option<&MemberKey> {
+        self.members.get(identity)
+    }
+
     pub fn identities_of(&self, member: &MemberKey) -> Vec<MediaIdentity> {
         let mut identities: Vec<MediaIdentity> = self
             .members

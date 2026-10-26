@@ -7,6 +7,7 @@ import { CallDeviceTrouble, CallNotice, CallPhase } from "../../../../enums.slin
 import { CallWords } from "../../../../messages.slint";
 import { Actions } from "../../../../actions.slint";
 import { CallView } from "../../../../views.slint";
+import { CallPanel } from "../../../../local.slint";
 import { AppStyle, Fonts, IconSize, Size, Space } from "../../../../theme.slint";
 
 export component CallStatus inherits VerticalLayout {
@@ -26,6 +27,7 @@ export component CallStatus inherits VerticalLayout {
     property <bool> undiagnosed: root.notice == CallNotice.sharing-never-started;
     property <bool> not-received: CallStates.not-received(root.notice);
     property <bool> own-poor: root.notice == CallNotice.connection-poor;
+    property <bool> offers-details: root.not-received || root.own-poor;
     property <bool> change-cancelled: !root.noticed && !root.explains-share && root.tells-change-cancelled;
     property <bool> device-news: !root.noticed && !root.explains-share && !root.change-cancelled
         && root.tells-device-news;
@@ -99,6 +101,18 @@ export component CallStatus inherits VerticalLayout {
             color: root.trouble ? AppStyle.danger-muted : AppStyle.foreground-muted;
             vertical-alignment: center;
             wrap: word-wrap;
+        }
+
+        if root.offers-details: LinkButton {
+            min-height: Size.sm;
+            above-modal: root.above-modal;
+            text: @tr("Details");
+            label: @tr("Show the connection details");
+            font-size: Fonts.body-small;
+            pad: 2 * Space.sm;
+            clicked => {
+                CallPanel.open-details(self.has-focus);
+            }
         }
 
         if root.action != "" && root.way-out == "": LinkButton {

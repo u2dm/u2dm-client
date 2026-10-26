@@ -35,6 +35,15 @@ component TileName inherits HorizontalLayout {
         accessible-label: @tr("Muted");
     }
 
+    if root.tile.muted-for-you: IconDisplay {
+        cross-axis-self-alignment: center;
+        icon: IconSet.VolumeOff;
+        size: IconSize.xs;
+        stroke: root.text-color;
+        accessible-role: image;
+        accessible-label: CallWords.muted-for-you();
+    }
+
     if root.tile.screen: IconDisplay {
         cross-axis-self-alignment: center;
         icon: IconSet.ScreenShare;
@@ -192,7 +201,7 @@ export component CallTileView inherits Rectangle {
     property <string> title: CallWords.tile-title(root.tile);
     property <bool> troubled: CallStates.troubled(root.tile.state);
     property <string> feed: root.tile.feed;
-    property <bool> shows-video: root.tile.has-frame && CallStates.flows(root.tile.state);
+    property <bool> shows-video: root.tile.has-frame && CallStates.pictures(root.tile.state);
     property <bool> named-outside: root.tile.screen && root.shows-video;
     property <length> picture-height: root.named-outside ? root.height - Metrics.call-tile-caption : root.height;
     property <bool> roomy: root.height >= Metrics.call-tile-roomy;
@@ -352,8 +361,10 @@ export component CallTileView inherits Rectangle {
     border-radius: Radius.md;
     accessible-role: groupbox;
     accessible-label: root.title;
-    accessible-description: !root.shows-video ? root.state-text
-        : CallWords.listed(root.tile.screen ? @tr("Screen share") : @tr("Camera on"), root.state-text);
+    accessible-description: CallWords.listed(
+        !root.shows-video ? root.state-text
+            : CallWords.listed(root.tile.screen ? @tr("Screen share") : @tr("Camera on"), root.state-text),
+        root.tile.muted-for-you ? CallWords.muted-for-you() : "");
 
     Rectangle {
         background: AppStyle.call-tile;

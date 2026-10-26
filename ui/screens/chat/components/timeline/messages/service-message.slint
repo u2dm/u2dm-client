@@ -1,10 +1,11 @@
 import { MessageEntry } from "../../../../../types.slint";
 import { AppStyle, Fonts, Space } from "../../../../../theme.slint";
-import { ServiceLabel, UpgradeLinks } from "../../../../../messages.slint";
+import { CallWords, ServiceLabel, UpgradeLinks } from "../../../../../messages.slint";
 import { LinkButton } from "../../../../../components/button.slint";
 import { Actions } from "../../../../../actions.slint";
-import { ServiceKind, UpgradeLink } from "../../../../../enums.slint";
-import { DirectoryView, UpgradeView } from "../../../../../views.slint";
+import { CallOffer, ServiceKind, UpgradeLink } from "../../../../../enums.slint";
+import { CallPanel, CallSheetOpener } from "../../../../../local.slint";
+import { CallView, DirectoryView, UpgradeView } from "../../../../../views.slint";
 import { ReaderCount, Readers } from "../delivery-mark.slint";
 
 export component ServiceMessage inherits VerticalLayout {
@@ -15,6 +16,16 @@ export component ServiceMessage inherits VerticalLayout {
         && UpgradeView.predecessor != UpgradeLink.hidden
         && UpgradeView.room-id == DirectoryView.selected-room-id;
     property <bool> joining-older-room: UpgradeView.predecessor == UpgradeLink.joining;
+    property <bool> call-row: root.msg.service-kind == ServiceKind.call-started
+        || root.msg.service-kind == ServiceKind.call-notification
+        || root.msg.service-kind == ServiceKind.call-video-notification
+        || root.msg.service-kind == ServiceKind.call-declined;
+    property <bool> room-offers: CallView.offer-room-id == DirectoryView.selected-room-id;
+    property <bool> call-here: CallView.here-room-id == DirectoryView.selected-room-id && CallView.here-people > 0;
+    property <bool> joins: CallView.offer == CallOffer.join || (CallView.offer == CallOffer.refused && root.call-here);
+    property <bool> calls-back: CallView.offer == CallOffer.start
+        || (CallView.offer == CallOffer.refused && !root.call-here);
+    property <bool> offers-call: root.call-row && root.room-offers && (root.joins || root.calls-back);
 
     padding-top: Space.sm;
     padding-bottom: Space.sm;
@@ -57,6 +68,25 @@ export component ServiceMessage inherits VerticalLayout {
                     tint: AppStyle.foreground-muted;
                     trailing-gap: 0;
                 }
+            }
+        }
+    }
+
+    if root.offers-call: HorizontalLayout {
+        alignment: center;
+
+        LinkButton {
+            text: root.joins ? @tr("Join current call") : root.msg.is-own ? @tr("Call again") : @tr("Call back");
+            label: root.joins ? @tr("Join current call in this room")
+                : root.msg.is-own ? @tr("Call again in this room")
+                : CallWords.call-back(root.msg.sender);
+            tint: CallView.offer == CallOffer.refused ? AppStyle.foreground-muted : AppStyle.link;
+            pad: 2 * Space.sm;
+            clicked => {
+                CallPanel.open-sheet(
+                    DirectoryView.selected-room-id,
+                    root.msg.service-kind == ServiceKind.call-video-notification,
+                    CallSheetOpener.composer);
             }
         }
     }

@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::future::pending;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -5,11 +6,12 @@ use std::time::Duration;
 use livekit::e2ee::EncryptionType;
 use livekit::e2ee::key_provider::KeyProvider;
 use livekit::prelude::{
-    ConnectionQuality as LiveKitQuality, ConnectionState, Participant, RemoteParticipant,
-    RemoteTrack, RemoteTrackPublication, RemoteVideoTrack, Room, RoomEvent, RoomOptions,
-    TrackPublication, TrackSource,
+    ConnectionQuality as LiveKitQuality, ConnectionState, Participant, RemoteAudioTrack,
+    RemoteParticipant, RemoteTrack, RemoteTrackPublication, RemoteVideoTrack, Room, RoomEvent,
+    RoomOptions, TrackPublication, TrackSource,
 };
 use livekit::webrtc::native::frame_cryptor::EncryptionState;
+use livekit::webrtc::stats::RtcStats;
 use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
 use tokio::time::{Instant, MissedTickBehavior, interval_at, sleep_until, timeout};
@@ -18,7 +20,7 @@ use tracing::Instrument;
 use super::e2ee;
 use super::feeds::{Feeds, feed_of};
 use super::quality::{Qualities, QualityOf, Rated};
-use super::reception::{Change, RECEIVE_CHECK, Reception, Wanted};
+use super::reception::{Change, Flow, Flowing, RECEIVE_CHECK, Reception, Wanted};
 use crate::domain::call::identity::MediaIdentity;
 use crate::domain::call::keys::KeyIndex;
 use crate::domain::call::media::{
@@ -31,6 +33,7 @@ const CONNECT_WAIT: Duration = Duration::from_secs(15);
 pub(super) const MEDIA_CLOSE_WAIT: Duration = Duration::from_secs(1);
 
 pub(super) type OwnIndex = Arc<Mutex<Option<KeyIndex>>>;
+pub(super) type Unheard = Arc<Mutex<HashSet<MediaIdentity>>>;
 
 pub(super) struct Connection {
     pub(super) room: Arc<Room>,
@@ -47,6 +50,7 @@ pub(super) struct Wiring<'a> {
     pub(super) sfu: SfuId,
     pub(super) role: SfuRole,
     pub(super) own_index: &'a OwnIndex,
+    pub(super) unheard: &'a Unheard,
     pub(super) feeds: &'a Arc<Feeds>,
     pub(super) events_tx: &'a mpsc::UnboundedSender<MediaEvent>,
     pub(super) encrypted: bool,
@@ -86,9 +90,11 @@ impl Dialled {
                 events: self.events,
                 events_tx: wiring.events_tx.clone(),
                 own_index: Arc::clone(wiring.own_index),
+                unheard: Arc::clone(wiring.unheard),
                 feeds: Arc::clone(wiring.feeds),
                 encrypted: wiring.encrypted,
                 reception: Reception::default(),
+                flow: Flow::default(),
                 qualities: Qualities::default(),
             })
             .in_current_span(),
@@ -122,6 +128,36 @@ async fn close_room(room: &Room, sfu: &SfuId) {
     }
 }
 
+pub(super) fn hear_as_chosen(room: &Room, unheard: &Unheard, sfu: &SfuId) {
+    for participant in room.remote_participants().into_values() {
+        let identity = identity_of(&participant);
+        let heard = is_heard(unheard, &identity);
+        for publication in participant.track_publications().into_values() {
+            if let Some(RemoteTrack::Audio(track)) = publication.track() {
+                hear_or_not(&track, heard, sfu, &identity);
+            }
+        }
+    }
+}
+
+fn is_heard(unheard: &Unheard, identity: &MediaIdentity) -> bool {
+    unheard
+        .lock()
+        .map_or(true, |unheard| !unheard.contains(identity))
+}
+
+fn hear_or_not(track: &RemoteAudioTrack, heard: bool, sfu: &SfuId, identity: &MediaIdentity) {
+    if track.is_enabled() == heard {
+        return;
+    }
+    if heard {
+        track.enable();
+    } else {
+        track.disable();
+    }
+    tracing::info!(%sfu, %identity, source = ?track.source(), heard, "changed whether you hear a call participant");
+}
+
 pub(super) fn use_own_index(room: &Room, index: KeyIndex) {
     let local = room.local_participant().identity();
     for ((identity, _), cryptor) in room.e2ee_manager().frame_cryptors() {
@@ -137,9 +173,11 @@ struct Pump {
     events: mpsc::UnboundedReceiver<RoomEvent>,
     events_tx: mpsc::UnboundedSender<MediaEvent>,
     own_index: OwnIndex,
+    unheard: Unheard,
     feeds: Arc<Feeds>,
     encrypted: bool,
     reception: Reception,
+    flow: Flow,
     qualities: Qualities,
 }
 
@@ -157,7 +195,10 @@ async fn pump_events(mut pump: Pump) {
                 Some(event) => pump.handle(event),
                 None => break,
             },
-            _ = checks.tick() => pump.check_reception(),
+            _ = checks.tick() => {
+                pump.check_reception();
+                pump.check_flow().await;
+            }
             () = until(hold_ends) => pump.hold_ended(),
         }
     }
@@ -221,10 +262,17 @@ impl Pump {
                 publication,
                 participant,
             } => {
-                if self.publication(&participant, &publication)
-                    && let RemoteTrack::Video(video) = track
-                {
-                    self.video_subscribed(&participant, video, publication);
+                if self.publication(&participant, &publication) {
+                    match track {
+                        RemoteTrack::Video(video) => {
+                            self.video_subscribed(&participant, video, publication);
+                        }
+                        RemoteTrack::Audio(audio) => {
+                            let identity = identity_of(&participant);
+                            let heard = is_heard(&self.unheard, &identity);
+                            hear_or_not(&audio, heard, &self.sfu, &identity);
+                        }
+                    }
                 }
             }
             RoomEvent::TrackUnsubscribed {
@@ -295,7 +343,54 @@ impl Pump {
 
     fn reconnecting(&mut self) {
         self.reception.restart();
+        for (identity, stalled) in self.flow.restart() {
+            self.tell_stalled(identity, stalled);
+        }
         self.sfu_state(SfuState::Reconnecting);
+    }
+
+    async fn check_flow(&mut self) {
+        if self.room.connection_state() != ConnectionState::Connected {
+            return;
+        }
+        let mut flowing = Vec::new();
+        for participant in self.room.remote_participants().into_values() {
+            let identity = identity_of(&participant);
+            for publication in participant.track_publications().into_values() {
+                if publication.source() != TrackSource::Camera || publication.is_muted() {
+                    continue;
+                }
+                let Some(RemoteTrack::Video(track)) = publication.track() else {
+                    continue;
+                };
+                if !track.is_enabled() {
+                    continue;
+                }
+                if let Some(packets) = packets_received(&track).await {
+                    flowing.push(Flowing {
+                        sid: String::from(publication.sid()),
+                        identity: identity.clone(),
+                        packets,
+                    });
+                }
+            }
+        }
+        for (identity, stalled) in self.flow.check(flowing) {
+            self.tell_stalled(identity, stalled);
+        }
+    }
+
+    fn tell_stalled(&self, identity: MediaIdentity, stalled: bool) {
+        if stalled {
+            tracing::warn!(sfu = %self.sfu, %identity, "a call participant's camera stopped arriving");
+        } else {
+            tracing::info!(sfu = %self.sfu, %identity, "a call participant's camera arrives again");
+        }
+        self.emit(MediaEvent::Stalled {
+            sfu: self.sfu.clone(),
+            identity,
+            stalled,
+        });
     }
 
     fn departed(&mut self, participant: &RemoteParticipant) {
@@ -558,6 +653,14 @@ const fn video_kind(source: TrackSource) -> Option<VideoKind> {
         TrackSource::Screenshare => Some(VideoKind::Screen),
         TrackSource::Unknown | TrackSource::Microphone | TrackSource::ScreenshareAudio => None,
     }
+}
+
+async fn packets_received(track: &RemoteVideoTrack) -> Option<u64> {
+    let stats = track.get_stats().await.ok()?;
+    stats.iter().find_map(|stats| match stats {
+        RtcStats::InboundRtp(inbound) => Some(inbound.received.packets_received),
+        _ => None,
+    })
 }
 
 fn identity_of(participant: &RemoteParticipant) -> MediaIdentity {

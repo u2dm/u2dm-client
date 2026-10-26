@@ -14,6 +14,8 @@ use crate::domain::call::sfu::{SfuGrant, SfuId, SfuRole};
 use crate::ports::call::{CallMediaPort, ConnectedSfu, MediaSession};
 
 pub(super) const DEVICE_POLL: Duration = Duration::from_secs(2);
+const MICROPHONE_SAMPLE: Duration = Duration::from_millis(100);
+const CONNECTION_SAMPLE: Duration = Duration::from_secs(1);
 pub(super) const MEDIA_TURN_SHARES: u32 = 2;
 const MEDIA_HANDOVER_WAIT: Duration = Duration::from_secs(10);
 
@@ -28,12 +30,22 @@ pub(super) enum MediaCommand {
     OwnKey(KeyIndex, MediaKey),
     UseOwnKey(KeyIndex),
     Key(Vec<MediaIdentity>, KeyIndex, MediaKey),
+    Unheard(Vec<MediaIdentity>),
+    WatchMicrophone(bool),
+    WatchConnections(bool),
 }
 
 #[derive(Debug, Clone, Copy, Default)]
 struct MediaWants {
     microphone: bool,
     camera: bool,
+    watched: Watched,
+}
+
+#[derive(Debug, Clone, Copy, Default)]
+struct Watched {
+    microphone: bool,
+    connections: bool,
 }
 
 impl MediaWants {
@@ -41,6 +53,8 @@ impl MediaWants {
         match command {
             MediaCommand::Microphone(on) => self.microphone = *on,
             MediaCommand::Camera(on) => self.camera = *on,
+            MediaCommand::WatchMicrophone(on) => self.watched.microphone = *on,
+            MediaCommand::WatchConnections(on) => self.watched.connections = *on,
             MediaCommand::Connect(_)
             | MediaCommand::Disconnect(_)
             | MediaCommand::ScreenShare(_)
@@ -48,7 +62,8 @@ impl MediaWants {
             | MediaCommand::RefreshDevices
             | MediaCommand::OwnKey(..)
             | MediaCommand::UseOwnKey(_)
-            | MediaCommand::Key(..) => {}
+            | MediaCommand::Key(..)
+            | MediaCommand::Unheard(_) => {}
         }
     }
 
@@ -167,6 +182,10 @@ async fn drive(
     let mut wants = MediaWants::default();
     let mut devices = interval_at(Instant::now() + DEVICE_POLL, DEVICE_POLL);
     devices.set_missed_tick_behavior(MissedTickBehavior::Delay);
+    let mut microphone = interval_at(Instant::now(), MICROPHONE_SAMPLE);
+    microphone.set_missed_tick_behavior(MissedTickBehavior::Skip);
+    let mut connections = interval_at(Instant::now(), CONNECTION_SAMPLE);
+    connections.set_missed_tick_behavior(MissedTickBehavior::Skip);
     loop {
         tokio::select! {
             biased;
@@ -179,6 +198,8 @@ async fn drive(
             },
             connected = session.next_connected() => wants.send_on(session, &connected).await,
             _ = devices.tick() => session.refresh_devices().await,
+            _ = microphone.tick(), if wants.watched.microphone => session.sample_microphone().await,
+            _ = connections.tick(), if wants.watched.connections => session.sample_connections().await,
         }
     }
 }
@@ -212,5 +233,7 @@ async fn apply(session: &mut dyn MediaSession, command: MediaCommand) {
         MediaCommand::Key(identities, index, key) => {
             session.set_key(&identities, index, &key).await;
         }
+        MediaCommand::Unheard(identities) => session.set_unheard(&identities).await,
+        MediaCommand::WatchMicrophone(_) | MediaCommand::WatchConnections(_) => {}
     }
 }

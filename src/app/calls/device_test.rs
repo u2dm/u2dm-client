@@ -14,7 +14,7 @@ use crate::ports::call::{CallMediaPort, RunningTest};
 
 const TEST_LIMIT: Duration = Duration::from_secs(30);
 const LEVEL_STEPS: f32 = 20.0;
-const PERCENT: f32 = 100.0;
+pub(super) const PERCENT: f32 = 100.0;
 
 pub(super) struct Testing {
     pub(super) serial: u64,

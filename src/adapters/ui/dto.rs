@@ -27,10 +27,12 @@ use super::spoilers::{keep_covered_body, spoilers_on};
 use crate::commands::messages::UserMessageKind;
 use crate::commands::view::{
     CallFailure, CallNotice, CallPerson, CallTile, CantDecrypt, ChildAccess, DeviceOption,
-    DeviceStatus, InviteeRow, InviteeState, JoinOffer, MissingMedia, RoomCard, RosterRow,
-    ScreenView, SheetPreview, SpaceIndexRow, SpaceMatch, TestPhase, TileKind, TileState,
+    DeviceStatus, InviteeRow, InviteeState, JoinOffer, LinkView, MissingMedia, RoomCard, RosterRow,
+    ScreenView, ServerDetails, SheetPreview, SpaceIndexRow, SpaceMatch, TestPhase, TileKind,
+    TileState,
 };
 use crate::domain::call::ring::RingKind;
+use crate::domain::call::video::VideoKind;
 use crate::domain::departure::{Removal, RemovalKind};
 use crate::domain::image_pack::{ImagePack, ImageUsage, PackId, PackImage, PackOrigin, PackTitle};
 use crate::domain::invite::{Invite, InviteKind};
@@ -623,6 +625,7 @@ pub struct CallTileDto {
     pub own: bool,
     pub state: CallTileMark,
     pub muted: bool,
+    pub muted_for_you: bool,
     pub speaking: bool,
     pub feed: SharedString,
     pub has_frame: bool,
@@ -645,10 +648,28 @@ pub struct CallPersonDto {
     pub you: bool,
     pub devices: i32,
     pub muted: bool,
+    pub muted_for_you: bool,
     pub sharing: bool,
     pub sees_no_video: bool,
     pub exposes_e2ee: bool,
     pub state: CallTileMark,
+}
+
+#[allow(clippy::struct_excessive_bools)]
+pub struct CallConnectionDto {
+    pub video: bool,
+    pub you: bool,
+    pub screen: bool,
+    pub host: SharedString,
+    pub publishing: bool,
+    pub state: LinkView,
+    pub sent_kbps: i32,
+    pub received_kbps: i32,
+    pub loss_permille: i32,
+    pub round_trip_ms: i32,
+    pub width: i32,
+    pub height: i32,
+    pub name: SharedString,
 }
 
 pub struct CallDeviceDto {
@@ -1836,6 +1857,7 @@ pub fn call_tile_to_dto(tile: &CallTile) -> CallTileDto {
         own: tile.own,
         state: call_tile_mark(tile.state),
         muted: tile.muted,
+        muted_for_you: tile.muted_for_you,
         speaking: tile.speaking,
         feed: tile
             .video
@@ -1864,11 +1886,71 @@ pub fn call_person_to_dto(person: &CallPerson) -> CallPersonDto {
         you: person.you,
         devices: i32::try_from(person.devices).unwrap_or(i32::MAX),
         muted: person.muted,
+        muted_for_you: person.muted_for_you,
         sharing: person.sharing,
         sees_no_video: person.sees_no_video,
         exposes_e2ee: person.exposes_e2ee,
         state: call_tile_mark(person.state),
     }
+}
+
+pub fn call_connection_rows(servers: &[ServerDetails]) -> Vec<CallConnectionDto> {
+    let known =
+        |value: Option<u32>| value.map_or(-1, |value| i32::try_from(value).unwrap_or(i32::MAX));
+    let pixels = |value: u32| i32::try_from(value).unwrap_or(i32::MAX);
+    let mut rows = Vec::new();
+    for server in servers {
+        rows.push(CallConnectionDto {
+            video: false,
+            you: false,
+            screen: false,
+            host: SharedString::from(&server.host),
+            publishing: server.publishing,
+            state: server.state,
+            sent_kbps: known(server.sent_kbps),
+            received_kbps: known(server.received_kbps),
+            loss_permille: known(server.loss_permille.map(u32::from)),
+            round_trip_ms: known(server.round_trip_ms),
+            width: 0,
+            height: 0,
+            name: SharedString::new(),
+        });
+        for (kind, size) in &server.sent_video {
+            rows.push(CallConnectionDto {
+                video: true,
+                you: true,
+                screen: *kind == VideoKind::Screen,
+                host: SharedString::from(&server.host),
+                publishing: server.publishing,
+                state: server.state,
+                sent_kbps: -1,
+                received_kbps: -1,
+                loss_permille: -1,
+                round_trip_ms: -1,
+                width: pixels(size.width),
+                height: pixels(size.height),
+                name: SharedString::new(),
+            });
+        }
+        for (name, kind, size) in &server.received_video {
+            rows.push(CallConnectionDto {
+                video: true,
+                you: false,
+                screen: *kind == VideoKind::Screen,
+                host: SharedString::from(&server.host),
+                publishing: server.publishing,
+                state: server.state,
+                sent_kbps: -1,
+                received_kbps: -1,
+                loss_permille: -1,
+                round_trip_ms: -1,
+                width: pixels(size.width),
+                height: pixels(size.height),
+                name: SharedString::from(name.shown()),
+            });
+        }
+    }
+    rows
 }
 
 pub fn call_device_to_dto(option: &DeviceOption) -> CallDeviceDto {
@@ -1889,6 +1971,7 @@ const fn call_tile_mark(state: TileState) -> CallTileMark {
         TileState::WaitingForKeys => CallTileMark::WaitingForKeys,
         TileState::Live => CallTileMark::Live,
         TileState::PoorConnection => CallTileMark::PoorConnection,
+        TileState::VideoStalled => CallTileMark::VideoStalled,
         TileState::NotReceived(MissingMedia::Audio) => CallTileMark::AudioNotReceived,
         TileState::NotReceived(MissingMedia::Video) => CallTileMark::VideoNotReceived,
         TileState::NotReceived(MissingMedia::AudioAndVideo) => CallTileMark::AudioVideoNotReceived,

@@ -45,6 +45,7 @@ component CallLine inherits Rectangle {
 
     callback open-chat();
     callback open-people(bool);
+    callback change-share(bool);
 
     out property <length> people-left: people.absolute-position.x;
     out property <length> people-right: people.absolute-position.x + people.width;
@@ -52,7 +53,7 @@ component CallLine inherits Rectangle {
     out property <length> people-bottom: people.absolute-position.y + people.height;
     in property <bool> share-apart;
     out property <length> least-alone: root.lead + root.room-least + (root.clock ? 0px : root.phase-room) + root.gap + root.people-tail;
-    out property <length> share-width: root.gap + sharing.preferred-width;
+    out property <length> share-width: root.gap + sharing.preferred-width + root.gap + change.text-width - Space.xs;
 
     property <bool> shows-sharing: CallView.screen == CallScreen.on && !root.share-apart;
     property <string> sharing-words: @tr("Sharing your screen");
@@ -159,6 +160,20 @@ component CallLine inherits Rectangle {
         color: AppStyle.call-sharing;
         vertical-alignment: center;
     }
+
+    change := LineTarget {
+        x: sharing.x + sharing.width + root.gap - Space.xs;
+        width: root.shows-sharing ? self.text-width : 0;
+        height: root.height;
+        visible: root.shows-sharing;
+        above-modal: root.above-modal;
+        text: @tr("Change…");
+        tint: AppStyle.call-sharing;
+        label: @tr("Change shared screen…");
+        clicked => {
+            root.change-share(self.has-focus);
+        }
+    }
 }
 
 component FailedCallLabel inherits Rectangle {
@@ -213,6 +228,7 @@ export component CallDock inherits Rectangle {
     property <int> device-news-serial: CallView.device-news-serial;
     property <int> dock-takes-focus: CallPanel.dock-takes-focus;
     property <int> people-returns: CallPanel.people-returns;
+    property <int> details-returns: CallPanel.details-returns;
     property <bool> status-taken: !root.failed
         && (CallView.notice != CallNotice.none
             || (root.explains-share && share.refused)
@@ -306,6 +322,13 @@ export component CallDock inherits Rectangle {
         root.show-stage(by-keys);
     }
 
+    function change-share(by-keys: bool) {
+        if by-keys {
+            CallPanel.share-takes-focus += 1;
+        }
+        Actions.change-screen-share();
+    }
+
     function open-call-chat() {
         Shell.nav-open = false;
         if CallView.active-room-id != DirectoryView.selected-room-id {
@@ -366,6 +389,10 @@ export component CallDock inherits Rectangle {
 
     changed people-returns => {
         line.focus-people();
+    }
+
+    changed details-returns => {
+        devices.take-focus();
     }
 
     changed ended-share-serial => {
@@ -483,6 +510,17 @@ export component CallDock inherits Rectangle {
             vertical-alignment: center;
             overflow: elide;
         }
+
+        row-change := LineTarget {
+            width: self.text-width;
+            above-modal: root.above-modal;
+            text: @tr("Change…");
+            tint: AppStyle.call-sharing;
+            label: @tr("Change shared screen…");
+            clicked => {
+                root.change-share(self.has-focus);
+            }
+        }
     }
 
     line := CallLine {
@@ -498,6 +536,9 @@ export component CallDock inherits Rectangle {
         }
         open-people(by-keys) => {
             CallPanel.open-people(by-keys, self.people-left, self.people-right, self.people-top, self.people-bottom);
+        }
+        change-share(by-keys) => {
+            root.change-share(by-keys);
         }
     }
 

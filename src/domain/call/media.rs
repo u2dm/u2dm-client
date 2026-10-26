@@ -3,6 +3,7 @@ use std::fmt;
 use super::devices::{DeviceChoices, DeviceKey, DeviceKind, DeviceLists};
 use super::identity::MediaIdentity;
 use super::sfu::SfuId;
+use super::stats::ConnectionReading;
 use super::video::{Camera, FeedId, ScreenShare, VideoKind};
 use crate::domain::room::RoomId;
 
@@ -105,6 +106,11 @@ pub enum MediaEvent {
         identity: MediaIdentity,
         quality: ConnectionQuality,
     },
+    Stalled {
+        sfu: SfuId,
+        identity: MediaIdentity,
+        stalled: bool,
+    },
     OwnQuality {
         sfu: SfuId,
         quality: ConnectionQuality,
@@ -114,6 +120,8 @@ pub enum MediaEvent {
         state: Decryption,
     },
     Microphone(Microphone),
+    MicrophoneLevel(u8),
+    Connections(Vec<ConnectionReading>),
     Camera(Camera),
     Screen(ScreenShare),
     Video {

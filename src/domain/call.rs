@@ -5,6 +5,7 @@ pub mod keys;
 pub mod media;
 pub mod ring;
 pub mod sfu;
+pub mod stats;
 pub mod video;
 
 use std::collections::{BTreeSet, HashSet};

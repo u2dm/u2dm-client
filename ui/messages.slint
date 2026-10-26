@@ -1,4 +1,4 @@
-import { CallCamera, CallDeviceKind, CallDeviceStatus, CallDeviceTrouble, CallMic, CallNotice, CallPhase, CallPreviewTrouble, CallRefusal, CallScreen, CallScreenRefusal, CallSheetPreview, CallTestPhase, CallTileState, Delivery, EmojiArt, MediaFailure, PresenceLine, PreviewKind, RoomCallMark, ServiceKind, ShieldReason, UpgradeLink, UserMessageKind } from "./enums.slint";
+import { CallCamera, CallDeviceKind, CallDeviceStatus, CallDeviceTrouble, CallLinkState, CallMic, CallNotice, CallPhase, CallPreviewTrouble, CallRefusal, CallScreen, CallScreenRefusal, CallSheetPreview, CallTestPhase, CallTileState, Delivery, EmojiArt, MediaFailure, PresenceLine, PreviewKind, RoomCallMark, ServiceKind, ShieldReason, UpgradeLink, UserMessageKind } from "./enums.slint";
 import { CallStates } from "./call-states.slint";
 import { CallPersonEntry, CallTileEntry } from "./types.slint";
 
@@ -1099,6 +1099,9 @@ export global CallWords {
         if state == CallTileState.poor-connection {
             return @tr("Poor connection");
         }
+        if state == CallTileState.video-stalled {
+            return @tr("Video stopped arriving");
+        }
         if state == CallTileState.audio-not-received {
             return @tr("Audio not received");
         }
@@ -1289,7 +1292,8 @@ export global CallWords {
     }
 
     public pure function person-detail(person: CallPersonEntry) -> string {
-        let status = root.listed(root.tile(person.state), person.muted && CallStates.hears(person.state) ? @tr("Muted") : "");
+        let muted = root.listed(person.muted && CallStates.hears(person.state) ? @tr("Muted") : "", person.muted-for-you ? root.muted-for-you() : "");
+        let status = root.listed(root.tile(person.state), muted);
         let share = !person.sharing ? ""
             : person.you ? @tr("Sharing your screen")
             : @tr("Sharing their screen");
@@ -1297,6 +1301,67 @@ export global CallWords {
         let video = person.sees-no-video ? @tr("Can't see video") : "";
         let bridge = person.exposes-e2ee ? @tr("Bridges the call outside end-to-end encryption") : "";
         return root.listed(root.listed(root.listed(status, share), spread), root.listed(video, bridge));
+    }
+
+    public pure function link-state(state: CallLinkState) -> string {
+        if state == CallLinkState.connected {
+            return @tr("Connected");
+        }
+        if state == CallLinkState.reconnecting {
+            return @tr("Reconnecting…");
+        }
+        if state == CallLinkState.failed {
+            return @tr("Could not connect");
+        }
+        return @tr("Connecting…");
+    }
+
+    public pure function bitrate(kbps: int) -> string {
+        if kbps < 0 {
+            return @tr("Unavailable");
+        }
+        if kbps < 1000 {
+            return @tr("{} kbit/s", kbps);
+        }
+        return @tr("{} Mbit/s", round(kbps / 100) / 10);
+    }
+
+    public pure function loss(permille: int) -> string {
+        if permille < 0 {
+            return @tr("Unavailable");
+        }
+        return @tr("{} %", permille / 10);
+    }
+
+    public pure function round-trip(milliseconds: int) -> string {
+        if milliseconds < 0 {
+            return @tr("Unavailable");
+        }
+        return @tr("{} ms", milliseconds);
+    }
+
+    public pure function frame-size(width: int, height: int) -> string {
+        return @tr("{}×{}", width, height);
+    }
+
+    public pure function video-of(name: string, screen: bool) -> string {
+        return screen ? @tr("{}'s screen", name) : @tr("{}'s camera", name);
+    }
+
+    public pure function own-video(screen: bool) -> string {
+        return screen ? @tr("Your screen") : @tr("Your camera");
+    }
+
+    public pure function call-back(caller: string) -> string {
+        return @tr("Call back {}", caller);
+    }
+
+    public pure function muted-for-you() -> string {
+        return @tr("Muted for you");
+    }
+
+    public pure function mute-for-me(name: string) -> string {
+        return @tr("Mute {} for you", name);
     }
 
     public pure function person-label(name: string, you: bool, detail: string) -> string {

@@ -13,6 +13,7 @@ import {
     CallTileEntry,
     CallPersonEntry,
     CallDeviceEntry,
+    CallConnectionEntry,
     UserDeviceEntry,
 } from "./types.slint";
 import { AccountActivity, AccountStep, AttachmentKind, AudioKind, AuthStage, CallCamera, CallDeviceKind, CallDeviceTrouble, CallMic, CallNotice, CallOffer, CallPhase, CallPreviewTrouble, CallRefusal, CallScreen, CallScreenRefusal, CallSheetPreview, CallTestPhase, ChildAccess, ConnectionState, CreateRoomStatus, DirectChat, EncryptionActivity, EncryptionStanding, EncryptionStep, IdentityAlertKind, IdentityTrust, InviteAnswer, InviteKind, LoginActivity, LoginMethodKind, LoginPhase, MemberRole, Moderation, NotifyMode, PackSurface, PeopleSearchStatus, PresenceLine, PreviewKind, ReadersStatus, RecoveryStatus, RemovalKind, RoomInfoPlacement, RoomKind, RoomMembership, RoomPreviewStatus, RoomScope, RosterStatus, ServiceKind, SourceEncryption, SourceStatus, SpaceIndexStatus, TimelineState, UpgradeLink, UserMessageKind, VerificationActivity, VerificationPhase, VerifyOffer } from "./enums.slint";
@@ -472,6 +473,9 @@ export global CallView {
     in property <CallDeviceKind> sheet-test-kind;
     in property <CallTestPhase> sheet-test-phase: CallTestPhase.none;
     in property <int> sheet-test-level;
+    in property <bool> microphone-metered;
+    in property <[CallConnectionEntry]> connections;
+    in property <int> microphone-level;
     in property <bool> active;
     in property <int> active-call;
     in property <string> active-room-id;

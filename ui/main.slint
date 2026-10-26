@@ -79,6 +79,7 @@ import { RoomLogDialog } from "./screens/chat/components/room-log.slint";
 import { ReadersDialog } from "./screens/chat/components/readers.slint";
 import { IncomingCallCard } from "./screens/chat/components/call/incoming-call.slint";
 import { CallSheet } from "./screens/chat/components/call/call-sheet.slint";
+import { CallDetailsDialog } from "./screens/chat/components/call/call-details.slint";
 import { CallDevicesMenu } from "./screens/chat/components/call/call-devices-menu.slint";
 import { ModalHost, Placement } from "./components/overlay.slint";
 import { TipLayer } from "./components/tip.slint";
@@ -188,6 +189,7 @@ export component AppWindow inherits Window {
     if Shell.invite-people-open: InvitePeopleDialog { }
     if Shell.room-preview-open: RoomPreviewDialog { }
     if Shell.source-open: EventSourceDialog { }
+    if LoginView.step == LoginPhase.logged-in && CallView.active && CallPanel.details-open: CallDetailsDialog { }
     if Shell.room-log-open: RoomLogDialog { }
     if Shell.account-open: AccountDialog { }
     if Shell.encryption-open: EncryptionDialog { }

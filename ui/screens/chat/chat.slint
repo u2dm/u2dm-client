@@ -108,6 +108,7 @@ export component ChatScreen inherits FocusScope {
 
     property <bool> has-toast: RoomView.toast-message != UserMessageKind.none;
     property <bool> shows-dock: CallView.active || CallView.failed;
+    property <bool> devices-open: CallPanel.devices-open && CallView.active;
     property <length> dock-height: root.shows-dock ? dock.height : 0px;
     property <length> dock-height-with-stage: root.shows-dock ? dock.height-with-stage : 0px;
     property <length> menu-room-above: dock.devices-y - Space.xs - Space.md;
@@ -161,6 +162,10 @@ export component ChatScreen inherits FocusScope {
 
     changed call-media-on-screen => {
         Actions.call-media-shown(self.call-media-on-screen);
+    }
+
+    changed devices-open => {
+        Actions.watch-microphone({ on: self.devices-open });
     }
 
     changed compact => {
@@ -366,6 +371,10 @@ export component ChatScreen inherits FocusScope {
                 : dock.devices-y + dock.devices-size + Space.xs;
             room: root.menu-above ? root.menu-room-above : root.menu-room-below;
             above-modal: Shell.nav-on-top;
+            in-call: true;
+            details(by-keys) => {
+                CallPanel.open-details(by-keys);
+            }
         }
     }
 

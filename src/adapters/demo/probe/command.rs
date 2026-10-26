@@ -177,6 +177,16 @@ pub enum ProbeCommand {
     RingDevices {
         open: bool,
     },
+    MuteForMe {
+        user_id: String,
+        on: bool,
+    },
+    WatchMicrophone {
+        on: bool,
+    },
+    WatchConnections {
+        on: bool,
+    },
     ShowCallGallery,
     ViewCallShare,
     ShowSelfView {
@@ -960,6 +970,9 @@ pub fn to_driven(command: ProbeCommand, selected: Selection<'_>) -> Result<Drive
         ProbeCommand::FocusCallTile { key } => UiCommand::FocusCallTile(key),
         ProbeCommand::UnpinCallTile => UiCommand::UnpinCallTile,
         ProbeCommand::RingDevices { open } => UiCommand::RingDevices(open),
+        ProbeCommand::MuteForMe { user_id, on } => UiCommand::MuteForMe { user_id, on },
+        ProbeCommand::WatchMicrophone { on } => UiCommand::WatchMicrophone(on),
+        ProbeCommand::WatchConnections { on } => UiCommand::WatchConnections(on),
         ProbeCommand::ShowCallGallery => UiCommand::ShowCallGallery,
         ProbeCommand::ViewCallShare => UiCommand::ViewCallShare,
         ProbeCommand::ShowSelfView { on } => UiCommand::ShowSelfView(on),

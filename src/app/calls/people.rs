@@ -55,6 +55,7 @@ fn first_device(
         you: tile.own,
         devices: 1,
         muted: tile.muted,
+        muted_for_you: tile.muted_for_you,
         sharing: false,
         sees_no_video: sees_no_video(declared),
         exposes_e2ee: exposes_e2ee(declared),
@@ -71,6 +72,7 @@ fn add_device(
 ) {
     person.devices += 1;
     person.muted &= tile.muted;
+    person.muted_for_you |= tile.muted_for_you;
     person.sees_no_video &= sees_no_video(declared);
     person.exposes_e2ee |= exposes_e2ee(declared);
     if person.avatar_mxc.is_none() {
@@ -103,10 +105,11 @@ const fn telling(state: TileState) -> u8 {
         TileState::WaitingForKeys => 1,
         TileState::Live => 2,
         TileState::PoorConnection => 3,
-        TileState::NotReceived(_) => 4,
-        TileState::ConnectionLost => 5,
-        TileState::Unreachable => 6,
-        TileState::CantDecrypt(CantDecrypt::NoKey) => 7,
-        TileState::CantDecrypt(CantDecrypt::NotCrossSigned) => 8,
+        TileState::VideoStalled => 4,
+        TileState::NotReceived(_) => 5,
+        TileState::ConnectionLost => 6,
+        TileState::Unreachable => 7,
+        TileState::CantDecrypt(CantDecrypt::NoKey) => 8,
+        TileState::CantDecrypt(CantDecrypt::NotCrossSigned) => 9,
     }
 }
