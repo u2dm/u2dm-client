@@ -5,7 +5,7 @@ import { ClickArea } from "../../../../components/a11y.slint";
 import { DotPulse } from "../../../../components/dot-pulse.slint";
 import { StateLayer } from "../../../../components/state-layer.slint";
 import { TipSource } from "../../../../components/tip.slint";
-import { CallCamera, CallMic, CallPhase, CallScreen } from "../../../../enums.slint";
+import { CallCamera, CallHand, CallMic, CallPhase, CallScreen } from "../../../../enums.slint";
 import { CallWords } from "../../../../messages.slint";
 import { Actions } from "../../../../actions.slint";
 import { TipScope } from "../../../../local.slint";
@@ -184,6 +184,30 @@ export component CallCameraButton inherits CallToggle {
     state-text: CallWords.camera-state(CallView.camera);
     clicked => {
         CallKeys.toggle-camera();
+    }
+}
+
+export component CallHandButton inherits CallToggle {
+    property <bool> up: CallView.hand == CallHand.up || CallView.hand == CallHand.lowering
+        || CallView.hand == CallHand.lower-failed;
+    property <bool> waits: CallView.hand == CallHand.unavailable;
+
+    state: root.waits ? CallToggleState.unavailable
+        : CallView.hand == CallHand.raise-failed || CallView.hand == CallHand.lower-failed ? CallToggleState.failed
+        : CallView.hand == CallHand.raising || CallView.hand == CallHand.lowering ? CallToggleState.pending
+        : CallView.hand == CallHand.up ? CallToggleState.on
+        : CallToggleState.off;
+    on-icon: IconSet.Hand;
+    off-icon: IconSet.Hand;
+    on-fill: AppStyle.call-hand;
+    on-tint: AppStyle.on-call-hand;
+    label: CallWords.hand(CallView.hand);
+    state-text: CallWords.hand-state(CallView.hand);
+    tip: root.waits ? root.state-text : root.label;
+    clicked => {
+        if !root.waits {
+            Actions.raise-hand({ on: !root.up });
+        }
     }
 }
 

@@ -226,6 +226,10 @@ pub fn watch_microphone(tx: &Tx, on: bool) {
     send_command(tx, UiCommand::WatchMicrophone(on));
 }
 
+pub fn raise_hand(tx: &Tx, on: bool) {
+    send_command(tx, UiCommand::RaiseHand(on));
+}
+
 pub fn mute_for_me(tx: &Tx, user_id: String, on: bool) {
     if user_id.is_empty() {
         return;

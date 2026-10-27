@@ -103,6 +103,7 @@ export struct CallTileEntry {
     muted: bool,
     muted-for-you: bool,
     speaking: bool,
+    hand: int,
     feed: string,
     has-frame: bool,
     frame: image,
@@ -124,6 +125,7 @@ export struct CallPersonEntry {
     devices: int,
     muted: bool,
     muted-for-you: bool,
+    hand: int,
     sharing: bool,
     sees-no-video: bool,
     exposes-e2ee: bool,
@@ -245,6 +247,10 @@ export struct WatchMicrophoneRequest {
 
 export struct MuteForMeRequest {
     user-id: string,
+    on: bool,
+}
+
+export struct RaiseHandRequest {
     on: bool,
 }
 

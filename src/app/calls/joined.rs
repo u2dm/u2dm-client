@@ -6,18 +6,23 @@ use tokio::sync::{mpsc, oneshot, watch};
 use tokio::time::Instant;
 use tracing::Span;
 
+mod hands;
+
+use self::hands::HandRequest;
 use super::device_test::{PERCENT, level_percent};
 use super::devices::Devices;
 use super::media::MediaCommand;
 use super::people;
 use super::stage::Stage;
 use crate::commands::view::{
-    ActiveCall, CallFailure, CallNotice, CallPhase, CallTile, CameraView, CantDecrypt, LinkView,
-    MicrophoneView, MissingMedia, ScreenView, ServerDetails, TileKey, TileKind, TileState,
+    ActiveCall, CallFailure, CallNotice, CallPhase, CallTile, CameraView, CantDecrypt, HandNews,
+    LinkView, MicrophoneView, MissingMedia, ScreenView, ServerDetails, TileKey, TileKind,
+    TileState,
 };
 use crate::domain::call::devices::{
     DeviceChoice, DeviceChoices, DeviceKey, DeviceKind, DeviceLists,
 };
+use crate::domain::call::hands::Hands;
 use crate::domain::call::identity::{IdentityTable, MediaIdentity, member_spellings, spellings};
 use crate::domain::call::keys::{
     KeyAction, KeyExchange, KeyHolder, MediaKey, OWN_KEY_LEN, ReceivedKey,
@@ -300,6 +305,13 @@ pub(super) enum Effect {
         kind: RingKind,
     },
     Standings(Vec<MemberKey>),
+    RaiseHand {
+        membership_event: String,
+    },
+    LowerHand {
+        reaction: String,
+    },
+    FetchHands(Vec<String>),
 }
 
 pub(super) struct Joining {
@@ -357,6 +369,9 @@ pub(super) struct Joined {
     unheard_sent: Vec<MediaIdentity>,
     microphone_meter: Meter,
     readings: Option<Readings>,
+    hands: Hands,
+    hand_request: HandRequest,
+    hand_news: Option<HandNews>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -427,6 +442,9 @@ impl Joined {
             unheard_sent: Vec::new(),
             microphone_meter: Meter::Off,
             readings: None,
+            hands: Hands::default(),
+            hand_request: HandRequest::Idle,
+            hand_news: None,
         };
         joined.command(MediaCommand::Microphone(media.microphone));
         if media.camera {
@@ -504,7 +522,8 @@ impl Joined {
         self.identities = IdentityTable::build(&members);
         self.members = members;
         self.tell_unheard();
-        let mut effects = self.replan();
+        let mut effects = self.hands_follow_members();
+        effects.extend(self.replan());
         if self.membership.is_some() && self.encrypted {
             let actions = self
                 .keys
@@ -1352,6 +1371,9 @@ impl Joined {
                 OwnScreen::Failed => ScreenView::Failed,
                 OwnScreen::Unavailable(refusal) => ScreenView::Unavailable(refusal),
             },
+            hand: self.hand_view(),
+            hands_raised: self.hands_raised(),
+            hand_news: self.hand_news(),
             share_preview: self.stage.share_preview(),
             share_change_cancelled: self.changes_cancelled,
             notice,
@@ -1420,6 +1442,16 @@ impl Joined {
         for tile in tiles.iter_mut().filter(|tile| !tile.own) {
             tile.muted_for_you = self.unheard.contains(&tile.member.user);
         }
+        let order = self.hand_order();
+        for tile in tiles
+            .iter_mut()
+            .filter(|tile| tile.kind == TileKind::Person)
+        {
+            tile.hand = order
+                .iter()
+                .position(|member| *member == tile.member)
+                .map(|index| index + 1);
+        }
         tiles
     }
 
@@ -1450,6 +1482,7 @@ impl Joined {
             state,
             muted: self.microphone != OwnMicrophone::On,
             muted_for_you: false,
+            hand: None,
             speaking,
             video,
         }
@@ -1469,6 +1502,7 @@ impl Joined {
             state: TileState::Live,
             muted: false,
             muted_for_you: false,
+            hand: None,
             speaking: false,
             video: Some(feed.clone()),
         })
@@ -1489,6 +1523,7 @@ impl Joined {
             state: self.remote_state(member, &key, &identities),
             muted,
             muted_for_you: false,
+            hand: None,
             speaking: identities
                 .iter()
                 .any(|identity| self.heard.is_speaking(identity)),
@@ -1517,6 +1552,7 @@ impl Joined {
             state,
             muted: false,
             muted_for_you: false,
+            hand: None,
             speaking: false,
             member: key,
             name: member.user.clone(),

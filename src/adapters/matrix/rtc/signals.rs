@@ -26,6 +26,9 @@ use serde_json::{Map, Value, json};
 use tokio::sync::mpsc;
 use tokio::time::timeout;
 
+use super::hands::{
+    REACTION_TYPE, REDACTION_TYPE, hand_of, lower, raise, raised, raises_a_hand, redacted_event,
+};
 use super::keys::{Arrival, KeyMessage, key_content, read_key};
 use super::members::{Referenced, referenced_membership};
 use super::{
@@ -36,6 +39,7 @@ use crate::adapters::matrix::decrypt_wait::{Attempt, LateDecryption, decrypt_or_
 use crate::adapters::matrix::media::fetch_avatar_thumbnails;
 use crate::adapters::matrix::member_name::named_member;
 use crate::adapters::matrix::session::{ClientHandle, SessionResource};
+use crate::domain::call::hands::HandSighting;
 use crate::domain::call::ring::{
     CallSignal, MAX_RING_LIFETIME_MS, MAX_SENDER_TS_OFFSET_MS, OUTGOING_RING_LIFETIME_MS,
     OutgoingRing, Ring, RingId, RingKind, expires_ms,
@@ -75,14 +79,25 @@ struct Kind {
     #[serde(rename = "type")]
     event_type: String,
     origin_server_ts: MilliSecondsSinceUnixEpoch,
+    #[serde(default)]
+    content: KindContent,
+}
+
+#[derive(Default, Deserialize)]
+struct KindContent {
+    #[serde(default, rename = "m.relates_to")]
+    relates_to: Option<Value>,
 }
 
 impl Kind {
     fn concerns_calls(&self) -> bool {
         match self.event_type.as_str() {
-            NOTIFICATION_TYPE | NOTIFICATION_TYPE_STABLE | DECLINE_TYPE | DECLINE_TYPE_STABLE => {
-                true
-            }
+            NOTIFICATION_TYPE
+            | NOTIFICATION_TYPE_STABLE
+            | DECLINE_TYPE
+            | DECLINE_TYPE_STABLE
+            | REDACTION_TYPE => true,
+            REACTION_TYPE => raises_a_hand(self.content.relates_to.as_ref()),
             ENCRYPTED_TYPE => recent(self.origin_server_ts),
             _ => false,
         }
@@ -427,6 +442,26 @@ impl CallSignalPort for MatrixCallSignals {
         };
         fetch_avatar_thumbnails(&client, self.matrix.media(), mxcs).await
     }
+
+    async fn raise_hand(&self, room_id: &RoomId, membership_event: &str) -> Result<String> {
+        let room = self.matrix.room(room_id).await?;
+        raise(&room, membership_event).await
+    }
+
+    async fn lower_hand(&self, room_id: &RoomId, reaction: &str) -> Result<()> {
+        let room = self.matrix.room(room_id).await?;
+        lower(&room, reaction).await
+    }
+
+    async fn raised_hands(&self, room_id: &RoomId, memberships: &[String]) -> Vec<HandSighting> {
+        match self.matrix.room(room_id).await {
+            Ok(room) => raised(&room, memberships).await,
+            Err(e) => {
+                tracing::debug!(%room_id, "could not ask which hands are raised: {e}");
+                Vec::new()
+            }
+        }
+    }
 }
 
 async fn devices_of(
@@ -467,6 +502,8 @@ struct Facts {
     origin_server_ts: MilliSecondsSinceUnixEpoch,
     #[serde(rename = "type")]
     event_type: String,
+    #[serde(default)]
+    redacts: Option<OwnedEventId>,
     #[serde(default)]
     content: Map<String, Value>,
 }
@@ -564,8 +601,32 @@ async fn signal_of(own: &OwnedUserId, room: &Room, facts: Facts) -> Option<CallS
     match facts.event_type.as_str() {
         NOTIFICATION_TYPE | NOTIFICATION_TYPE_STABLE => ring(own, room, facts).await,
         DECLINE_TYPE | DECLINE_TYPE_STABLE => decline(room, &facts),
+        REACTION_TYPE => hand(room, &facts),
+        REDACTION_TYPE => redaction(room, &facts),
         _ => None,
     }
+}
+
+fn hand(room: &Room, facts: &Facts) -> Option<CallSignal> {
+    let sighting = hand_of(
+        &facts.event_id,
+        &facts.sender,
+        facts.origin_server_ts,
+        &facts.content,
+    )?;
+    tracing::debug!(room_id = %room.room_id(), sender = %facts.sender, membership = sighting.membership_event, "a hand was raised");
+    Some(CallSignal::Hand {
+        room_id: RoomId::new(room.room_id().as_str()),
+        sighting,
+    })
+}
+
+fn redaction(room: &Room, facts: &Facts) -> Option<CallSignal> {
+    let event = redacted_event(facts.redacts.as_ref(), &facts.content)?;
+    Some(CallSignal::Redacted {
+        room_id: RoomId::new(room.room_id().as_str()),
+        event,
+    })
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]

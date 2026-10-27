@@ -272,6 +272,7 @@ pub struct AppService {
     submissions: Submissions,
     selection: Selection,
     last_selected_room: Option<EmittedRoom>,
+    call_room_subscribed: Option<RoomId>,
     lifecycle: Lifecycle,
     held_session: HeldSession,
     blocked: Option<UserMessage>,
@@ -344,6 +345,7 @@ impl AppService {
             send_lanes: SendLanes::new("sends"),
             selection: Selection::default(),
             last_selected_room: None,
+            call_room_subscribed: None,
             lifecycle: Lifecycle::new(),
             held_session: HeldSession::None,
             blocked: None,
@@ -430,6 +432,7 @@ impl AppService {
                     }
                 }
             }
+            self.sync_call_room();
         }
     }
 
@@ -904,6 +907,7 @@ impl AppService {
             | UiCommand::ShowSharePreview(_)
             | UiCommand::FollowSpeaker(_)
             | UiCommand::MuteForMe { .. }
+            | UiCommand::RaiseHand(_)
             | UiCommand::WatchMicrophone(_)
             | UiCommand::WatchConnections(_)) => {
                 self.handle_call_command(cmd);
@@ -2935,6 +2939,17 @@ impl AppService {
         }
     }
 
+    fn sync_call_room(&mut self) {
+        let call_room = self.calls.joined_room().cloned();
+        if call_room == self.call_room_subscribed {
+            return;
+        }
+        if let Some(sync) = self.port(|a| &a.sync) {
+            sync.set_call_room(call_room.as_ref());
+            self.call_room_subscribed = call_room;
+        }
+    }
+
     fn follow_typing(&mut self, room_id: RoomId) {
         if let Some(typing) = self.port(|a| &a.typing) {
             self.typing.retarget(typing, room_id);
@@ -3064,6 +3079,7 @@ impl AppService {
             }
             UiCommand::WatchMicrophone(on) => self.calls.watch_microphone(on, directory),
             UiCommand::WatchConnections(on) => self.calls.watch_connections(on, directory),
+            UiCommand::RaiseHand(on) => self.calls.raise_hand(on, directory),
             other => tracing::warn!(command = %other, "this command is not about calls"),
         }
     }

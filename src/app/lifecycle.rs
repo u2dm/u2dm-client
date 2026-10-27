@@ -383,6 +383,7 @@ pub(super) fn command_allowed(phase: AppPhase, cmd: &UiCommand) -> bool {
         | UiCommand::ShowSharePreview(_)
         | UiCommand::FollowSpeaker(_)
         | UiCommand::MuteForMe { .. }
+        | UiCommand::RaiseHand(_)
         | UiCommand::WatchMicrophone(_)
         | UiCommand::WatchConnections(_)
         | UiCommand::DismissToast => phase == AppPhase::Syncing,

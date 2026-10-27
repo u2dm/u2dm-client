@@ -15,13 +15,14 @@ use u2dm_ui::{
     AudioView, AuthStage as UiAuthStage, BodyLine, BodyPiece, CallCamera as UiCallCamera,
     CallConnectionEntry, CallDeviceEntry, CallDeviceKind as UiCallDeviceKind,
     CallDeviceStatus as UiCallDeviceStatus, CallDeviceTrouble as UiCallDeviceTrouble,
-    CallLinkState as UiCallLinkState, CallMic as UiCallMic, CallNotice as UiCallNotice,
-    CallOffer as UiCallOffer, CallPersonEntry, CallPhase as UiCallPhase,
-    CallPreviewTrouble as UiCallPreviewTrouble, CallRefusal as UiCallRefusal,
-    CallScreen as UiCallScreen, CallScreenRefusal as UiCallScreenRefusal,
-    CallSheetPreview as UiCallSheetPreview, CallTestPhase as UiCallTestPhase, CallTileEntry,
-    CallTileState as UiCallTileState, CallView, ChildAccess as UiChildAccess, ComposerDraft,
-    ConnectionState, CreateRoomStatus as UiCreateRoomStatus, CreateRoomView,
+    CallHand as UiCallHand, CallLinkState as UiCallLinkState, CallMic as UiCallMic,
+    CallNotice as UiCallNotice, CallOffer as UiCallOffer, CallPersonEntry,
+    CallPhase as UiCallPhase, CallPreviewTrouble as UiCallPreviewTrouble,
+    CallRefusal as UiCallRefusal, CallScreen as UiCallScreen,
+    CallScreenRefusal as UiCallScreenRefusal, CallSheetPreview as UiCallSheetPreview,
+    CallTestPhase as UiCallTestPhase, CallTileEntry, CallTileState as UiCallTileState, CallView,
+    ChildAccess as UiChildAccess, ComposerDraft, ConnectionState,
+    CreateRoomStatus as UiCreateRoomStatus, CreateRoomView,
     DecryptionFailure as UiDecryptionFailure, Delivery as UiDelivery, DeviceTrust as UiDeviceTrust,
     DirectChat as UiDirectChat, DirectoryView, DraftVerdict as UiDraftVerdict,
     EmojiArt as UiEmojiArt, EmojiEntry, EmojiRow, EmojiStore,
@@ -92,7 +93,7 @@ use super::router::{DraftVerdict, EditedRow, EditedText};
 use super::schema::{
     account_activities, account_steps, attachment_kinds, audio_kinds, auth_stages,
     body_line_fields, body_piece_fields, bool_props, call_cameras, call_connection_fields,
-    call_device_fields, call_device_kinds, call_device_statuses, call_device_troubles,
+    call_device_fields, call_device_kinds, call_device_statuses, call_device_troubles, call_hands,
     call_link_states, call_mics, call_notices, call_offers, call_person_fields, call_phases,
     call_refusals, call_screen_refusals, call_screens, call_tile_fields, call_tile_marks,
     child_accesses, connection_states, create_room_statuses, decryption_failures, deliveries,
@@ -122,10 +123,10 @@ use crate::commands::ui::{ComposerActivity, TimelineVisibility, ViewportChanged,
 use crate::commands::view::{
     AccountActivity, AccountStep, AppViewState, AttachmentKind, AuthStage, CallPhase, CameraView,
     ChildAccess, CreateRoomStatus, DeviceStatus, DeviceTrouble, DirectChat, EncryptionActivity,
-    EncryptionStep, InviteeState, JoinRefusal, LinkView, LoginActivity, LoginStep, MicrophoneView,
-    PendingAnswer, PendingModeration, PeopleSearchStatus, PreviewTrouble, ReadersStatus,
-    RoomInfoPlacement, RoomPreviewSheet, RoomScope, RosterStatus, SourceState, SpaceIndexStatus,
-    UpgradeLink, VerifyOffer,
+    EncryptionStep, HandView, InviteeState, JoinRefusal, LinkView, LoginActivity, LoginStep,
+    MicrophoneView, PendingAnswer, PendingModeration, PeopleSearchStatus, PreviewTrouble,
+    ReadersStatus, RoomInfoPlacement, RoomPreviewSheet, RoomScope, RosterStatus, SourceState,
+    SpaceIndexStatus, UpgradeLink, VerifyOffer,
 };
 use crate::domain::auth::LoginMethod;
 use crate::domain::call::devices::DeviceKind;
@@ -502,6 +503,7 @@ call_link_states!(impl_slint_enum LinkView UiCallLinkState;);
 call_mics!(impl_slint_enum MicrophoneView UiCallMic;);
 call_cameras!(impl_slint_enum CameraView UiCallCamera;);
 call_screens!(impl_slint_enum CallScreenMark UiCallScreen;);
+call_hands!(impl_slint_enum HandView UiCallHand;);
 call_screen_refusals!(impl_slint_enum ScreenRefusal UiCallScreenRefusal;);
 call_tile_marks!(impl_slint_enum CallTileMark UiCallTileState;);
 call_device_kinds!(impl_slint_enum DeviceKind UiCallDeviceKind;);

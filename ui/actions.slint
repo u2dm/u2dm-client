@@ -27,6 +27,7 @@ import {
     SharePreviewRequest,
     FollowSpeakerRequest,
     MuteForMeRequest,
+    RaiseHandRequest,
     WatchMicrophoneRequest,
     WatchConnectionsRequest,
     RingDevicesRequest,
@@ -206,6 +207,7 @@ export global Actions {
     callback unpin-call-tile();
     callback ring-devices(RingDevicesRequest);
     callback mute-for-me(MuteForMeRequest);
+    callback raise-hand(RaiseHandRequest);
     callback watch-microphone(WatchMicrophoneRequest);
     callback watch-connections(WatchConnectionsRequest);
     callback show-call-gallery();

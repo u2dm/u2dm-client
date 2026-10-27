@@ -17,6 +17,7 @@ use crate::commands::messages::{UserMessage, UserMessageKind};
 use crate::commands::view::LoginActivity;
 use crate::domain::auth::ServerInfo;
 use crate::domain::call::devices::DeviceLists;
+use crate::domain::call::hands::HandSighting;
 use crate::domain::call::media::MediaEvent;
 use crate::domain::call::ring::{CallSignal, RingId};
 use crate::domain::call::sfu::{GrantResult, SfuId};
@@ -272,6 +273,20 @@ pub(super) enum CallEvent {
         call: u64,
         standings: Vec<(MemberKey, DeviceStanding)>,
     },
+    HandSent {
+        call: u64,
+        membership_event: String,
+        outcome: Result<String, String>,
+    },
+    HandLowered {
+        call: u64,
+        reaction: String,
+        ok: bool,
+    },
+    HandsFetched {
+        call: u64,
+        sightings: Vec<HandSighting>,
+    },
     DevicesListed {
         listing: u64,
         lists: DeviceLists,
@@ -299,7 +314,10 @@ impl CallEvent {
             | Self::StageWake { call }
             | Self::FacesReady { call, .. }
             | Self::KeysSent { call, .. }
-            | Self::Standings { call, .. } => Some(*call),
+            | Self::Standings { call, .. }
+            | Self::HandSent { call, .. }
+            | Self::HandLowered { call, .. }
+            | Self::HandsFetched { call, .. } => Some(*call),
             Self::Signal { .. }
             | Self::RingWindow { .. }
             | Self::Declined { .. }
@@ -327,6 +345,9 @@ impl CallEvent {
             Self::FacesReady { .. } => "CallFacesReady",
             Self::KeysSent { .. } => "CallKeysSent",
             Self::Standings { .. } => "CallStandings",
+            Self::HandSent { .. } => "CallHandSent",
+            Self::HandLowered { .. } => "CallHandLowered",
+            Self::HandsFetched { .. } => "CallHandsFetched",
             Self::DevicesListed { .. } => "CallDevicesListed",
             Self::Preview { .. } => "CallPreview",
             Self::DeviceTest { .. } => "CallDeviceTest",

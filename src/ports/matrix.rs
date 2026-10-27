@@ -8,6 +8,7 @@ use tokio_util::sync::CancellationToken;
 
 use crate::domain::account::AccountScope;
 use crate::domain::auth::{LoginCredentials, OAuthLoginData, ServerInfo, Session};
+use crate::domain::call::hands::HandSighting;
 use crate::domain::call::ring::{CallSignal, OutgoingRing, RingId};
 use crate::domain::call::sfu::{GrantRequest, GrantResult};
 use crate::domain::call::{
@@ -233,6 +234,7 @@ pub trait StoreAdoption: Send + Sync {
 pub trait SyncPort: Send + Sync {
     async fn start_sync(&self, on_sync: SyncSink, cancel: CancellationToken) -> SyncOutcome;
     fn set_selected_room(&self, room_id: Option<&RoomId>);
+    fn set_call_room(&self, room_id: Option<&RoomId>);
 }
 
 #[async_trait]
@@ -324,6 +326,9 @@ pub trait CallSignalPort: Send + Sync {
     ) -> KeySendReport;
     async fn device_standing(&self, members: &[MemberKey]) -> Vec<(MemberKey, DeviceStanding)>;
     async fn fetch_avatars(&self, mxcs: &[String]) -> usize;
+    async fn raise_hand(&self, room_id: &RoomId, membership_event: &str) -> Result<String>;
+    async fn lower_hand(&self, room_id: &RoomId, reaction: &str) -> Result<()>;
+    async fn raised_hands(&self, room_id: &RoomId, memberships: &[String]) -> Vec<HandSighting>;
 }
 
 #[async_trait]

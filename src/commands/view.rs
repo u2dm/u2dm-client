@@ -503,6 +503,7 @@ pub struct CallTile {
     pub muted: bool,
     pub muted_for_you: bool,
     pub speaking: bool,
+    pub hand: Option<usize>,
     pub video: Option<FeedId>,
 }
 
@@ -542,6 +543,7 @@ pub struct CallPerson {
     pub devices: usize,
     pub muted: bool,
     pub muted_for_you: bool,
+    pub hand: Option<usize>,
     pub sharing: bool,
     pub sees_no_video: bool,
     pub exposes_e2ee: bool,
@@ -610,6 +612,23 @@ pub enum ScreenView {
     Unavailable(ScreenRefusal),
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum HandView {
+    Unavailable,
+    Down,
+    Raising,
+    Up,
+    Lowering,
+    RaiseFailed,
+    LowerFailed,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HandNews {
+    pub serial: u64,
+    pub who: NamedUser,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[allow(clippy::struct_excessive_bools)]
 pub struct ActiveCall {
@@ -624,6 +643,9 @@ pub struct ActiveCall {
     pub microphone_level: Option<u8>,
     pub camera: CameraView,
     pub screen: ScreenView,
+    pub hand: HandView,
+    pub hands_raised: usize,
+    pub hand_news: Option<HandNews>,
     pub share_preview: bool,
     pub share_change_cancelled: u64,
     pub notice: Option<CallNotice>,

@@ -24,7 +24,7 @@ use async_trait::async_trait;
 use matrix_sdk::Client;
 use matrix_sdk::notification_settings::NotificationSettings;
 use matrix_sdk::ruma::events::space_order::SpaceOrderEventContent;
-use matrix_sdk::ruma::{OwnedRoomId, SpaceChildOrder};
+use matrix_sdk::ruma::{OwnedRoomId, RoomId as MatrixRoomId, SpaceChildOrder};
 use matrix_sdk::send_queue::SendQueueRoomError;
 use matrix_sdk::sync::RoomUpdates;
 use matrix_sdk_base::RoomInfoNotableUpdate;
@@ -76,38 +76,57 @@ enum LoopAction {
     Terminal(SyncOutcome),
 }
 
-type SelectedRoom = watch::Receiver<Option<RoomId>>;
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+struct Subscribed {
+    selected: Option<RoomId>,
+    call: Option<RoomId>,
+}
 
-async fn subscribe_selected_room(sync_service: &SyncService, room_id: Option<&RoomId>) {
-    let subscribed: Option<OwnedRoomId> =
-        room_id.and_then(|id| OwnedRoomId::try_from(id.as_ref()).ok());
-    sync_service
-        .room_list_service()
-        .set_room_subscriptions(subscribed.as_deref().as_slice())
-        .await;
-    if let Some(room_id) = subscribed {
-        tracing::debug!(%room_id, "subscribed the selected room");
-    } else {
-        tracing::debug!("no room is selected, so no room is subscribed");
+impl Subscribed {
+    fn rooms(&self) -> Vec<OwnedRoomId> {
+        let mut rooms: Vec<OwnedRoomId> = self
+            .selected
+            .iter()
+            .chain(&self.call)
+            .filter_map(|id| OwnedRoomId::try_from(id.as_ref()).ok())
+            .collect();
+        rooms.dedup();
+        rooms
     }
 }
 
-async fn start_with_selected_room(sync_service: &SyncService, selected: &mut SelectedRoom) {
-    let room_id = selected.borrow_and_update().clone();
-    subscribe_selected_room(sync_service, room_id.as_ref()).await;
+type Subscriptions = watch::Receiver<Subscribed>;
+
+async fn subscribe_rooms(sync_service: &SyncService, subscribed: &Subscribed) {
+    let rooms = subscribed.rooms();
+    let room_ids: Vec<&MatrixRoomId> = rooms.iter().map(AsRef::as_ref).collect();
+    sync_service
+        .room_list_service()
+        .set_room_subscriptions(&room_ids)
+        .await;
+    if rooms.is_empty() {
+        tracing::debug!("no room is selected or in a call, so no room is subscribed");
+    } else {
+        tracing::debug!(selected = ?subscribed.selected, call = ?subscribed.call, "subscribed the selected room and the call's room");
+    }
+}
+
+async fn start_with_subscriptions(sync_service: &SyncService, subscriptions: &mut Subscriptions) {
+    let subscribed = subscriptions.borrow_and_update().clone();
+    subscribe_rooms(sync_service, &subscribed).await;
     sync_service.start().await;
     tracing::info!("sliding sync service started");
 }
 
-async fn follow_selected_room(
+async fn follow_subscriptions(
     sync_service: &SyncService,
-    mut selected: SelectedRoom,
+    mut subscriptions: Subscriptions,
 ) -> SyncOutcome {
-    while selected.changed().await.is_ok() {
-        let room_id = selected.borrow_and_update().clone();
-        subscribe_selected_room(sync_service, room_id.as_ref()).await;
+    while subscriptions.changed().await.is_ok() {
+        let subscribed = subscriptions.borrow_and_update().clone();
+        subscribe_rooms(sync_service, &subscribed).await;
     }
-    SyncOutcome::Recoverable("the selected room channel closed".into())
+    SyncOutcome::Recoverable("the room subscriptions channel closed".into())
 }
 
 async fn resync(client: &Client, dir: &mut Directory) {
@@ -389,7 +408,7 @@ async fn drive_sync_service(
     client: &Client,
     media: Arc<MediaService>,
     on_sync: OnSync,
-    mut selected: SelectedRoom,
+    mut subscriptions: Subscriptions,
     cancel: CancellationToken,
 ) -> SyncOutcome {
     let sync_service = match build_sync_service(client).await {
@@ -402,7 +421,7 @@ async fn drive_sync_service(
     let notifications = client.notification_settings().await;
     let mut push_rules_rx = notifications.subscribe_to_changes();
 
-    start_with_selected_room(&sync_service, &mut selected).await;
+    start_with_subscriptions(&sync_service, &mut subscriptions).await;
 
     let outcome = tokio::select! {
         outcome = run_sync_loop(
@@ -414,7 +433,7 @@ async fn drive_sync_service(
             &on_sync,
             &mut avatars,
         ) => outcome,
-        outcome = follow_selected_room(&sync_service, selected) => outcome,
+        outcome = follow_subscriptions(&sync_service, subscriptions) => outcome,
         () = cancel.cancelled() => {
             tracing::debug!("sync cancelled, stopping sync service");
             SyncOutcome::Cancelled
@@ -427,14 +446,14 @@ async fn drive_sync_service(
 
 pub(super) struct MatrixSync {
     matrix: Arc<ClientHandle>,
-    selected: watch::Sender<Option<RoomId>>,
+    subscribed: watch::Sender<Subscribed>,
 }
 
 impl MatrixSync {
     pub(super) fn new(matrix: Arc<ClientHandle>) -> Self {
         Self {
             matrix,
-            selected: watch::Sender::new(None),
+            subscribed: watch::Sender::new(Subscribed::default()),
         }
     }
 }
@@ -451,18 +470,28 @@ impl SyncPort for MatrixSync {
             &client,
             Arc::clone(self.matrix.media()),
             on_sync,
-            self.selected.subscribe(),
+            self.subscribed.subscribe(),
             cancel,
         )
         .await
     }
 
     fn set_selected_room(&self, room_id: Option<&RoomId>) {
-        self.selected.send_if_modified(|selected| {
-            if selected.as_ref() == room_id {
+        self.subscribed.send_if_modified(|subscribed| {
+            if subscribed.selected.as_ref() == room_id {
                 return false;
             }
-            *selected = room_id.cloned();
+            subscribed.selected = room_id.cloned();
+            true
+        });
+    }
+
+    fn set_call_room(&self, room_id: Option<&RoomId>) {
+        self.subscribed.send_if_modified(|subscribed| {
+            if subscribed.call.as_ref() == room_id {
+                return false;
+            }
+            subscribed.call = room_id.cloned();
             true
         });
     }

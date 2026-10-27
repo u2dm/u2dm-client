@@ -1,14 +1,15 @@
 use std::collections::HashMap;
 use std::env;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Duration;
 
 use tokio::sync::mpsc;
-use tokio::time::sleep;
+use tokio::time::{Instant, sleep, sleep_until};
 
 use super::catalog::{Flag, Scenarios};
 use super::{data, room_info};
+use crate::domain::call::hands::HandSighting;
 use crate::domain::call::identity::{MediaIdentity, spellings};
 use crate::domain::call::keys::{KeyIndex, MediaKey, OWN_KEY_LEN, ReceivedKey};
 use crate::domain::call::media::{ConnectionQuality, MediaEvent, MediaSource};
@@ -321,6 +322,11 @@ pub const CATALOG: Scenarios = Scenarios {
             effect: "Jordan's camera stops arriving 3s after you connect, for 8s, then flows again",
             note: "with cameras; his tile shows his avatar and says the video stopped arriving",
         },
+        Flag {
+            value: "raised-hands",
+            effect: "Jordan's hand is already raised when you join; Nadia raises hers 3s after you join and lowers it at 9s; Jordan's membership is renewed at 12s, which lowers his",
+            note: "your own raise and lower echo back like the server's; a renewed membership of yours lowers your hand until it is raised again",
+        },
     ],
     notes: &[
         "each decline logs `demo: the call is declined`",
@@ -399,6 +405,10 @@ const POOR_FOR: Duration = Duration::from_secs(8);
 const LOST_AFTER: Duration = Duration::from_secs(7);
 const LOST_FOR: Duration = Duration::from_secs(5);
 const STALLED_FOR: Duration = Duration::from_secs(8);
+const NADIA_RAISES_AFTER: Duration = Duration::from_secs(3);
+const NADIA_LOWERS_AFTER: Duration = Duration::from_secs(9);
+const JORDAN_RENEWS_AFTER: Duration = Duration::from_secs(12);
+const HAND_ECHO_LAG: Duration = Duration::from_millis(150);
 pub const UNTRUSTED: &str = JORDAN;
 const DEMO_KEY: [u8; OWN_KEY_LEN] = [7; OWN_KEY_LEN];
 
@@ -463,6 +473,7 @@ pub struct Scenario {
     poor_connection: bool,
     connection_lost: bool,
     video_stalls: bool,
+    pub raised_hands: bool,
 }
 
 pub fn scenario() -> Scenario {
@@ -542,6 +553,7 @@ fn apply(scenario: &mut Scenario, flag: &str) {
         "poor-connection" => scenario.poor_connection = true,
         "connection-lost" => scenario.connection_lost = true,
         "video-stalls" => scenario.video_stalls = true,
+        "raised-hands" => scenario.raised_hands = true,
         other => tracing::warn!("unknown {ENV_VAR} flag: {other}"),
     }
 }
@@ -577,6 +589,7 @@ struct Joiner {
     declares: Declares,
     expires_after: Option<Duration>,
     sfu: &'static str,
+    revision: u32,
 }
 
 impl Joiner {
@@ -588,7 +601,15 @@ impl Joiner {
             declares: Declares::Nothing,
             expires_after: None,
             sfu: DEMO_SFU,
+            revision: 0,
         }
+    }
+
+    fn membership_event(self, room_id: &str) -> String {
+        format!(
+            "$demo-member-{room_id}-{}-{}-{}",
+            self.user, self.device, self.revision
+        )
     }
 
     fn identity(self) -> MediaIdentity {
@@ -605,7 +626,7 @@ impl Joiner {
         MemberKey::new(self.user, DeviceId::new(self.device))
     }
 
-    fn to_member(self, started_ms: u64, offset: u64) -> CallMember {
+    fn to_member(self, room_id: &str, started_ms: u64, offset: u64) -> CallMember {
         let created_ms = started_ms.saturating_add(offset);
         let expires_ms = self
             .expires_after
@@ -620,6 +641,7 @@ impl Joiner {
             avatar_mxc: Some(room_info::member_avatar(self.user)),
             device: DeviceId::new(self.device),
             member_id: format!("{}:{}", self.user, self.device),
+            membership_event: Some(self.membership_event(room_id)),
             created_ms,
             expires_ms,
             intent: Some(self.intent),
@@ -649,11 +671,33 @@ struct Watcher {
     events_tx: mpsc::UnboundedSender<MediaEvent>,
 }
 
+#[derive(Clone)]
+struct DemoHand {
+    room_id: String,
+    user: &'static str,
+    membership_event: String,
+    reaction: String,
+    raised_ms: u64,
+}
+
+impl DemoHand {
+    fn sighting(&self) -> HandSighting {
+        HandSighting {
+            by: self.user.to_owned(),
+            membership_event: self.membership_event.clone(),
+            reaction: self.reaction.clone(),
+            raised_ms: self.raised_ms,
+        }
+    }
+}
+
 #[derive(Default)]
 pub struct CallBook {
     calls: Mutex<Calls>,
     signals: Mutex<Option<mpsc::Sender<CallSignal>>>,
     watchers: Mutex<Vec<Watcher>>,
+    hands: Mutex<Vec<DemoHand>>,
+    reactions: AtomicU64,
 }
 
 pub fn own_transport() -> Transport {
@@ -675,6 +719,14 @@ pub fn shaped(mut room: Room) -> Room {
 
 impl CallBook {
     pub fn begin(&self) {
+        self.seat();
+        if let Ok(mut hands) = self.hands.lock() {
+            hands.clear();
+        }
+        self.hands_before_you(DESIGN);
+    }
+
+    fn seat(&self) {
         let shaped = scenario();
         let Ok(mut calls) = self.calls.lock() else {
             return;
@@ -748,7 +800,11 @@ impl CallBook {
             .flatten()
             .enumerate()
             .map(|(offset, joiner)| {
-                joiner.to_member(calls.started_ms, u64::try_from(offset).unwrap_or(0))
+                joiner.to_member(
+                    room.id.as_ref(),
+                    calls.started_ms,
+                    u64::try_from(offset).unwrap_or(0),
+                )
             })
             .filter(|member| member.expires_ms > now)
             .collect();
@@ -776,9 +832,11 @@ impl CallBook {
         let calls = self.calls.lock().ok()?;
         let joiners = calls.rooms.get(room_id)?;
         let offset = joiners.iter().position(|joiner| joiner.user == user)?;
-        let member = joiners
-            .get(offset)?
-            .to_member(calls.started_ms, u64::try_from(offset).unwrap_or(0));
+        let member = joiners.get(offset)?.to_member(
+            room_id,
+            calls.started_ms,
+            u64::try_from(offset).unwrap_or(0),
+        );
         Some(MemberSession {
             member_id: member.member_id,
             created_ms: member.created_ms,
@@ -825,8 +883,189 @@ impl CallBook {
                     .iter_mut()
                     .find(|joiner| joiner.user == data::own_user() && joiner.device == own_device())
             })
-            .map(|own| own.intent = intent)
+            .map(|own| {
+                own.intent = intent;
+                own.revision = own.revision.wrapping_add(1);
+            })
             .is_some()
+    }
+
+    pub fn own_membership_event(&self, room_id: &str) -> Option<String> {
+        let calls = self.calls.lock().ok()?;
+        calls
+            .rooms
+            .get(room_id)?
+            .iter()
+            .find(|joiner| joiner.user == data::own_user() && joiner.device == own_device())
+            .map(|own| own.membership_event(room_id))
+    }
+
+    fn membership_event_of(&self, room_id: &str, user: &str) -> Option<String> {
+        let calls = self.calls.lock().ok()?;
+        calls
+            .rooms
+            .get(room_id)?
+            .iter()
+            .find(|joiner| joiner.user == user && joiner.on_main_device())
+            .map(|joiner| joiner.membership_event(room_id))
+    }
+
+    fn renew(&self, room_id: &str, user: &str) {
+        if let Ok(mut calls) = self.calls.lock()
+            && let Some(joiners) = calls.rooms.get_mut(room_id)
+        {
+            for joiner in joiners.iter_mut().filter(|joiner| joiner.user == user) {
+                joiner.revision = joiner.revision.wrapping_add(1);
+            }
+        }
+    }
+
+    fn next_reaction(&self) -> String {
+        let reaction = self.reactions.fetch_add(1, Ordering::Relaxed);
+        format!("$demo-hand-{reaction}")
+    }
+
+    fn put_hand(&self, room_id: &str, user: &'static str, membership_event: String) -> DemoHand {
+        let hand = DemoHand {
+            room_id: room_id.to_owned(),
+            user,
+            membership_event,
+            reaction: self.next_reaction(),
+            raised_ms: unix_now_ms(),
+        };
+        if let Ok(mut hands) = self.hands.lock() {
+            hands.push(hand.clone());
+        }
+        hand
+    }
+
+    fn take_hand(&self, room_id: &str, reaction: &str) -> bool {
+        let Ok(mut hands) = self.hands.lock() else {
+            return false;
+        };
+        let before = hands.len();
+        hands.retain(|hand| !(hand.room_id == room_id && hand.reaction == reaction));
+        hands.len() != before
+    }
+
+    fn hand_of(&self, room_id: &str, user: &str) -> Option<String> {
+        self.hands
+            .lock()
+            .ok()?
+            .iter()
+            .find(|hand| hand.room_id == room_id && hand.user == user)
+            .map(|hand| hand.reaction.clone())
+    }
+
+    pub fn raise_own_hand(&self, room_id: &str, membership_event: &str) -> String {
+        let hand = self.put_hand(room_id, data::own_user(), membership_event.to_owned());
+        tracing::info!(
+            room_id,
+            reaction = hand.reaction,
+            "demo: you raised your hand"
+        );
+        echo(CallSignal::Hand {
+            room_id: RoomId::new(room_id),
+            sighting: hand.sighting(),
+        });
+        hand.reaction
+    }
+
+    pub fn lower_own_hand(&self, room_id: &str, reaction: &str) -> bool {
+        if !self.take_hand(room_id, reaction) {
+            return false;
+        }
+        tracing::info!(room_id, reaction, "demo: you lowered your hand");
+        echo(CallSignal::Redacted {
+            room_id: RoomId::new(room_id),
+            event: reaction.to_owned(),
+        });
+        true
+    }
+
+    pub fn raised_on(&self, room_id: &str, memberships: &[String]) -> Vec<HandSighting> {
+        self.hands
+            .lock()
+            .map(|hands| {
+                hands
+                    .iter()
+                    .filter(|hand| {
+                        hand.room_id == room_id && memberships.contains(&hand.membership_event)
+                    })
+                    .map(DemoHand::sighting)
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
+
+    pub fn hands_before_you(&self, room_id: &str) {
+        if !scenario().raised_hands {
+            return;
+        }
+        if self.hand_of(room_id, JORDAN).is_some() {
+            return;
+        }
+        if let Some(membership_event) = self.membership_event_of(room_id, JORDAN) {
+            let hand = self.put_hand(room_id, JORDAN, membership_event);
+            tracing::info!(
+                room_id,
+                reaction = hand.reaction,
+                "demo: Jordan's hand is raised before you join"
+            );
+        }
+    }
+
+    pub async fn play_hands(&self, room_id: &str, renewed: impl Fn() + Send) {
+        if !scenario().raised_hands {
+            return;
+        }
+        let start = Instant::now();
+        sleep_until(start + NADIA_RAISES_AFTER).await;
+        let Some(reaction) = self.nadia_raises(room_id).await else {
+            return;
+        };
+        sleep_until(start + NADIA_LOWERS_AFTER).await;
+        self.nadia_lowers(room_id, reaction).await;
+        sleep_until(start + JORDAN_RENEWS_AFTER).await;
+        self.jordan_renews(room_id);
+        renewed();
+    }
+
+    async fn nadia_raises(&self, room_id: &str) -> Option<String> {
+        let membership_event = self.membership_event_of(room_id, NADIA)?;
+        let hand = self.put_hand(room_id, NADIA, membership_event);
+        tracing::info!(
+            room_id,
+            reaction = hand.reaction,
+            "demo: Nadia raises her hand"
+        );
+        let reaction = hand.reaction.clone();
+        self.signal(CallSignal::Hand {
+            room_id: RoomId::new(room_id),
+            sighting: hand.sighting(),
+        })
+        .await;
+        Some(reaction)
+    }
+
+    async fn nadia_lowers(&self, room_id: &str, reaction: String) {
+        if !self.take_hand(room_id, &reaction) {
+            return;
+        }
+        tracing::info!(room_id, "demo: Nadia lowers her hand");
+        self.signal(CallSignal::Redacted {
+            room_id: RoomId::new(room_id),
+            event: reaction,
+        })
+        .await;
+    }
+
+    fn jordan_renews(&self, room_id: &str) {
+        tracing::info!(room_id, "demo: Jordan's call membership is renewed");
+        self.renew(room_id, JORDAN);
+        if let Some(reaction) = self.hand_of(room_id, JORDAN) {
+            self.take_hand(room_id, &reaction);
+        }
     }
 
     fn say_intent(&self, room_id: &str, user: &str, intent: CallIntent) {
@@ -1041,6 +1280,13 @@ impl CallBook {
             tracing::debug!("demo: the call signals follower is gone");
         }
     }
+}
+
+fn echo(signal: CallSignal) {
+    tokio::spawn(async move {
+        sleep(HAND_ECHO_LAG).await;
+        book().signal(signal).await;
+    });
 }
 
 pub enum Step {

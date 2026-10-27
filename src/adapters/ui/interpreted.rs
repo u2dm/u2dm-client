@@ -51,8 +51,8 @@ use super::router::{DraftVerdict, EditedRow, EditedText};
 use super::schema::{
     account_activities, account_steps, attachment_kinds, audio_kinds, auth_stages,
     body_line_fields, body_piece_fields, call_cameras, call_connection_fields, call_device_fields,
-    call_device_kinds, call_device_statuses, call_device_troubles, call_link_states, call_mics,
-    call_notices, call_offers, call_person_fields, call_phases, call_refusals,
+    call_device_kinds, call_device_statuses, call_device_troubles, call_hands, call_link_states,
+    call_mics, call_notices, call_offers, call_person_fields, call_phases, call_refusals,
     call_screen_refusals, call_screens, call_tile_fields, call_tile_marks, child_accesses,
     connection_states, create_room_statuses, decryption_failures, deliveries, device_trusts,
     direct_chats, emoji_arts, encryption_activities, encryption_standings, encryption_steps,
@@ -80,10 +80,10 @@ use crate::commands::ui::{ComposerActivity, TimelineVisibility, ViewportChanged,
 use crate::commands::view::{
     AccountActivity, AccountStep, AppViewState, AttachmentKind, AuthStage, CallPhase, CameraView,
     ChildAccess, CreateRoomStatus, DeviceStatus, DeviceTrouble, DirectChat, EncryptionActivity,
-    EncryptionStep, InviteeState, JoinRefusal, LinkView, LoginActivity, LoginStep, MicrophoneView,
-    PendingAnswer, PendingModeration, PeopleSearchStatus, PreviewTrouble, ReadersStatus,
-    RoomInfoPlacement, RoomPreviewSheet, RoomScope, RosterStatus, SourceState, SpaceIndexStatus,
-    UpgradeLink, VerifyOffer,
+    EncryptionStep, HandView, InviteeState, JoinRefusal, LinkView, LoginActivity, LoginStep,
+    MicrophoneView, PendingAnswer, PendingModeration, PeopleSearchStatus, PreviewTrouble,
+    ReadersStatus, RoomInfoPlacement, RoomPreviewSheet, RoomScope, RosterStatus, SourceState,
+    SpaceIndexStatus, UpgradeLink, VerifyOffer,
 };
 use crate::domain::auth::LoginMethod;
 use crate::domain::call::devices::DeviceKind;
@@ -292,6 +292,7 @@ call_link_states!(impl_slint_enum LinkView "CallLinkState";);
 call_mics!(impl_slint_enum MicrophoneView "CallMic";);
 call_cameras!(impl_slint_enum CameraView "CallCamera";);
 call_screens!(impl_slint_enum CallScreenMark "CallScreen";);
+call_hands!(impl_slint_enum HandView "CallHand";);
 call_screen_refusals!(impl_slint_enum ScreenRefusal "CallScreenRefusal";);
 call_tile_marks!(impl_slint_enum CallTileMark "CallTileState";);
 call_device_kinds!(impl_slint_enum DeviceKind "CallDeviceKind";);

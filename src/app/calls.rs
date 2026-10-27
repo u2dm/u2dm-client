@@ -369,7 +369,30 @@ impl Calls {
                 }
             }
             CallSignal::Key { room_id, key } => self.key_arrived(&room_id, *key),
+            CallSignal::Hand { room_id, sighting } => {
+                self.change_joined_in(&room_id, directory, |joined| {
+                    joined.hand_sighted(sighting, true);
+                });
+            }
+            CallSignal::Redacted { room_id, event } => {
+                self.change_joined_in(&room_id, directory, |joined| joined.hand_redacted(&event));
+            }
         }
+    }
+
+    fn change_joined_in(
+        &mut self,
+        room_id: &RoomId,
+        directory: &RoomDirectory,
+        change: impl FnOnce(&mut Joined),
+    ) {
+        if self.joined_room() == Some(room_id) {
+            self.change_joined(directory, change);
+        }
+    }
+
+    pub(super) fn joined_room(&self) -> Option<&RoomId> {
+        self.joined.as_ref().map(|joined| &joined.room_id)
     }
 
     fn key_arrived(&mut self, room_id: &RoomId, key: ReceivedKey) {
@@ -1451,6 +1474,17 @@ impl Calls {
         self.change_joined(directory, |joined| joined.mute_for_me(user_id, on));
     }
 
+    pub(super) fn raise_hand(&mut self, on: bool, directory: &RoomDirectory) {
+        let Some(joined) = self.joined.as_mut() else {
+            return;
+        };
+        let span = joined.span.clone();
+        let _in_call = span.enter();
+        let effects = joined.raise_hand(on);
+        self.run_effects(effects);
+        self.publish(directory);
+    }
+
     fn change_joined(&mut self, directory: &RoomDirectory, change: impl FnOnce(&mut Joined)) {
         let Some(joined) = self.joined.as_mut() else {
             return;
@@ -1552,6 +1586,29 @@ impl Calls {
             CallEvent::Standings { standings, .. } => {
                 if let Some(joined) = self.joined.as_mut() {
                     joined.standings_known(standings);
+                }
+                self.publish(directory);
+            }
+            CallEvent::HandSent {
+                membership_event,
+                outcome,
+                ..
+            } => {
+                if let Some(joined) = self.joined.as_mut() {
+                    let effects = joined.hand_sent(membership_event, outcome);
+                    self.run_effects(effects);
+                }
+                self.publish(directory);
+            }
+            CallEvent::HandLowered { reaction, ok, .. } => {
+                if let Some(joined) = self.joined.as_mut() {
+                    joined.hand_lowered(&reaction, ok);
+                }
+                self.publish(directory);
+            }
+            CallEvent::HandsFetched { sightings, .. } => {
+                if let Some(joined) = self.joined.as_mut() {
+                    joined.hands_fetched(sightings);
                 }
                 self.publish(directory);
             }
@@ -1735,6 +1792,11 @@ impl Calls {
                     }
                     .instrument(span),
                 );
+            }
+            Effect::RaiseHand { .. } | Effect::LowerHand { .. } | Effect::FetchHands(_) => {
+                let port = Arc::clone(&own.port);
+                self.actions
+                    .spawn(hand_effect(port, room_id, call, effect, events).instrument(span));
             }
         }
     }
@@ -2051,6 +2113,50 @@ fn running_intent(directory: &RoomDirectory, room_id: &RoomId) -> Option<CallInt
         .room(room_id)
         .and_then(|room| room.call.as_deref())
         .map(|call| call.intent().unwrap_or(CallIntent::Voice))
+}
+
+async fn hand_effect(
+    port: Arc<dyn CallSignalPort>,
+    room_id: RoomId,
+    call: u64,
+    effect: Effect,
+    events: EventSender,
+) {
+    let event = match effect {
+        Effect::RaiseHand { membership_event } => {
+            let outcome = port
+                .raise_hand(&room_id, &membership_event)
+                .await
+                .map_err(|e| e.to_string());
+            CallEvent::HandSent {
+                call,
+                membership_event,
+                outcome,
+            }
+        }
+        Effect::LowerHand { reaction } => {
+            let lowered = port.lower_hand(&room_id, &reaction).await;
+            if let Err(e) = &lowered {
+                tracing::warn!(%room_id, "a raised hand was not lowered: {e}");
+            }
+            CallEvent::HandLowered {
+                call,
+                reaction,
+                ok: lowered.is_ok(),
+            }
+        }
+        Effect::FetchHands(memberships) => {
+            let sightings = port.raised_hands(&room_id, &memberships).await;
+            tracing::debug!(%room_id, asked = memberships.len(), found = sightings.len(), "asked which hands are raised");
+            CallEvent::HandsFetched { call, sightings }
+        }
+        Effect::SendKey { .. }
+        | Effect::WakeKeys(_)
+        | Effect::Grant(_)
+        | Effect::Announce { .. }
+        | Effect::Standings(_) => return,
+    };
+    send(&events, event);
 }
 
 fn keys_sent(report: &KeySendReport) {

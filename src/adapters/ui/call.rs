@@ -238,6 +238,8 @@ fn apply_active<B: UiBackend>(
         w.set_int(IntProp::ShareCount, 0);
         w.set_int(IntProp::StartedShareSerial, 0);
         w.set_int(IntProp::EndedShareSerial, 0);
+        w.set_int(IntProp::HandNewsSerial, 0);
+        w.set_int(IntProp::HandsRaised, 0);
         w.set_int(IntProp::ShareChangeCancelled, 0);
         w.set_int(IntProp::DeviceNewsSerial, 0);
         apply_names(
@@ -289,6 +291,7 @@ fn apply_active<B: UiBackend>(
         active.microphone_level.map_or(0, i32::from),
     );
     w.set_call_camera(active.camera);
+    apply_hands(w, active);
     w.set_call_screen(call_screen_mark(active.screen));
     if let ScreenView::Unavailable(refusal) = active.screen {
         w.set_call_screen_refusal(refusal);
@@ -418,6 +421,25 @@ fn apply_stage<B: UiBackend>(
 
 fn shown_name(who: Option<&NamedUser>) -> SharedString {
     who.map_or_else(SharedString::new, |who| SharedString::from(who.shown()))
+}
+
+fn apply_hands(w: &impl UiProps, active: &ActiveCall) {
+    w.set_call_hand(active.hand);
+    w.set_int(
+        IntProp::HandsRaised,
+        i32::try_from(active.hands_raised).unwrap_or(i32::MAX),
+    );
+    w.set_string(
+        StringProp::HandNews,
+        shown_name(active.hand_news.as_ref().map(|news| &news.who)),
+    );
+    w.set_int(
+        IntProp::HandNewsSerial,
+        active
+            .hand_news
+            .as_ref()
+            .map_or(0, |news| i32::try_from(news.serial).unwrap_or(i32::MAX)),
+    );
 }
 
 fn apply_share_news(w: &impl UiProps, news: Option<&ShareNews>, who: StringProp, serial: IntProp) {

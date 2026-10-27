@@ -240,6 +240,7 @@ async fn read(room: &Room, event: &MembershipEvent, now_ms: u64) -> Reading {
         avatar_mxc,
         device: DeviceId::new(session.device),
         member_id: session.member_id,
+        membership_event: event.event_id.as_ref().map(ToString::to_string),
         created_ms: session.created_ms,
         expires_ms: session.expires_ms,
         intent: intent(content),

@@ -1,5 +1,6 @@
 pub mod device_test;
 pub mod devices;
+pub mod hands;
 pub mod identity;
 pub mod keys;
 pub mod media;
@@ -159,6 +160,7 @@ pub struct CallMember {
     pub avatar_mxc: Option<String>,
     pub device: DeviceId,
     pub member_id: String,
+    pub membership_event: Option<String>,
     pub created_ms: u64,
     pub expires_ms: u64,
     pub intent: Option<CallIntent>,

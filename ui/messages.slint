@@ -1,4 +1,4 @@
-import { CallCamera, CallDeviceKind, CallDeviceStatus, CallDeviceTrouble, CallLinkState, CallMic, CallNotice, CallPhase, CallPreviewTrouble, CallRefusal, CallScreen, CallScreenRefusal, CallSheetPreview, CallTestPhase, CallTileState, Delivery, EmojiArt, MediaFailure, PresenceLine, PreviewKind, RoomCallMark, ServiceKind, ShieldReason, UpgradeLink, UserMessageKind } from "./enums.slint";
+import { CallCamera, CallDeviceKind, CallDeviceStatus, CallDeviceTrouble, CallHand, CallLinkState, CallMic, CallNotice, CallPhase, CallPreviewTrouble, CallRefusal, CallScreen, CallScreenRefusal, CallSheetPreview, CallTestPhase, CallTileState, Delivery, EmojiArt, MediaFailure, PresenceLine, PreviewKind, RoomCallMark, ServiceKind, ShieldReason, UpgradeLink, UserMessageKind } from "./enums.slint";
 import { CallStates } from "./call-states.slint";
 import { CallPersonEntry, CallTileEntry } from "./types.slint";
 
@@ -1291,9 +1291,9 @@ export global CallWords {
         return name;
     }
 
-    public pure function person-detail(person: CallPersonEntry) -> string {
+    public pure function person-detail(person: CallPersonEntry, hands: int) -> string {
         let muted = root.listed(person.muted && CallStates.hears(person.state) ? @tr("Muted") : "", person.muted-for-you ? root.muted-for-you() : "");
-        let status = root.listed(root.tile(person.state), muted);
+        let status = root.listed(person.hand > 0 ? root.hand-raised(person.hand, hands) : "", root.listed(root.tile(person.state), muted));
         let share = !person.sharing ? ""
             : person.you ? @tr("Sharing your screen")
             : @tr("Sharing their screen");
@@ -1354,6 +1354,53 @@ export global CallWords {
 
     public pure function call-back(caller: string) -> string {
         return @tr("Call back {}", caller);
+    }
+
+    public pure function hand-raised(position: int, count: int) -> string {
+        return @tr("Hand raised, {} of {}", position, max(position, count));
+    }
+
+    public pure function raise-your-hand() -> string {
+        return @tr("Raise your hand");
+    }
+
+    public pure function hand(hand: CallHand) -> string {
+        if hand == CallHand.up || hand == CallHand.lowering {
+            return @tr("Lower your hand");
+        }
+        if hand == CallHand.raise-failed {
+            return @tr("Try raising your hand again");
+        }
+        if hand == CallHand.lower-failed {
+            return @tr("Try lowering your hand again");
+        }
+        return root.raise-your-hand();
+    }
+
+    public pure function hand-state(hand: CallHand) -> string {
+        if hand == CallHand.up {
+            return @tr("Your hand is raised");
+        }
+        if hand == CallHand.raising {
+            return @tr("Raising your hand");
+        }
+        if hand == CallHand.lowering {
+            return @tr("Lowering your hand");
+        }
+        if hand == CallHand.raise-failed {
+            return @tr("Your hand could not be raised");
+        }
+        if hand == CallHand.lower-failed {
+            return @tr("Your hand could not be lowered");
+        }
+        if hand == CallHand.unavailable {
+            return @tr("You can raise your hand once you are in the call");
+        }
+        return @tr("Your hand is down");
+    }
+
+    public pure function hand-said(name: string) -> string {
+        return @tr("{} raised their hand", name);
     }
 
     public pure function muted-for-you() -> string {

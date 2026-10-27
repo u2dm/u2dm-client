@@ -57,7 +57,9 @@ component ShareOffer inherits HorizontalLayout {
 component SelfChip inherits Rectangle {
     in property <CallTileEntry> tile;
 
-    property <string> words: CallWords.self-chip(root.tile.muted, root.tile.speaking);
+    property <string> words: CallWords.listed(
+        CallWords.self-chip(root.tile.muted, root.tile.speaking),
+        root.tile.hand > 0 ? CallWords.hand-raised(root.tile.hand, CallView.hands-raised) : "");
 
     width: Metrics.call-self-chip;
     height: self.width;
@@ -96,6 +98,22 @@ component SelfChip inherits Rectangle {
             icon: IconSet.MicOff;
             size: IconSize.xs;
             stroke: AppStyle.foreground-strong;
+            accessible-role: none;
+        }
+    }
+
+    if root.tile.hand > 0: Rectangle {
+        x: root.width - self.width + Space.xs;
+        y: -Space.xs;
+        width: Metrics.call-badge;
+        height: self.width;
+        border-radius: self.width / 2;
+        background: AppStyle.call-hand;
+
+        IconDisplay {
+            icon: IconSet.Hand;
+            size: IconSize.xs;
+            stroke: AppStyle.on-call-hand;
             accessible-role: none;
         }
     }

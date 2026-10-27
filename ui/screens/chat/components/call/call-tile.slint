@@ -8,7 +8,40 @@ import { CallStates } from "../../../../call-states.slint";
 import { CallPanel, TipScope } from "../../../../local.slint";
 import { CallTileEntry } from "../../../../types.slint";
 import { CallWords } from "../../../../messages.slint";
+import { CallView } from "../../../../views.slint";
 import { AppStyle, Fonts, Glyph, IconSize, Metrics, Radius, Size, Space, Weight } from "../../../../theme.slint";
+
+component HandBadge inherits Rectangle {
+    in property <int> position;
+
+    background: AppStyle.call-hand;
+    border-radius: self.height / 2;
+    accessible-role: image;
+    accessible-label: CallWords.hand-raised(root.position, CallView.hands-raised);
+
+    HorizontalLayout {
+        padding-left: Space.sm;
+        padding-right: Space.sm;
+        spacing: Space.xs;
+
+        IconDisplay {
+            cross-axis-self-alignment: center;
+            icon: IconSet.Hand;
+            size: IconSize.xs;
+            stroke: AppStyle.on-call-hand;
+            accessible-role: none;
+        }
+
+        Text {
+            text: root.position;
+            font-size: Fonts.caption;
+            font-weight: Weight.semibold;
+            color: AppStyle.on-call-hand;
+            vertical-alignment: center;
+            accessible-role: none;
+        }
+    }
+}
 
 component TileName inherits HorizontalLayout {
     in property <CallTileEntry> tile;
@@ -17,6 +50,11 @@ component TileName inherits HorizontalLayout {
     in property <bool> alerts;
 
     spacing: Space.xs;
+
+    if root.tile.hand > 0: HandBadge {
+        cross-axis-self-alignment: center;
+        position: root.tile.hand;
+    }
 
     if root.alerts: IconDisplay {
         cross-axis-self-alignment: center;
@@ -362,9 +400,11 @@ export component CallTileView inherits Rectangle {
     accessible-role: groupbox;
     accessible-label: root.title;
     accessible-description: CallWords.listed(
-        !root.shows-video ? root.state-text
-            : CallWords.listed(root.tile.screen ? @tr("Screen share") : @tr("Camera on"), root.state-text),
-        root.tile.muted-for-you ? CallWords.muted-for-you() : "");
+        root.tile.hand > 0 ? CallWords.hand-raised(root.tile.hand, CallView.hands-raised) : "",
+        CallWords.listed(
+            !root.shows-video ? root.state-text
+                : CallWords.listed(root.tile.screen ? @tr("Screen share") : @tr("Camera on"), root.state-text),
+            root.tile.muted-for-you ? CallWords.muted-for-you() : ""));
 
     Rectangle {
         background: AppStyle.call-tile;

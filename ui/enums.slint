@@ -495,6 +495,16 @@ export enum CallScreen {
     unavailable,
 }
 
+export enum CallHand {
+    unavailable,
+    down,
+    raising,
+    up,
+    lowering,
+    raise-failed,
+    lower-failed,
+}
+
 export enum CallScreenRefusal {
     not-wayland,
     no-portal,

@@ -29,6 +29,7 @@ use crate::adapters::draft_size::{self, MediaDraft, RoomFacts};
 use crate::adapters::markdown::RoomMentions;
 use crate::adapters::{body_emoji, video};
 use crate::domain::auth::{AuthMethod, LoginCredentials, OAuthLoginData, ServerInfo, Session};
+use crate::domain::call::hands::HandSighting;
 use crate::domain::call::identity::spellings;
 use crate::domain::call::ring::{CallSignal, OutgoingRing, RingId};
 use crate::domain::call::sfu::{GrantFailure, GrantRequest, GrantResult, SfuGrant};
@@ -1631,6 +1632,10 @@ impl SyncPort for DemoAuthed {
     fn set_selected_room(&self, room_id: Option<&RoomId>) {
         tracing::debug!(?room_id, "demo: the selected room needs no subscription");
     }
+
+    fn set_call_room(&self, room_id: Option<&RoomId>) {
+        tracing::debug!(?room_id, "demo: the call's room needs no subscription");
+    }
 }
 
 impl DemoAuthed {
@@ -2035,6 +2040,21 @@ impl DemoAuthed {
         tokio::spawn(async move {
             sleep(room_info::ECHO_LAG).await;
             sink(SyncEvent::Rooms(current_lists(&lists).rooms().into()));
+        });
+    }
+
+    fn spawn_hands(&self, room_id: &RoomId) {
+        let room_id = room_id.clone();
+        let sink = self.sync_sink();
+        let lists = Arc::clone(&self.lists);
+        tokio::spawn(async move {
+            calls::book()
+                .play_hands(room_id.as_ref(), || {
+                    if let Some(sink) = &sink {
+                        sink(SyncEvent::Rooms(current_lists(&lists).rooms().into()));
+                    }
+                })
+                .await;
         });
     }
 
@@ -2544,6 +2564,26 @@ impl CallSignalPort for DemoAuthed {
         room_info::pause_avatars().await;
         media::fetch_member_avatars(mxcs)
     }
+
+    async fn raise_hand(&self, room_id: &RoomId, membership_event: &str) -> Result<String> {
+        calls::pause().await;
+        Ok(calls::book().raise_own_hand(room_id.as_ref(), membership_event))
+    }
+
+    async fn lower_hand(&self, room_id: &RoomId, reaction: &str) -> Result<()> {
+        calls::pause().await;
+        if !calls::book().lower_own_hand(room_id.as_ref(), reaction) {
+            tracing::info!(%room_id, reaction, "demo: that hand was already down");
+        }
+        Ok(())
+    }
+
+    async fn raised_hands(&self, room_id: &RoomId, memberships: &[String]) -> Vec<HandSighting> {
+        calls::pause().await;
+        let found = calls::book().raised_on(room_id.as_ref(), memberships);
+        tracing::info!(%room_id, asked = memberships.len(), found = found.len(), "demo: the raised hands are read");
+        found
+    }
 }
 
 #[async_trait]
@@ -2596,9 +2636,12 @@ impl RtcMembershipPort for DemoAuthed {
         self.echo_rooms();
         if first {
             spawn_others_keys(room_id);
+            self.spawn_hands(room_id);
         }
         Ok(SentMembership {
-            event_id: format!("$demo-membership-{room_id}"),
+            event_id: calls::book()
+                .own_membership_event(room_id.as_ref())
+                .unwrap_or_else(|| format!("$demo-membership-{room_id}")),
             created_ms: membership.created_ms.unwrap_or_else(unix_now_ms),
         })
     }

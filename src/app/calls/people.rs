@@ -31,6 +31,7 @@ pub(super) fn of_tiles(
         you.sharing |= shared_by_you;
         people.insert(0, you);
     }
+    people.sort_by_key(|person| (!person.you, person.hand.is_none(), person.hand));
     people
 }
 
@@ -56,6 +57,7 @@ fn first_device(
         devices: 1,
         muted: tile.muted,
         muted_for_you: tile.muted_for_you,
+        hand: tile.hand,
         sharing: false,
         sees_no_video: sees_no_video(declared),
         exposes_e2ee: exposes_e2ee(declared),
@@ -73,6 +75,10 @@ fn add_device(
     person.devices += 1;
     person.muted &= tile.muted;
     person.muted_for_you |= tile.muted_for_you;
+    person.hand = match (person.hand, tile.hand) {
+        (Some(first), Some(other)) => Some(first.min(other)),
+        (first, other) => first.or(other),
+    };
     person.sees_no_video &= sees_no_video(declared);
     person.exposes_e2ee |= exposes_e2ee(declared);
     if person.avatar_mxc.is_none() {

@@ -9,7 +9,7 @@ import { Actions } from "../../../../actions.slint";
 import { CallPanel, Shell, TipScope } from "../../../../local.slint";
 import { CallView, DirectoryView, SpaceIndexView } from "../../../../views.slint";
 import { AppStyle, Fonts, IconSize, Metrics, Motion, Radius, Size, Space, Stroke, Weight } from "../../../../theme.slint";
-import { CallCameraButton, CallKey, CallLeaveButton, CallMicButton, CallShareButton } from "./call-controls.slint";
+import { CallCameraButton, CallHandButton, CallKey, CallLeaveButton, CallMicButton, CallShareButton } from "./call-controls.slint";
 import { CallStatus, ShareStatus } from "./call-status.slint";
 
 component LineTarget inherits ClickArea {
@@ -246,9 +246,17 @@ export component CallDock inherits Rectangle {
         : root.tells-shares ? shares.preferred-height + root.gap
         : 0px;
     property <length> show-width: root.offers-button ? show-call.preferred-width + root.gap : 0px;
+    property <length> hand-width: Metrics.call-control + root.gap;
+    property <length> base-controls: 4 * (Metrics.call-control + root.gap) + leave.preferred-width;
+    property <bool> hand-fits: !root.failed
+        && root.width >= 2 * root.pad + root.line-least + root.show-width + root.gap + root.base-controls + root.hand-width;
+    property <bool> hand-fits-with-stage: !root.failed
+        && root.width >= 2 * root.pad + root.line-least-with-stage + root.gap + root.base-controls + root.hand-width;
     property <length> controls-width: root.failed
         ? (CallView.failure-retry ? retry.preferred-width + root.gap : 0px) + dismiss.width
-        : 4 * (Metrics.call-control + root.gap) + leave.preferred-width;
+        : root.base-controls + (root.hand-fits ? root.hand-width : 0px);
+    property <length> controls-width-with-stage: root.failed ? root.controls-width
+        : root.base-controls + (root.hand-fits-with-stage ? root.hand-width : 0px);
     property <bool> sharing: !root.failed && CallView.screen == CallScreen.on;
     property <length> line-with-share: line.least-alone + (root.sharing ? line.share-width : 0px);
     property <bool> share-apart: root.sharing && root.width - 2 * root.pad - root.show-width < root.line-with-share;
@@ -268,7 +276,7 @@ export component CallDock inherits Rectangle {
     property <length> line-least-with-stage: root.failed ? root.line-least
         : root.share-apart-with-stage ? line.least-alone
         : root.line-with-share;
-    property <bool> stacked-with-stage: root.width < 2 * root.pad + root.line-least-with-stage + root.gap + root.controls-width;
+    property <bool> stacked-with-stage: root.width < 2 * root.pad + root.line-least-with-stage + root.gap + root.controls-width-with-stage;
     out property <length> height-with-stage: (root.status-taken-with-stage ? status.preferred-height + root.gap : 0px)
         + (root.share-apart-with-stage ? Size.sm + root.gap : 0px)
         + (root.stacked-with-stage ? Metrics.call-dock-stacked : Metrics.call-dock);
@@ -590,13 +598,20 @@ export component CallDock inherits Rectangle {
     }
 
     share := CallShareButton {
-        x: devices.x - root.gap - self.width;
+        x: (root.hand-fits ? hand.x : devices.x) - root.gap - self.width;
         y: root.controls-y;
         visible: !root.failed;
         above-modal: root.above-modal;
         explain => {
             root.explains-share = !root.explains-share;
         }
+    }
+
+    hand := CallHandButton {
+        x: devices.x - root.gap - self.width;
+        y: root.controls-y;
+        visible: root.hand-fits;
+        above-modal: root.above-modal;
     }
 
     devices := IconButton {
