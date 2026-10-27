@@ -230,6 +230,13 @@ pub fn raise_hand(tx: &Tx, on: bool) {
     send_command(tx, UiCommand::RaiseHand(on));
 }
 
+pub fn send_call_reaction(tx: &Tx, name: String) {
+    if name.is_empty() {
+        return;
+    }
+    send_command(tx, UiCommand::SendCallReaction(name));
+}
+
 pub fn mute_for_me(tx: &Tx, user_id: String, on: bool) {
     if user_id.is_empty() {
         return;

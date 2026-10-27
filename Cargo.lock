@@ -8690,6 +8690,7 @@ dependencies = [
  "tracing-subscriber",
  "u2dm-ui",
  "unicode-normalization",
+ "unicode-segmentation",
  "url",
  "wayland-client",
  "wayland-protocols",

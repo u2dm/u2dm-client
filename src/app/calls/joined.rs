@@ -7,8 +7,10 @@ use tokio::time::Instant;
 use tracing::Span;
 
 mod hands;
+mod reactions;
 
 use self::hands::HandRequest;
+use self::reactions::ReactionRequest;
 use super::device_test::{PERCENT, level_percent};
 use super::devices::Devices;
 use super::media::MediaCommand;
@@ -16,8 +18,8 @@ use super::people;
 use super::stage::Stage;
 use crate::commands::view::{
     ActiveCall, CallFailure, CallNotice, CallPhase, CallTile, CameraView, CantDecrypt, HandNews,
-    LinkView, MicrophoneView, MissingMedia, ScreenView, ServerDetails, TileKey, TileKind,
-    TileState,
+    LinkView, MicrophoneView, MissingMedia, ReactionNews, ScreenView, ServerDetails, TileKey,
+    TileKind, TileState,
 };
 use crate::domain::call::devices::{
     DeviceChoice, DeviceChoices, DeviceKey, DeviceKind, DeviceLists,
@@ -30,6 +32,7 @@ use crate::domain::call::keys::{
 use crate::domain::call::media::{
     ConnectionQuality, Decryption, MediaChoice, MediaEvent, MediaSource, Microphone, SfuState,
 };
+use crate::domain::call::reactions::{ReactionOption, Reactions};
 use crate::domain::call::ring::{RingId, RingKind};
 use crate::domain::call::sfu::{GrantRequest, GrantResult, SfuId, SfuRole, SfuTarget, plan};
 use crate::domain::call::stats::{ConnectionReading, Rates, ReceivedVideo, SentVideo, rates};
@@ -312,6 +315,10 @@ pub(super) enum Effect {
         reaction: String,
     },
     FetchHands(Vec<String>),
+    SendReaction {
+        membership_event: String,
+        reaction: ReactionOption,
+    },
 }
 
 pub(super) struct Joining {
@@ -372,6 +379,9 @@ pub(super) struct Joined {
     hands: Hands,
     hand_request: HandRequest,
     hand_news: Option<HandNews>,
+    reactions: Reactions,
+    reaction_request: ReactionRequest,
+    reaction_news: Option<ReactionNews>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -445,6 +455,9 @@ impl Joined {
             hands: Hands::default(),
             hand_request: HandRequest::Idle,
             hand_news: None,
+            reactions: Reactions::default(),
+            reaction_request: ReactionRequest::Idle,
+            reaction_news: None,
         };
         joined.command(MediaCommand::Microphone(media.microphone));
         if media.camera {
@@ -1374,6 +1387,8 @@ impl Joined {
             hand: self.hand_view(),
             hands_raised: self.hands_raised(),
             hand_news: self.hand_news(),
+            reaction: self.reaction_view(),
+            reaction_news: self.reaction_news(),
             share_preview: self.stage.share_preview(),
             share_change_cancelled: self.changes_cancelled,
             notice,
@@ -1451,6 +1466,7 @@ impl Joined {
                 .iter()
                 .position(|member| *member == tile.member)
                 .map(|index| index + 1);
+            tile.reaction = self.reaction_on(&tile.member);
         }
         tiles
     }
@@ -1483,6 +1499,7 @@ impl Joined {
             muted: self.microphone != OwnMicrophone::On,
             muted_for_you: false,
             hand: None,
+            reaction: None,
             speaking,
             video,
         }
@@ -1503,6 +1520,7 @@ impl Joined {
             muted: false,
             muted_for_you: false,
             hand: None,
+            reaction: None,
             speaking: false,
             video: Some(feed.clone()),
         })
@@ -1524,6 +1542,7 @@ impl Joined {
             muted,
             muted_for_you: false,
             hand: None,
+            reaction: None,
             speaking: identities
                 .iter()
                 .any(|identity| self.heard.is_speaking(identity)),
@@ -1553,6 +1572,7 @@ impl Joined {
             muted: false,
             muted_for_you: false,
             hand: None,
+            reaction: None,
             speaking: false,
             member: key,
             name: member.user.clone(),

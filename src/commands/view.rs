@@ -10,6 +10,7 @@ use crate::domain::auth::{LoginMethod, Session};
 use crate::domain::call::MemberKey;
 use crate::domain::call::devices::{ByKind, DeviceKey, DeviceKind};
 use crate::domain::call::media::MediaChoice;
+use crate::domain::call::reactions::Reaction;
 use crate::domain::call::ring::RingKind;
 use crate::domain::call::video::{FeedId, FrameSize, ScreenRefusal, VideoKind};
 use crate::domain::capabilities::AccountFacts;
@@ -504,6 +505,7 @@ pub struct CallTile {
     pub muted_for_you: bool,
     pub speaking: bool,
     pub hand: Option<usize>,
+    pub reaction: Option<Reaction>,
     pub video: Option<FeedId>,
 }
 
@@ -544,6 +546,7 @@ pub struct CallPerson {
     pub muted: bool,
     pub muted_for_you: bool,
     pub hand: Option<usize>,
+    pub reaction: Option<Reaction>,
     pub sharing: bool,
     pub sees_no_video: bool,
     pub exposes_e2ee: bool,
@@ -629,6 +632,22 @@ pub struct HandNews {
     pub who: NamedUser,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ReactionView {
+    Unavailable,
+    Ready,
+    Sending,
+    Showing,
+    Failed,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ReactionNews {
+    pub serial: u64,
+    pub who: NamedUser,
+    pub reaction: Reaction,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[allow(clippy::struct_excessive_bools)]
 pub struct ActiveCall {
@@ -646,6 +665,8 @@ pub struct ActiveCall {
     pub hand: HandView,
     pub hands_raised: usize,
     pub hand_news: Option<HandNews>,
+    pub reaction: ReactionView,
+    pub reaction_news: Option<ReactionNews>,
     pub share_preview: bool,
     pub share_change_cancelled: u64,
     pub notice: Option<CallNotice>,

@@ -15,6 +15,8 @@ const LUCIDE_LSP_LIB: &str = ".lucide/lib.slint";
 const DEMO_ASSETS_SCRIPT: &str = "scripts/gen-demo-assets.sh";
 #[cfg(feature = "demo")]
 const DEMO_DATA: &str = "assets/demo/data.json";
+const CALL_REACTIONS_DOMAIN: &str = "src/domain/call/reactions.rs";
+const CALL_REACTIONS_MENU: &str = "ui/screens/chat/components/call/call-reactions-menu.slint";
 
 struct EnumCoverage {
     slint_enum: &'static str,
@@ -57,6 +59,11 @@ const ENUM_COVERAGE: &[EnumCoverage] = &[
         slint_enum: "CallMic",
         branches_in: "ui/messages.slint",
         falls_through: &["off"],
+    },
+    EnumCoverage {
+        slint_enum: "CallReaction",
+        branches_in: "ui/messages.slint",
+        falls_through: &["ready"],
     },
     EnumCoverage {
         slint_enum: "CallCamera",
@@ -326,6 +333,7 @@ const ENUM_TABLES: &[(&str, &str)] = &[
     ("CallMic", "call_mics"),
     ("CallCamera", "call_cameras"),
     ("CallScreen", "call_screens"),
+    ("CallReaction", "call_reactions"),
     ("CallScreenRefusal", "call_screen_refusals"),
     ("CallTileState", "call_tile_marks"),
     ("CallDeviceKind", "call_device_kinds"),
@@ -359,6 +367,7 @@ const ENUM_TABLES: &[(&str, &str)] = &[
 fn main() {
     check_enum_branch_coverage();
     check_scenario_catalogs();
+    check_call_reaction_options();
     check_generated_ui_stays_in_its_adapter();
     sync_lucide_lsp_lib();
 
@@ -589,6 +598,39 @@ fn check_scenario_catalogs() {
             source.file
         );
     }
+}
+
+fn check_call_reaction_options() {
+    println!("cargo::rerun-if-changed={CALL_REACTIONS_DOMAIN}");
+    println!("cargo::rerun-if-changed={CALL_REACTIONS_MENU}");
+    let (Ok(domain), Ok(menu)) = (
+        fs::read_to_string(CALL_REACTIONS_DOMAIN),
+        fs::read_to_string(CALL_REACTIONS_MENU),
+    ) else {
+        panic!(
+            "failed to read {CALL_REACTIONS_DOMAIN} or {CALL_REACTIONS_MENU}, so the call \
+             reactions cannot be compared"
+        );
+    };
+    let sent: Vec<&str> = quoted_literals(section(
+        &domain,
+        CALL_REACTIONS_DOMAIN,
+        ("pub const REACTION_OPTIONS", "\n];"),
+        "the reactions U2DM sends",
+    ))
+    .collect();
+    let offered: Vec<&str> = quoted_literals(section(
+        &menu,
+        CALL_REACTIONS_MENU,
+        ("out property <[CallReactionOption]> options: [", "\n    ];"),
+        "the reactions the menu offers",
+    ))
+    .collect();
+    assert!(
+        sent == offered,
+        "{CALL_REACTIONS_MENU} offers {offered:?}, but {CALL_REACTIONS_DOMAIN} sends {sent:?}: the \
+         menu must list REACTION_OPTIONS' names and emoji, in its order"
+    );
 }
 
 fn section<'a>(text: &'a str, file: &str, bounds: (&str, &str), what: &str) -> &'a str {

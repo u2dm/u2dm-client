@@ -103,6 +103,14 @@ component PersonRow inherits Rectangle {
             }
         }
 
+        if root.person.reaction != "": Text {
+            cross-axis-self-alignment: center;
+            text: root.person.reaction;
+            font-family: Fonts.emoji;
+            font-size: Glyph.md;
+            accessible-role: none;
+        }
+
         if !root.person.you && root.person.hand > 0: IconDisplay {
             cross-axis-self-alignment: center;
             icon: IconSet.Hand;

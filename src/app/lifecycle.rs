@@ -384,6 +384,7 @@ pub(super) fn command_allowed(phase: AppPhase, cmd: &UiCommand) -> bool {
         | UiCommand::FollowSpeaker(_)
         | UiCommand::MuteForMe { .. }
         | UiCommand::RaiseHand(_)
+        | UiCommand::SendCallReaction(_)
         | UiCommand::WatchMicrophone(_)
         | UiCommand::WatchConnections(_)
         | UiCommand::DismissToast => phase == AppPhase::Syncing,

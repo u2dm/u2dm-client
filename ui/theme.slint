@@ -394,6 +394,11 @@ export global Metrics {
     out property <length> call-person-row: root.choice-row;
     out property <length> call-person-avatar: Size.md;
     out property <length> call-person-action: Size.md;
+    out property <length> call-reaction-cell: Size.target;
+    out property <int> call-reaction-columns: 6;
+    out property <length> call-reactions-width: root.call-reaction-columns * root.call-reaction-cell
+        + (root.call-reaction-columns - 1) * Space.xs + 2 * Space.sm;
+    out property <length> call-reaction-badge: Size.lg;
     out property <length> call-details-label: 112px;
 
     out property <length> drawer-width: 300px;

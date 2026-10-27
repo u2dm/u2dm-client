@@ -58,6 +58,7 @@ fn first_device(
         muted: tile.muted,
         muted_for_you: tile.muted_for_you,
         hand: tile.hand,
+        reaction: tile.reaction.clone(),
         sharing: false,
         sees_no_video: sees_no_video(declared),
         exposes_e2ee: exposes_e2ee(declared),
@@ -75,6 +76,9 @@ fn add_device(
     person.devices += 1;
     person.muted &= tile.muted;
     person.muted_for_you |= tile.muted_for_you;
+    if person.reaction.is_none() {
+        person.reaction.clone_from(&tile.reaction);
+    }
     person.hand = match (person.hand, tile.hand) {
         (Some(first), Some(other)) => Some(first.min(other)),
         (first, other) => first.or(other),

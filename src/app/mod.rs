@@ -908,6 +908,7 @@ impl AppService {
             | UiCommand::FollowSpeaker(_)
             | UiCommand::MuteForMe { .. }
             | UiCommand::RaiseHand(_)
+            | UiCommand::SendCallReaction(_)
             | UiCommand::WatchMicrophone(_)
             | UiCommand::WatchConnections(_)) => {
                 self.handle_call_command(cmd);
@@ -3080,6 +3081,7 @@ impl AppService {
             UiCommand::WatchMicrophone(on) => self.calls.watch_microphone(on, directory),
             UiCommand::WatchConnections(on) => self.calls.watch_connections(on, directory),
             UiCommand::RaiseHand(on) => self.calls.raise_hand(on, directory),
+            UiCommand::SendCallReaction(name) => self.calls.send_reaction(&name, directory),
             other => tracing::warn!(command = %other, "this command is not about calls"),
         }
     }

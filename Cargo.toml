@@ -132,6 +132,7 @@ tracing = "0.1.44"
 tracing-subscriber = { version = "0.3.23", features = ["env-filter", "json"] }
 u2dm-ui = { path = "crates/ui", default-features = false }
 unicode-normalization = "0.1.26"
+unicode-segmentation = "1.13.3"
 url = "2.5.8"
 
 [target.'cfg(target_os = "linux")'.dependencies]

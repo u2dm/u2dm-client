@@ -19,6 +19,7 @@ use crate::domain::auth::ServerInfo;
 use crate::domain::call::devices::DeviceLists;
 use crate::domain::call::hands::HandSighting;
 use crate::domain::call::media::MediaEvent;
+use crate::domain::call::reactions::ReactionOption;
 use crate::domain::call::ring::{CallSignal, RingId};
 use crate::domain::call::sfu::{GrantResult, SfuId};
 use crate::domain::call::{DeviceStanding, KeySendReport, MemberKey, TransportLookup};
@@ -261,6 +262,9 @@ pub(super) enum CallEvent {
     StageWake {
         call: u64,
     },
+    ReactionWake {
+        call: u64,
+    },
     FacesReady {
         call: u64,
         ready: usize,
@@ -287,6 +291,12 @@ pub(super) enum CallEvent {
         call: u64,
         sightings: Vec<HandSighting>,
     },
+    ReactionSent {
+        call: u64,
+        membership_event: String,
+        reaction: ReactionOption,
+        outcome: Result<String, String>,
+    },
     DevicesListed {
         listing: u64,
         lists: DeviceLists,
@@ -312,12 +322,14 @@ impl CallEvent {
             | Self::RingOutTimeout { call }
             | Self::KeyWake { call }
             | Self::StageWake { call }
+            | Self::ReactionWake { call }
             | Self::FacesReady { call, .. }
             | Self::KeysSent { call, .. }
             | Self::Standings { call, .. }
             | Self::HandSent { call, .. }
             | Self::HandLowered { call, .. }
-            | Self::HandsFetched { call, .. } => Some(*call),
+            | Self::HandsFetched { call, .. }
+            | Self::ReactionSent { call, .. } => Some(*call),
             Self::Signal { .. }
             | Self::RingWindow { .. }
             | Self::Declined { .. }
@@ -342,12 +354,14 @@ impl CallEvent {
             Self::RingOutTimeout { .. } => "CallRingOutTimeout",
             Self::KeyWake { .. } => "CallKeyWake",
             Self::StageWake { .. } => "CallStageWake",
+            Self::ReactionWake { .. } => "CallReactionWake",
             Self::FacesReady { .. } => "CallFacesReady",
             Self::KeysSent { .. } => "CallKeysSent",
             Self::Standings { .. } => "CallStandings",
             Self::HandSent { .. } => "CallHandSent",
             Self::HandLowered { .. } => "CallHandLowered",
             Self::HandsFetched { .. } => "CallHandsFetched",
+            Self::ReactionSent { .. } => "CallReactionSent",
             Self::DevicesListed { .. } => "CallDevicesListed",
             Self::Preview { .. } => "CallPreview",
             Self::DeviceTest { .. } => "CallDeviceTest",

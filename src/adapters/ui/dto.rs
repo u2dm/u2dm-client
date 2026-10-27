@@ -31,6 +31,7 @@ use crate::commands::view::{
     ScreenView, ServerDetails, SheetPreview, SpaceIndexRow, SpaceMatch, TestPhase, TileKind,
     TileState,
 };
+use crate::domain::call::reactions::Reaction as CallReaction;
 use crate::domain::call::ring::RingKind;
 use crate::domain::call::video::VideoKind;
 use crate::domain::departure::{Removal, RemovalKind};
@@ -628,6 +629,8 @@ pub struct CallTileDto {
     pub muted_for_you: bool,
     pub speaking: bool,
     pub hand: i32,
+    pub reaction: SharedString,
+    pub reaction_name: SharedString,
     pub feed: SharedString,
     pub has_frame: bool,
     pub frame: Option<Image>,
@@ -651,6 +654,8 @@ pub struct CallPersonDto {
     pub muted: bool,
     pub muted_for_you: bool,
     pub hand: i32,
+    pub reaction: SharedString,
+    pub reaction_name: SharedString,
     pub sharing: bool,
     pub sees_no_video: bool,
     pub exposes_e2ee: bool,
@@ -1862,6 +1867,8 @@ pub fn call_tile_to_dto(tile: &CallTile) -> CallTileDto {
         muted_for_you: tile.muted_for_you,
         speaking: tile.speaking,
         hand: hand_position(tile.hand),
+        reaction: reaction_emoji(tile.reaction.as_ref()),
+        reaction_name: reaction_name(tile.reaction.as_ref()),
         feed: tile
             .video
             .as_ref()
@@ -1877,6 +1884,18 @@ pub fn call_tile_to_dto(tile: &CallTile) -> CallTileDto {
 
 fn hand_position(hand: Option<usize>) -> i32 {
     hand.map_or(0, |position| i32::try_from(position).unwrap_or(i32::MAX))
+}
+
+fn reaction_emoji(reaction: Option<&CallReaction>) -> SharedString {
+    reaction.map_or_else(SharedString::new, |reaction| {
+        SharedString::from(reaction.emoji.as_str())
+    })
+}
+
+fn reaction_name(reaction: Option<&CallReaction>) -> SharedString {
+    reaction.map_or_else(SharedString::new, |reaction| {
+        SharedString::from(reaction.name.as_str())
+    })
 }
 
 pub fn call_person_to_dto(person: &CallPerson) -> CallPersonDto {
@@ -1895,6 +1914,8 @@ pub fn call_person_to_dto(person: &CallPerson) -> CallPersonDto {
         muted: person.muted,
         muted_for_you: person.muted_for_you,
         hand: hand_position(person.hand),
+        reaction: reaction_emoji(person.reaction.as_ref()),
+        reaction_name: reaction_name(person.reaction.as_ref()),
         sharing: person.sharing,
         sees_no_video: person.sees_no_video,
         exposes_e2ee: person.exposes_e2ee,

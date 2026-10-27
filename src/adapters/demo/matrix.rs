@@ -31,6 +31,7 @@ use crate::adapters::{body_emoji, video};
 use crate::domain::auth::{AuthMethod, LoginCredentials, OAuthLoginData, ServerInfo, Session};
 use crate::domain::call::hands::HandSighting;
 use crate::domain::call::identity::spellings;
+use crate::domain::call::reactions::ReactionOption;
 use crate::domain::call::ring::{CallSignal, OutgoingRing, RingId};
 use crate::domain::call::sfu::{GrantFailure, GrantRequest, GrantResult, SfuGrant};
 use crate::domain::call::{
@@ -2584,6 +2585,16 @@ impl CallSignalPort for DemoAuthed {
         tracing::info!(%room_id, asked = memberships.len(), found = found.len(), "demo: the raised hands are read");
         found
     }
+
+    async fn send_reaction(
+        &self,
+        room_id: &RoomId,
+        membership_event: &str,
+        reaction: ReactionOption,
+    ) -> Result<String> {
+        calls::pause().await;
+        Ok(calls::book().send_own_reaction(room_id.as_ref(), membership_event, reaction))
+    }
 }
 
 #[async_trait]
@@ -2637,6 +2648,7 @@ impl RtcMembershipPort for DemoAuthed {
         if first {
             spawn_others_keys(room_id);
             self.spawn_hands(room_id);
+            spawn_reactions(room_id);
         }
         Ok(SentMembership {
             event_id: calls::book()
@@ -4234,6 +4246,13 @@ fn spawn_others_keys(room_id: &RoomId) {
         for key in calls::book().keys_from_others(room_id.as_ref()) {
             calls::book().signal(key).await;
         }
+    });
+}
+
+fn spawn_reactions(room_id: &RoomId) {
+    let room_id = room_id.clone();
+    tokio::spawn(async move {
+        calls::book().play_reactions(room_id.as_ref()).await;
     });
 }
 

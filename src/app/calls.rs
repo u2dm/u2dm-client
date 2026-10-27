@@ -44,6 +44,7 @@ use crate::domain::call::devices::{
 };
 use crate::domain::call::keys::ReceivedKey;
 use crate::domain::call::media::{MediaChoice, MediaEvent, MediaSetup};
+use crate::domain::call::reactions::ReactionOption;
 use crate::domain::call::ring::{
     CallSignal, OUTGOING_RING_LIFETIME_MS, OutgoingRing, Ring, RingId, RingKind,
 };
@@ -183,6 +184,7 @@ pub(super) struct Calls {
     pending_join: Option<JoinRequest>,
     joined: Option<Joined>,
     stage_wake: Option<Duration>,
+    reaction_wake: Option<Duration>,
     faces_asked: HashSet<String>,
     faces_ready: u64,
     failed: Option<Failed>,
@@ -230,6 +232,7 @@ impl Calls {
             pending_join: None,
             joined: None,
             stage_wake: None,
+            reaction_wake: None,
             faces_asked: HashSet::new(),
             faces_ready: 0,
             failed: None,
@@ -372,6 +375,11 @@ impl Calls {
             CallSignal::Hand { room_id, sighting } => {
                 self.change_joined_in(&room_id, directory, |joined| {
                     joined.hand_sighted(sighting, true);
+                });
+            }
+            CallSignal::Reacted { room_id, sighting } => {
+                self.change_joined_in(&room_id, directory, |joined| {
+                    joined.reaction_sighted(sighting);
                 });
             }
             CallSignal::Redacted { room_id, event } => {
@@ -1485,6 +1493,17 @@ impl Calls {
         self.publish(directory);
     }
 
+    pub(super) fn send_reaction(&mut self, name: &str, directory: &RoomDirectory) {
+        let Some(joined) = self.joined.as_mut() else {
+            return;
+        };
+        let span = joined.span.clone();
+        let _in_call = span.enter();
+        let effects = joined.send_reaction(name);
+        self.run_effects(effects);
+        self.publish(directory);
+    }
+
     fn change_joined(&mut self, directory: &RoomDirectory, change: impl FnOnce(&mut Joined)) {
         let Some(joined) = self.joined.as_mut() else {
             return;
@@ -1501,6 +1520,7 @@ impl Calls {
             joined.order_farewell();
             self.key_tasks.cancel_and_detach();
             self.stage_wake = None;
+            self.reaction_wake = None;
         }
     }
 
@@ -1512,6 +1532,7 @@ impl Calls {
         joined.order_farewell();
         self.key_tasks.cancel_and_detach();
         self.stage_wake = None;
+        self.reaction_wake = None;
         if let Some(draft) = self.sheet.as_mut().and_then(|sheet| sheet.draft.take()) {
             tracing::info!("the call sheet's devices are chosen, now that no call runs");
             self.devices = draft;
@@ -1576,6 +1597,10 @@ impl Calls {
                 self.stage_wake = None;
                 self.publish(directory);
             }
+            CallEvent::ReactionWake { .. } => {
+                self.reaction_wake = None;
+                self.publish(directory);
+            }
             CallEvent::FacesReady { ready, .. } => {
                 if ready > 0 {
                     self.faces_ready = self.faces_ready.saturating_add(1);
@@ -1609,6 +1634,17 @@ impl Calls {
             CallEvent::HandsFetched { sightings, .. } => {
                 if let Some(joined) = self.joined.as_mut() {
                     joined.hands_fetched(sightings);
+                }
+                self.publish(directory);
+            }
+            CallEvent::ReactionSent {
+                membership_event,
+                reaction,
+                outcome,
+                ..
+            } => {
+                if let Some(joined) = self.joined.as_mut() {
+                    joined.reaction_sent(&membership_event, reaction, outcome);
                 }
                 self.publish(directory);
             }
@@ -1798,6 +1834,16 @@ impl Calls {
                 self.actions
                     .spawn(hand_effect(port, room_id, call, effect, events).instrument(span));
             }
+            Effect::SendReaction {
+                membership_event,
+                reaction,
+            } => {
+                let port = Arc::clone(&own.port);
+                self.actions.spawn(
+                    reaction_effect(port, room_id, call, membership_event, reaction, events)
+                        .instrument(span),
+                );
+            }
         }
     }
 
@@ -1881,6 +1927,7 @@ impl Calls {
         self.pending_join = None;
         self.joined = None;
         self.stage_wake = None;
+        self.reaction_wake = None;
         self.faces_asked.clear();
         self.failed = None;
         self.sheet = None;
@@ -1946,6 +1993,9 @@ impl Calls {
         if let Some(wake) = self.joined.as_mut().and_then(Joined::settle_stage) {
             self.wake_stage(wake);
         }
+        if let Some(wake) = self.joined.as_ref().and_then(Joined::settle_reactions) {
+            self.wake_reactions(wake);
+        }
         self.follow_preview(directory);
         self.follow_test(directory);
         let mut active = self.joined.as_ref().map(Joined::view);
@@ -1970,20 +2020,32 @@ impl Calls {
     }
 
     fn wake_stage(&mut self, at: Duration) {
-        let Some(joined) = self.joined.as_ref() else {
-            return;
-        };
-        if self.stage_wake == Some(at) {
+        if self.joined.is_none() || self.stage_wake == Some(at) {
             return;
         }
         self.stage_wake = Some(at);
+        self.wake_at(at, |call| CallEvent::StageWake { call });
+    }
+
+    fn wake_reactions(&mut self, at: Duration) {
+        if self.joined.is_none() || self.reaction_wake == Some(at) {
+            return;
+        }
+        self.reaction_wake = Some(at);
+        self.wake_at(at, |call| CallEvent::ReactionWake { call });
+    }
+
+    fn wake_at(&mut self, at: Duration, event: fn(u64) -> CallEvent) {
+        let Some(joined) = self.joined.as_ref() else {
+            return;
+        };
         let call = joined.call;
         let wake = joined.wake_at(at);
         let events = self.events.clone();
         let token = self.key_tasks.token();
         self.key_tasks.spawn(async move {
             if token.run_until_cancelled(sleep_until(wake)).await.is_some() {
-                send(&events, CallEvent::StageWake { call });
+                send(&events, event(call));
             }
         });
     }
@@ -2154,9 +2216,33 @@ async fn hand_effect(
         | Effect::WakeKeys(_)
         | Effect::Grant(_)
         | Effect::Announce { .. }
-        | Effect::Standings(_) => return,
+        | Effect::Standings(_)
+        | Effect::SendReaction { .. } => return,
     };
     send(&events, event);
+}
+
+async fn reaction_effect(
+    port: Arc<dyn CallSignalPort>,
+    room_id: RoomId,
+    call: u64,
+    membership_event: String,
+    reaction: ReactionOption,
+    events: EventSender,
+) {
+    let outcome = port
+        .send_reaction(&room_id, &membership_event, reaction)
+        .await
+        .map_err(|e| e.to_string());
+    send(
+        &events,
+        CallEvent::ReactionSent {
+            call,
+            membership_event,
+            reaction,
+            outcome,
+        },
+    );
 }
 
 fn keys_sent(report: &KeySendReport) {

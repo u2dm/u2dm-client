@@ -240,6 +240,7 @@ fn apply_active<B: UiBackend>(
         w.set_int(IntProp::EndedShareSerial, 0);
         w.set_int(IntProp::HandNewsSerial, 0);
         w.set_int(IntProp::HandsRaised, 0);
+        w.set_int(IntProp::ReactionNewsSerial, 0);
         w.set_int(IntProp::ShareChangeCancelled, 0);
         w.set_int(IntProp::DeviceNewsSerial, 0);
         apply_names(
@@ -292,6 +293,7 @@ fn apply_active<B: UiBackend>(
     );
     w.set_call_camera(active.camera);
     apply_hands(w, active);
+    apply_reactions(w, active);
     w.set_call_screen(call_screen_mark(active.screen));
     if let ScreenView::Unavailable(refusal) = active.screen {
         w.set_call_screen_refusal(refusal);
@@ -439,6 +441,31 @@ fn apply_hands(w: &impl UiProps, active: &ActiveCall) {
             .hand_news
             .as_ref()
             .map_or(0, |news| i32::try_from(news.serial).unwrap_or(i32::MAX)),
+    );
+}
+
+fn apply_reactions(w: &impl UiProps, active: &ActiveCall) {
+    w.set_call_reaction(active.reaction);
+    let news = active.reaction_news.as_ref();
+    w.set_string(
+        StringProp::ReactionNews,
+        shown_name(news.map(|news| &news.who)),
+    );
+    w.set_string(
+        StringProp::ReactionNewsEmoji,
+        news.map_or_else(SharedString::new, |news| {
+            SharedString::from(news.reaction.emoji.as_str())
+        }),
+    );
+    w.set_string(
+        StringProp::ReactionNewsName,
+        news.map_or_else(SharedString::new, |news| {
+            SharedString::from(news.reaction.name.as_str())
+        }),
+    );
+    w.set_int(
+        IntProp::ReactionNewsSerial,
+        news.map_or(0, |news| i32::try_from(news.serial).unwrap_or(i32::MAX)),
     );
 }
 

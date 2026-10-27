@@ -171,6 +171,7 @@ scenario_env() {
     call-unreceived-media) echo 'U2DM_DEMO_CALLS=active,cameras,unreceived-media U2DM_DEMO_WINDOW=900x760' ;;
     call-poor-connection) echo 'U2DM_DEMO_CALLS=active,cameras,poor-connection U2DM_DEMO_WINDOW=900x760' ;;
     call-connection-lost) echo 'U2DM_DEMO_CALLS=active,cameras,connection-lost U2DM_DEMO_WINDOW=900x760' ;;
+    call-reactions)  echo 'U2DM_DEMO_CALLS=active,cameras,reactions U2DM_DEMO_WINDOW=1024x768' ;;
     notifications)   echo 'U2DM_DEMO_NOTIFY=all U2DM_DEMO_WINDOW=900x760' ;;
     notifications-focused) echo 'U2DM_DEMO_NOTIFY=group,dm,mention U2DM_DEMO_WINDOW=900x760' ;;
     notifications-burst) echo 'U2DM_DEMO_NOTIFY=burst U2DM_DEMO_WINDOW=900x760' ;;
@@ -889,6 +890,11 @@ scenario_steps() {
       echo 'sleep 2'
       echo '{"op":"join_call"}'
       echo 'sleep 3' ;;
+    call-reactions)
+      echo '{"op":"select_room","room_id":"!design:demo.local"}'
+      echo 'sleep 2'
+      echo '{"op":"join_call"}'
+      echo 'sleep 4' ;;
     call-voice-panel)
       echo '{"op":"select_room","room_id":"!rust:demo.local"}'
       echo 'sleep 2'
@@ -1311,6 +1317,7 @@ scenario_note() {
     call-unreceived-media) echo 'in the Design Team call Jordan'"'"'s audio and camera and Nadia'"'"'s audio never arrive: the dock names Nadia and 1 other person, Jordan'"'"'s tile says Audio and video not received (calls, call-ui)' ;;
     call-poor-connection) echo 'in the Design Team call your own connection is rated poor 3 s in: the dock says Your connection is poor and your people row says Poor connection, for 8 s (calls, call-ui)' ;;
     call-connection-lost) echo 'in the Design Team call Jordan'"'"'s connection is poor 3 s in and lost at 7 s: his tile says Poor connection over his camera, then Connection lost on his avatar; good again at 12 s (calls, call-ui)' ;;
+    call-reactions)  echo 'the Design Team video call with Element Call reactions: Nadia'"'"'s thumbs up on her tile 3 s after you join, Jordan'"'"'s party (sent as 🎊) at 4 s; the dock'"'"'s Send a reaction opens the reactions menu (calls, call-ui)' ;;
     notifications)   echo 'with the window unfocused, every scripted arrival notifies except the muted room; !rust is read elsewhere and withdrawn, Leo'"'"'s invite notifies, and a click on Priya'"'"'s opens her chat (notifications, directory.attention, title)' ;;
     notifications-focused) echo 'the window keeps focus: arrivals light their rooms and the title count, but nothing notifies (notifications, directory.attention)' ;;
     notifications-burst) echo 'three messages in !rust a second apart: one notification, replaced twice (notifications)' ;;
@@ -1354,7 +1361,7 @@ names() {
     call-alone call-announce-fails call-cut-off call-camera-lost call-share-cancelled \
     call-voice-panel call-one-to-one call-two-shares call-share-restarts call-pinned-leaves \
     call-portrait call-camera-toggles call-devices call-headset-unplugs call-webcam-unplugs \
-    call-unreceived call-unreceived-media call-poor-connection call-connection-lost \
+    call-unreceived call-unreceived-media call-poor-connection call-connection-lost call-reactions \
     notifications notifications-focused notifications-burst \
     encryption-unverified encryption-recovery-key encryption-new-account encryption-setup-refused \
     identity-reset identity-reset-oauth room-keys \

@@ -9,7 +9,7 @@ import { CallPanel, TipScope } from "../../../../local.slint";
 import { CallTileEntry } from "../../../../types.slint";
 import { CallWords } from "../../../../messages.slint";
 import { CallView } from "../../../../views.slint";
-import { AppStyle, Fonts, Glyph, IconSize, Metrics, Radius, Size, Space, Weight } from "../../../../theme.slint";
+import { AppStyle, Fonts, Glyph, IconSize, Metrics, Motion, Radius, Size, Space, Weight } from "../../../../theme.slint";
 
 component HandBadge inherits Rectangle {
     in property <int> position;
@@ -40,6 +40,34 @@ component HandBadge inherits Rectangle {
             vertical-alignment: center;
             accessible-role: none;
         }
+    }
+}
+
+component ReactionBadge inherits Rectangle {
+    in property <string> emoji;
+    in property <string> name;
+
+    width: Metrics.call-reaction-badge;
+    height: self.width;
+    border-radius: self.width / 2;
+    background: AppStyle.elevated;
+    opacity: 0;
+    accessible-role: image;
+    accessible-label: CallWords.reacted(root.name, root.emoji);
+
+    animate opacity { duration: Motion.travel(Motion.normal); }
+
+    init => {
+        self.opacity = 1;
+    }
+
+    Text {
+        text: root.emoji;
+        font-family: Fonts.emoji;
+        font-size: Glyph.lg;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+        accessible-role: none;
     }
 }
 
@@ -596,6 +624,13 @@ export component CallTileView inherits Rectangle {
                 accessible-role: none;
             }
         }
+    }
+
+    if root.tile.reaction != "": ReactionBadge {
+        x: Space.sm;
+        y: Space.sm;
+        emoji: root.tile.reaction;
+        name: root.tile.reaction-name;
     }
 
     Rectangle {

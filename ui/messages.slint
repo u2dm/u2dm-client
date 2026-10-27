@@ -1,4 +1,4 @@
-import { CallCamera, CallDeviceKind, CallDeviceStatus, CallDeviceTrouble, CallHand, CallLinkState, CallMic, CallNotice, CallPhase, CallPreviewTrouble, CallRefusal, CallScreen, CallScreenRefusal, CallSheetPreview, CallTestPhase, CallTileState, Delivery, EmojiArt, MediaFailure, PresenceLine, PreviewKind, RoomCallMark, ServiceKind, ShieldReason, UpgradeLink, UserMessageKind } from "./enums.slint";
+import { CallCamera, CallDeviceKind, CallDeviceStatus, CallDeviceTrouble, CallHand, CallLinkState, CallMic, CallNotice, CallPhase, CallPreviewTrouble, CallReaction, CallRefusal, CallScreen, CallScreenRefusal, CallSheetPreview, CallTestPhase, CallTileState, Delivery, EmojiArt, MediaFailure, PresenceLine, PreviewKind, RoomCallMark, ServiceKind, ShieldReason, UpgradeLink, UserMessageKind } from "./enums.slint";
 import { CallStates } from "./call-states.slint";
 import { CallPersonEntry, CallTileEntry } from "./types.slint";
 
@@ -1401,6 +1401,89 @@ export global CallWords {
 
     public pure function hand-said(name: string) -> string {
         return @tr("{} raised their hand", name);
+    }
+
+    public pure function send-reaction() -> string {
+        return @tr("Send a reaction");
+    }
+
+    public pure function reaction-state(reaction: CallReaction) -> string {
+        if reaction == CallReaction.unavailable {
+            return @tr("You can react once you are in the call");
+        }
+        if reaction == CallReaction.sending {
+            return @tr("Sending your reaction");
+        }
+        if reaction == CallReaction.showing {
+            return @tr("Your reaction is showing, so the next one waits for it");
+        }
+        if reaction == CallReaction.failed {
+            return @tr("Your reaction could not be sent");
+        }
+        return "";
+    }
+
+    public pure function reaction-name(name: string, emoji: string) -> string {
+        if name == "thumbsup" {
+            return @tr("Thumbs up");
+        }
+        if name == "party" {
+            return @tr("Party");
+        }
+        if name == "clapping" {
+            return @tr("Clapping");
+        }
+        if name == "dog" {
+            return @tr("Dog");
+        }
+        if name == "cat" {
+            return @tr("Cat");
+        }
+        if name == "lightbulb" {
+            return @tr("Light bulb");
+        }
+        if name == "crickets" {
+            return @tr("Crickets");
+        }
+        if name == "thumbsdown" {
+            return @tr("Thumbs down");
+        }
+        if name == "dizzy" {
+            return @tr("Dizzy");
+        }
+        if name == "ok" {
+            return @tr("OK");
+        }
+        if name == "heart" {
+            return @tr("Heart");
+        }
+        if name == "laugh" {
+            return @tr("Laugh");
+        }
+        if name == "deer" {
+            return @tr("Deer");
+        }
+        if name == "rock" {
+            return @tr("Rock on");
+        }
+        if name == "wave" {
+            return @tr("Wave");
+        }
+        if name == "drum" {
+            return @tr("Drum");
+        }
+        if name == "bell" {
+            return @tr("Bell");
+        }
+        return emoji;
+    }
+
+    public pure function reacted(name: string, emoji: string) -> string {
+        return @tr("Reacted with {}", root.reaction-name(name, emoji));
+    }
+
+    public pure function reaction-said(who: string, name: string, emoji: string) -> string {
+        return @tr("{} reacted with {}", who, root.reaction-name(name, emoji));
     }
 
     public pure function muted-for-you() -> string {

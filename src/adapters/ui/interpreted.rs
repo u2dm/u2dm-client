@@ -52,23 +52,24 @@ use super::schema::{
     account_activities, account_steps, attachment_kinds, audio_kinds, auth_stages,
     body_line_fields, body_piece_fields, call_cameras, call_connection_fields, call_device_fields,
     call_device_kinds, call_device_statuses, call_device_troubles, call_hands, call_link_states,
-    call_mics, call_notices, call_offers, call_person_fields, call_phases, call_refusals,
-    call_screen_refusals, call_screens, call_tile_fields, call_tile_marks, child_accesses,
-    connection_states, create_room_statuses, decryption_failures, deliveries, device_trusts,
-    direct_chats, emoji_arts, encryption_activities, encryption_standings, encryption_steps,
-    enum_props, identity_alert_kinds, identity_trusts, invite_answers, invite_kinds,
-    invitee_fields, invitee_states, log_levels, log_line_fields, login_activities, login_methods,
-    login_phases, media_failures, media_states, member_roles, member_row_fields, member_row_kinds,
-    message_fields, message_kinds, model_props, notify_modes, pack_cell_fields, pack_origins,
-    pack_row_fields, pack_surfaces, pack_tab_fields, pending_moderations, people_search_statuses,
-    poll_answer_fields, poll_phases, presence_lines, preview_kinds, preview_troubles,
-    reaction_fields, reaction_sends, reactor_fields, readers_statuses, recovery_statuses,
-    removal_kinds, room_accesses, room_call_marks, room_fields, room_info_placements, room_kinds,
-    room_memberships, room_preview_statuses, room_row_kinds, room_scopes, roster_statuses,
-    send_states, service_kinds, sheet_previews, shield_reasons, shields, simple_callbacks,
-    source_encryptions, source_statuses, space_child_fields, space_fields, space_index_statuses,
-    spoiler_states, test_phases, timeline_states, upgrade_links, user_device_fields,
-    user_message_kinds, verification_activities, verification_phases, verify_offers,
+    call_mics, call_notices, call_offers, call_person_fields, call_phases, call_reactions,
+    call_refusals, call_screen_refusals, call_screens, call_tile_fields, call_tile_marks,
+    child_accesses, connection_states, create_room_statuses, decryption_failures, deliveries,
+    device_trusts, direct_chats, emoji_arts, encryption_activities, encryption_standings,
+    encryption_steps, enum_props, identity_alert_kinds, identity_trusts, invite_answers,
+    invite_kinds, invitee_fields, invitee_states, log_levels, log_line_fields, login_activities,
+    login_methods, login_phases, media_failures, media_states, member_roles, member_row_fields,
+    member_row_kinds, message_fields, message_kinds, model_props, notify_modes, pack_cell_fields,
+    pack_origins, pack_row_fields, pack_surfaces, pack_tab_fields, pending_moderations,
+    people_search_statuses, poll_answer_fields, poll_phases, presence_lines, preview_kinds,
+    preview_troubles, reaction_fields, reaction_sends, reactor_fields, readers_statuses,
+    recovery_statuses, removal_kinds, room_accesses, room_call_marks, room_fields,
+    room_info_placements, room_kinds, room_memberships, room_preview_statuses, room_row_kinds,
+    room_scopes, roster_statuses, send_states, service_kinds, sheet_previews, shield_reasons,
+    shields, simple_callbacks, source_encryptions, source_statuses, space_child_fields,
+    space_fields, space_index_statuses, spoiler_states, test_phases, timeline_states,
+    upgrade_links, user_device_fields, user_message_kinds, verification_activities,
+    verification_phases, verify_offers,
 };
 use super::session::active_models;
 use super::video::{self, millis_to_duration};
@@ -82,8 +83,8 @@ use crate::commands::view::{
     ChildAccess, CreateRoomStatus, DeviceStatus, DeviceTrouble, DirectChat, EncryptionActivity,
     EncryptionStep, HandView, InviteeState, JoinRefusal, LinkView, LoginActivity, LoginStep,
     MicrophoneView, PendingAnswer, PendingModeration, PeopleSearchStatus, PreviewTrouble,
-    ReadersStatus, RoomInfoPlacement, RoomPreviewSheet, RoomScope, RosterStatus, SourceState,
-    SpaceIndexStatus, UpgradeLink, VerifyOffer,
+    ReactionView, ReadersStatus, RoomInfoPlacement, RoomPreviewSheet, RoomScope, RosterStatus,
+    SourceState, SpaceIndexStatus, UpgradeLink, VerifyOffer,
 };
 use crate::domain::auth::LoginMethod;
 use crate::domain::call::devices::DeviceKind;
@@ -293,6 +294,7 @@ call_mics!(impl_slint_enum MicrophoneView "CallMic";);
 call_cameras!(impl_slint_enum CameraView "CallCamera";);
 call_screens!(impl_slint_enum CallScreenMark "CallScreen";);
 call_hands!(impl_slint_enum HandView "CallHand";);
+call_reactions!(impl_slint_enum ReactionView "CallReaction";);
 call_screen_refusals!(impl_slint_enum ScreenRefusal "CallScreenRefusal";);
 call_tile_marks!(impl_slint_enum CallTileMark "CallTileState";);
 call_device_kinds!(impl_slint_enum DeviceKind "CallDeviceKind";);

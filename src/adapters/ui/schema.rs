@@ -97,6 +97,9 @@ macro_rules! string_props {
         OfferedShare CallView "CallView" "offered-share" set_offered_share get_offered_share;
         StartedShare CallView "CallView" "started-share" set_started_share get_started_share;
         HandNews CallView "CallView" "hand-news" set_hand_news get_hand_news;
+        ReactionNews CallView "CallView" "reaction-news" set_reaction_news get_reaction_news;
+        ReactionNewsEmoji CallView "CallView" "reaction-news-emoji" set_reaction_news_emoji get_reaction_news_emoji;
+        ReactionNewsName CallView "CallView" "reaction-news-name" set_reaction_news_name get_reaction_news_name;
         EndedShare CallView "CallView" "ended-share" set_ended_share get_ended_share;
         PeopleFirst CallView "CallView" "people-first" set_people_first get_people_first;
         PeopleSecond CallView "CallView" "people-second" set_people_second get_people_second;
@@ -282,6 +285,8 @@ macro_rules! simple_callbacks {
         on_mute_for_me "mute-for-me" mute_for_me request(user_id "user-id" text, on "on" flag)
             MuteForMe;
         on_raise_hand "raise-hand" raise_hand request(on "on" flag) RaiseHand;
+        on_send_call_reaction "send-call-reaction" send_call_reaction request(name "name" text)
+            SendCallReaction;
         on_watch_microphone "watch-microphone" watch_microphone request(on "on" flag)
             WatchMicrophone;
         on_watch_connections "watch-connections" watch_connections request(on "on" flag)
@@ -599,6 +604,7 @@ macro_rules! int_props {
         SheetTestLevel CallView "CallView" "sheet-test-level" set_sheet_test_level get_sheet_test_level;
         HandsRaised CallView "CallView" "hands-raised" set_hands_raised get_hands_raised;
         HandNewsSerial CallView "CallView" "hand-news-serial" set_hand_news_serial get_hand_news_serial;
+        ReactionNewsSerial CallView "CallView" "reaction-news-serial" set_reaction_news_serial get_reaction_news_serial;
         MicrophoneLevel CallView "CallView" "microphone-level" set_microphone_level get_microphone_level;
         DeviceNewsSerial CallView "CallView" "device-news-serial" set_device_news_serial get_device_news_serial;
         CallDeclines WindowView "WindowView" "call-declines" set_call_declines get_call_declines;
@@ -792,6 +798,8 @@ macro_rules! enum_props {
             CallView "CallView" "screen" set_screen get_screen;
         CallHand set_call_hand(HandView)
             CallView "CallView" "hand" set_hand get_hand;
+        CallReaction set_call_reaction(ReactionView)
+            CallView "CallView" "reaction" set_reaction get_reaction;
         CallScreenRefusal set_call_screen_refusal(ScreenRefusal)
             CallView "CallView" "screen-refusal" set_screen_refusal get_screen_refusal;
         CallNotice set_call_notice(CallNoticeMark)
@@ -1662,6 +1670,17 @@ macro_rules! call_hands {
 }
 pub(crate) use call_hands;
 
+macro_rules! call_reactions {
+    ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
+        Unavailable Unavailable "unavailable";
+        Ready       Ready       "ready";
+        Sending     Sending     "sending";
+        Showing     Showing     "showing";
+        Failed      Failed      "failed";
+    } };
+}
+pub(crate) use call_reactions;
+
 macro_rules! call_screen_refusals {
     ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
         NotWayland NotWayland "not-wayland";
@@ -2213,6 +2232,8 @@ macro_rules! call_tile_fields {
         muted_for_you set_muted_for_you "muted-for-you" flag;
         speaking set_speaking "speaking" flag;
         hand set_hand "hand" int;
+        reaction set_reaction "reaction" text;
+        reaction_name set_reaction_name "reaction-name" text;
         feed set_feed "feed" text;
         has_frame set_has_frame "has-frame" flag;
         frame set_frame "frame" image;
@@ -2238,6 +2259,8 @@ macro_rules! call_person_fields {
         muted set_muted "muted" flag;
         muted_for_you set_muted_for_you "muted-for-you" flag;
         hand set_hand "hand" int;
+        reaction set_reaction "reaction" text;
+        reaction_name set_reaction_name "reaction-name" text;
         sharing set_sharing "sharing" flag;
         sees_no_video set_sees_no_video "sees-no-video" flag;
         exposes_e2ee set_exposes_e2ee "exposes-e2ee" flag;

@@ -2,6 +2,7 @@ use std::{fmt, ops};
 
 use crate::domain::call::hands::HandSighting;
 use crate::domain::call::keys::ReceivedKey;
+use crate::domain::call::reactions::ReactionSighting;
 use crate::domain::call::{CallIntent, MemberSession, RoomCall};
 use crate::domain::member_name::NamedUser;
 use crate::domain::room::RoomId;
@@ -104,6 +105,10 @@ pub enum CallSignal {
     Hand {
         room_id: RoomId,
         sighting: HandSighting,
+    },
+    Reacted {
+        room_id: RoomId,
+        sighting: ReactionSighting,
     },
     Redacted {
         room_id: RoomId,

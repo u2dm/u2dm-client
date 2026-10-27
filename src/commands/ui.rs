@@ -459,6 +459,8 @@ pub enum UiCommand {
     },
     #[strum(to_string = "RaiseHand({0})")]
     RaiseHand(bool),
+    #[strum(to_string = "SendCallReaction({0})")]
+    SendCallReaction(String),
     DismissToast,
     Logout,
     ConfirmLogout,
@@ -663,6 +665,7 @@ impl UiCommand {
             | Self::FollowSpeaker(_)
             | Self::MuteForMe { .. }
             | Self::RaiseHand(_)
+            | Self::SendCallReaction(_)
             | Self::WatchMicrophone(_)
             | Self::WatchConnections(_)
             | Self::DismissToast

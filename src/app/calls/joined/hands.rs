@@ -14,7 +14,7 @@ pub(super) enum HandRequest {
 }
 
 impl Joined {
-    fn own_membership_event(&self) -> Option<String> {
+    pub(super) fn own_membership_event(&self) -> Option<String> {
         self.members
             .iter()
             .find(|member| MemberKey::of(member) == self.me)

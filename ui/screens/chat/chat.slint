@@ -10,6 +10,7 @@ import { CallKey, CallKeys } from "./components/call/call-controls.slint";
 import { CallDevicesMenu } from "./components/call/call-devices-menu.slint";
 import { CallDock } from "./components/call/call-dock.slint";
 import { CallPeopleMenu } from "./components/call/call-people-menu.slint";
+import { CallReactionsMenu } from "./components/call/call-reactions-menu.slint";
 import { ModalHost, Placement } from "../../components/overlay.slint";
 import { ResizeEdge, ResizeHandle } from "../../components/resize-handle.slint";
 import { RoomInfoPlacement, RoomScope, UserMessageKind } from "../../enums.slint";
@@ -114,6 +115,9 @@ export component ChatScreen inherits FocusScope {
     property <length> menu-room-above: dock.devices-y - Space.xs - Space.md;
     property <length> menu-room-below: root.height - dock.devices-y - dock.devices-size - Space.xs - Space.md;
     property <bool> menu-above: root.menu-room-above >= root.menu-room-below;
+    property <length> react-room-above: dock.react-y - Space.xs - Space.md;
+    property <length> react-room-below: root.height - dock.react-y - dock.react-size - Space.xs - Space.md;
+    property <bool> react-above: root.react-room-above >= root.react-room-below;
     property <length> people-room-above: CallPanel.people-top - Space.xs - Space.md;
     property <length> people-room-below: root.height - CallPanel.people-bottom - Space.xs - Space.md;
     property <bool> people-above: root.people-room-above > root.people-room-below;
@@ -127,7 +131,8 @@ export component ChatScreen inherits FocusScope {
             return reject;
         }
         if key == CallKey.chat {
-            if !Shell.background-reachable || CallPanel.menu-open || CallPanel.devices-open || CallPanel.people-open {
+            if !Shell.background-reachable || CallPanel.menu-open || CallPanel.devices-open || CallPanel.reactions-open
+                || CallPanel.people-open {
                 return reject;
             }
             return timeline.show-call-chat() ? EventResult.accept : EventResult.reject;
@@ -374,6 +379,35 @@ export component ChatScreen inherits FocusScope {
             in-call: true;
             details(by-keys) => {
                 CallPanel.open-details(by-keys);
+            }
+        }
+    }
+
+    if CallPanel.reactions-open && CallView.active: ModalHost {
+        x: 0;
+        y: 0;
+        width: root.width;
+        height: root.height;
+        dim: false;
+        label: @tr("Reactions");
+        dismissed => {
+            CallPanel.reactions-open = false;
+            dock.focus-react();
+        }
+        opened => {
+            reactions-menu.open(CallPanel.reactions-by-keys);
+        }
+
+        reactions-menu := CallReactionsMenu {
+            x: Placement.fit(dock.react-x + dock.react-size - self.width, self.width, root.width, Space.md);
+            y: root.react-above
+                ? dock.react-y - Space.xs - self.height
+                : dock.react-y + dock.react-size + Space.xs;
+            room: root.react-above ? root.react-room-above : root.react-room-below;
+            above-modal: Shell.nav-on-top;
+            sent => {
+                CallPanel.reactions-open = false;
+                dock.focus-react();
             }
         }
     }

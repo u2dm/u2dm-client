@@ -184,6 +184,9 @@ pub enum ProbeCommand {
     RaiseHand {
         on: bool,
     },
+    SendCallReaction {
+        name: String,
+    },
     WatchMicrophone {
         on: bool,
     },
@@ -975,6 +978,7 @@ pub fn to_driven(command: ProbeCommand, selected: Selection<'_>) -> Result<Drive
         ProbeCommand::RingDevices { open } => UiCommand::RingDevices(open),
         ProbeCommand::MuteForMe { user_id, on } => UiCommand::MuteForMe { user_id, on },
         ProbeCommand::RaiseHand { on } => UiCommand::RaiseHand(on),
+        ProbeCommand::SendCallReaction { name } => UiCommand::SendCallReaction(name),
         ProbeCommand::WatchMicrophone { on } => UiCommand::WatchMicrophone(on),
         ProbeCommand::WatchConnections { on } => UiCommand::WatchConnections(on),
         ProbeCommand::ShowCallGallery => UiCommand::ShowCallGallery,

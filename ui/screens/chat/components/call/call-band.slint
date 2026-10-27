@@ -58,8 +58,10 @@ component SelfChip inherits Rectangle {
     in property <CallTileEntry> tile;
 
     property <string> words: CallWords.listed(
-        CallWords.self-chip(root.tile.muted, root.tile.speaking),
-        root.tile.hand > 0 ? CallWords.hand-raised(root.tile.hand, CallView.hands-raised) : "");
+        CallWords.listed(
+            CallWords.self-chip(root.tile.muted, root.tile.speaking),
+            root.tile.hand > 0 ? CallWords.hand-raised(root.tile.hand, CallView.hands-raised) : ""),
+        root.tile.reaction != "" ? CallWords.reacted(root.tile.reaction-name, root.tile.reaction) : "");
 
     width: Metrics.call-self-chip;
     height: self.width;
@@ -78,6 +80,20 @@ component SelfChip inherits Rectangle {
         initial-size: Glyph.xs;
         opacity: CallStates.flows(root.tile.state) ? 1 : 0.5;
         accessible-role: none;
+    }
+
+    if root.tile.reaction != "": Rectangle {
+        border-radius: root.width / 2;
+        background: AppStyle.elevated;
+
+        Text {
+            text: root.tile.reaction;
+            font-family: Fonts.emoji;
+            font-size: Glyph.md;
+            horizontal-alignment: center;
+            vertical-alignment: center;
+            accessible-role: none;
+        }
     }
 
     Rectangle {

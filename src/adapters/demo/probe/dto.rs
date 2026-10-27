@@ -11,12 +11,13 @@ use crate::commands::view::{
     EncryptionStep, EncryptionView, HandView, IdentityAlertView, InvitePeopleView, InviteView,
     InviteeRow, InvitesSection, JoinOffer, JoinRefusal, LeaveSpaceView, LifecycleView, LinkView,
     LoginStep, LogoutView, MentionsView, MicrophoneView, MissingMedia, NotificationsView, PackView,
-    PaginationView, PinnedView, PresenceView, PreviewTrouble, ReadersView, RemovalView,
-    RoomInfoView, RoomLogView, RoomMenuTarget, RoomPreviewSheet, RoomPreviewView, RosterRow,
-    ScreenView, ServerDetails, ShareNews, SheetPreview, SourceState, SpaceIndexRow, SpaceIndexView,
-    SpaceMatch, TestPhase, TileKind, TileState, Toast, TrackFile, TypingView, UnsentMessage,
-    UpgradeView, UserInfoView, VideoView,
+    PaginationView, PinnedView, PresenceView, PreviewTrouble, ReactionView, ReadersView,
+    RemovalView, RoomInfoView, RoomLogView, RoomMenuTarget, RoomPreviewSheet, RoomPreviewView,
+    RosterRow, ScreenView, ServerDetails, ShareNews, SheetPreview, SourceState, SpaceIndexRow,
+    SpaceIndexView, SpaceMatch, TestPhase, TileKind, TileState, Toast, TrackFile, TypingView,
+    UnsentMessage, UpgradeView, UserInfoView, VideoView,
 };
+use crate::domain::call::reactions::Reaction;
 use crate::domain::call::ring::RingKind;
 use crate::domain::call::video::{FrameSize, ScreenRefusal, VideoKind};
 use crate::domain::call::{CallIntent, RoomCall};
@@ -265,6 +266,8 @@ struct ActiveCallDto {
     hand: &'static str,
     hands_raised: usize,
     hand_news: Option<ShareNewsDto>,
+    reaction: &'static str,
+    reaction_news: Option<ReactionNewsDto>,
     share_preview: bool,
     share_change_cancelled: u64,
     notice: Option<CallNoticeDto>,
@@ -310,6 +313,7 @@ struct CallPersonDto {
     muted: bool,
     muted_for_you: bool,
     hand: Option<usize>,
+    reaction: Option<ReactionDto>,
     sharing: bool,
     sees_no_video: bool,
     exposes_e2ee: bool,
@@ -348,6 +352,20 @@ struct ShareNewsDto {
 }
 
 #[derive(Serialize)]
+struct ReactionDto {
+    emoji: String,
+    name: String,
+}
+
+#[derive(Serialize)]
+struct ReactionNewsDto {
+    serial: u64,
+    who: String,
+    emoji: String,
+    name: String,
+}
+
+#[derive(Serialize)]
 #[allow(clippy::struct_excessive_bools)]
 struct CallTileDto {
     key: String,
@@ -362,6 +380,7 @@ struct CallTileDto {
     muted_for_you: bool,
     speaking: bool,
     hand: Option<usize>,
+    reaction: Option<ReactionDto>,
     video: Option<String>,
 }
 
@@ -1279,6 +1298,19 @@ fn active_call(active: &ActiveCall) -> ActiveCallDto {
             serial: news.serial,
             who: news.who.shown(),
         }),
+        reaction: match active.reaction {
+            ReactionView::Unavailable => "unavailable",
+            ReactionView::Ready => "ready",
+            ReactionView::Sending => "sending",
+            ReactionView::Showing => "showing",
+            ReactionView::Failed => "failed",
+        },
+        reaction_news: active.reaction_news.as_ref().map(|news| ReactionNewsDto {
+            serial: news.serial,
+            who: news.who.shown(),
+            emoji: news.reaction.emoji.clone(),
+            name: news.reaction.name.clone(),
+        }),
         share_preview: active.share_preview,
         share_change_cancelled: active.share_change_cancelled,
         notice: active.notice.as_ref().map(call_notice),
@@ -1388,6 +1420,13 @@ fn call_notice(notice: &CallNotice) -> CallNoticeDto {
     CallNoticeDto { kind, who, others }
 }
 
+fn reaction_dto(reaction: &Reaction) -> ReactionDto {
+    ReactionDto {
+        emoji: reaction.emoji.clone(),
+        name: reaction.name.clone(),
+    }
+}
+
 fn call_tile(tile: &CallTile) -> CallTileDto {
     CallTileDto {
         key: tile.key().to_string(),
@@ -1405,6 +1444,7 @@ fn call_tile(tile: &CallTile) -> CallTileDto {
         muted_for_you: tile.muted_for_you,
         speaking: tile.speaking,
         hand: tile.hand,
+        reaction: tile.reaction.as_ref().map(reaction_dto),
         video: tile.video.as_ref().map(ToString::to_string),
     }
 }
@@ -1426,6 +1466,7 @@ fn call_person(person: &CallPerson) -> CallPersonDto {
         muted: person.muted,
         muted_for_you: person.muted_for_you,
         hand: person.hand,
+        reaction: person.reaction.as_ref().map(reaction_dto),
         sharing: person.sharing,
         sees_no_video: person.sees_no_video,
         exposes_e2ee: person.exposes_e2ee,

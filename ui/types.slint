@@ -104,6 +104,8 @@ export struct CallTileEntry {
     muted-for-you: bool,
     speaking: bool,
     hand: int,
+    reaction: string,
+    reaction-name: string,
     feed: string,
     has-frame: bool,
     frame: image,
@@ -126,6 +128,8 @@ export struct CallPersonEntry {
     muted: bool,
     muted-for-you: bool,
     hand: int,
+    reaction: string,
+    reaction-name: string,
     sharing: bool,
     sees-no-video: bool,
     exposes-e2ee: bool,
@@ -252,6 +256,15 @@ export struct MuteForMeRequest {
 
 export struct RaiseHandRequest {
     on: bool,
+}
+
+export struct SendCallReactionRequest {
+    name: string,
+}
+
+export struct CallReactionOption {
+    name: string,
+    emoji: string,
 }
 
 export struct RingDevicesRequest {

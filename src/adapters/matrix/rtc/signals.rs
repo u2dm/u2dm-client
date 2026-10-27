@@ -4,7 +4,7 @@ use std::mem;
 use std::pin::Pin;
 use std::result;
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use async_trait::async_trait;
 use futures_util::StreamExt;
@@ -31,15 +31,17 @@ use super::hands::{
 };
 use super::keys::{Arrival, KeyMessage, key_content, read_key};
 use super::members::{Referenced, referenced_membership};
+use super::reactions::{CALL_REACTION_TYPE, react, reaction_of};
 use super::{
     DECLINE_TYPE, DECLINE_TYPE_STABLE, ENCRYPTED_TYPE, KEYS_TYPE, NOTIFICATION_TYPE,
-    NOTIFICATION_TYPE_STABLE,
+    NOTIFICATION_TYPE_STABLE, REFERENCE,
 };
 use crate::adapters::matrix::decrypt_wait::{Attempt, LateDecryption, decrypt_or_wait};
 use crate::adapters::matrix::media::fetch_avatar_thumbnails;
 use crate::adapters::matrix::member_name::named_member;
 use crate::adapters::matrix::session::{ClientHandle, SessionResource};
 use crate::domain::call::hands::HandSighting;
+use crate::domain::call::reactions::ReactionOption;
 use crate::domain::call::ring::{
     CallSignal, MAX_RING_LIFETIME_MS, MAX_SENDER_TS_OFFSET_MS, OUTGOING_RING_LIFETIME_MS,
     OutgoingRing, Ring, RingId, RingKind, expires_ms,
@@ -62,7 +64,6 @@ const AUDIO_INTENT: &str = "audio";
 const VIDEO_INTENT: &str = "video";
 const ROOM_SLOT: &str = "m.call#ROOM";
 const STICKY_KEY: &str = "msc4354_sticky_key";
-const REFERENCE: &str = "m.reference";
 
 enum Heard {
     Timeline {
@@ -96,7 +97,8 @@ impl Kind {
             | NOTIFICATION_TYPE_STABLE
             | DECLINE_TYPE
             | DECLINE_TYPE_STABLE
-            | REDACTION_TYPE => true,
+            | REDACTION_TYPE
+            | CALL_REACTION_TYPE => true,
             REACTION_TYPE => raises_a_hand(self.content.relates_to.as_ref()),
             ENCRYPTED_TYPE => recent(self.origin_server_ts),
             _ => false,
@@ -462,6 +464,16 @@ impl CallSignalPort for MatrixCallSignals {
             }
         }
     }
+
+    async fn send_reaction(
+        &self,
+        room_id: &RoomId,
+        membership_event: &str,
+        reaction: ReactionOption,
+    ) -> Result<String> {
+        let room = self.matrix.room(room_id).await?;
+        react(&room, membership_event, reaction).await
+    }
 }
 
 async fn devices_of(
@@ -506,6 +518,36 @@ struct Facts {
     redacts: Option<OwnedEventId>,
     #[serde(default)]
     content: Map<String, Value>,
+    #[serde(default)]
+    unsigned: Unsigned,
+}
+
+#[derive(Default, Deserialize)]
+struct Unsigned {
+    age: Option<i64>,
+}
+
+#[derive(Clone, Copy)]
+struct Received {
+    at: Instant,
+    age: Option<Duration>,
+}
+
+impl Received {
+    fn now(facts: &Facts) -> Self {
+        Self {
+            at: Instant::now(),
+            age: facts
+                .unsigned
+                .age
+                .and_then(|age| u64::try_from(age).ok())
+                .map(Duration::from_millis),
+        }
+    }
+
+    fn age(self) -> Option<Duration> {
+        self.age.map(|age| age.saturating_add(self.at.elapsed()))
+    }
 }
 
 struct SignalFilter {
@@ -572,36 +614,43 @@ impl SignalFilter {
         if !self.first_sighting(&room, &facts.event_id) {
             return None;
         }
+        let received = Received::now(&facts);
         if facts.event_type != ENCRYPTED_TYPE {
-            return signal_of(&self.own, &room, facts).await;
+            return signal_of(&self.own, &room, facts, received).await;
         }
         match decrypt_or_wait(&room, &raw).await {
             Attempt::Clear(event) => {
                 let facts = event.raw().deserialize_as_unchecked::<Facts>().ok()?;
-                signal_of(&self.own, &room, facts).await
+                signal_of(&self.own, &room, facts, received).await
             }
             Attempt::Refused => None,
             Attempt::Later(later) => {
-                waiting.push(wait_for_key(self.own.clone(), room, later));
+                waiting.push(wait_for_key(self.own.clone(), room, later, received));
                 None
             }
         }
     }
 }
 
-fn wait_for_key(own: OwnedUserId, room: Room, later: LateDecryption) -> Late {
+fn wait_for_key(own: OwnedUserId, room: Room, later: LateDecryption, received: Received) -> Late {
     Box::pin(async move {
         let event = later.await?;
         let facts = event.raw().deserialize_as_unchecked::<Facts>().ok()?;
-        signal_of(&own, &room, facts).await
+        signal_of(&own, &room, facts, received).await
     })
 }
 
-async fn signal_of(own: &OwnedUserId, room: &Room, facts: Facts) -> Option<CallSignal> {
+async fn signal_of(
+    own: &OwnedUserId,
+    room: &Room,
+    facts: Facts,
+    received: Received,
+) -> Option<CallSignal> {
     match facts.event_type.as_str() {
         NOTIFICATION_TYPE | NOTIFICATION_TYPE_STABLE => ring(own, room, facts).await,
         DECLINE_TYPE | DECLINE_TYPE_STABLE => decline(room, &facts),
         REACTION_TYPE => hand(room, &facts),
+        CALL_REACTION_TYPE => call_reaction(room, &facts, received),
         REDACTION_TYPE => redaction(room, &facts),
         _ => None,
     }
@@ -616,6 +665,20 @@ fn hand(room: &Room, facts: &Facts) -> Option<CallSignal> {
     )?;
     tracing::debug!(room_id = %room.room_id(), sender = %facts.sender, membership = sighting.membership_event, "a hand was raised");
     Some(CallSignal::Hand {
+        room_id: RoomId::new(room.room_id().as_str()),
+        sighting,
+    })
+}
+
+fn call_reaction(room: &Room, facts: &Facts, received: Received) -> Option<CallSignal> {
+    let sighting = reaction_of(
+        &facts.event_id,
+        &facts.sender,
+        &facts.content,
+        received.age(),
+    )?;
+    tracing::debug!(room_id = %room.room_id(), sender = %facts.sender, membership = sighting.membership_event, age = ?sighting.age, "a call reaction arrived");
+    Some(CallSignal::Reacted {
         room_id: RoomId::new(room.room_id().as_str()),
         sighting,
     })

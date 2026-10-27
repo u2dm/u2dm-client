@@ -14,6 +14,7 @@ export component CallAnnouncer {
     property <int> started-share: CallView.started-share-serial;
     property <int> ended-share: CallView.ended-share-serial;
     property <int> hand-news: CallView.hand-news-serial;
+    property <int> reaction-news: CallView.reaction-news-serial;
     property <int> change-cancelled: CallView.share-change-cancelled;
     property <string> bridges: CallWords.bridges(CallView.bridges-first, CallView.bridges-second, CallView.bridges-more);
     property <CallMic> mic: CallView.mic;
@@ -143,6 +144,12 @@ export component CallAnnouncer {
     changed hand-news => {
         if root.hand-news != 0 && root.active {
             calm.say(CallWords.hand-said(CallView.hand-news));
+        }
+    }
+
+    changed reaction-news => {
+        if root.reaction-news != 0 && root.active {
+            calm.say(CallWords.reaction-said(CallView.reaction-news, CallView.reaction-news-name, CallView.reaction-news-emoji));
         }
     }
 

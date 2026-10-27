@@ -5,10 +5,10 @@ import { ClickArea } from "../../../../components/a11y.slint";
 import { DotPulse } from "../../../../components/dot-pulse.slint";
 import { StateLayer } from "../../../../components/state-layer.slint";
 import { TipSource } from "../../../../components/tip.slint";
-import { CallCamera, CallHand, CallMic, CallPhase, CallScreen } from "../../../../enums.slint";
+import { CallCamera, CallHand, CallMic, CallPhase, CallReaction, CallScreen } from "../../../../enums.slint";
 import { CallWords } from "../../../../messages.slint";
 import { Actions } from "../../../../actions.slint";
-import { TipScope } from "../../../../local.slint";
+import { CallPanel, TipScope } from "../../../../local.slint";
 import { CallView } from "../../../../views.slint";
 import { AppStyle, IconSize, Metrics, Space } from "../../../../theme.slint";
 
@@ -207,6 +207,29 @@ export component CallHandButton inherits CallToggle {
     clicked => {
         if !root.waits {
             Actions.raise-hand({ on: !root.up });
+        }
+    }
+}
+
+export component CallReactButton inherits CallToggle {
+    property <bool> waits: CallView.reaction == CallReaction.unavailable;
+
+    state: root.waits ? CallToggleState.unavailable
+        : CallView.reaction == CallReaction.failed ? CallToggleState.failed
+        : CallView.reaction == CallReaction.sending ? CallToggleState.pending
+        : CallToggleState.off;
+    on-icon: IconSet.SmilePlus;
+    off-icon: IconSet.SmilePlus;
+    label: CallWords.send-reaction();
+    state-text: CallWords.reaction-state(CallView.reaction);
+    tip: root.waits ? root.state-text : root.label;
+    accessible-checkable: false;
+    accessible-expandable: true;
+    accessible-expanded: CallPanel.reactions-open;
+    clicked => {
+        if !root.waits {
+            CallPanel.reactions-by-keys = self.has-focus;
+            CallPanel.reactions-open = true;
         }
     }
 }

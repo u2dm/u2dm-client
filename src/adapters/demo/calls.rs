@@ -13,6 +13,7 @@ use crate::domain::call::hands::HandSighting;
 use crate::domain::call::identity::{MediaIdentity, spellings};
 use crate::domain::call::keys::{KeyIndex, MediaKey, OWN_KEY_LEN, ReceivedKey};
 use crate::domain::call::media::{ConnectionQuality, MediaEvent, MediaSource};
+use crate::domain::call::reactions::{ReactionOption, ReactionSighting};
 use crate::domain::call::ring::{CallSignal, Ring, RingId, RingKind};
 use crate::domain::call::sfu::{SfuId, SfuRole};
 use crate::domain::call::video::{FeedId, VideoKind};
@@ -327,6 +328,11 @@ pub const CATALOG: Scenarios = Scenarios {
             effect: "Jordan's hand is already raised when you join; Nadia raises hers 3s after you join and lowers it at 9s; Jordan's membership is renewed at 12s, which lowers his",
             note: "your own raise and lower echo back like the server's; a renewed membership of yours lowers your hand until it is raised again",
         },
+        Flag {
+            value: "reactions",
+            effect: "Jordan's 👋 sent a minute before you joined arrives 2s after you join and is dropped; Nadia reacts 👍 at 3s; Jordan sends Element Call's party name with 🎊 at 4s (shown as 🎉) and 👏 at 5s, dropped while his first still shows; at 8s he sends ✨ under a name outside Element Call's set",
+            note: "your own reactions echo back like the server's; each reaction shows for 3s",
+        },
     ],
     notes: &[
         "each decline logs `demo: the call is declined`",
@@ -409,6 +415,45 @@ const NADIA_RAISES_AFTER: Duration = Duration::from_secs(3);
 const NADIA_LOWERS_AFTER: Duration = Duration::from_secs(9);
 const JORDAN_RENEWS_AFTER: Duration = Duration::from_secs(12);
 const HAND_ECHO_LAG: Duration = Duration::from_millis(150);
+const SERVER_AGE: Duration = Duration::from_millis(40);
+const BEFORE_YOU_JOINED: Duration = Duration::from_mins(1);
+const SCRIPTED_REACTIONS: [ScriptedReaction; 5] = [
+    ScriptedReaction {
+        user: JORDAN,
+        after: Duration::from_secs(2),
+        emoji: "\u{1f44b}",
+        name: "wave",
+        age: BEFORE_YOU_JOINED,
+    },
+    ScriptedReaction {
+        user: NADIA,
+        after: Duration::from_secs(3),
+        emoji: "\u{1f44d}",
+        name: "thumbsup",
+        age: SERVER_AGE,
+    },
+    ScriptedReaction {
+        user: JORDAN,
+        after: Duration::from_secs(4),
+        emoji: "\u{1f38a}",
+        name: "party",
+        age: SERVER_AGE,
+    },
+    ScriptedReaction {
+        user: JORDAN,
+        after: Duration::from_secs(5),
+        emoji: "\u{1f44f}",
+        name: "clapping",
+        age: SERVER_AGE,
+    },
+    ScriptedReaction {
+        user: JORDAN,
+        after: Duration::from_secs(8),
+        emoji: "\u{2728} sparkles",
+        name: "sparkles",
+        age: SERVER_AGE,
+    },
+];
 pub const UNTRUSTED: &str = JORDAN;
 const DEMO_KEY: [u8; OWN_KEY_LEN] = [7; OWN_KEY_LEN];
 
@@ -474,6 +519,7 @@ pub struct Scenario {
     connection_lost: bool,
     video_stalls: bool,
     pub raised_hands: bool,
+    reactions: bool,
 }
 
 pub fn scenario() -> Scenario {
@@ -554,6 +600,7 @@ fn apply(scenario: &mut Scenario, flag: &str) {
         "connection-lost" => scenario.connection_lost = true,
         "video-stalls" => scenario.video_stalls = true,
         "raised-hands" => scenario.raised_hands = true,
+        "reactions" => scenario.reactions = true,
         other => tracing::warn!("unknown {ENV_VAR} flag: {other}"),
     }
 }
@@ -689,6 +736,15 @@ impl DemoHand {
             raised_ms: self.raised_ms,
         }
     }
+}
+
+#[derive(Clone, Copy)]
+struct ScriptedReaction {
+    user: &'static str,
+    after: Duration,
+    emoji: &'static str,
+    name: &'static str,
+    age: Duration,
 }
 
 #[derive(Default)]
@@ -1066,6 +1122,75 @@ impl CallBook {
         if let Some(reaction) = self.hand_of(room_id, JORDAN) {
             self.take_hand(room_id, &reaction);
         }
+    }
+
+    fn next_call_reaction(&self) -> String {
+        let reaction = self.reactions.fetch_add(1, Ordering::Relaxed);
+        format!("$demo-reaction-{reaction}")
+    }
+
+    pub fn send_own_reaction(
+        &self,
+        room_id: &str,
+        membership_event: &str,
+        reaction: ReactionOption,
+    ) -> String {
+        let event = self.next_call_reaction();
+        tracing::info!(
+            room_id,
+            reaction = event,
+            name = reaction.name,
+            "demo: you reacted"
+        );
+        echo(CallSignal::Reacted {
+            room_id: RoomId::new(room_id),
+            sighting: ReactionSighting {
+                by: data::own_user().to_owned(),
+                membership_event: membership_event.to_owned(),
+                reaction: event.clone(),
+                emoji: reaction.emoji.to_owned(),
+                name: reaction.name.to_owned(),
+                age: Some(SERVER_AGE),
+            },
+        });
+        event
+    }
+
+    pub async fn play_reactions(&self, room_id: &str) {
+        if !scenario().reactions {
+            return;
+        }
+        let start = Instant::now();
+        for scripted in SCRIPTED_REACTIONS {
+            sleep_until(start + scripted.after).await;
+            self.react_as(room_id, scripted).await;
+        }
+    }
+
+    async fn react_as(&self, room_id: &str, scripted: ScriptedReaction) {
+        let Some(membership_event) = self.membership_event_of(room_id, scripted.user) else {
+            return;
+        };
+        let event = self.next_call_reaction();
+        tracing::info!(
+            room_id,
+            user = scripted.user,
+            reaction = event,
+            name = scripted.name,
+            "demo: a call participant reacts"
+        );
+        self.signal(CallSignal::Reacted {
+            room_id: RoomId::new(room_id),
+            sighting: ReactionSighting {
+                by: scripted.user.to_owned(),
+                membership_event,
+                reaction: event,
+                emoji: scripted.emoji.to_owned(),
+                name: scripted.name.to_owned(),
+                age: Some(scripted.age),
+            },
+        })
+        .await;
     }
 
     fn say_intent(&self, room_id: &str, user: &str, intent: CallIntent) {

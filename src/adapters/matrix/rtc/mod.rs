@@ -5,6 +5,7 @@ mod http;
 mod join;
 mod keys;
 mod members;
+mod reactions;
 mod routes;
 mod signals;
 mod transports;
@@ -21,6 +22,7 @@ const DECLINE_TYPE: &str = "org.matrix.msc4310.rtc.decline";
 const DECLINE_TYPE_STABLE: &str = "m.rtc.decline";
 const ENCRYPTED_TYPE: &str = "m.room.encrypted";
 const KEYS_TYPE: &str = "io.element.call.encryption_keys";
+const REFERENCE: &str = "m.reference";
 
 const fn capability_word(capability: Capability) -> &'static str {
     match capability {

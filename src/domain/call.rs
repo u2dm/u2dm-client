@@ -4,6 +4,7 @@ pub mod hands;
 pub mod identity;
 pub mod keys;
 pub mod media;
+pub mod reactions;
 pub mod ring;
 pub mod sfu;
 pub mod stats;
