@@ -208,6 +208,7 @@ debug = false
 [profile.inspect]
 inherits = "dev"
 incremental = false
+lto = "off"
 
 [profile.inspect.package."*"]
 opt-level = 3

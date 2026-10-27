@@ -17,6 +17,12 @@ interpreted *ARGS:
 run-interpreted *ARGS:
     CARGO_TARGET_DIR={{ MODES }}/interpreted cargo run {{ INTERPRETED }} {{ ARGS }}
 
+cranelift *ARGS:
+    CARGO_TARGET_DIR={{ MODES }}/cranelift ./scripts/cranelift build {{ ARGS }}
+
+run-cranelift *ARGS:
+    CARGO_TARGET_DIR={{ MODES }}/cranelift ./scripts/cranelift run {{ ARGS }}
+
 demo *ARGS:
     CARGO_TARGET_DIR={{ MODES }}/demo cargo run {{ DEMO }} {{ ARGS }}
 

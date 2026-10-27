@@ -15,6 +15,7 @@ readonly RENDER_SETTLE=3
 export SLINT_EMIT_DEBUG_INFO=1
 
 source "$root/scripts/lib/mcp.sh"
+source "$root/scripts/lib/codegen.sh"
 
 tmp="$(mktemp -d)"
 app_pid=""
@@ -40,13 +41,13 @@ require_tools() {
 
 build_demo_app() {
   echo "building the demo app with the Slint inspector"
-  cargo build --profile "$PROFILE" --no-default-features --features "$FEATURES"
+  codegen_cargo "$PROFILE" build --no-default-features --features "$FEATURES"
 }
 
 launch_demo_app() {
   pkill -x "$APP_NAME" 2>/dev/null && sleep 1
-  setsid env SLINT_MCP_PORT=$MCP_PORT cargo run --profile "$PROFILE" --no-default-features \
-    --features "$FEATURES" >"$log" 2>&1 &
+  setsid env U2DM_ASSERT_DEMO=1 SLINT_MCP_PORT=$MCP_PORT "$root/target/$PROFILE/$APP_NAME" \
+    >"$log" 2>&1 &
   app_pid=$!
   echo "launched the demo app, inspector on $MCP_URL"
 }

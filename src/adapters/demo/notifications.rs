@@ -68,7 +68,7 @@ pub const CATALOG: Scenarios = Scenarios {
         Flag {
             value: "desktop",
             effect: "also shows the notifications on the real desktop over D-Bus",
-            note: "for a person watching; agents leave it off",
+            note: "for a person watching; scripted runs leave it off",
         },
         Flag {
             value: "all",

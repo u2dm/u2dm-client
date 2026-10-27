@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+source "$(dirname -- "${BASH_SOURCE[0]}")/lib/codegen.sh"
+
+U2DM_CODEGEN=cranelift codegen_cargo "${PROFILE:-dev}" "$@"
