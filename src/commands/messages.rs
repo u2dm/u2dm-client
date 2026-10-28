@@ -71,6 +71,7 @@ pub enum UserMessageKind {
     CallServerRefused,
     CallMediaFailed,
     CallCutOff,
+    CallNotEncrypted,
     CallNoAnswer,
     CallDeclinedThere,
     CallUnjoinable,

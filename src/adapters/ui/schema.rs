@@ -1000,6 +1000,7 @@ macro_rules! user_message_kinds {
         CallServerRefused         CallServerRefused       "call-server-refused";
         CallMediaFailed           CallMediaFailed         "call-media-failed";
         CallCutOff                CallCutOff              "call-cut-off";
+        CallNotEncrypted          CallNotEncrypted        "call-not-encrypted";
         CallNoAnswer              CallNoAnswer            "call-no-answer";
         CallDeclinedThere         CallDeclinedThere       "call-declined-there";
         CallUnjoinable            CallUnjoinable          "call-unjoinable";

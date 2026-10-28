@@ -431,6 +431,7 @@ pub enum CallFailure {
     JoinFailed,
     MediaFailed,
     CutOff,
+    NotEncrypted,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

@@ -119,6 +119,11 @@ pub const CATALOG: Scenarios = Scenarios {
             note: "the call is kept as failed, and Try again joins it for good",
         },
         Flag {
+            value: "not-encrypted",
+            effect: "your media cannot be encrypted 3s after your first call in an encrypted room connects",
+            note: "the call stops and is kept as failed; Try again joins it with what you were sending, and it encrypts",
+        },
+        Flag {
             value: "reconnecting",
             effect: "5s after connecting the media server reconnects for 3s",
             note: "",
@@ -404,6 +409,7 @@ pub const SPEECHES: [(&str, Duration); 4] = [
     (JORDAN, Duration::from_secs(4)),
 ];
 pub const CUT_OFF_AFTER: Duration = Duration::from_secs(5);
+pub const NOT_ENCRYPTED_AFTER: Duration = Duration::from_secs(3);
 pub const CAMERA_LOST_AFTER: Duration = Duration::from_secs(3);
 const TROUBLE_AFTER: Duration = Duration::from_secs(3);
 const UNRECEIVED_FOR: Duration = Duration::from_secs(8);
@@ -477,6 +483,7 @@ pub struct Scenario {
     pub grant_fails: bool,
     pub connect_fails: bool,
     cut_off: bool,
+    not_encrypted: bool,
     pub reconnecting: bool,
     pub keys_late: bool,
     pub undecryptable: bool,
@@ -558,6 +565,7 @@ fn apply(scenario: &mut Scenario, flag: &str) {
         "grant-fails" => scenario.grant_fails = true,
         "connect-fails" => scenario.connect_fails = true,
         "cut-off" => scenario.cut_off = true,
+        "not-encrypted" => scenario.not_encrypted = true,
         "reconnecting" => scenario.reconnecting = true,
         "keys-late" => scenario.keys_late = true,
         "undecryptable" => scenario.undecryptable = true,
@@ -1867,6 +1875,11 @@ pub fn announcement_fails() -> bool {
 pub fn cuts_off() -> bool {
     static CUT: AtomicBool = AtomicBool::new(false);
     scenario().cut_off && !CUT.swap(true, Ordering::AcqRel)
+}
+
+pub fn fails_to_encrypt() -> bool {
+    static FAILED: AtomicBool = AtomicBool::new(false);
+    scenario().not_encrypted && !FAILED.swap(true, Ordering::AcqRel)
 }
 
 pub fn loses_camera() -> bool {

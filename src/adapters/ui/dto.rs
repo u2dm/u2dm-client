@@ -2059,6 +2059,7 @@ pub const fn call_failure_message(failure: CallFailure) -> UserMessageKind {
         CallFailure::JoinFailed => UserMessageKind::CallJoinFailed,
         CallFailure::MediaFailed => UserMessageKind::CallMediaFailed,
         CallFailure::CutOff => UserMessageKind::CallCutOff,
+        CallFailure::NotEncrypted => UserMessageKind::CallNotEncrypted,
     }
 }
 

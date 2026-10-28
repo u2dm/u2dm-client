@@ -18,15 +18,17 @@ use tracing::Instrument;
 
 use super::call_devices::{DemoDevices, plugged_in};
 use super::calls::{
-    self, CAMERA_LOST_AFTER, CUT_OFF_AFTER, PICKER_TIME, RECONNECT_AFTER, RECONNECT_FOR,
-    SHARE_ENDS_AFTER, SPEAKING_TURN, Trouble, UNTRUSTED,
+    self, CAMERA_LOST_AFTER, CUT_OFF_AFTER, NOT_ENCRYPTED_AFTER, PICKER_TIME, RECONNECT_AFTER,
+    RECONNECT_FOR, SHARE_ENDS_AFTER, SPEAKING_TURN, Trouble, UNTRUSTED,
 };
 use super::data;
 use crate::domain::call::device_test::{DeviceTest, TestNews, loudness_percent};
 use crate::domain::call::devices::{DeviceChoice, DeviceKind, DeviceLists};
 use crate::domain::call::identity::{MediaIdentity, spellings};
 use crate::domain::call::keys::{KeyIndex, MediaKey};
-use crate::domain::call::media::{Decryption, MediaEvent, MediaSetup, Microphone, SfuState};
+use crate::domain::call::media::{
+    Decryption, EncryptionTrouble, MediaEvent, MediaSetup, Microphone, SfuState,
+};
 use crate::domain::call::sfu::{SfuGrant, SfuId, SfuRole};
 use crate::domain::call::stats::{ConnectionReading, ReceivedVideo, SentVideo};
 use crate::domain::call::video::{
@@ -548,6 +550,18 @@ impl DemoMediaSession {
         }));
     }
 
+    fn spawn_encryption_failure(&mut self, sfu: SfuId) {
+        let events_tx = self.events_tx.clone();
+        self.tasks.push(tokio::spawn(async move {
+            sleep(NOT_ENCRYPTED_AFTER).await;
+            tracing::info!(%sfu, "demo: your call media cannot be encrypted");
+            drop(events_tx.send(MediaEvent::NotEncrypted {
+                sfu,
+                trouble: EncryptionTrouble::Failed,
+            }));
+        }));
+    }
+
     fn spawn_camera_loss(&mut self) {
         let events_tx = self.events_tx.clone();
         self.tasks.push(tokio::spawn(async move {
@@ -658,6 +672,9 @@ impl DemoMediaSession {
             }
             if calls::cuts_off() {
                 self.spawn_cut_off(sfu.clone());
+            }
+            if self.encrypted && calls::fails_to_encrypt() {
+                self.spawn_encryption_failure(sfu.clone());
             }
             if calls::scenario().speaking {
                 self.spawn_speaking(sfu.clone());

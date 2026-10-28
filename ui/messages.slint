@@ -142,6 +142,9 @@ export global UserMessages {
         if kind == UserMessageKind.call-cut-off {
             return @tr("The call in {} was cut off", detail);
         }
+        if kind == UserMessageKind.call-not-encrypted {
+            return @tr("Could not encrypt your media, so the call in {} stopped", detail);
+        }
         if kind == UserMessageKind.call-no-answer {
             return @tr("Nobody answered the call in {}", detail);
         }

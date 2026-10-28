@@ -759,6 +759,10 @@ impl Joined {
             MediaEvent::Decryption { identity, state } => {
                 self.heard.decryption.insert(identity, state);
             }
+            MediaEvent::NotEncrypted { sfu, trouble } => {
+                tracing::warn!(call = self.call, %sfu, ?trouble, "your call media could not be encrypted, so the call stops");
+                return Err(CallFailure::NotEncrypted);
+            }
             MediaEvent::Microphone(microphone) => self.microphone_reported(&microphone),
             MediaEvent::Connections(readings) => self.connections_read(readings),
             MediaEvent::MicrophoneLevel(percent) => {

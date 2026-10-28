@@ -37,6 +37,13 @@ pub enum Decryption {
     Failed,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(not(any(feature = "calls", feature = "demo")), allow(dead_code))]
+pub enum EncryptionTrouble {
+    MissingKey,
+    Failed,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[cfg_attr(not(any(feature = "calls", feature = "demo")), allow(dead_code))]
 pub enum MediaSource {
@@ -118,6 +125,10 @@ pub enum MediaEvent {
     Decryption {
         identity: MediaIdentity,
         state: Decryption,
+    },
+    NotEncrypted {
+        sfu: SfuId,
+        trouble: EncryptionTrouble,
     },
     Microphone(Microphone),
     MicrophoneLevel(u8),

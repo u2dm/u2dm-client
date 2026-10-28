@@ -24,7 +24,7 @@ use super::reception::{Change, Flow, Flowing, RECEIVE_CHECK, Reception, Wanted};
 use crate::domain::call::identity::MediaIdentity;
 use crate::domain::call::keys::KeyIndex;
 use crate::domain::call::media::{
-    ConnectionQuality, Decryption, MediaEvent, MediaSource, SfuState,
+    ConnectionQuality, Decryption, EncryptionTrouble, MediaEvent, MediaSource, SfuState,
 };
 use crate::domain::call::sfu::{SfuGrant, SfuId, SfuRole};
 use crate::domain::call::video::VideoKind;
@@ -606,26 +606,41 @@ impl Pump {
     }
 
     fn encryption_state(&self, participant: &Participant, state: EncryptionState) {
+        if matches!(participant, Participant::Local(_)) {
+            self.own_encryption_state(state);
+            return;
+        }
         let identity = MediaIdentity::new(participant.identity().to_string());
         let decryption = match state {
             EncryptionState::Ok | EncryptionState::KeyRatcheted => Decryption::Ok,
             EncryptionState::MissingKey => Decryption::MissingKey,
-            EncryptionState::DecryptionFailed | EncryptionState::InternalError => {
-                Decryption::Failed
-            }
-            EncryptionState::EncryptionFailed => {
-                tracing::warn!(sfu = %self.sfu, %identity, "your call media failed to encrypt");
-                return;
-            }
+            EncryptionState::DecryptionFailed
+            | EncryptionState::EncryptionFailed
+            | EncryptionState::InternalError => Decryption::Failed,
             EncryptionState::New => return,
         };
-        if matches!(participant, Participant::Local(_)) {
-            return;
-        }
         tracing::info!(sfu = %self.sfu, %identity, ?state, "a call participant's decryption changed");
         self.emit(MediaEvent::Decryption {
             identity,
             state: decryption,
+        });
+    }
+
+    fn own_encryption_state(&self, state: EncryptionState) {
+        let trouble = match state {
+            EncryptionState::MissingKey => EncryptionTrouble::MissingKey,
+            EncryptionState::EncryptionFailed | EncryptionState::InternalError => {
+                EncryptionTrouble::Failed
+            }
+            EncryptionState::New
+            | EncryptionState::Ok
+            | EncryptionState::KeyRatcheted
+            | EncryptionState::DecryptionFailed => return,
+        };
+        tracing::warn!(sfu = %self.sfu, ?state, "your call media could not be encrypted, so none of it is sent");
+        self.emit(MediaEvent::NotEncrypted {
+            sfu: self.sfu.clone(),
+            trouble,
         });
     }
 

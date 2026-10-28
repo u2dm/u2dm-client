@@ -1149,6 +1149,7 @@ fn call(source: &CallView) -> CallDto {
                 CallFailure::JoinFailed => "join-failed",
                 CallFailure::MediaFailed => "media-failed",
                 CallFailure::CutOff => "cut-off",
+                CallFailure::NotEncrypted => "not-encrypted",
             },
             retry: failed.retry,
         }),
