@@ -705,6 +705,7 @@ impl Calls {
             return;
         }
         tracing::debug!(%room_id, video, "asking how to join the call");
+        self.stop_previous_sheets_test();
         self.sheet_serial = self.sheet_serial.wrapping_add(1);
         let draft = self.joined.is_some().then(|| self.devices.clone());
         self.sheet = Some(Sheet::open(room, video, self.sheet_serial, draft));
@@ -712,6 +713,13 @@ impl Calls {
             self.list_devices();
         }
         self.publish(directory);
+    }
+
+    fn stop_previous_sheets_test(&mut self) {
+        if let Some(testing) = self.testing.take() {
+            tracing::debug!("a new call sheet stops the device test");
+            testing.stop();
+        }
     }
 
     pub(super) fn sheet_camera(&mut self, on: bool, directory: &RoomDirectory) {
@@ -1864,8 +1872,17 @@ impl Calls {
     }
 
     pub(super) fn selected(&mut self, room_id: Option<&RoomId>, directory: &RoomDirectory) {
+        if self.selected.as_ref() != room_id {
+            self.close_sheet_elsewhere(room_id);
+        }
         self.selected = room_id.cloned();
         self.publish(directory);
+    }
+
+    fn close_sheet_elsewhere(&mut self, selected: Option<&RoomId>) {
+        if let Some(sheet) = self.sheet.take_if(|sheet| Some(&sheet.room_id) != selected) {
+            tracing::debug!(room_id = %sheet.room_id, "another room was opened, so the call sheet closes");
+        }
     }
 
     pub(super) fn rings_in(&self, room_id: &RoomId) -> bool {
