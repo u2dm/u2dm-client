@@ -139,7 +139,7 @@ impl DelayedEvents {
             let request = unstable_v2::Request::new(delay_id.to_owned(), action.clone());
             match client
                 .send(request)
-                .with_request_config(RequestConfig::short_retry())
+                .with_request_config(RequestConfig::short_retry().force_auth())
                 .await
             {
                 Ok(_) => return Ok(()),
@@ -300,6 +300,13 @@ async fn update_v1(
     if gone {
         return Stable::Answered(Err(RestartFailure::Gone));
     }
+    if reply.refuses() {
+        tracing::info!(
+            answer = reply.described(),
+            "the homeserver refused to restart the delayed leave"
+        );
+        return Stable::Answered(Err(RestartFailure::Refused));
+    }
     if reply.lacks_endpoint() {
         return Stable::Missing;
     }
@@ -390,13 +397,23 @@ fn schedule_failure(error: &HttpError, known_max: Option<u64>) -> ScheduleFailur
 }
 
 fn restart_failure(error: &HttpError) -> RestartFailure {
-    let gone = error.as_client_api_error().is_some_and(|refusal| {
+    let refusal = error.as_client_api_error();
+    let gone = refusal.is_some_and(|refusal| {
         refusal.status_code == StatusCode::CONFLICT
             || (refusal.status_code == StatusCode::NOT_FOUND
                 && matches!(refusal.error_kind(), Some(ErrorKind::NotFound)))
     });
+    let refused = refusal.is_some_and(|refusal| {
+        matches!(
+            refusal.status_code,
+            StatusCode::UNAUTHORIZED | StatusCode::FORBIDDEN
+        )
+    });
     if gone {
         RestartFailure::Gone
+    } else if refused {
+        tracing::info!("the homeserver refused to restart the delayed leave: {error}");
+        RestartFailure::Refused
     } else {
         RestartFailure::Failed(error.to_string())
     }

@@ -326,6 +326,7 @@ pub type ScheduleResult = Result<DelayedLeave, ScheduleFailure>;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum RestartFailure {
     Gone,
+    Refused,
     Failed(String),
 }
 

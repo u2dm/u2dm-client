@@ -168,13 +168,19 @@ impl Lane {
                 let lapsed = last_good.elapsed() >= self.leave_delay;
                 tracing::info!(room_id = %self.room_id, ?failure, lapsed, "the call's delayed leave did not restart");
                 match (failure, lapsed) {
+                    (RestartFailure::Refused, true) => {
+                        tracing::info!(room_id = %self.room_id, "the homeserver refuses to restart the delayed leave, so the call goes on without one; a crash leaves the membership until it expires");
+                        self.resend_membership().await;
+                        *last_good = Instant::now();
+                        None
+                    }
                     (_, true) => self.rejoin(last_good).await,
                     (RestartFailure::Gone, false) => {
                         let leave = self.schedule_leave().await;
                         *last_good = Instant::now();
                         leave
                     }
-                    (RestartFailure::Failed(_), false) => Some(leave),
+                    (RestartFailure::Refused | RestartFailure::Failed(_), false) => Some(leave),
                 }
             }
         }
@@ -182,6 +188,12 @@ impl Lane {
 
     async fn rejoin(&mut self, last_good: &mut Instant) -> Option<DelayedLeave> {
         let leave = self.schedule_leave().await;
+        self.resend_membership().await;
+        *last_good = Instant::now();
+        leave
+    }
+
+    async fn resend_membership(&mut self) {
         self.take_intent();
         match self
             .port
@@ -194,8 +206,6 @@ impl Lane {
             }
             Err(e) => tracing::warn!(room_id = %self.room_id, "could not rejoin the call: {e}"),
         }
-        *last_good = Instant::now();
-        leave
     }
 
     async fn refresh(&mut self) {
