@@ -2,6 +2,7 @@ import { ScrollView } from "std-widgets.slint";
 import { IconDisplay, IconSet } from "@lucide";
 
 import { LinkButton } from "../../../../components/button.slint";
+import { CloseWatch } from "../../../../components/close-watch.slint";
 import { DialogHeader } from "../../../../components/dialog-header.slint";
 import { DialogCard, ModalHost } from "../../../../components/overlay.slint";
 import { Actions } from "../../../../actions.slint";
@@ -120,6 +121,8 @@ component EncryptionLine inherits HorizontalLayout {
 export component CallDetailsDialog inherits ModalHost {
     property <length> card-width: min(AppStyle.card-width, root.width - AppStyle.card-inset);
     property <length> card-height: min(body.preferred-height, root.height - AppStyle.card-inset);
+    property <bool> covered: Shell.room-log-open || Shell.verification-open;
+    property <bool> logs-by-keys;
 
     dim-opacity: AppStyle.dialog-scrim;
     label: @tr("Connection details");
@@ -128,6 +131,24 @@ export component CallDetailsDialog inherits ModalHost {
     }
     opened => {
         header.focus-close();
+    }
+
+    function refocus() {
+        if Shell.verification-open {
+            return;
+        }
+        if root.logs-by-keys {
+            logs.take-focus();
+        } else {
+            root.focus();
+        }
+    }
+
+    CloseWatch {
+        open: Shell.room-log-open;
+        closed => {
+            root.refocus();
+        }
     }
 
     DialogCard {
@@ -149,6 +170,7 @@ export component CallDetailsDialog inherits ModalHost {
                 header := DialogHeader {
                     title: @tr("Connection details");
                     copyable: false;
+                    above-modal: !root.covered;
                     close-label: @tr("Close the connection details");
                     close-clicked => {
                         CallPanel.close-details();
@@ -205,13 +227,15 @@ export component CallDetailsDialog inherits ModalHost {
                     wrap: word-wrap;
                 }
 
-                LinkButton {
+                logs := LinkButton {
                     min-height: Size.sm;
+                    above-modal: !root.covered;
                     text: @tr("Room logs");
                     label: @tr("Open the room logs of {}", CallView.active-room-name);
                     font-size: Fonts.body-small;
                     pad: 2 * Space.sm;
                     clicked => {
+                        root.logs-by-keys = self.has-focus;
                         Actions.open-room-log(CallView.active-room-id);
                     }
                 }

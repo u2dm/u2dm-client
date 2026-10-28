@@ -9,6 +9,7 @@ import { CallAnnouncer } from "./components/call/call-announcer.slint";
 import { CallKey, CallKeys } from "./components/call/call-controls.slint";
 import { CallDevicesMenu } from "./components/call/call-devices-menu.slint";
 import { CallDock } from "./components/call/call-dock.slint";
+import { CallMoreMenu } from "./components/call/call-more-menu.slint";
 import { CallPeopleMenu } from "./components/call/call-people-menu.slint";
 import { CallReactionsMenu } from "./components/call/call-reactions-menu.slint";
 import { ModalHost, Placement } from "../../components/overlay.slint";
@@ -19,7 +20,7 @@ import { AppStyle, IconSize, Metrics, Radius, Size, Space } from "../../theme.sl
 import { IconButton } from "../../components/button.slint";
 import { CallView, DirectoryView, RoomInfoView, RoomView, SpaceIndexView, WindowView } from "../../views.slint";
 import { Actions } from "../../actions.slint";
-import { CallPanel, LocalState, RoomSearch, Shell, Subspaces } from "../../local.slint";
+import { CallMenuOpener, CallPanel, LocalState, RoomSearch, Shell, Subspaces } from "../../local.slint";
 
 component Toast inherits Rectangle {
     property <bool> is-file-saved: RoomView.toast-message == UserMessageKind.file-saved;
@@ -110,6 +111,7 @@ export component ChatScreen inherits FocusScope {
     property <bool> has-toast: RoomView.toast-message != UserMessageKind.none;
     property <bool> shows-dock: CallView.active || CallView.failed;
     property <bool> devices-open: CallPanel.devices-open && CallView.active;
+    property <bool> details-shown: CallPanel.details-open && CallView.active;
     property <length> dock-height: root.shows-dock ? dock.height : 0px;
     property <length> dock-height-with-stage: root.shows-dock ? dock.height-with-stage : 0px;
     property <length> menu-room-above: dock.devices-y - Space.xs - Space.md;
@@ -118,6 +120,9 @@ export component ChatScreen inherits FocusScope {
     property <length> react-room-above: dock.react-y - Space.xs - Space.md;
     property <length> react-room-below: root.height - dock.react-y - dock.react-size - Space.xs - Space.md;
     property <bool> react-above: root.react-room-above >= root.react-room-below;
+    property <length> more-room-above: dock.more-y - Space.xs - Space.md;
+    property <length> more-room-below: root.height - dock.more-y - dock.more-size - Space.xs - Space.md;
+    property <bool> more-above: root.more-room-above >= root.more-room-below;
     property <length> people-room-above: CallPanel.people-top - Space.xs - Space.md;
     property <length> people-room-below: root.height - CallPanel.people-bottom - Space.xs - Space.md;
     property <bool> people-above: root.people-room-above > root.people-room-below;
@@ -132,7 +137,7 @@ export component ChatScreen inherits FocusScope {
         }
         if key == CallKey.chat {
             if !Shell.background-reachable || CallPanel.menu-open || CallPanel.devices-open || CallPanel.reactions-open
-                || CallPanel.people-open {
+                || CallPanel.more-open || CallPanel.people-open {
                 return reject;
             }
             return timeline.show-call-chat() ? EventResult.accept : EventResult.reject;
@@ -171,6 +176,12 @@ export component ChatScreen inherits FocusScope {
 
     changed devices-open => {
         Actions.watch-microphone({ on: self.devices-open });
+    }
+
+    changed details-shown => {
+        if !self.details-shown {
+            root.hand-back-details();
+        }
     }
 
     changed compact => {
@@ -243,6 +254,16 @@ export component ChatScreen inherits FocusScope {
     function close-nav() {
         Shell.nav-open = false;
         timeline.focus-nav();
+    }
+
+    function hand-back-details() {
+        let call-ended = CallPanel.details-open;
+        CallPanel.details-open = false;
+        if CallPanel.details-by-keys && !call-ended {
+            dock.focus-devices-opener(CallPanel.details-opener);
+        } else {
+            timeline.focus-composer();
+        }
     }
 
     function show-person(key: string, by-keys: bool) {
@@ -363,7 +384,7 @@ export component ChatScreen inherits FocusScope {
         label: @tr("Devices");
         dismissed => {
             CallPanel.devices-open = false;
-            dock.focus-devices();
+            dock.focus-devices-opener(CallPanel.devices-opener);
         }
         opened => {
             devices-menu.open(CallPanel.devices-by-keys);
@@ -378,7 +399,7 @@ export component ChatScreen inherits FocusScope {
             above-modal: Shell.nav-on-top;
             in-call: true;
             details(by-keys) => {
-                CallPanel.open-details(by-keys);
+                CallPanel.open-details(by-keys, CallPanel.devices-opener);
             }
         }
     }
@@ -392,7 +413,7 @@ export component ChatScreen inherits FocusScope {
         label: @tr("Reactions");
         dismissed => {
             CallPanel.reactions-open = false;
-            dock.focus-react();
+            dock.focus-react-opener();
         }
         opened => {
             reactions-menu.open(CallPanel.reactions-by-keys);
@@ -407,7 +428,7 @@ export component ChatScreen inherits FocusScope {
             above-modal: Shell.nav-on-top;
             sent => {
                 CallPanel.reactions-open = false;
-                dock.focus-react();
+                dock.focus-react-opener();
             }
         }
     }
@@ -436,6 +457,52 @@ export component ChatScreen inherits FocusScope {
             above-modal: Shell.nav-on-top;
             picked(key, by-keys) => {
                 root.show-person(key, by-keys);
+            }
+        }
+    }
+
+    if CallPanel.more-open && CallView.active: ModalHost {
+        x: 0;
+        y: 0;
+        width: root.width;
+        height: root.height;
+        dim: false;
+        label: @tr("More call options");
+        dismissed => {
+            CallPanel.more-open = false;
+            dock.focus-more();
+        }
+        opened => {
+            more-menu.open(CallPanel.more-by-keys);
+        }
+
+        more-menu := CallMoreMenu {
+            x: Placement.fit(dock.more-x + dock.more-size - self.width, self.width, root.width, Space.md);
+            y: root.more-above
+                ? dock.more-y - Space.xs - self.height
+                : dock.more-y + dock.more-size + Space.xs;
+            room: root.more-above ? root.more-room-above : root.more-room-below;
+            above-modal: Shell.nav-on-top;
+            beside-chat: timeline.call-split-fits;
+            devices(by-keys) => {
+                CallPanel.open-devices(by-keys, CallMenuOpener.more);
+            }
+            react(by-keys) => {
+                CallPanel.open-reactions(by-keys, CallMenuOpener.more);
+            }
+            change-share(by-keys) => {
+                CallPanel.more-open = false;
+                dock.change-share(by-keys);
+                if !by-keys {
+                    dock.focus-more();
+                }
+            }
+            mode(mode) => {
+                CallPanel.more-open = false;
+                dock.choose-mode(mode);
+            }
+            details(by-keys) => {
+                CallPanel.open-details(by-keys, CallMenuOpener.more);
             }
         }
     }

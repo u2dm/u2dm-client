@@ -1,0 +1,291 @@
+import { ScrollView } from "std-widgets.slint";
+import { Icon, IconSet } from "@lucide";
+
+import { RovingKeys } from "../../../../components/a11y.slint";
+import { MenuRow } from "../../../../components/menu-row.slint";
+import { PickerCard } from "../../../../components/overlay.slint";
+import { Actions } from "../../../../actions.slint";
+import { CallHand, CallReaction, CallScreen } from "../../../../enums.slint";
+import { CallWords } from "../../../../messages.slint";
+import { CallMode, CallPanel } from "../../../../local.slint";
+import { CallView } from "../../../../views.slint";
+import { AppStyle, Metrics, Space, Stroke } from "../../../../theme.slint";
+import { MenuGroup } from "./call-view-menu.slint";
+
+enum CallMoreChoice { devices, react, hand, change-share, call-and-chat, call-only, chat-only, details }
+
+export component CallMoreMenu inherits PickerCard {
+    in property <length> room;
+    in property <bool> above-modal;
+    in property <bool> beside-chat;
+
+    callback devices(bool);
+    callback react(bool);
+    callback change-share(bool);
+    callback mode(CallMode);
+    callback details(bool);
+
+    property <bool> sharing: CallView.screen == CallScreen.on;
+    property <[CallMoreChoice]> actions: root.sharing
+        ? [CallMoreChoice.devices, CallMoreChoice.react, CallMoreChoice.hand, CallMoreChoice.change-share]
+        : [CallMoreChoice.devices, CallMoreChoice.react, CallMoreChoice.hand];
+    property <[CallMoreChoice]> modes: [CallMoreChoice.call-and-chat, CallMoreChoice.call-only, CallMoreChoice.chat-only];
+    property <int> count: root.actions.length + root.modes.length + 1;
+    property <int> cursor: -1;
+    property <bool> keys-focused: keys.has-focus;
+    property <bool> hand-up: CallView.hand == CallHand.up || CallView.hand == CallHand.lowering
+        || CallView.hand == CallHand.lower-failed;
+
+    public function open(by-keys: bool) {
+        root.cursor = by-keys ? 0 : -1;
+        keys.focus();
+    }
+
+    pure function choice-at(index: int) -> CallMoreChoice {
+        if index < root.actions.length {
+            return root.actions[index];
+        }
+        if index < root.actions.length + root.modes.length {
+            return root.modes[index - root.actions.length];
+        }
+        return CallMoreChoice.details;
+    }
+
+    pure function cursor-choice() -> CallMoreChoice {
+        return root.choice-at(max(root.cursor, 0));
+    }
+
+    pure function icon(choice: CallMoreChoice) -> Icon {
+        if choice == CallMoreChoice.devices {
+            return IconSet.Settings;
+        }
+        if choice == CallMoreChoice.react {
+            return IconSet.SmilePlus;
+        }
+        if choice == CallMoreChoice.hand {
+            return IconSet.Hand;
+        }
+        if choice == CallMoreChoice.change-share {
+            return IconSet.ScreenShare;
+        }
+        if choice == CallMoreChoice.call-and-chat {
+            return root.beside-chat ? IconSet.LayoutPanelLeft : IconSet.LayoutPanelTop;
+        }
+        if choice == CallMoreChoice.call-only {
+            return CallView.active-video ? IconSet.Video : IconSet.Phone;
+        }
+        if choice == CallMoreChoice.chat-only {
+            return IconSet.MessageSquare;
+        }
+        return IconSet.Activity;
+    }
+
+    pure function label(choice: CallMoreChoice) -> string {
+        if choice == CallMoreChoice.devices {
+            return @tr("Devices…");
+        }
+        if choice == CallMoreChoice.react {
+            return @tr("Send a reaction…");
+        }
+        if choice == CallMoreChoice.hand {
+            return CallWords.raise-your-hand();
+        }
+        if choice == CallMoreChoice.change-share {
+            return @tr("Change shared screen…");
+        }
+        if choice == CallMoreChoice.call-and-chat {
+            return @tr("Call and chat");
+        }
+        if choice == CallMoreChoice.call-only {
+            return @tr("Call only");
+        }
+        if choice == CallMoreChoice.chat-only {
+            return @tr("Chat only");
+        }
+        return @tr("Connection details…");
+    }
+
+    pure function offered(choice: CallMoreChoice) -> bool {
+        if choice == CallMoreChoice.react {
+            return CallView.reaction != CallReaction.unavailable;
+        }
+        if choice == CallMoreChoice.hand {
+            return CallView.hand != CallHand.unavailable;
+        }
+        return true;
+    }
+
+    pure function pending(choice: CallMoreChoice) -> bool {
+        return (choice == CallMoreChoice.react && CallView.reaction == CallReaction.sending)
+            || (choice == CallMoreChoice.hand && (CallView.hand == CallHand.raising || CallView.hand == CallHand.lowering));
+    }
+
+    pure function checkable(choice: CallMoreChoice) -> bool {
+        return choice == CallMoreChoice.hand || choice == CallMoreChoice.call-and-chat
+            || choice == CallMoreChoice.call-only || choice == CallMoreChoice.chat-only;
+    }
+
+    pure function checked(choice: CallMoreChoice) -> bool {
+        return (choice == CallMoreChoice.hand && root.hand-up)
+            || (choice == CallMoreChoice.call-and-chat && CallPanel.mode == CallMode.call-and-chat)
+            || (choice == CallMoreChoice.call-only && CallPanel.mode == CallMode.call-only)
+            || (choice == CallMoreChoice.chat-only && CallPanel.mode == CallMode.chat-only);
+    }
+
+    pure function description(choice: CallMoreChoice) -> string {
+        if choice == CallMoreChoice.react {
+            return CallWords.reaction-state(CallView.reaction);
+        }
+        if choice == CallMoreChoice.hand && CallView.hand != CallHand.up && CallView.hand != CallHand.down {
+            return CallWords.hand-state(CallView.hand);
+        }
+        return "";
+    }
+
+    function choose(choice: CallMoreChoice, by-keys: bool) {
+        if !root.offered(choice) {
+            return;
+        }
+        if choice == CallMoreChoice.devices {
+            root.devices(by-keys);
+        } else if choice == CallMoreChoice.react {
+            root.react(by-keys);
+        } else if choice == CallMoreChoice.hand {
+            Actions.raise-hand({ on: !root.hand-up });
+        } else if choice == CallMoreChoice.change-share {
+            root.change-share(by-keys);
+        } else if choice == CallMoreChoice.call-and-chat {
+            root.mode(CallMode.call-and-chat);
+        } else if choice == CallMoreChoice.call-only {
+            root.mode(CallMode.call-only);
+        } else if choice == CallMoreChoice.chat-only {
+            root.mode(CallMode.chat-only);
+        } else {
+            root.details(by-keys);
+        }
+    }
+
+    function reveal(top: length, size: length) {
+        if top < -scroll.content-y {
+            scroll.content-y = -top;
+        } else if top + size > -scroll.content-y + scroll.visible-height {
+            scroll.content-y = -(top + size - scroll.visible-height);
+        }
+    }
+
+    width: Metrics.call-menu-width;
+    height: min(rows.preferred-height + 2 * Space.sm, root.room);
+
+    TouchArea { }
+
+    keys := RovingKeys {
+        count: root.count;
+        cursor <=> root.cursor;
+        accessible-label: root.cursor >= 0 ? root.label(root.cursor-choice()) : @tr("More call options");
+        accessible-description: root.cursor >= 0 ? root.description(root.cursor-choice()) : "";
+        accessible-enabled: root.cursor < 0 || root.offered(root.cursor-choice());
+        accessible-checkable: root.cursor >= 0 && root.checkable(root.cursor-choice());
+        accessible-checked: root.cursor >= 0 && root.checked(root.cursor-choice());
+        accessible-action-default => {
+            root.choose(root.cursor-choice(), true);
+        }
+        intercept(event) => {
+            if event.text == Key.Tab || event.text == Key.Backtab {
+                return accept;
+            }
+            return reject;
+        }
+        activated(index) => {
+            root.choose(root.choice-at(index), true);
+        }
+    }
+
+    scroll := ScrollView {
+        x: 0;
+        y: Space.sm;
+        width: parent.width;
+        height: parent.height - 2 * Space.sm;
+        content-width: self.visible-width;
+        content-height: rows.preferred-height;
+
+        rows := VerticalLayout {
+            width: scroll.visible-width;
+            padding-left: Space.sm;
+            padding-right: Space.sm;
+            spacing: Space.xs;
+
+            for choice[index] in root.actions: MenuRow {
+                height: Metrics.call-menu-row;
+                icon: root.icon(choice);
+                label: root.label(choice);
+                enabled: root.offered(choice);
+                busy: root.pending(choice);
+                checkable: root.checkable(choice);
+                checked: root.checked(choice);
+                trailing: root.checked(choice) ? IconSet.Check : { };
+                focusable: false;
+                above-modal: root.above-modal;
+                roving-focus: root.keys-focused && root.cursor == index;
+                changed roving-focus => {
+                    if self.roving-focus {
+                        root.reveal(self.y, self.height);
+                    }
+                }
+                clicked => {
+                    root.choose(choice, false);
+                }
+            }
+
+            MenuGroup {
+                heading: @tr("Layout");
+            }
+
+            for choice[index] in root.modes: MenuRow {
+                height: Metrics.call-menu-row;
+                icon: root.icon(choice);
+                label: root.label(choice);
+                checkable: true;
+                checked: root.checked(choice);
+                trailing: root.checked(choice) ? IconSet.Check : { };
+                focusable: false;
+                above-modal: root.above-modal;
+                roving-focus: root.keys-focused && root.cursor == root.actions.length + index;
+                changed roving-focus => {
+                    if self.roving-focus {
+                        root.reveal(self.y, self.height);
+                    }
+                }
+                clicked => {
+                    root.choose(choice, false);
+                }
+            }
+
+            Rectangle {
+                height: Metrics.call-menu-group-gap;
+
+                Rectangle {
+                    y: (parent.height - self.height) / 2;
+                    height: Stroke.hairline;
+                    background: AppStyle.border;
+                }
+            }
+
+            MenuRow {
+                height: Metrics.call-menu-row;
+                icon: root.icon(CallMoreChoice.details);
+                label: root.label(CallMoreChoice.details);
+                focusable: false;
+                above-modal: root.above-modal;
+                roving-focus: root.keys-focused && root.cursor == root.count - 1;
+                changed roving-focus => {
+                    if self.roving-focus {
+                        root.reveal(self.y, self.height);
+                    }
+                }
+                clicked => {
+                    root.choose(CallMoreChoice.details, false);
+                }
+            }
+        }
+    }
+}

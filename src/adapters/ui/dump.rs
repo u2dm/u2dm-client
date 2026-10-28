@@ -3,7 +3,7 @@ use std::sync::OnceLock;
 use std::time::Duration;
 
 use serde::Serialize;
-use slint::{ComponentHandle, Model};
+use slint::{ComponentHandle, LogicalSize, Model};
 use tokio::sync::oneshot;
 
 use super::activity;
@@ -319,6 +319,7 @@ pub enum Poke {
     ToggleAudio,
     SeekAudio(Duration),
     WindowFocus(bool),
+    WindowSize(f32, f32),
     UserActivity(bool),
     SwipeTravel(i32),
     ContextPress,
@@ -366,6 +367,9 @@ pub fn install_probe<B: UiBackend>(window: &B::Window) {
             Poke::WindowFocus(focused) => {
                 window.set_bool(BoolProp::WindowFocused, focused);
                 window.window().request_redraw();
+            }
+            Poke::WindowSize(width, height) => {
+                window.window().set_size(LogicalSize::new(width, height));
             }
             Poke::UserActivity(active) => activity::report(&window, active),
             Poke::SwipeTravel(px) => window.set_int(IntProp::SwipeTravel, px),

@@ -6,10 +6,10 @@ import { StateLayer } from "../../../../components/state-layer.slint";
 import { CallNotice, CallPhase, CallScreen } from "../../../../enums.slint";
 import { CallWords, UserMessages } from "../../../../messages.slint";
 import { Actions } from "../../../../actions.slint";
-import { CallPanel, Shell, TipScope } from "../../../../local.slint";
+import { CallMenuOpener, CallMode, CallPanel, Shell, TipScope } from "../../../../local.slint";
 import { CallView, DirectoryView, SpaceIndexView } from "../../../../views.slint";
 import { AppStyle, Fonts, IconSize, Metrics, Motion, Radius, Size, Space, Stroke, Weight } from "../../../../theme.slint";
-import { CallCameraButton, CallHandButton, CallKey, CallLeaveButton, CallMicButton, CallReactButton, CallShareButton } from "./call-controls.slint";
+import { CallCameraButton, CallHandButton, CallKey, CallLeaveButton, CallMicButton, CallMoreButton, CallReactButton, CallShareButton } from "./call-controls.slint";
 import { CallStatus, ShareStatus } from "./call-status.slint";
 
 component LineTarget inherits ClickArea {
@@ -53,6 +53,7 @@ component CallLine inherits Rectangle {
     out property <length> people-bottom: people.absolute-position.y + people.height;
     in property <bool> share-apart;
     out property <length> least-alone: root.lead + root.room-least + (root.clock ? 0px : root.phase-room) + root.gap + root.people-tail;
+    out property <length> whole-alone: root.lead + room.text-width + root.phase-room + root.gap + root.people-tail;
     out property <length> share-width: root.gap + sharing.preferred-width + root.gap + change.text-width - Space.xs;
 
     property <bool> shows-sharing: CallView.screen == CallScreen.on && !root.share-apart;
@@ -210,12 +211,15 @@ export component CallDock inherits Rectangle {
 
     callback returned();
 
-    out property <length> devices-x: devices.absolute-position.x;
-    out property <length> devices-y: devices.absolute-position.y;
+    out property <length> devices-x: root.devices-shown ? devices.absolute-position.x : more.absolute-position.x;
+    out property <length> devices-y: root.devices-shown ? devices.absolute-position.y : more.absolute-position.y;
     out property <length> devices-size: devices.height;
-    out property <length> react-x: react.absolute-position.x;
-    out property <length> react-y: react.absolute-position.y;
+    out property <length> react-x: root.react-shown ? react.absolute-position.x : more.absolute-position.x;
+    out property <length> react-y: root.react-shown ? react.absolute-position.y : more.absolute-position.y;
     out property <length> react-size: react.height;
+    out property <length> more-x: more.absolute-position.x;
+    out property <length> more-y: more.absolute-position.y;
+    out property <length> more-size: more.height;
 
     property <length> pad: Space.md;
     property <length> gap: Space.md;
@@ -231,7 +235,6 @@ export component CallDock inherits Rectangle {
     property <int> device-news-serial: CallView.device-news-serial;
     property <int> dock-takes-focus: CallPanel.dock-takes-focus;
     property <int> people-returns: CallPanel.people-returns;
-    property <int> details-returns: CallPanel.details-returns;
     property <bool> status-taken: !root.failed
         && (CallView.notice != CallNotice.none
             || (root.explains-share && share.refused)
@@ -253,15 +256,24 @@ export component CallDock inherits Rectangle {
     property <length> base-controls: 4 * (Metrics.call-control + root.gap) + leave.preferred-width;
     property <length> controls-least: root.failed
         ? (CallView.failure-retry ? retry.preferred-width + root.gap : 0px) + dismiss.width
-        : root.base-controls + root.extra-width;
+        : root.base-controls;
     property <length> beside-controls: 2 * root.pad + root.line-least + root.show-width + root.gap;
     property <length> extra-room: root.failed ? 0px
         : root.stacked ? root.width - 2 * root.pad - root.base-controls
         : root.width - root.beside-controls - root.base-controls;
+    property <length> line-whole: line.whole-alone + (root.sharing && !root.share-apart ? line.share-width : 0px);
+    property <length> spare-room: root.failed ? 0px
+        : root.stacked ? root.extra-room
+        : root.width - 2 * root.pad - root.line-whole - root.show-width - root.gap - root.base-controls;
     property <bool> react-fits: root.extra-room >= root.extra-width;
     property <bool> hand-fits: root.extra-room >= 2 * root.extra-width;
+    property <bool> devices-fits: root.spare-room >= 3 * root.extra-width;
+    property <bool> react-shown;
+    property <bool> hand-shown;
+    property <bool> devices-shown;
+    property <int> extras: (root.react-shown ? 1 : 0) + (root.hand-shown ? 1 : 0) + (root.devices-shown ? 1 : 0);
     property <length> controls-width: root.failed ? root.controls-least
-        : root.base-controls + (root.react-fits ? root.extra-width : 0px) + (root.hand-fits ? root.extra-width : 0px);
+        : root.base-controls + root.extras * root.extra-width;
     property <bool> sharing: !root.failed && CallView.screen == CallScreen.on;
     property <length> line-with-share: line.least-alone + (root.sharing ? line.share-width : 0px);
     property <bool> share-apart: root.sharing && root.width - 2 * root.pad - root.show-width < root.line-with-share;
@@ -292,12 +304,26 @@ export component CallDock inherits Rectangle {
     property <length> label-height: root.stacked ? Size.md : Metrics.call-control;
     property <length> controls-y: root.height - root.pad - Metrics.call-control;
 
-    public function focus-devices() {
-        devices.take-focus();
+    public function focus-devices-opener(opener: CallMenuOpener) {
+        if opener == CallMenuOpener.status && status.offers-details {
+            status.focus-details();
+        } else if opener == CallMenuOpener.control && root.devices-shown {
+            devices.take-focus();
+        } else {
+            more.take-focus();
+        }
     }
 
-    public function focus-react() {
-        react.take-focus();
+    public function focus-react-opener() {
+        if CallPanel.reactions-opener == CallMenuOpener.control && root.react-shown {
+            react.take-focus();
+        } else {
+            more.take-focus();
+        }
+    }
+
+    public function focus-more() {
+        more.take-focus();
     }
 
     public pure function focuses(key: CallKey) -> bool {
@@ -318,7 +344,7 @@ export component CallDock inherits Rectangle {
         }
     }
 
-    function show-stage(by-keys: bool) {
+    function uncover-call() {
         Shell.nav-open = false;
         if SpaceIndexView.visible {
             Actions.close-space-index();
@@ -326,10 +352,22 @@ export component CallDock inherits Rectangle {
         if DirectoryView.selected-room-id == "" {
             Actions.select-room(CallView.active-room-id);
         }
+    }
+
+    function show-stage(by-keys: bool) {
+        root.uncover-call();
         CallPanel.show-call();
         if by-keys {
             CallPanel.band-takes-focus += 1;
         }
+    }
+
+    public function choose-mode(mode: CallMode) {
+        if mode != CallMode.chat-only {
+            root.uncover-call();
+        }
+        CallPanel.choose(mode);
+        more.take-focus();
     }
 
     function view-shares(by-keys: bool) {
@@ -339,7 +377,7 @@ export component CallDock inherits Rectangle {
         root.show-stage(by-keys);
     }
 
-    function change-share(by-keys: bool) {
+    public function change-share(by-keys: bool) {
         if by-keys {
             CallPanel.share-takes-focus += 1;
         }
@@ -388,8 +426,33 @@ export component CallDock inherits Rectangle {
         root.shows-button = root.offers-button;
     }
 
+    function follow-extras() {
+        if !root.failed
+            && ((root.react-shown && !root.react-fits && react.has-focus)
+                || (root.hand-shown && !root.hand-fits && hand.has-focus)
+                || (root.devices-shown && !root.devices-fits && devices.has-focus)) {
+            more.take-focus();
+        }
+        root.react-shown = root.react-fits;
+        root.hand-shown = root.hand-fits;
+        root.devices-shown = root.devices-fits;
+    }
+
     init => {
         root.follow-shares();
+        root.follow-extras();
+    }
+
+    changed react-fits => {
+        root.follow-extras();
+    }
+
+    changed hand-fits => {
+        root.follow-extras();
+    }
+
+    changed devices-fits => {
+        root.follow-extras();
     }
 
     changed tells-shares => {
@@ -406,10 +469,6 @@ export component CallDock inherits Rectangle {
 
     changed people-returns => {
         line.focus-people();
-    }
-
-    changed details-returns => {
-        devices.take-focus();
     }
 
     changed ended-share-serial => {
@@ -607,7 +666,7 @@ export component CallDock inherits Rectangle {
     }
 
     share := CallShareButton {
-        x: (root.react-fits ? react.x : devices.x) - root.gap - self.width;
+        x: (root.react-shown ? react.x : more.x) - root.gap - self.width;
         y: root.controls-y;
         visible: !root.failed;
         above-modal: root.above-modal;
@@ -617,24 +676,24 @@ export component CallDock inherits Rectangle {
     }
 
     react := CallReactButton {
-        x: (root.hand-fits ? hand.x : devices.x) - root.gap - self.width;
+        x: (root.hand-shown ? hand.x : more.x) - root.gap - self.width;
         y: root.controls-y;
-        visible: root.react-fits;
+        visible: root.react-shown;
         above-modal: root.above-modal;
     }
 
     hand := CallHandButton {
-        x: devices.x - root.gap - self.width;
+        x: (root.devices-shown ? devices.x : more.x) - root.gap - self.width;
         y: root.controls-y;
-        visible: root.hand-fits;
+        visible: root.hand-shown;
         above-modal: root.above-modal;
     }
 
     devices := IconButton {
-        x: leave.x - root.gap - self.width;
+        x: more.x - root.gap - self.width;
         y: root.controls-y;
         size: Metrics.call-control;
-        visible: !root.failed;
+        visible: root.devices-shown;
         above-modal: root.above-modal;
         fill: AppStyle.control;
         tint: AppStyle.foreground-strong;
@@ -643,10 +702,15 @@ export component CallDock inherits Rectangle {
         tip: self.label;
         tip-scope: TipScope.call;
         clicked => {
-            CallPanel.devices-by-keys = self.has-focus;
-            Actions.refresh-call-devices();
-            CallPanel.devices-open = true;
+            CallPanel.open-devices(self.has-focus, CallMenuOpener.control);
         }
+    }
+
+    more := CallMoreButton {
+        x: leave.x - root.gap - self.width;
+        y: root.controls-y;
+        visible: !root.failed;
+        above-modal: root.above-modal;
     }
 
     leave := CallLeaveButton {

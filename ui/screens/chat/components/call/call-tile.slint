@@ -5,7 +5,7 @@ import { Avatar } from "../../../../components/avatar.slint";
 import { ClickArea, FocusRing } from "../../../../components/a11y.slint";
 import { IconButton, LinkButton } from "../../../../components/button.slint";
 import { CallStates } from "../../../../call-states.slint";
-import { CallPanel, TipScope } from "../../../../local.slint";
+import { CallPanel, Shell, TipScope } from "../../../../local.slint";
 import { CallTileEntry } from "../../../../types.slint";
 import { CallWords } from "../../../../messages.slint";
 import { CallView } from "../../../../views.slint";
@@ -368,6 +368,7 @@ export component CallTileView inherits Rectangle {
         width: 0;
         height: root.picture-height;
         focus-on-click: false;
+        focus-on-tab-navigation: Shell.background-reachable;
         accessible-role: image;
         accessible-label: root.title;
         accessible-description: CallWords.zoom-state(root.percent, root.zoomed);

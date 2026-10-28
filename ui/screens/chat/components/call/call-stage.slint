@@ -4,7 +4,7 @@ import { RovingKeys } from "../../../../components/a11y.slint";
 import { IconButton } from "../../../../components/button.slint";
 import { Actions } from "../../../../actions.slint";
 import { CallWords } from "../../../../messages.slint";
-import { CallPanel } from "../../../../local.slint";
+import { CallPanel, Shell } from "../../../../local.slint";
 import { CallView } from "../../../../views.slint";
 import { AppStyle, Metrics, Size, Space } from "../../../../theme.slint";
 import { CallTileView } from "./call-tile.slint";
@@ -168,7 +168,9 @@ export component CallStage inherits Rectangle {
         count: root.count;
         horizontal: !root.rail;
         enabled: films.visible && root.count > 0;
+        focus-on-tab-navigation: Shell.background-reachable;
         cursor <=> root.cursor;
+        accessible-enabled: Shell.background-reachable;
         accessible-label: root.cursor < 0 || root.cursor >= root.count ? @tr("People in the call")
             : CallView.tiles[root.cursor].screen && CallView.tiles[root.cursor].own
             ? CallWords.tile-title(CallView.tiles[root.cursor])

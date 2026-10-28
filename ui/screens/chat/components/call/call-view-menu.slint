@@ -13,7 +13,7 @@ import { AppStyle, Fonts, Metrics, Space, Stroke, Weight } from "../../../../the
 
 enum CallViewChoice { call-and-chat, call-only, chat-only, automatic, gallery, follow, pinned, strip, self-view, share-preview, fit }
 
-component MenuGroup inherits VerticalLayout {
+export component MenuGroup inherits VerticalLayout {
     in property <string> heading;
     in property <bool> first;
 

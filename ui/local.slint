@@ -131,6 +131,8 @@ export enum CallSurface { call, chat }
 
 export enum CallSheetOpener { composer, header, room-menu }
 
+export enum CallMenuOpener { control, more, status }
+
 export global CallPanel {
     in-out property <CallMode> mode: CallMode.chat-only;
     in-out property <CallMode> last-call-mode: CallMode.call-and-chat;
@@ -147,6 +149,10 @@ export global CallPanel {
     in-out property <bool> devices-by-keys: false;
     in-out property <bool> reactions-open: false;
     in-out property <bool> reactions-by-keys: false;
+    in-out property <bool> more-open: false;
+    in-out property <bool> more-by-keys: false;
+    in-out property <CallMenuOpener> devices-opener: CallMenuOpener.control;
+    in-out property <CallMenuOpener> reactions-opener: CallMenuOpener.control;
     in-out property <bool> people-open: false;
     in-out property <bool> people-by-keys: false;
     in-out property <length> people-left;
@@ -167,7 +173,7 @@ export global CallPanel {
     in-out property <int> dock-takes-focus;
     in-out property <bool> details-open: false;
     in-out property <bool> details-by-keys: false;
-    in-out property <int> details-returns;
+    in-out property <CallMenuOpener> details-opener: CallMenuOpener.control;
     in-out property <bool> ring-devices-open: false;
     in-out property <bool> ring-devices-by-keys: false;
     in-out property <length> ring-devices-right;
@@ -183,12 +189,29 @@ export global CallPanel {
         Actions.open-call-sheet({ room-id: room-id, video: video });
     }
 
-    public function open-details(by-keys: bool) {
+    public function open-devices(by-keys: bool, opener: CallMenuOpener) {
+        root.more-open = false;
+        root.devices-by-keys = by-keys;
+        root.devices-opener = opener;
+        Actions.refresh-call-devices();
+        root.devices-open = true;
+    }
+
+    public function open-reactions(by-keys: bool, opener: CallMenuOpener) {
+        root.more-open = false;
+        root.reactions-by-keys = by-keys;
+        root.reactions-opener = opener;
+        root.reactions-open = true;
+    }
+
+    public function open-details(by-keys: bool, opener: CallMenuOpener) {
         root.menu-open = false;
         root.devices-open = false;
         root.reactions-open = false;
+        root.more-open = false;
         root.people-open = false;
         root.details-by-keys = by-keys;
+        root.details-opener = opener;
         root.details-open = true;
         Actions.watch-connections({ on: true });
     }
@@ -196,9 +219,6 @@ export global CallPanel {
     public function close-details() {
         root.details-open = false;
         Actions.watch-connections({ on: false });
-        if root.details-by-keys {
-            root.details-returns += 1;
-        }
     }
 
     public function open-ring-devices(by-keys: bool, right: length, bottom: length) {
@@ -278,6 +298,7 @@ export global CallPanel {
         root.menu-open = false;
         root.devices-open = false;
         root.reactions-open = false;
+        root.more-open = false;
         root.people-open = false;
         root.details-open = false;
         root.focus-stage = false;
@@ -371,6 +392,7 @@ export global Shell {
         CallPanel.menu-open = false;
         CallPanel.devices-open = false;
         CallPanel.reactions-open = false;
+        CallPanel.more-open = false;
         CallPanel.people-open = false;
     }
 }
@@ -820,6 +842,7 @@ export global LocalState {
         CallPanel.menu-open = false;
         CallPanel.devices-open = false;
         CallPanel.reactions-open = false;
+        CallPanel.more-open = false;
         CallPanel.people-open = false;
     }
 
@@ -831,5 +854,6 @@ export global LocalState {
         CallPanel.menu-open = false;
         CallPanel.devices-open = false;
         CallPanel.reactions-open = false;
+        CallPanel.more-open = false;
     }
 }

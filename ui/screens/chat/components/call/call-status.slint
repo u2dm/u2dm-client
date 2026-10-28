@@ -7,7 +7,7 @@ import { CallDeviceTrouble, CallNotice, CallPhase } from "../../../../enums.slin
 import { CallWords } from "../../../../messages.slint";
 import { Actions } from "../../../../actions.slint";
 import { CallView } from "../../../../views.slint";
-import { CallPanel } from "../../../../local.slint";
+import { CallMenuOpener, CallPanel } from "../../../../local.slint";
 import { AppStyle, Fonts, IconSize, Size, Space } from "../../../../theme.slint";
 
 export component CallStatus inherits VerticalLayout {
@@ -27,7 +27,8 @@ export component CallStatus inherits VerticalLayout {
     property <bool> undiagnosed: root.notice == CallNotice.sharing-never-started;
     property <bool> not-received: CallStates.not-received(root.notice);
     property <bool> own-poor: root.notice == CallNotice.connection-poor;
-    property <bool> offers-details: root.not-received || root.own-poor;
+    out property <bool> offers-details: root.not-received || root.own-poor;
+    property <int> details-asked;
     property <bool> change-cancelled: !root.noticed && !root.explains-share && root.tells-change-cancelled;
     property <bool> device-news: !root.noticed && !root.explains-share && !root.change-cancelled
         && root.tells-device-news;
@@ -38,6 +39,10 @@ export component CallStatus inherits VerticalLayout {
     property <string> action: CallWords.notice-action(root.notice);
     property <string> way-out: CallWords.notice-way-out(root.notice);
     property <bool> share-waits: CallView.phase == CallPhase.joining || CallView.phase == CallPhase.connecting;
+
+    public function focus-details() {
+        root.details-asked += 1;
+    }
 
     function act() {
         if root.notice == CallNotice.choosing-screen {
@@ -104,14 +109,19 @@ export component CallStatus inherits VerticalLayout {
         }
 
         if root.offers-details: LinkButton {
+            property <int> asked: root.details-asked;
+
             min-height: Size.sm;
             above-modal: root.above-modal;
             text: @tr("Details");
             label: @tr("Show the connection details");
             font-size: Fonts.body-small;
             pad: 2 * Space.sm;
+            changed asked => {
+                self.take-focus();
+            }
             clicked => {
-                CallPanel.open-details(self.has-focus);
+                CallPanel.open-details(self.has-focus, CallMenuOpener.status);
             }
         }
 

@@ -8,7 +8,7 @@ import { TipSource } from "../../../../components/tip.slint";
 import { CallCamera, CallHand, CallMic, CallPhase, CallReaction, CallScreen } from "../../../../enums.slint";
 import { CallWords } from "../../../../messages.slint";
 import { Actions } from "../../../../actions.slint";
-import { CallPanel, TipScope } from "../../../../local.slint";
+import { CallMenuOpener, CallPanel, TipScope } from "../../../../local.slint";
 import { CallView } from "../../../../views.slint";
 import { AppStyle, IconSize, Metrics, Space } from "../../../../theme.slint";
 
@@ -228,9 +228,22 @@ export component CallReactButton inherits CallToggle {
     accessible-expanded: CallPanel.reactions-open;
     clicked => {
         if !root.waits {
-            CallPanel.reactions-by-keys = self.has-focus;
-            CallPanel.reactions-open = true;
+            CallPanel.open-reactions(self.has-focus, CallMenuOpener.control);
         }
+    }
+}
+
+export component CallMoreButton inherits CallToggle {
+    state: CallToggleState.off;
+    on-icon: IconSet.Ellipsis;
+    off-icon: IconSet.Ellipsis;
+    label: @tr("More call options");
+    accessible-checkable: false;
+    accessible-expandable: true;
+    accessible-expanded: CallPanel.more-open;
+    clicked => {
+        CallPanel.more-by-keys = self.has-focus;
+        CallPanel.more-open = true;
     }
 }
 

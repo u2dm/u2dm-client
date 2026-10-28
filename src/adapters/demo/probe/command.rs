@@ -576,6 +576,10 @@ pub enum ProbeCommand {
     WindowFocus {
         focused: bool,
     },
+    ResizeWindow {
+        width: f32,
+        height: f32,
+    },
     UserActivity {
         active: bool,
     },
@@ -644,6 +648,9 @@ impl fmt::Display for Driven {
                 write!(f, "SeekAudio({}ms)", position.as_millis())
             }
             Self::Poke(Poke::WindowFocus(focused)) => write!(f, "WindowFocus({focused})"),
+            Self::Poke(Poke::WindowSize(width, height)) => {
+                write!(f, "WindowSize({width}x{height})")
+            }
             Self::Poke(Poke::UserActivity(active)) => write!(f, "UserActivity({active})"),
             Self::Poke(Poke::SwipeTravel(px)) => write!(f, "SwipeTravel({px}px)"),
             Self::HandOff(handoff) => write!(f, "HandOff(link: {})", handoff.link.is_some()),
@@ -1352,6 +1359,9 @@ pub fn to_driven(command: ProbeCommand, selected: Selection<'_>) -> Result<Drive
         }
         ProbeCommand::WindowFocus { focused } => {
             return Ok(Driven::Poke(Poke::WindowFocus(focused)));
+        }
+        ProbeCommand::ResizeWindow { width, height } => {
+            return Ok(Driven::Poke(Poke::WindowSize(width, height)));
         }
         ProbeCommand::UserActivity { active } => {
             return Ok(Driven::Poke(Poke::UserActivity(active)));
