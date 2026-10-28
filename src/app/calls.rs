@@ -52,7 +52,7 @@ use crate::domain::call::sfu::{GrantResult, SfuId};
 use crate::domain::call::{
     CallIntent, DeviceId, KeySendReport, MemberKey, OwnMembership, Transport, TransportLookup,
 };
-use crate::domain::room::{Room, RoomId};
+use crate::domain::room::{Room, RoomId, UnreadFlags};
 use crate::domain::user_info::UserId;
 use crate::ports::call::CallMediaPort;
 use crate::ports::matrix::{CallSignalPort, RtcMembershipPort};
@@ -2001,6 +2001,7 @@ impl Calls {
         let mut active = self.joined.as_ref().map(Joined::view);
         if let Some(active) = active.as_mut() {
             active.faces_ready = self.faces_ready;
+            active.room_unread = unread_of(directory.room(&active.room_id));
             self.fetch_faces(active);
         }
         let view = CallView {
@@ -2175,6 +2176,14 @@ fn running_intent(directory: &RoomDirectory, room_id: &RoomId) -> Option<CallInt
         .room(room_id)
         .and_then(|room| room.call.as_deref())
         .map(|call| call.intent().unwrap_or(CallIntent::Voice))
+}
+
+fn unread_of(room: Option<&Room>) -> UnreadFlags {
+    let mut flags = UnreadFlags::default();
+    if let Some(room) = room {
+        flags.absorb(room);
+    }
+    flags
 }
 
 async fn hand_effect(

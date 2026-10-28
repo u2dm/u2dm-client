@@ -73,6 +73,10 @@ export component ChatScreen inherits FocusScope {
         && !root.shows-room-list
         && !SpaceIndexView.visible;
     property <bool> call-media-on-screen: root.call-stage-on-screen && !root.window-minimized;
+    property <bool> call-chat-on-screen: DirectoryView.selected-room-id == CallView.active-room-id
+        && !root.shows-room-list
+        && !SpaceIndexView.visible
+        && !timeline.call-covers-timeline;
     property <int> active-call: CallView.active-call;
 
     property <length> sidebar-width: Metrics.sidebar-default;
@@ -370,6 +374,7 @@ export component ChatScreen inherits FocusScope {
         visible: root.shows-dock;
         above-modal: Shell.nav-on-top;
         stage-shown: root.call-stage-on-screen;
+        chat-shown: root.call-chat-on-screen;
         returned => {
             timeline.focus-composer();
         }

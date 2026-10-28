@@ -1,10 +1,7 @@
-import { Palette } from "std-widgets.slint";
 import { Icon, IconDisplay, IconSet } from "@lucide";
 
-import { ClickArea } from "../../../../components/a11y.slint";
 import { Avatar } from "../../../../components/avatar.slint";
 import { AppButton, IconButton, LinkButton } from "../../../../components/button.slint";
-import { StateLayer } from "../../../../components/state-layer.slint";
 import { TipSource } from "../../../../components/tip.slint";
 import { Actions } from "../../../../actions.slint";
 import { CallStates } from "../../../../call-states.slint";
@@ -12,9 +9,10 @@ import { CallWords } from "../../../../messages.slint";
 import { CallPanel, CallSize, TipScope } from "../../../../local.slint";
 import { CallTileEntry } from "../../../../types.slint";
 import { CallView, DirectoryView } from "../../../../views.slint";
-import { AppStyle, Fonts, Glyph, IconSize, Metrics, Radius, Size, Space, Stroke, Weight } from "../../../../theme.slint";
+import { AppStyle, Fonts, Glyph, IconSize, Metrics, Size, Space, Stroke, Weight } from "../../../../theme.slint";
 import { CallKey, CallKeys } from "./call-controls.slint";
 import { CallStage } from "./call-stage.slint";
+import { CallViewWords } from "./call-view-menu.slint";
 
 component ShareOffer inherits HorizontalLayout {
     in property <string> name;
@@ -145,43 +143,16 @@ component SelfChip inherits Rectangle {
     }
 }
 
-component CallRoomLink inherits ClickArea {
-    out property <length> text-width: caption.preferred-width + 2 * Space.sm;
-
-    ring-radius: Radius.sm;
-    label: CallWords.open-call-chat(CallView.active-room-name);
-
-    StateLayer {
-        border-radius: Radius.sm;
-        ink: Palette.accent-background;
-        hovered: root.has-hover && root.enabled;
-        pressed: root.pressed && root.enabled;
-    }
-
-    caption := Text {
-        x: Space.sm;
-        width: parent.width - 2 * Space.sm;
-        text: @tr("Call in {}", CallView.active-room-name);
-        font-family: Fonts.emoji;
-        font-size: Fonts.body-small;
-        font-weight: Weight.semibold;
-        color: Palette.accent-background;
-        vertical-alignment: center;
-        overflow: elide;
-    }
-}
-
 export component CallBand inherits Rectangle {
     in property <CallSize> size;
     in property <bool> beside-chat;
     in property <length> top-row;
     in property <length> lead-inset;
 
-    callback chat-opened();
-
-    out property <length> menu-x: menu-button.absolute-position.x;
-    out property <length> menu-y: menu-button.absolute-position.y;
-    out property <length> menu-size: menu-button.height;
+    out property <length> menu-right: root.view-worded
+        ? view-button.absolute-position.x + view-button.width
+        : view-icon.absolute-position.x + view-icon.width;
+    out property <length> menu-bottom: view-icon.absolute-position.y + view-icon.height;
 
     property <bool> covers-chat: root.size == CallSize.full;
     property <bool> shows-chat-button;
@@ -197,52 +168,88 @@ export component CallBand inherits Rectangle {
     property <bool> offers-return: root.staged || root.follows-back;
     property <bool> compact-self: CallView.compact-self.length > 0;
     property <length> lead: max(0px, root.lead-inset - Space.md);
-    property <bool> return-worded: menu-button.x - Space.sm - gallery-button.preferred-width
-        - (root.compact-self ? Metrics.call-self-chip + Space.sm : 0px) - Space.md - root.lead
-        >= Metrics.call-header-label-min;
+    property <bool> elsewhere: CallView.active-room-id != DirectoryView.selected-room-id;
+    property <bool> offers-share: CallView.offered-share != "";
+    property <length> words-least: root.elsewhere || root.offers-share ? Metrics.call-header-label-min : 0px;
+    property <length> view-right: root.shows-chat-button ? chat-button.x - Space.sm : row.width;
+    property <length> chip-room: root.compact-self ? Metrics.call-self-chip + Space.sm : 0px;
+    property <bool> return-fits: root.view-right - Size.md - Space.sm - gallery-button.preferred-width
+        - root.chip-room - Space.md - root.lead
+        >= root.words-least;
+    property <length> return-room: !root.offers-return ? 0px
+        : (root.return-fits ? gallery-button.preferred-width : Size.md) + Space.sm;
+    property <bool> view-fits: root.view-right - view-button.preferred-width - root.return-room
+        - root.chip-room - Space.md - root.lead
+        >= root.words-least;
+    property <bool> return-worded;
+    property <bool> view-worded;
+    property <length> view-x: root.view-right - (root.view-worded ? view-button.preferred-width : Size.md);
     property <length> return-x: root.return-worded ? gallery-button.x : gallery-icon.x;
     property <length> buttons-x: root.compact-self ? self-chip.x
         : root.offers-return ? root.return-x
-        : menu-button.x;
-    property <bool> elsewhere: CallView.active-room-id != DirectoryView.selected-room-id;
-    property <string> people: CallWords.people(CallView.people-first, CallView.people-second, CallView.people-more);
+        : root.view-x;
+    property <string> view-now: CallViewWords.now(CallPanel.mode);
     property <int> band-takes-focus: CallPanel.band-takes-focus;
     property <int> gallery-takes-focus: CallPanel.gallery-takes-focus;
     property <length> name-room: max(0px, root.buttons-x - Space.md - root.lead);
-    property <length> name-width: root.elsewhere && CallView.offered-share == "" ? min(room-link.text-width, root.name-room)
-        : min(root.elsewhere ? room-link.text-width : room-name.preferred-width, root.name-room / 2);
-    property <length> rest-x: root.lead + root.name-width + Space.sm;
+    property <length> name-width: !root.elsewhere ? 0px
+        : root.offers-share ? min(room-name.preferred-width, root.name-room / 2)
+        : min(room-name.preferred-width, root.name-room);
+    property <length> rest-x: root.lead + (root.elsewhere ? root.name-width + Space.sm : 0px);
     property <length> rest-width: max(0px, root.buttons-x - Space.md - root.rest-x);
 
     public function focus-menu() {
-        menu-button.take-focus();
+        if root.view-worded {
+            view-button.take-focus();
+        } else {
+            view-icon.take-focus();
+        }
     }
-
 
     public function focus-chat() {
         if root.covers-chat {
             chat-button.take-focus();
         } else {
-            menu-button.take-focus();
+            root.focus-menu();
         }
     }
 
     function follow-cover() {
         if root.shows-chat-button && !root.covers-chat && root.size != CallSize.hidden && chat-button.has-focus {
-            menu-button.take-focus();
+            root.focus-menu();
         }
         root.shows-chat-button = root.covers-chat;
     }
 
-    function open-chat() {
-        Actions.select-room(CallView.active-room-id);
-        CallPanel.show-chat();
-        if !root.covers-chat {
-            root.chat-opened();
+    function focus-return() {
+        if root.return-worded {
+            gallery-button.take-focus();
+        } else {
+            gallery-icon.take-focus();
         }
     }
 
+    function follow-words() {
+        let view-focused = view-button.has-focus || view-icon.has-focus;
+        let return-focused = gallery-button.has-focus || gallery-icon.has-focus;
+        root.view-worded = root.view-fits;
+        root.return-worded = root.return-fits;
+        if view-focused {
+            root.focus-menu();
+        }
+        if return-focused {
+            root.focus-return();
+        }
+    }
+
+    function open-menu(by-keys: bool) {
+        CallPanel.menu-by-keys = by-keys;
+        CallPanel.menu-open = true;
+    }
+
     init => {
+        root.view-worded = root.view-fits;
+        root.return-worded = root.return-fits;
         root.follow-cover();
     }
 
@@ -250,27 +257,33 @@ export component CallBand inherits Rectangle {
         root.follow-cover();
     }
 
+    changed view-fits => {
+        root.follow-words();
+    }
+
+    changed return-fits => {
+        root.follow-words();
+    }
+
     changed band-takes-focus => {
         root.focus-chat();
     }
 
     changed gallery-takes-focus => {
-        if root.offers-return && root.return-worded {
-            gallery-button.take-focus();
-        } else if root.offers-return {
-            gallery-icon.take-focus();
+        if root.offers-return {
+            root.focus-return();
         }
     }
 
     function take-return(by-keys: bool) {
         if root.pinned {
             if by-keys {
-                menu-button.take-focus();
+                root.focus-menu();
             }
             Actions.unpin-call-tile();
         } else if root.follows-back {
             if by-keys {
-                menu-button.take-focus();
+                root.focus-menu();
             }
             Actions.follow-speaker({ on: true });
         } else {
@@ -301,7 +314,7 @@ export component CallBand inherits Rectangle {
         padding-top: root.top-row > 0 ? (root.top-row - Size.md) / 2 : Space.md;
         spacing: Space.sm;
 
-        Rectangle {
+        row := Rectangle {
             height: Size.md;
 
             chat-button := AppButton {
@@ -321,23 +334,40 @@ export component CallBand inherits Rectangle {
                 }
             }
 
-            menu-button := IconButton {
-                x: (root.shows-chat-button ? chat-button.x - Space.sm : parent.width) - self.width;
+            view-button := AppButton {
+                x: root.view-x;
+                y: (parent.height - self.height) / 2;
+                width: self.preferred-width;
+                height: Size.md;
+                visible: root.view-worded;
+                filled: false;
+                tint: AppStyle.foreground-strong;
+                icon: IconSet.PanelsTopLeft;
+                text: @tr("View");
+                description: root.view-now;
+                clicked => {
+                    root.open-menu(self.has-focus);
+                }
+            }
+
+            view-icon := IconButton {
+                x: root.view-x;
                 y: (parent.height - self.height) / 2;
                 size: Size.md;
-                icon: IconSet.LayoutDashboard;
-                label: @tr("Call layout");
+                visible: !root.view-worded;
+                icon: IconSet.PanelsTopLeft;
+                label: @tr("View");
+                description: root.view-now;
                 tip: self.label;
                 tip-below: true;
                 tip-scope: TipScope.call;
                 clicked => {
-                    CallPanel.menu-by-keys = self.has-focus;
-                    CallPanel.menu-open = true;
+                    root.open-menu(self.has-focus);
                 }
             }
 
             gallery-button := AppButton {
-                x: menu-button.x - Space.sm - self.width;
+                x: root.view-x - Space.sm - self.width;
                 y: (parent.height - self.height) / 2;
                 width: self.preferred-width;
                 height: Size.md;
@@ -356,7 +386,7 @@ export component CallBand inherits Rectangle {
             }
 
             gallery-icon := IconButton {
-                x: menu-button.x - Space.sm - self.width;
+                x: root.view-x - Space.sm - self.width;
                 y: (parent.height - self.height) / 2;
                 size: Size.md;
                 visible: root.offers-return && !root.return-worded;
@@ -371,28 +401,18 @@ export component CallBand inherits Rectangle {
             }
 
             self-chip := SelfChip {
-                x: (root.offers-return ? root.return-x : menu-button.x) - Space.sm - self.width;
+                x: (root.offers-return ? root.return-x : root.view-x) - Space.sm - self.width;
                 y: (parent.height - self.height) / 2;
                 visible: root.compact-self;
                 tile: CallView.compact-self[0];
-            }
-
-            room-link := CallRoomLink {
-                x: root.lead;
-                width: root.name-width;
-                height: parent.height;
-                visible: root.elsewhere;
-                clicked => {
-                    root.open-chat();
-                }
             }
 
             room-name := Text {
                 x: root.lead;
                 width: root.name-width;
                 height: parent.height;
-                visible: !root.elsewhere;
-                text: CallView.active-room-name;
+                visible: root.elsewhere;
+                text: @tr("Call in {}", CallView.active-room-name);
                 font-family: Fonts.emoji;
                 font-size: Fonts.body-small;
                 font-weight: Weight.semibold;
@@ -401,26 +421,13 @@ export component CallBand inherits Rectangle {
                 overflow: elide;
             }
 
-            if CallView.offered-share != "": ShareOffer {
+            if root.offers-share: ShareOffer {
                 x: root.rest-x;
                 width: root.rest-width;
                 name: CallView.offered-share;
                 view => {
                     Actions.view-call-share();
                 }
-            }
-
-            if CallView.offered-share == "": Text {
-                x: root.rest-x;
-                width: root.rest-width;
-                visible: !root.elsewhere || self.preferred-width <= root.rest-width;
-                text: root.people == "" ? "" : @tr("· {}", root.people);
-                font-family: Fonts.emoji;
-                font-size: Fonts.body-small;
-                font-weight: Weight.semibold;
-                color: AppStyle.foreground-muted;
-                vertical-alignment: center;
-                overflow: elide;
             }
         }
 

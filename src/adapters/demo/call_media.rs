@@ -508,9 +508,13 @@ impl DemoMediaSession {
 
     fn spawn_reconnect(&mut self, sfu: SfuId) {
         let events_tx = self.events_tx.clone();
+        let (gone, back) = calls::book().restart_news(self.room_id.as_ref(), sfu.as_ref());
         self.tasks.push(tokio::spawn(async move {
             sleep(RECONNECT_AFTER).await;
-            tracing::info!(%sfu, "demo: the media server reconnects");
+            tracing::info!(%sfu, full = !gone.is_empty(), "demo: the media server reconnects");
+            for event in gone {
+                drop(events_tx.send(event));
+            }
             drop(events_tx.send(MediaEvent::Sfu {
                 sfu: sfu.clone(),
                 state: SfuState::Reconnecting,
@@ -520,6 +524,9 @@ impl DemoMediaSession {
                 sfu,
                 state: SfuState::Connected,
             }));
+            for event in back {
+                drop(events_tx.send(event));
+            }
         }));
     }
 

@@ -226,7 +226,7 @@ pub struct CallDump {
     pub started_share_serial: i32,
     pub ended_share: String,
     pub ended_share_serial: i32,
-    pub people_summary: String,
+    pub room_news: Vec<&'static str>,
     pub people: Vec<CallPersonDump>,
     pub sheet_people: String,
     pub bridges: String,
@@ -515,12 +515,14 @@ fn call_view<B: UiBackend>(window: &B::Window) -> CallDump {
         started_share_serial: window.get_int(IntProp::StartedShareSerial),
         ended_share: window.get_string(StringProp::EndedShare).to_string(),
         ended_share_serial: window.get_int(IntProp::EndedShareSerial),
-        people_summary: format!(
-            "{} | {} | +{}",
-            window.get_string(StringProp::PeopleFirst),
-            window.get_string(StringProp::PeopleSecond),
-            window.get_int(IntProp::PeopleMore)
-        ),
+        room_news: [
+            (BoolProp::ActiveRoomAlert, "alert"),
+            (BoolProp::ActiveRoomMention, "mention"),
+            (BoolProp::ActiveRoomHint, "hint"),
+        ]
+        .into_iter()
+        .filter_map(|(prop, news)| window.get_bool(prop).then_some(news))
+        .collect(),
         people: call_people::<B>(&B::models().call_people),
         sheet_people: format!(
             "{} | {} | +{}",

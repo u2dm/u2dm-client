@@ -1534,17 +1534,17 @@ export global CallWords {
         return @tr("The call is end-to-end encrypted, but {}", bridges);
     }
 
-    public pure function people(first: string, second: string, more: int) -> string {
-        if first == "" {
-            return "";
+    public pure function room-news(alert: bool, mention: bool, hint: bool) -> string {
+        if mention {
+            return @tr("Mentions you");
         }
-        if second == "" {
-            return @tr("{} and you", first);
+        if alert {
+            return @tr("Unread messages");
         }
-        if more > 0 {
-            return @tr("{}, {} and {n} other" | "{}, {} and {n} others" % more, first, second);
+        if hint {
+            return @tr("New activity");
         }
-        return @tr("{}, {} and you", first, second);
+        return "";
     }
 
     public pure function microphone(mic: CallMic) -> string {

@@ -11,12 +11,19 @@ import { CallView, DirectoryView, SpaceIndexView } from "../../../../views.slint
 import { AppStyle, Fonts, IconSize, Metrics, Motion, Radius, Size, Space, Stroke, Weight } from "../../../../theme.slint";
 import { CallCameraButton, CallHandButton, CallKey, CallLeaveButton, CallMicButton, CallMoreButton, CallReactButton, CallShareButton } from "./call-controls.slint";
 import { CallStatus, ShareStatus } from "./call-status.slint";
+import { UnreadDot } from "../unread-dot.slint";
 
 component LineTarget inherits ClickArea {
     in property <string> text;
     in property <color> tint;
     in property <int> weight: Weight.regular;
-    out property <length> text-width: words.preferred-width + 2 * Space.xs;
+    in property <bool> alert;
+    in property <bool> mention;
+    in property <bool> hint;
+    out property <length> text-width: words.preferred-width + 2 * Space.xs + root.mark-room;
+
+    property <bool> marked: root.alert || root.mention || root.hint;
+    property <length> mark-room: root.marked ? mark.width + Space.sm : 0px;
 
     ring-radius: Radius.sm;
 
@@ -29,7 +36,7 @@ component LineTarget inherits ClickArea {
 
     words := Text {
         x: Space.xs;
-        width: max(0px, parent.width - 2 * Space.xs);
+        width: max(0px, parent.width - 2 * Space.xs - root.mark-room);
         text: root.text;
         font-family: Fonts.emoji;
         font-size: Fonts.body-small;
@@ -38,10 +45,20 @@ component LineTarget inherits ClickArea {
         vertical-alignment: center;
         overflow: elide;
     }
+
+    mark := UnreadDot {
+        x: words.x + min(words.preferred-width, words.width) + Space.sm;
+        y: (parent.height - self.height) / 2;
+        visible: root.marked;
+        alert: root.alert;
+        mention: root.mention;
+        accessible-role: none;
+    }
 }
 
 component CallLine inherits Rectangle {
     in property <bool> above-modal;
+    in property <bool> tells-news;
 
     callback open-chat();
     callback open-people(bool);
@@ -109,7 +126,13 @@ component CallLine inherits Rectangle {
         text: CallView.active-room-name;
         tint: AppStyle.call-live;
         weight: Weight.semibold;
+        alert: root.tells-news && CallView.active-room-alert;
+        mention: root.tells-news && CallView.active-room-mention;
+        hint: root.tells-news && CallView.active-room-hint;
         label: CallWords.open-call-chat(CallView.active-room-name);
+        accessible-description: root.tells-news
+            ? CallWords.room-news(CallView.active-room-alert, CallView.active-room-mention, CallView.active-room-hint)
+            : "";
         clicked => {
             root.open-chat();
         }
@@ -208,6 +231,7 @@ component FailedCallLabel inherits Rectangle {
 export component CallDock inherits Rectangle {
     in property <bool> above-modal;
     in property <bool> stage-shown;
+    in property <bool> chat-shown;
 
     callback returned();
 
@@ -606,6 +630,7 @@ export component CallDock inherits Rectangle {
         height: root.label-height;
         visible: !root.failed;
         above-modal: root.above-modal;
+        tells-news: !root.chat-shown;
         share-apart: root.share-apart;
         open-chat => {
             root.open-call-chat();

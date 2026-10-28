@@ -13,6 +13,35 @@ import { AppStyle, Fonts, Metrics, Space, Stroke, Weight } from "../../../../the
 
 enum CallViewChoice { call-and-chat, call-only, chat-only, automatic, gallery, follow, pinned, strip, self-view, share-preview, fit }
 
+export global CallViewWords {
+    public pure function mode(mode: CallMode) -> string {
+        if mode == CallMode.call-and-chat {
+            return @tr("Call and chat");
+        }
+        if mode == CallMode.call-only {
+            return @tr("Call only");
+        }
+        return @tr("Chat only");
+    }
+
+    public pure function stage() -> string {
+        if CallView.stage-chosen && CallView.stage.length > 0 {
+            return CallWords.pinned(CallWords.tile-title(CallView.stage[0]));
+        }
+        if CallView.view-chosen {
+            return @tr("Gallery");
+        }
+        if CallView.follows-speaker {
+            return CallWords.follow-speaker();
+        }
+        return @tr("Automatic");
+    }
+
+    public pure function now(mode: CallMode) -> string {
+        return CallWords.listed(root.mode(mode), root.stage());
+    }
+}
+
 export component MenuGroup inherits VerticalLayout {
     in property <string> heading;
     in property <bool> first;
@@ -87,7 +116,7 @@ export component CallViewMenu inherits PickerCard {
             return IconSet.MessageSquare;
         }
         if choice == CallViewChoice.automatic {
-            return IconSet.Sparkles;
+            return IconSet.LayoutDashboard;
         }
         if choice == CallViewChoice.gallery {
             return IconSet.LayoutGrid;
@@ -112,13 +141,13 @@ export component CallViewMenu inherits PickerCard {
 
     pure function label(choice: CallViewChoice) -> string {
         if choice == CallViewChoice.call-and-chat {
-            return @tr("Call and chat");
+            return CallViewWords.mode(CallMode.call-and-chat);
         }
         if choice == CallViewChoice.call-only {
-            return @tr("Call only");
+            return CallViewWords.mode(CallMode.call-only);
         }
         if choice == CallViewChoice.chat-only {
-            return @tr("Chat only");
+            return CallViewWords.mode(CallMode.chat-only);
         }
         if choice == CallViewChoice.automatic {
             return @tr("Automatic");
@@ -142,6 +171,13 @@ export component CallViewMenu inherits PickerCard {
             return CallView.share-preview ? @tr("Hide your shared screen") : @tr("Show your shared screen");
         }
         return CallPanel.fits-videos ? @tr("Fill tiles with video") : @tr("Fit whole videos");
+    }
+
+    pure function detail(choice: CallViewChoice) -> string {
+        if choice == CallViewChoice.automatic {
+            return @tr("Shared screens first");
+        }
+        return "";
     }
 
     pure function checkable(choice: CallViewChoice) -> bool {
@@ -217,7 +253,8 @@ export component CallViewMenu inherits PickerCard {
     keys := RovingKeys {
         count: root.modes.length + root.stages.length + root.views.length;
         cursor <=> root.cursor;
-        accessible-label: root.cursor >= 0 ? root.label(root.cursor-choice()) : @tr("Call layout");
+        accessible-label: root.cursor >= 0 ? root.label(root.cursor-choice()) : @tr("View");
+        accessible-description: root.cursor >= 0 ? root.detail(root.cursor-choice()) : "";
         accessible-checkable: root.cursor >= 0 && root.checkable(root.cursor-choice());
         accessible-checked: root.cursor >= 0 && root.checked(root.cursor-choice());
         accessible-action-default => {
@@ -280,6 +317,7 @@ export component CallViewMenu inherits PickerCard {
                 height: Metrics.call-menu-row;
                 icon: root.icon(choice);
                 label: root.label(choice);
+                detail: root.detail(choice);
                 checkable: true;
                 checked: root.checked(choice);
                 trailing: root.checked(choice) ? IconSet.Check : { };

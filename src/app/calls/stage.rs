@@ -1,9 +1,10 @@
 use std::time::Duration;
 
-use crate::commands::view::{CallTile, ShareNews, TileKey, TileKind};
+use crate::commands::view::{CallTile, ShareNews, TileKey, TileKind, TileState};
 use crate::domain::member_name::NamedUser;
 
 const SPEAKER_SETTLE: Duration = Duration::from_secs(2);
+const SHARE_RETURN_WAIT: Duration = Duration::from_secs(15);
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum Shown {
@@ -21,6 +22,12 @@ pub(super) struct Arranged {
     pub(super) offered_share: Option<NamedUser>,
 }
 
+enum Sharer {
+    Left,
+    Away,
+    Here,
+}
+
 #[derive(Default)]
 struct Following {
     on: bool,
@@ -30,6 +37,7 @@ struct Following {
 
 pub(super) struct Stage {
     chosen: Option<Shown>,
+    held_since: Option<Duration>,
     before_share: Option<Shown>,
     shares: Vec<TileKey>,
     staged: Option<(TileKey, NamedUser)>,
@@ -46,6 +54,7 @@ impl Default for Stage {
     fn default() -> Self {
         Self {
             chosen: None,
+            held_since: None,
             before_share: None,
             shares: Vec::new(),
             staged: None,
@@ -92,23 +101,13 @@ impl Stage {
         now: Duration,
     ) -> Option<Duration> {
         self.follow_shares(tiles);
-        let gone = match &self.chosen {
-            Some(Shown::Focus(key)) if !self.shows(key, tiles) => Some(key.clone()),
-            _ => None,
-        };
-        if let Some(key) = gone {
-            tracing::debug!(tile = %key, "the focused call tile is gone");
-            self.chosen = match key.kind {
-                TileKind::Screen => self
-                    .before_share
-                    .take()
-                    .filter(|before| self.applies(before, tiles)),
-                TileKind::Person => None,
-            };
-        }
+        let held = self.hold_choice(tiles, now);
         let wake = self.track_speaker(tiles, loudest, now);
         self.follow_staged(tiles);
-        wake
+        match (held, wake) {
+            (Some(held), Some(wake)) => Some(held.min(wake)),
+            (held, wake) => held.or(wake),
+        }
     }
 
     pub(super) fn focus(&mut self, key: &str, tiles: &[CallTile]) -> bool {
@@ -202,6 +201,44 @@ impl Stage {
             shares,
             offered_share,
         }
+    }
+
+    fn hold_choice(&mut self, tiles: &[CallTile], now: Duration) -> Option<Duration> {
+        let gone = match &self.chosen {
+            Some(Shown::Focus(key)) if !self.shows(key, tiles) => key.clone(),
+            _ => {
+                self.held_since = None;
+                return None;
+            }
+        };
+        if gone.kind == TileKind::Screen {
+            match sharer(&gone, tiles) {
+                Sharer::Away => {
+                    self.held_since = None;
+                    return None;
+                }
+                Sharer::Here => {
+                    let until = self
+                        .held_since
+                        .get_or_insert(now)
+                        .saturating_add(SHARE_RETURN_WAIT);
+                    if now < until {
+                        return Some(until);
+                    }
+                }
+                Sharer::Left => {}
+            }
+        }
+        tracing::debug!(tile = %gone, "the focused call tile is gone");
+        self.held_since = None;
+        self.chosen = match gone.kind {
+            TileKind::Screen => self
+                .before_share
+                .take()
+                .filter(|before| self.applies(before, tiles)),
+            TileKind::Person => None,
+        };
+        None
     }
 
     fn track_speaker(
@@ -371,5 +408,18 @@ impl Stage {
 
     const fn visible(&self, tile: &CallTile) -> bool {
         (self.self_view || !tile.is_self_view()) && (self.share_preview || !tile.is_own_share())
+    }
+}
+
+fn sharer(share: &TileKey, tiles: &[CallTile]) -> Sharer {
+    let person = tiles
+        .iter()
+        .find(|tile| tile.kind == TileKind::Person && tile.member == share.member);
+    match person.map(|tile| tile.state) {
+        None => Sharer::Left,
+        Some(TileState::Joining | TileState::ConnectionLost | TileState::Unreachable) => {
+            Sharer::Away
+        }
+        Some(_) => Sharer::Here,
     }
 }

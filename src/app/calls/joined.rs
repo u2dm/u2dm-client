@@ -44,7 +44,7 @@ use crate::domain::call::{
     Transport, bridges_in_order,
 };
 use crate::domain::member_name::NamedUser;
-use crate::domain::room::RoomId;
+use crate::domain::room::{RoomId, UnreadFlags};
 use crate::util::unix_now_ms;
 
 const SHARES_MISSED_BEFORE_HINT: u8 = 2;
@@ -1361,6 +1361,7 @@ impl Joined {
             call: self.call,
             room_id: self.room_id.clone(),
             room_name: self.room_name.clone(),
+            room_unread: UnreadFlags::default(),
             phase: self.phase(),
             live_since_ms: self.live_since_ms,
             encrypted: self.encrypted,
@@ -1408,7 +1409,6 @@ impl Joined {
             offered_share: arranged.offered_share,
             started_share: self.stage.started_share().cloned(),
             ended_share: self.stage.ended_share().cloned(),
-            others: Arc::from(self.others()),
             bridges: Arc::from(if self.encrypted {
                 bridges_in_order(&self.members)
             } else {
@@ -1421,16 +1421,6 @@ impl Joined {
                 .as_ref()
                 .map(|readings| Arc::from(self.connection_details(readings))),
         }
-    }
-
-    fn others(&self) -> Vec<NamedUser> {
-        let mut seen = HashSet::new();
-        self.members
-            .iter()
-            .filter(|member| member.user.user_id != self.me.user)
-            .filter(|member| seen.insert(member.user.user_id.as_str()))
-            .map(|member| member.user.clone())
-            .collect()
     }
 
     fn tiles(&self) -> Vec<CallTile> {

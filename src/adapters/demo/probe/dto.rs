@@ -254,6 +254,9 @@ struct CallOfferDto {
 struct ActiveCallDto {
     call: u64,
     room_id: String,
+    room_alert: bool,
+    room_mention: bool,
+    room_hint: bool,
     phase: &'static str,
     live: bool,
     encrypted: bool,
@@ -283,7 +286,6 @@ struct ActiveCallDto {
     offered_share: Option<String>,
     started_share: Option<ShareNewsDto>,
     ended_share: Option<ShareNewsDto>,
-    others: Vec<String>,
     people: Vec<CallPersonDto>,
     devices: CallDevicesDto,
     connection: Option<Vec<ServerDetailsDto>>,
@@ -1249,6 +1251,9 @@ fn active_call(active: &ActiveCall) -> ActiveCallDto {
     ActiveCallDto {
         call: active.call,
         room_id: active.room_id.to_string(),
+        room_alert: active.room_unread.alert,
+        room_mention: active.room_unread.mention,
+        room_hint: active.room_unread.hint,
         phase: match active.phase {
             CallPhase::Joining => "joining",
             CallPhase::Calling => "calling",
@@ -1327,7 +1332,6 @@ fn active_call(active: &ActiveCall) -> ActiveCallDto {
         offered_share: active.offered_share.as_ref().map(NamedUser::shown),
         started_share: active.started_share.as_ref().map(share_news),
         ended_share: active.ended_share.as_ref().map(share_news),
-        others: active.others.iter().map(NamedUser::shown).collect(),
         people: active.people.iter().map(call_person).collect(),
         devices: call_devices(&active.devices),
         connection: active

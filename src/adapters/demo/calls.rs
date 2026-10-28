@@ -129,6 +129,11 @@ pub const CATALOG: Scenarios = Scenarios {
             note: "",
         },
         Flag {
+            value: "full-reconnect",
+            effect: "with reconnecting: the reconnection is a full one: the others' media and presence on the media server go before it says it reconnects, and come back as they joined once it is connected",
+            note: "the order LiveKit's full reconnect reports; a share you pinned stays pinned through it",
+        },
+        Flag {
             value: "keys-late",
             effect: "the other members' keys arrive 4s after you join",
             note: "their tiles wait for keys until then",
@@ -485,6 +490,7 @@ pub struct Scenario {
     cut_off: bool,
     not_encrypted: bool,
     pub reconnecting: bool,
+    full_reconnect: bool,
     pub keys_late: bool,
     pub undecryptable: bool,
     pub answers: bool,
@@ -567,6 +573,7 @@ fn apply(scenario: &mut Scenario, flag: &str) {
         "cut-off" => scenario.cut_off = true,
         "not-encrypted" => scenario.not_encrypted = true,
         "reconnecting" => scenario.reconnecting = true,
+        "full-reconnect" => scenario.full_reconnect = true,
         "keys-late" => scenario.keys_late = true,
         "undecryptable" => scenario.undecryptable = true,
         "answers" => scenario.answers = true,
@@ -1265,6 +1272,42 @@ impl CallBook {
                 events_tx,
             });
         }
+    }
+
+    pub fn restart_news(&self, room_id: &str, sfu: &str) -> (Vec<MediaEvent>, Vec<MediaEvent>) {
+        let (Some(id), true) = (sfu_id(sfu), scenario().full_reconnect) else {
+            return (Vec::new(), Vec::new());
+        };
+        let here: Vec<Joiner> = self
+            .calls
+            .lock()
+            .map(|calls| {
+                calls
+                    .rooms
+                    .get(room_id)
+                    .into_iter()
+                    .flatten()
+                    .filter(|joiner| joiner.sfu == sfu && joiner.user != data::own_user())
+                    .copied()
+                    .collect()
+            })
+            .unwrap_or_default();
+        let mut gone = Vec::new();
+        let mut back = Vec::new();
+        for joiner in here {
+            let presence = |present| MediaEvent::Present {
+                sfu: id.clone(),
+                identity: joiner.identity(),
+                present,
+            };
+            gone.extend(screen_news(&id, joiner, false));
+            gone.extend(camera_news(&id, joiner, false));
+            gone.push(presence(false));
+            back.push(presence(true));
+            back.extend(camera_news(&id, joiner, true));
+            back.extend(screen_news(&id, joiner, true));
+        }
+        (gone, back)
     }
 
     fn tell_watchers(&self, room_id: &str, joiner: Joiner, present: bool) {

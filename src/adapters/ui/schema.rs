@@ -101,8 +101,6 @@ macro_rules! string_props {
         ReactionNewsEmoji CallView "CallView" "reaction-news-emoji" set_reaction_news_emoji get_reaction_news_emoji;
         ReactionNewsName CallView "CallView" "reaction-news-name" set_reaction_news_name get_reaction_news_name;
         EndedShare CallView "CallView" "ended-share" set_ended_share get_ended_share;
-        PeopleFirst CallView "CallView" "people-first" set_people_first get_people_first;
-        PeopleSecond CallView "CallView" "people-second" set_people_second get_people_second;
         SheetPeopleFirst CallView "CallView" "sheet-people-first" set_sheet_people_first get_sheet_people_first;
         SheetPeopleSecond CallView "CallView" "sheet-people-second" set_sheet_people_second get_sheet_people_second;
         BridgesFirst CallView "CallView" "bridges-first" set_bridges_first get_bridges_first;
@@ -440,6 +438,9 @@ macro_rules! bool_props {
         HereJoined CallView "CallView" "here-joined" set_here_joined get_here_joined;
         ActiveVisible CallView "CallView" "active" set_active get_active;
         ActiveEncrypted CallView "CallView" "active-encrypted" set_active_encrypted get_active_encrypted;
+        ActiveRoomAlert CallView "CallView" "active-room-alert" set_active_room_alert get_active_room_alert;
+        ActiveRoomMention CallView "CallView" "active-room-mention" set_active_room_mention get_active_room_mention;
+        ActiveRoomHint CallView "CallView" "active-room-hint" set_active_room_hint get_active_room_hint;
         MicrophoneMetered CallView "CallView" "microphone-metered" set_microphone_metered get_microphone_metered;
         ActiveVideo CallView "CallView" "active-video" set_active_video get_active_video;
         VideoCall CallView "CallView" "video-call" set_video_call get_video_call;
@@ -596,7 +597,6 @@ macro_rules! int_props {
         StartedShareSerial CallView "CallView" "started-share-serial" set_started_share_serial get_started_share_serial;
         EndedShareSerial CallView "CallView" "ended-share-serial" set_ended_share_serial get_ended_share_serial;
         ShareChangeCancelled CallView "CallView" "share-change-cancelled" set_share_change_cancelled get_share_change_cancelled;
-        PeopleMore CallView "CallView" "people-more" set_people_more get_people_more;
         BridgesMore CallView "CallView" "bridges-more" set_bridges_more get_bridges_more;
         MicrophoneChosen CallView "CallView" "microphone-chosen" set_microphone_chosen get_microphone_chosen;
         CameraChosen CallView "CallView" "camera-chosen" set_camera_chosen get_camera_chosen;

@@ -9,6 +9,7 @@ import { AppStyle, Fonts, IconSize, Opacity, Radius, Space } from "../theme.slin
 export component MenuRow inherits Rectangle {
     in property <Icon> icon;
     in property <string> label;
+    in property <string> detail;
     in property <bool> destructive: false;
     in property <color> tint: root.destructive ? AppStyle.danger-muted : AppStyle.foreground-muted;
     in property <color> text-color: root.destructive ? AppStyle.danger-muted : Palette.foreground;
@@ -41,6 +42,7 @@ export component MenuRow inherits Rectangle {
         enabled: root.enabled;
         above-modal: root.above-modal;
         label: root.label;
+        accessible-description: root.detail;
         accessible-checkable: root.checkable;
         accessible-checked: root.checked;
         ring-radius: Radius.sm;
@@ -69,13 +71,25 @@ export component MenuRow inherits Rectangle {
             stroke: root.tint;
         }
 
-        Text {
-            text: root.label;
-            font-size: Fonts.body;
-            vertical-alignment: center;
+        VerticalLayout {
             horizontal-stretch: 1;
-            color: root.text-color;
-            overflow: elide;
+            alignment: center;
+
+            Text {
+                text: root.label;
+                font-size: Fonts.body;
+                vertical-alignment: center;
+                color: root.text-color;
+                overflow: elide;
+            }
+
+            if root.detail != "": Text {
+                text: root.detail;
+                font-size: Fonts.caption;
+                color: AppStyle.foreground-muted;
+                overflow: elide;
+                accessible-role: none;
+            }
         }
 
         if root.has-trailing: IconDisplay {

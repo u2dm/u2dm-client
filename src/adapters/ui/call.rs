@@ -277,6 +277,9 @@ fn apply_active<B: UiBackend>(
         IntProp::ActiveCall,
         i32::try_from(active.call).unwrap_or(i32::MAX),
     );
+    w.set_bool(BoolProp::ActiveRoomAlert, active.room_unread.alert);
+    w.set_bool(BoolProp::ActiveRoomMention, active.room_unread.mention);
+    w.set_bool(BoolProp::ActiveRoomHint, active.room_unread.hint);
     w.set_bool(BoolProp::ActiveEncrypted, active.encrypted);
     w.set_bool(BoolProp::VideoCall, active.video);
     let shows_video = active.video || shown_tiles(active).any(|tile| tile.video.is_some());
@@ -361,12 +364,6 @@ fn apply_stage<B: UiBackend>(
         active.ended_share.as_ref(),
         StringProp::EndedShare,
         IntProp::EndedShareSerial,
-    );
-    apply_names(
-        w,
-        &active.others,
-        [StringProp::PeopleFirst, StringProp::PeopleSecond],
-        IntProp::PeopleMore,
     );
     apply_names(
         w,

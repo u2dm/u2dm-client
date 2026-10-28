@@ -10,7 +10,7 @@ import { CallWords } from "../../../../messages.slint";
 import { CallMode, CallPanel } from "../../../../local.slint";
 import { CallView } from "../../../../views.slint";
 import { AppStyle, Metrics, Space, Stroke } from "../../../../theme.slint";
-import { MenuGroup } from "./call-view-menu.slint";
+import { CallViewWords, MenuGroup } from "./call-view-menu.slint";
 
 enum CallMoreChoice { devices, react, hand, change-share, call-and-chat, call-only, chat-only, details }
 
@@ -94,13 +94,13 @@ export component CallMoreMenu inherits PickerCard {
             return @tr("Change shared screen…");
         }
         if choice == CallMoreChoice.call-and-chat {
-            return @tr("Call and chat");
+            return CallViewWords.mode(CallMode.call-and-chat);
         }
         if choice == CallMoreChoice.call-only {
-            return @tr("Call only");
+            return CallViewWords.mode(CallMode.call-only);
         }
         if choice == CallMoreChoice.chat-only {
-            return @tr("Chat only");
+            return CallViewWords.mode(CallMode.chat-only);
         }
         return @tr("Connection details…");
     }
