@@ -121,6 +121,7 @@ export global AppStyle {
     out property <color> bubble-own: Palette.accent-background.mix(Palette.background, 0.6);
     out property <color> bubble-mention: Colors.goldenrod.mix(root.bubble, 0.14);
     out property <color> control: Palette.foreground.transparentize(1 - Opacity.hover-layer);
+    out property <color> control-on-canvas: Palette.foreground.mix(root.canvas, Opacity.hover-layer);
     out property <color> well: Palette.background.transparentize(0.6);
     out property <color> elevated: root.dark ? Palette.foreground.mix(Palette.background, 0.12) : Colors.white;
     out property <color> elevated-edge: root.dark ? root.canvas : root.border;
@@ -400,6 +401,10 @@ export global Metrics {
         + (root.call-reaction-columns - 1) * Space.xs + 2 * Space.sm;
     out property <length> call-reaction-badge: Size.lg;
     out property <length> call-details-label: 112px;
+    out property <length> call-join-height: Size.md;
+    out property <length> call-join-face: Size.sm;
+    out property <length> call-join-ring: Stroke.emphasis;
+    out property <length> call-join-overlap: Space.md;
 
     out property <length> drawer-width: 300px;
     out property <length> drawer-min-width: 240px;

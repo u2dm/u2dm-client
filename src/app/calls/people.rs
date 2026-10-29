@@ -1,5 +1,27 @@
-use crate::commands::view::{CallPerson, CallTile, CantDecrypt, TileKey, TileKind, TileState};
-use crate::domain::call::{CallMember, Capabilities, Capability, MemberKey};
+use crate::commands::view::{
+    CallFace, CallPerson, CallTile, CantDecrypt, TileKey, TileKind, TileState,
+};
+use crate::domain::call::{CallMember, Capabilities, Capability, MemberKey, RoomCall};
+
+const FACES_SHOWN: usize = 3;
+
+pub(super) fn faces(call: &RoomCall, me: Option<&str>) -> Vec<CallFace> {
+    let face = |member: &CallMember| CallFace {
+        user: member.user.clone(),
+        avatar_mxc: member.avatar_mxc.clone(),
+        you: Some(member.user.user_id.as_str()) == me,
+    };
+    let others: Vec<CallFace> = call
+        .first_memberships()
+        .filter(|member| Some(member.user.user_id.as_str()) != me)
+        .take(FACES_SHOWN)
+        .map(face)
+        .collect();
+    if others.is_empty() {
+        return call.first_memberships().take(1).map(face).collect();
+    }
+    others
+}
 
 pub(super) fn of_tiles(
     tiles: &[CallTile],

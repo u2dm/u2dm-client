@@ -266,7 +266,7 @@ pub(super) enum CallEvent {
         call: u64,
     },
     FacesReady {
-        call: u64,
+        session: u64,
         ready: usize,
     },
     KeysSent {
@@ -323,7 +323,6 @@ impl CallEvent {
             | Self::KeyWake { call }
             | Self::StageWake { call }
             | Self::ReactionWake { call }
-            | Self::FacesReady { call, .. }
             | Self::KeysSent { call, .. }
             | Self::Standings { call, .. }
             | Self::HandSent { call, .. }
@@ -334,6 +333,7 @@ impl CallEvent {
             | Self::RingWindow { .. }
             | Self::Declined { .. }
             | Self::Transports { .. }
+            | Self::FacesReady { .. }
             | Self::DevicesListed { .. }
             | Self::Preview { .. }
             | Self::DeviceTest { .. } => None,

@@ -26,10 +26,10 @@ use super::schema::{
 use super::spoilers::{keep_covered_body, spoilers_on};
 use crate::commands::messages::UserMessageKind;
 use crate::commands::view::{
-    CallFailure, CallNotice, CallPerson, CallTile, CantDecrypt, ChildAccess, DeviceOption,
-    DeviceStatus, InviteeRow, InviteeState, JoinOffer, LinkView, MissingMedia, RoomCard, RosterRow,
-    ScreenView, ServerDetails, SheetPreview, SpaceIndexRow, SpaceMatch, TestPhase, TileKind,
-    TileState,
+    CallFace, CallFailure, CallNotice, CallPerson, CallTile, CantDecrypt, ChildAccess,
+    DeviceOption, DeviceStatus, InviteeRow, InviteeState, JoinOffer, LinkView, MissingMedia,
+    RoomCard, RosterRow, ScreenView, ServerDetails, SheetPreview, SpaceIndexRow, SpaceMatch,
+    TestPhase, TileKind, TileState,
 };
 use crate::domain::call::reactions::Reaction as CallReaction;
 use crate::domain::call::ring::RingKind;
@@ -1920,6 +1920,29 @@ pub fn call_person_to_dto(person: &CallPerson) -> CallPersonDto {
         sees_no_video: person.sees_no_video,
         exposes_e2ee: person.exposes_e2ee,
         state: call_tile_mark(person.state),
+    }
+}
+
+pub fn call_face_to_dto(face: &CallFace) -> CallPersonDto {
+    CallPersonDto {
+        key: SharedString::new(),
+        user_id: SharedString::from(face.user.user_id.as_str()),
+        name: SharedString::from(face.user.shown()),
+        initial: SharedString::from(name_initials(&face.user.name, &face.user.user_id)),
+        color_index: avatar_color_index(&face.user.user_id),
+        has_avatar: false,
+        avatar: None,
+        you: face.you,
+        devices: 0,
+        muted: false,
+        muted_for_you: false,
+        hand: 0,
+        reaction: SharedString::new(),
+        reaction_name: SharedString::new(),
+        sharing: false,
+        sees_no_video: false,
+        exposes_e2ee: false,
+        state: CallTileMark::Live,
     }
 }
 

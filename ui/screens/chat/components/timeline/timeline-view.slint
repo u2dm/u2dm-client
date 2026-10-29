@@ -27,7 +27,7 @@ import { CallBand } from "../call/call-band.slint";
 import { CallViewMenu } from "../call/call-view-menu.slint";
 import { CallOffer } from "../../../../enums.slint";
 import { CallWords } from "../../../../messages.slint";
-import { AppButton } from "../../../../components/button.slint";
+import { CallJoinButton } from "../call/call-join-button.slint";
 
 component RoomHeaderButton inherits HeaderIconButton {
     fill: AppStyle.control;
@@ -155,7 +155,11 @@ export component TimelineView inherits Rectangle {
         property <length> pane-slot: root.room-info-pane-fits ? Space.md + Size.lg : 0;
         property <length> action-slot: root.offers-call-start
             ? Size.lg + Space.md
-            : root.offers-call-join ? join-button.preferred-width + Space.md : 0;
+            : root.offers-call-join ? join-button.width + Space.md : 0;
+        property <length> title-least: (root.compact ? 0 : Space.lg) + root.header-avatar-size + Space.md
+            + header-title.title-width + Space.sm;
+        property <length> join-room: self.width - title-area.x - self.menu-slot - self.pane-slot - Space.md
+            - self.title-least;
         property <int> menu-returns: RoomMenu.focus-returns;
         property <int> sheet-returns: CallPanel.sheet-returns;
         property <bool> call-takes-row: root.call-owns-header;
@@ -225,7 +229,7 @@ export component TimelineView inherits Rectangle {
                     initial-size: Glyph.xs;
                 }
 
-                HeaderTitle {
+                header-title := HeaderTitle {
                     horizontal-stretch: 1;
                     title: RoomView.selected-room-name;
                     members: RoomView.selected-room-members;
@@ -256,18 +260,16 @@ export component TimelineView inherits Rectangle {
             }
         }
 
-        join-button := AppButton {
+        join-button := CallJoinButton {
             x: parent.width - parent.menu-slot - parent.pane-slot - self.width;
             y: (parent.height - self.height) / 2;
-            width: self.preferred-width;
-            height: self.preferred-height;
             visible: root.offers-call-join;
-            text: CallWords.join-count(CallView.here-people);
-            label: CallWords.join-label(CallView.here-people);
-            description: CallView.offer == CallOffer.refused ? CallWords.refusal(CallView.refusal) : "";
-            icon: CallView.here-video ? IconSet.Video : IconSet.Phone;
-            filled: CallView.offer == CallOffer.join;
-            tint: CallView.offer == CallOffer.join ? AppStyle.call-accept : AppStyle.foreground-muted;
+            room: parent.join-room;
+            faces: CallView.here-faces;
+            others: CallView.here-people - (CallView.here-joined ? 1 : 0);
+            video: CallView.here-video;
+            refused: CallView.offer == CallOffer.refused;
+            refusal: CallWords.refusal(CallView.refusal);
             clicked => {
                 CallPanel.open-sheet(root.room-id, false, CallSheetOpener.header);
             }

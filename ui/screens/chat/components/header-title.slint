@@ -13,11 +13,12 @@ export component HeaderTitle inherits VerticalLayout {
     in property <string> presence;
     in property <PresenceLine> presence-line: PresenceLine.hidden;
     in property <bool> opens-menu;
+    out property <length> title-width: title-row.preferred-width;
 
     alignment: center;
     spacing: Space.xs;
 
-    HorizontalLayout {
+    title-row := HorizontalLayout {
         alignment: start;
         spacing: Space.sm;
 

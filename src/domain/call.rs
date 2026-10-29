@@ -244,11 +244,14 @@ impl RoomCall {
     }
 
     pub fn people_in_order(&self) -> impl Iterator<Item = &NamedUser> {
+        self.first_memberships().map(|member| &member.user)
+    }
+
+    pub fn first_memberships(&self) -> impl Iterator<Item = &CallMember> {
         let mut seen = HashSet::new();
         self.members
             .iter()
-            .map(|member| &member.user)
-            .filter(move |user| seen.insert(user.user_id.as_str()))
+            .filter(move |member| seen.insert(member.user.user_id.as_str()))
     }
 
     pub fn bridges(&self) -> Vec<NamedUser> {

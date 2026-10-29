@@ -18,11 +18,11 @@ use super::dto::{
     BodyLineDto, CallConnectionDto, CallDeviceDto, CallPersonDto, CallTileDto, EmojiArt,
     InviteeDto, LogLineDto, MediaFailureKind, MediaState, MemberRowDto, MessageDto, PackBrowse,
     PackRowDto, PackSurface, PackTabDto, RoomDto, RoomRowKind, RowBody, SpaceChildDto, SpaceDto,
-    ThumbUpdate, UserDeviceDto, call_device_to_dto, call_person_to_dto, call_tile_to_dto,
-    cell_pack, decode_failure_kind, enrich_to_update, heading_to_dto, invite_to_dto,
-    invitee_to_dto, log_line_to_dto, member_row_to_dto, mention_to_dto, message_to_dto,
-    own_session_to_dto, reader_to_dto, removal_to_dto, room_to_dto, space_child_to_dto,
-    space_match_to_dto, space_to_dto, user_device_to_dto,
+    ThumbUpdate, UserDeviceDto, call_device_to_dto, call_face_to_dto, call_person_to_dto,
+    call_tile_to_dto, cell_pack, decode_failure_kind, enrich_to_update, heading_to_dto,
+    invite_to_dto, invitee_to_dto, log_line_to_dto, member_row_to_dto, mention_to_dto,
+    message_to_dto, own_session_to_dto, reader_to_dto, removal_to_dto, room_to_dto,
+    space_child_to_dto, space_match_to_dto, space_to_dto, user_device_to_dto,
 };
 use super::fields::{
     BodyLineFields, BodyPieceFields, CallConnectionFields, CallDeviceFields, CallPersonFields,
@@ -50,8 +50,8 @@ use super::window_events::install_window_events;
 use super::{call, call_video};
 use crate::commands::effects::Effect;
 use crate::commands::view::{
-    AppViewState, CallPerson, CallTile, DeviceOption, InviteeRow, RosterRow, SpaceIndexRow,
-    SpaceMatch,
+    AppViewState, CallFace, CallPerson, CallTile, DeviceOption, InviteeRow, RosterRow,
+    SpaceIndexRow, SpaceMatch,
 };
 use crate::config::APP_ID;
 use crate::domain::departure::Removal;
@@ -170,6 +170,10 @@ pub trait UiBackend: Sized + 'static {
 
     fn convert_call_person(person: &CallPerson) -> Self::CallPerson {
         call_person_to_dto(person).into()
+    }
+
+    fn convert_call_face(face: &CallFace) -> Self::CallPerson {
+        call_face_to_dto(face).into()
     }
 
     fn convert_call_device(option: &DeviceOption) -> Self::CallDevice {

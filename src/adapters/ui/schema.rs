@@ -833,6 +833,7 @@ macro_rules! model_props {
         call_tiles CallTile VecModel CallView "CallView" "tiles" set_tiles;
         call_self CallTile VecModel CallView "CallView" "compact-self" set_compact_self;
         call_people CallPerson VecModel CallView "CallView" "people" set_people;
+        call_here_faces CallPerson VecModel CallView "CallView" "here-faces" set_here_faces;
         call_connections CallConnection VecModel CallView "CallView" "connections" set_connections;
         call_microphones CallDevice VecModel CallView "CallView" "microphones" set_microphones;
         call_speakers CallDevice VecModel CallView "CallView" "speakers" set_speakers;

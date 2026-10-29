@@ -280,8 +280,17 @@ pub struct RingView {
 pub struct RoomCallSummary {
     pub room_id: RoomId,
     pub people: usize,
+    pub faces: Arc<[CallFace]>,
+    pub faces_ready: u64,
     pub video: bool,
     pub joined_by_you: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CallFace {
+    pub user: NamedUser,
+    pub avatar_mxc: Option<String>,
+    pub you: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

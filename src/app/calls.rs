@@ -1609,12 +1609,6 @@ impl Calls {
                 self.reaction_wake = None;
                 self.publish(directory);
             }
-            CallEvent::FacesReady { ready, .. } => {
-                if ready > 0 {
-                    self.faces_ready = self.faces_ready.saturating_add(1);
-                    self.publish(directory);
-                }
-            }
             CallEvent::KeysSent { report, .. } => keys_sent(&report),
             CallEvent::Standings { standings, .. } => {
                 if let Some(joined) = self.joined.as_mut() {
@@ -1660,6 +1654,7 @@ impl Calls {
             | CallEvent::RingWindow { .. }
             | CallEvent::Declined { .. }
             | CallEvent::Transports { .. }
+            | CallEvent::FacesReady { .. }
             | CallEvent::DevicesListed { .. }
             | CallEvent::Preview { .. }
             | CallEvent::DeviceTest { .. } => {}
@@ -2019,11 +2014,12 @@ impl Calls {
         if let Some(active) = active.as_mut() {
             active.faces_ready = self.faces_ready;
             active.room_unread = unread_of(directory.room(&active.room_id));
-            self.fetch_faces(active);
         }
+        let here = self.here(directory);
+        self.fetch_faces(active.as_ref(), here.as_ref());
         let view = CallView {
             ring: self.ring_view(directory),
-            here: self.here(directory),
+            here,
             offer: self.offer_view(directory),
             sheet: self.sheet_view(directory),
             active,
@@ -2068,34 +2064,53 @@ impl Calls {
         });
     }
 
-    fn fetch_faces(&mut self, active: &ActiveCall) {
-        let Some(port) = self.own.as_ref().map(|own| Arc::clone(&own.port)) else {
+    fn fetch_faces(&mut self, active: Option<&ActiveCall>, here: Option<&RoomCallSummary>) {
+        let Some((port, session)) = self
+            .own
+            .as_ref()
+            .map(|own| (Arc::clone(&own.port), own.session))
+        else {
             return;
         };
-        let fresh: Vec<String> = active
-            .stage
-            .iter()
-            .chain(active.tiles.iter())
-            .chain(active.compact_self.iter())
-            .filter_map(|tile| tile.avatar_mxc.clone())
-            .chain(
-                active
-                    .people
-                    .iter()
-                    .filter_map(|person| person.avatar_mxc.clone()),
-            )
-            .filter(|mxc| self.faces_asked.insert(mxc.clone()))
+        let in_call = active.into_iter().flat_map(|active| {
+            active
+                .stage
+                .iter()
+                .chain(active.tiles.iter())
+                .chain(active.compact_self.iter())
+                .map(|tile| tile.avatar_mxc.as_ref())
+                .chain(
+                    active
+                        .people
+                        .iter()
+                        .map(|person| person.avatar_mxc.as_ref()),
+                )
+        });
+        let in_room = here
+            .into_iter()
+            .flat_map(|here| here.faces.iter().map(|face| face.avatar_mxc.as_ref()));
+        let fresh: Vec<String> = in_call
+            .chain(in_room)
+            .flatten()
+            .filter(|mxc| self.faces_asked.insert((*mxc).clone()))
+            .cloned()
             .collect();
         if fresh.is_empty() {
             return;
         }
         tracing::debug!(avatars = fresh.len(), "fetching the call's avatars");
-        let call = active.call;
         let events = self.events.clone();
         self.actions.spawn(async move {
             let ready = port.fetch_avatars(&fresh).await;
-            send(&events, CallEvent::FacesReady { call, ready });
+            send(&events, CallEvent::FacesReady { session, ready });
         });
+    }
+
+    pub(super) fn faces_fetched(&mut self, ready: usize, directory: &RoomDirectory) {
+        if ready > 0 {
+            self.faces_ready = self.faces_ready.saturating_add(1);
+            self.publish(directory);
+        }
     }
 
     fn offer_view(&self, directory: &RoomDirectory) -> Option<OfferView> {
@@ -2175,15 +2190,14 @@ impl Calls {
     fn here(&self, directory: &RoomDirectory) -> Option<RoomCallSummary> {
         let room = directory.room(self.selected.as_ref()?)?;
         let call = room.call.as_deref()?;
-        let joined_by_you = self
-            .own
-            .as_ref()
-            .is_some_and(|own| call.joined_by(&own.user));
+        let me = self.own.as_ref().map(|own| &*own.user);
         Some(RoomCallSummary {
             room_id: room.id.clone(),
             people: call.people(),
+            faces: people::faces(call, me).into(),
+            faces_ready: self.faces_ready,
             video: call.is_video(),
-            joined_by_you,
+            joined_by_you: me.is_some_and(|me| call.joined_by(me)),
         })
     }
 }

@@ -1,0 +1,150 @@
+import { Palette } from "std-widgets.slint";
+import { IconDisplay, IconSet } from "@lucide";
+
+import { ClickArea } from "../../../../components/a11y.slint";
+import { Avatar } from "../../../../components/avatar.slint";
+import { StateLayer } from "../../../../components/state-layer.slint";
+import { TipSource } from "../../../../components/tip.slint";
+import { CallPersonEntry } from "../../../../types.slint";
+import { CallWords } from "../../../../messages.slint";
+import { AppStyle, Fonts, Glyph, IconSize, Metrics, Space, Weight } from "../../../../theme.slint";
+
+component CallFace inherits Rectangle {
+    in property <CallPersonEntry> person;
+    in property <color> ring;
+
+    width: Metrics.call-join-face + 2 * Metrics.call-join-ring;
+    height: self.width;
+    border-radius: self.width / 2;
+    background: root.ring;
+
+    Avatar {
+        x: Metrics.call-join-ring;
+        y: Metrics.call-join-ring;
+        width: Metrics.call-join-face;
+        height: Metrics.call-join-face;
+        color-index: root.person.color-index;
+        has-image: root.person.has-avatar;
+        image: root.person.avatar;
+        initial: root.person.initial;
+        initial-size: Glyph.xs;
+    }
+}
+
+export component CallJoinButton inherits Rectangle {
+    in property <[CallPersonEntry]> faces;
+    in property <int> others;
+    in property <bool> video;
+    in property <bool> refused;
+    in property <string> refusal;
+    in property <length> room;
+    out property <bool> has-focus: touch.has-focus;
+
+    callback clicked();
+
+    property <bool> alone: root.faces.length > 0 && root.faces[0].you;
+    property <string> first: root.alone ? "" : root.faces[0].name;
+    property <string> second: root.others > 1 ? root.faces[1].name : "";
+    property <int> more: max(0, root.others - 2);
+    property <color> content: root.refused ? AppStyle.foreground-muted : Palette.accent-foreground;
+    property <color> ring: root.refused ? AppStyle.control-on-canvas : AppStyle.call-accept;
+    property <length> pitch: Metrics.call-join-face - Metrics.call-join-overlap;
+    property <length> face-inset: (Metrics.call-join-height - Metrics.call-join-face) / 2;
+    property <length> icon-room: IconSize.sm + Space.md;
+    property <bool> shows-icon: root.needs(1, root.icon-room) <= root.room;
+    property <length> word-x: Space.lg + (root.shows-icon ? root.icon-room : 0);
+    property <length> faces-x: root.word-x + word.preferred-width + Space.md;
+    property <int> shown: root.faces.length <= 1 || root.needs(root.faces.length, root.icon-room) <= root.room
+        ? root.faces.length
+        : clamp(floor((root.room - root.needs(1, root.icon-room)) / root.pitch) + 1, 1, root.faces.length - 1);
+    property <int> hidden: max(0, root.others - root.shown);
+    property <length> faces-end: root.faces-x + Metrics.call-join-face + (root.shown - 1) * root.pitch;
+
+    pure function needs(count: int, icon: length) -> length {
+        return Space.lg + icon + word.preferred-width + Space.md + Metrics.call-join-face + (count - 1) * root.pitch
+            + (root.others > count ? Space.sm + widest-more.preferred-width + Space.lg : root.face-inset);
+    }
+
+    public function take-focus() {
+        touch.take-focus();
+    }
+
+    width: root.faces-end + (root.hidden > 0 ? Space.sm + more.preferred-width + Space.lg : root.face-inset);
+    height: Metrics.call-join-height;
+    border-radius: self.height / 2;
+    background: root.refused ? AppStyle.control : AppStyle.call-accept;
+
+    IconDisplay {
+        x: Space.lg;
+        y: (parent.height - self.height) / 2;
+        visible: root.shows-icon;
+        icon: root.video ? IconSet.Video : IconSet.Phone;
+        size: IconSize.sm;
+        stroke: root.content;
+    }
+
+    word := Text {
+        x: root.word-x;
+        y: 0;
+        height: parent.height;
+        text: @tr("Join");
+        font-size: Fonts.body;
+        font-weight: Weight.semibold;
+        color: root.content;
+        vertical-alignment: center;
+    }
+
+    for person[index] in root.faces: CallFace {
+        x: root.faces-x + index * root.pitch - Metrics.call-join-ring;
+        y: (parent.height - self.height) / 2;
+        visible: index < root.shown;
+        person: person;
+        ring: root.ring;
+    }
+
+    more := Text {
+        x: root.faces-end + Space.sm;
+        y: 0;
+        height: parent.height;
+        visible: root.hidden > 0;
+        text: "+" + root.hidden;
+        font-size: Fonts.label;
+        font-weight: Weight.semibold;
+        color: root.content;
+        vertical-alignment: center;
+    }
+
+    widest-more := Text {
+        visible: false;
+        text: "+" + max(0, root.others - 1);
+        font-size: Fonts.label;
+        font-weight: Weight.semibold;
+    }
+
+    StateLayer {
+        border-radius: root.border-radius;
+        ink: root.content;
+        hovered: touch.has-hover;
+        pressed: touch.pressed;
+    }
+
+    touch := ClickArea {
+        label: CallWords.join-label(root.first, root.second, root.more);
+        accessible-description: root.refused ? root.refusal : "";
+        ring-inset: -Metrics.ring-outset;
+        ring-radius: root.border-radius + Metrics.ring-outset;
+        clicked => {
+            root.clicked();
+        }
+    }
+
+    TipSource {
+        width: root.width;
+        height: root.height;
+        text: root.refused ? root.refusal : CallWords.in-call-here(root.first, root.second, root.more);
+        hovered: touch.has-hover;
+        pressed: touch.pressed;
+        tabbed-to: touch.tabbed-to;
+        below: true;
+    }
+}

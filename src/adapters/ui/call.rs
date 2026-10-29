@@ -20,9 +20,9 @@ use super::ringtone::{self, Tone};
 use super::{audio, call_video, call_window, video};
 use crate::commands::messages::UserMessageKind;
 use crate::commands::view::{
-    ActiveCall, AppViewState, CallDevices, CallNotice, CallPerson, CallPhase, CallSheetView,
-    CallTile, CallView, DeviceNews, FailedCall, JoinOffer, OfferView, RingView, RoomCallSummary,
-    ScreenView, ShareNews, SheetPreview, TileKind,
+    ActiveCall, AppViewState, CallDevices, CallFace, CallNotice, CallPerson, CallPhase,
+    CallSheetView, CallTile, CallView, DeviceNews, FailedCall, JoinOffer, OfferView, RingView,
+    RoomCallSummary, ScreenView, ShareNews, SheetPreview, TileKind,
 };
 use crate::domain::call::devices::DeviceKind;
 use crate::domain::call::video::{FeedId, Framing};
@@ -51,7 +51,7 @@ pub fn apply_call<B: UiBackend>(
         return;
     }
     if last.is_none_or(|last| last.here != next.here) {
-        apply_here(w, next.here.as_ref());
+        apply_here::<B>(w, next.here.as_ref(), ctx.media);
     }
     let last_ring = last.and_then(|last| last.ring.as_ref());
     if last_ring != next.ring.as_ref() {
@@ -317,7 +317,7 @@ fn apply_active<B: UiBackend>(
                 .collect::<Vec<B::CallConnection>>(),
         );
     }
-    request_faces::<B>(active, media);
+    request_faces::<B>(faces_in_call(active), media);
     apply_device_news(w, active.devices.news.as_ref());
     if last.is_none_or(|last| last.live_since_ms != active.live_since_ms) {
         follow_elapsed(w, active.live_since_ms);
@@ -572,12 +572,31 @@ fn apply_people<B: UiBackend>(
     B::models().call_people.set_vec(rows);
 }
 
+fn apply_here_faces<B: UiBackend>(faces: &[CallFace], media: &dyn MediaCache) {
+    let rows: Vec<B::CallPerson> = faces
+        .iter()
+        .map(|face| {
+            let mut row = B::convert_call_face(face);
+            if let Some(image) = face_of(face.avatar_mxc.as_deref(), media) {
+                row.set_avatar(image);
+                row.set_has_avatar(true);
+            }
+            row
+        })
+        .collect();
+    B::models().call_here_faces.set_vec(rows);
+    let faces = faces
+        .iter()
+        .map(|face| (face.user.user_id.as_str(), face.avatar_mxc.as_deref()));
+    request_faces::<B>(faces, media);
+}
+
 fn face_of(mxc: Option<&str>, media: &dyn MediaCache) -> Option<Image> {
     let path = media.user_avatar_path(mxc?)?;
     peek_avatar(&path)
 }
 
-fn request_faces<B: UiBackend>(active: &ActiveCall, media: &dyn MediaCache) {
+fn faces_in_call(active: &ActiveCall) -> impl Iterator<Item = (&str, Option<&str>)> {
     let tiles = active
         .stage
         .iter()
@@ -588,8 +607,15 @@ fn request_faces<B: UiBackend>(active: &ActiveCall, media: &dyn MediaCache) {
         .people
         .iter()
         .map(|person| (person.user.user_id.as_str(), person.avatar_mxc.as_deref()));
+    tiles.chain(people)
+}
+
+fn request_faces<'a, B: UiBackend>(
+    faces: impl Iterator<Item = (&'a str, Option<&'a str>)>,
+    media: &dyn MediaCache,
+) {
     let mut asked: HashSet<&str> = HashSet::new();
-    for (user_id, mxc) in tiles.chain(people) {
+    for (user_id, mxc) in faces {
         let Some(mxc) = mxc else {
             continue;
         };
@@ -622,17 +648,18 @@ pub fn show_faces<B: UiBackend>(users: &HashSet<&str>, face: &Image) {
             rows.set_row_data(row, entry);
         }
     }
-    let people = &models.call_people;
-    for row in 0..people.row_count() {
-        let Some(mut entry) = people.row_data(row) else {
-            continue;
-        };
-        if entry.has_avatar() || !users.contains(entry.user_id()) {
-            continue;
+    for people in [&models.call_people, &models.call_here_faces] {
+        for row in 0..people.row_count() {
+            let Some(mut entry) = people.row_data(row) else {
+                continue;
+            };
+            if entry.has_avatar() || !users.contains(entry.user_id()) {
+                continue;
+            }
+            entry.set_avatar(face.clone());
+            entry.set_has_avatar(true);
+            people.set_row_data(row, entry);
         }
-        entry.set_avatar(face.clone());
-        entry.set_has_avatar(true);
-        people.set_row_data(row, entry);
     }
 }
 
@@ -709,14 +736,16 @@ fn elapsed_label(since_ms: u64) -> SharedString {
     })
 }
 
-fn apply_here(w: &impl UiProps, here: Option<&RoomCallSummary>) {
+fn apply_here<B: UiBackend>(w: &B::Window, here: Option<&RoomCallSummary>, media: &dyn MediaCache) {
     let Some(here) = here else {
         w.set_string(StringProp::HereRoomId, SharedString::new());
         w.set_int(IntProp::HerePeople, 0);
         w.set_bool(BoolProp::HereVideo, false);
         w.set_bool(BoolProp::HereJoined, false);
+        B::models().call_here_faces.set_vec(Vec::new());
         return;
     };
+    apply_here_faces::<B>(&here.faces, media);
     w.set_string(
         StringProp::HereRoomId,
         SharedString::from(here.room_id.as_ref()),

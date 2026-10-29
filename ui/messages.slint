@@ -867,12 +867,24 @@ export global CallWords {
         return @tr("{} and {} are in the call", first, second);
     }
 
-    public pure function join-count(people: int) -> string {
-        return @tr("Join · {n}" | "Join · {n}" % people);
+    public pure function in-call-here(first: string, second: string, more: int) -> string {
+        if first == "" {
+            return @tr("You're in this call from another session");
+        }
+        return root.in-call-named(first, second, more, 0);
     }
 
-    public pure function join-label(people: int) -> string {
-        return @tr("Join the call, {n} person is in it" | "Join the call, {n} people are in it" % people);
+    public pure function join-label(first: string, second: string, more: int) -> string {
+        if first == "" {
+            return @tr("Join the call, you're in it from another session");
+        }
+        if second == "" {
+            return @tr("Join the call with {}", first);
+        }
+        if more > 0 {
+            return @tr("Join the call with {}, {} and {n} other" | "Join the call with {}, {} and {n} others" % more, first, second);
+        }
+        return @tr("Join the call with {} and {}", first, second);
     }
 
     public pure function ring-said(video: bool, direct: bool, caller: string, room: string) -> string {

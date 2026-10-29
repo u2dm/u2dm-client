@@ -6,12 +6,12 @@ use crate::commands::messages::{UserMessage, UserMessageKind};
 use crate::commands::ui::Draft;
 use crate::commands::view::{
     AccountStep, AccountView, ActiveCall, AppViewState, AttachmentView, AudioView, AuthPrompt,
-    CallDevices, CallFailure, CallNotice, CallPerson, CallPhase, CallSheetView, CallTile, CallView,
-    CameraView, CantDecrypt, CardStatus, CopiedLink, CreateRoomView, DeviceOption, DirectoryView,
-    EncryptionStep, EncryptionView, HandView, IdentityAlertView, InvitePeopleView, InviteView,
-    InviteeRow, InvitesSection, JoinOffer, JoinRefusal, LeaveSpaceView, LifecycleView, LinkView,
-    LoginStep, LogoutView, MentionsView, MicrophoneView, MissingMedia, NotificationsView, PackView,
-    PaginationView, PinnedView, PresenceView, PreviewTrouble, ReactionView, ReadersView,
+    CallDevices, CallFace, CallFailure, CallNotice, CallPerson, CallPhase, CallSheetView, CallTile,
+    CallView, CameraView, CantDecrypt, CardStatus, CopiedLink, CreateRoomView, DeviceOption,
+    DirectoryView, EncryptionStep, EncryptionView, HandView, IdentityAlertView, InvitePeopleView,
+    InviteView, InviteeRow, InvitesSection, JoinOffer, JoinRefusal, LeaveSpaceView, LifecycleView,
+    LinkView, LoginStep, LogoutView, MentionsView, MicrophoneView, MissingMedia, NotificationsView,
+    PackView, PaginationView, PinnedView, PresenceView, PreviewTrouble, ReactionView, ReadersView,
     RemovalView, RoomInfoView, RoomLogView, RoomMenuTarget, RoomPreviewSheet, RoomPreviewView,
     RosterRow, ScreenView, ServerDetails, ShareNews, SheetPreview, SourceState, SpaceIndexRow,
     SpaceIndexView, SpaceMatch, TestPhase, TileKind, TileState, Toast, TrackFile, TypingView,
@@ -407,8 +407,18 @@ struct RingDto {
 struct CallHereDto {
     room_id: String,
     people: usize,
+    faces: Vec<CallFaceDto>,
+    faces_ready: u64,
     video: bool,
     joined_by_you: bool,
+}
+
+#[derive(Serialize)]
+struct CallFaceDto {
+    user_id: String,
+    name: String,
+    avatar: Option<String>,
+    you: bool,
 }
 
 #[derive(Serialize)]
@@ -1132,6 +1142,8 @@ fn call(source: &CallView) -> CallDto {
         here: source.here.as_ref().map(|here| CallHereDto {
             room_id: here.room_id.to_string(),
             people: here.people,
+            faces: here.faces.iter().map(call_face).collect(),
+            faces_ready: here.faces_ready,
             video: here.video,
             joined_by_you: here.joined_by_you,
         }),
@@ -1458,6 +1470,15 @@ fn share_news(news: &ShareNews) -> ShareNewsDto {
     ShareNewsDto {
         serial: news.serial,
         who: news.who.shown(),
+    }
+}
+
+fn call_face(face: &CallFace) -> CallFaceDto {
+    CallFaceDto {
+        user_id: face.user.user_id.clone(),
+        name: face.user.shown(),
+        avatar: face.avatar_mxc.clone(),
+        you: face.you,
     }
 }
 

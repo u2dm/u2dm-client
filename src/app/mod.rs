@@ -2992,6 +2992,11 @@ impl AppService {
                     self.calls.transports_found(found, &self.room_directory);
                 }
             }
+            CallEvent::FacesReady { session, ready } => {
+                if self.lifecycle.runs(session) {
+                    self.calls.faces_fetched(ready, &self.room_directory);
+                }
+            }
             CallEvent::RingWindow { ring, deadline } => {
                 self.calls
                     .ring_window(&ring, deadline, &self.room_directory);
