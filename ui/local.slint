@@ -134,6 +134,7 @@ export enum CallSheetOpener { composer, header, room-menu }
 export enum CallMenuOpener { control, more, status }
 
 export global CallPanel {
+    in-out property <bool> own-window: false;
     in-out property <CallMode> mode: CallMode.chat-only;
     in-out property <CallMode> last-call-mode: CallMode.call-and-chat;
     in-out property <CallSurface> turn: CallSurface.call;
@@ -257,6 +258,9 @@ export global CallPanel {
     }
 
     public function choose(mode: CallMode) {
+        if WindowView.call-windowed {
+            Actions.close-call-window();
+        }
         root.take-over();
         root.mode = mode;
         if mode != CallMode.chat-only {

@@ -83,6 +83,7 @@ import { CallDetailsDialog } from "./screens/chat/components/call/call-details.s
 import { CallDevicesMenu } from "./screens/chat/components/call/call-devices-menu.slint";
 import { ModalHost, Placement } from "./components/overlay.slint";
 import { TipLayer } from "./components/tip.slint";
+import { CallWindow } from "./call-window.slint";
 
 export { EmojiStore }
 export { LoginPhase, ConnectionState, TimelineState, VerificationPhase, MediaState, MediaFailure }
@@ -93,6 +94,7 @@ export { Actions }
 export { Probe, ReplySwipe, RoomMenu }
 export { Motion }
 export { NotificationText, SpoilerCover }
+export { CallWindow }
 
 export global WindowTitle {
     in-out property <string> text: DirectoryView.attention > 0

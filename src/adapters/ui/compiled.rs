@@ -21,7 +21,7 @@ use u2dm_ui::{
     CallReaction as UiCallReaction, CallRefusal as UiCallRefusal, CallScreen as UiCallScreen,
     CallScreenRefusal as UiCallScreenRefusal, CallSheetPreview as UiCallSheetPreview,
     CallTestPhase as UiCallTestPhase, CallTileEntry, CallTileState as UiCallTileState, CallView,
-    ChildAccess as UiChildAccess, ComposerDraft, ConnectionState,
+    CallWindow, ChildAccess as UiChildAccess, ComposerDraft, ConnectionState,
     CreateRoomStatus as UiCreateRoomStatus, CreateRoomView,
     DecryptionFailure as UiDecryptionFailure, Delivery as UiDelivery, DeviceTrust as UiDeviceTrust,
     DirectChat as UiDirectChat, DirectoryView, DraftVerdict as UiDraftVerdict,
@@ -63,6 +63,7 @@ use super::backend::{
     last_editable_row, recent_speakers, reorder_spaces, row_of_message, selected_room_key,
     shown_room_log_text, unread_below,
 };
+use super::call_window::{self, WindowHooks};
 use super::decode::{
     AvatarSlot, request_avatar, request_custom_emoji, request_media, request_pack_cell,
 };
@@ -166,11 +167,20 @@ fn actions(window: &AppWindow) -> Actions<'_> {
     window.global::<Actions>()
 }
 
+fn call_actions(window: &CallWindow) -> Actions<'_> {
+    window.global::<Actions>()
+}
+
 macro_rules! impl_prop_setter {
     ($fn:ident $enum:ident $ty:ty;
         $($(#[$attr:meta])* $v:ident $g:ident $gname:literal $lit:literal $s:ident $get:ident;)*) => {
         fn $fn(&self, prop: $enum, value: $ty) {
-            match prop { $($(#[$attr])* $enum::$v => self.global::<$g>().$s(value),)* }
+            match prop { $($(#[$attr])* $enum::$v => {
+                if call_window::mirrors($gname) {
+                    call_window::mirror(&value, |window, value| window.global::<$g>().$s(value));
+                }
+                self.global::<$g>().$s(value)
+            },)* }
         }
     };
 }
@@ -186,9 +196,42 @@ macro_rules! impl_prop_getter {
 
 macro_rules! impl_enum_setters {
     ($($v:ident $fn:ident($ty:ty) $g:ident $gname:literal $lit:literal $s:ident $get:ident;)*) => {
-        $( fn $fn(&self, value: $ty) { self.global::<$g>().$s(value.slint()); } )*
+        $( fn $fn(&self, value: $ty) {
+            let value = value.slint();
+            if call_window::mirrors($gname) {
+                call_window::mirror(&value, |window, value| window.global::<$g>().$s(value));
+            }
+            self.global::<$g>().$s(value);
+        } )*
     };
 }
+
+macro_rules! mirror_props {
+    ($name:ident;
+        $($(#[$attr:meta])* $v:ident $g:ident $gname:literal $lit:literal $s:ident $get:ident;)*) => {
+        fn $name(from: &AppWindow, to: &CallWindow) {
+            $( $(#[$attr])* if call_window::mirrors($gname) {
+                to.global::<$g>().$s(from.global::<$g>().$get());
+            } )*
+        }
+    };
+}
+
+macro_rules! mirror_enum_props {
+    ($name:ident;
+        $($v:ident $fn:ident($ty:ty) $g:ident $gname:literal $lit:literal $s:ident $get:ident;)*) => {
+        fn $name(from: &AppWindow, to: &CallWindow) {
+            $( if call_window::mirrors($gname) {
+                to.global::<$g>().$s(from.global::<$g>().$get());
+            } )*
+        }
+    };
+}
+
+string_props!(mirror_props mirror_strings;);
+bool_props!(mirror_props mirror_bools;);
+int_props!(mirror_props mirror_ints;);
+enum_props!(mirror_enum_props mirror_enums;);
 
 #[cfg(feature = "demo")]
 macro_rules! impl_enum_getter {
@@ -200,65 +243,88 @@ macro_rules! impl_enum_getter {
 }
 
 macro_rules! bind_compiled_callbacks {
-    ($win:ident $tx:ident;
+    ($actions:expr, $main:ident, $tx:ident;
         $($on:ident $lit:literal $fn:ident $kind:ident $(($($arg:tt)*))? $cmd:ident;)*) => {
-        $( bind_compiled_callbacks!(@one $win $tx $on $fn $kind $(($($arg)*))?); )*
+        $( bind_compiled_callbacks!(@one $actions, $main, $tx, $on $fn $kind $(($($arg)*))?); )*
     };
-    (@one $win:ident $tx:ident $on:ident $fn:ident plain) => {
-        bind_compiled_callbacks!(@unit $win $tx $on $fn)
+    (@one $actions:expr, $main:ident, $tx:ident, $on:ident $fn:ident plain) => {
+        bind_compiled_callbacks!(@unit $actions, $tx, $on $fn)
     };
-    (@one $win:ident $tx:ident $on:ident $fn:ident pass) => {
-        bind_compiled_callbacks!(@string $win $tx $on $fn)
+    (@one $actions:expr, $main:ident, $tx:ident, $on:ident $fn:ident pass) => {
+        bind_compiled_callbacks!(@string $actions, $tx, $on $fn)
     };
-    (@one $win:ident $tx:ident $on:ident $fn:ident room) => {
-        bind_compiled_callbacks!(@string $win $tx $on $fn)
+    (@one $actions:expr, $main:ident, $tx:ident, $on:ident $fn:ident room) => {
+        bind_compiled_callbacks!(@string $actions, $tx, $on $fn)
     };
-    (@one $win:ident $tx:ident $on:ident $fn:ident opt_room) => {
-        bind_compiled_callbacks!(@string $win $tx $on $fn)
+    (@one $actions:expr, $main:ident, $tx:ident, $on:ident $fn:ident opt_room) => {
+        bind_compiled_callbacks!(@string $actions, $tx, $on $fn)
     };
-    (@one $win:ident $tx:ident $on:ident $fn:ident user) => {
-        bind_compiled_callbacks!(@string $win $tx $on $fn)
+    (@one $actions:expr, $main:ident, $tx:ident, $on:ident $fn:ident user) => {
+        bind_compiled_callbacks!(@string $actions, $tx, $on $fn)
     };
-    (@one $win:ident $tx:ident $on:ident $fn:ident manual) => {
-        bind_compiled_callbacks!(@unit $win $tx $on $fn)
+    (@one $actions:expr, $main:ident, $tx:ident, $on:ident $fn:ident manual) => {
+        bind_compiled_callbacks!(@unit $actions, $tx, $on $fn)
     };
-    (@one $win:ident $tx:ident $on:ident $fn:ident manual_string) => {
-        bind_compiled_callbacks!(@string $win $tx $on $fn)
+    (@one $actions:expr, $main:ident, $tx:ident, $on:ident $fn:ident manual_string) => {
+        bind_compiled_callbacks!(@string $actions, $tx, $on $fn)
     };
-    (@one $win:ident $tx:ident $on:ident $fn:ident room_key) => {{
+    (@one $actions:expr, $main:ident, $tx:ident, $on:ident $fn:ident room_key) => {{
         let tx = $tx.clone();
-        let weak = $win.as_weak();
-        actions($win).$on(move || router::$fn(&tx, selected_room_key::<CompiledBackend>(&weak)));
+        let weak = $main.as_weak();
+        $actions.$on(move || router::$fn(&tx, selected_room_key::<CompiledBackend>(&weak)));
     }};
-    (@one $win:ident $tx:ident $on:ident $fn:ident
+    (@one $actions:expr, $main:ident, $tx:ident, $on:ident $fn:ident
         request($($field:ident $name:literal $field_kind:ident),*)) => {{
         let tx = $tx.clone();
-        actions($win).$on(move |req| {
+        $actions.$on(move |req| {
             router::$fn(&tx, $(bind_compiled_callbacks!(@field req $field $field_kind)),*)
         });
     }};
-    (@one $win:ident $tx:ident $on:ident $fn:ident
+    (@one $actions:expr, $main:ident, $tx:ident, $on:ident $fn:ident
         verdict($($field:ident $name:literal $field_kind:ident),*)) => {{
         let tx = $tx.clone();
-        actions($win).$on(move |req| {
+        $actions.$on(move |req| {
             draft_verdict(&router::$fn(
                 &tx,
                 $(bind_compiled_callbacks!(@field req $field $field_kind)),*
             ))
         });
     }};
-    (@unit $win:ident $tx:ident $on:ident $fn:ident) => {{
+    (@unit $actions:expr, $tx:ident, $on:ident $fn:ident) => {{
         let tx = $tx.clone();
-        actions($win).$on(move || router::$fn(&tx));
+        $actions.$on(move || router::$fn(&tx));
     }};
-    (@string $win:ident $tx:ident $on:ident $fn:ident) => {{
+    (@string $actions:expr, $tx:ident, $on:ident $fn:ident) => {{
         let tx = $tx.clone();
-        actions($win).$on(move |arg| router::$fn(&tx, arg.to_string()));
+        $actions.$on(move |arg| router::$fn(&tx, arg.to_string()));
     }};
     (@field $req:ident $field:ident text) => { $req.$field.to_string() };
     (@field $req:ident $field:ident flag) => { $req.$field };
     (@field $req:ident $field:ident list) => { $req.$field.iter().map(String::from).collect() };
     (@field $req:ident $field:ident variant) => { $req.$field.slint_name() };
+}
+
+fn bind_hooks(actions: &Actions<'_>, hooks: WindowHooks) {
+    let WindowHooks {
+        call_tile_seen,
+        call_media_shown,
+        watch_microphone,
+        watch_connections,
+        show_call_window,
+        close_call_window,
+        show_call_chat,
+        show_main_window,
+    } = hooks;
+    actions.on_call_tile_seen(move |feed, width, height, shown| {
+        call_tile_seen(&feed, width, height, shown);
+    });
+    actions.on_call_media_shown(call_media_shown);
+    actions.on_watch_microphone(move |request| watch_microphone(request.on));
+    actions.on_watch_connections(move |request| watch_connections(request.on));
+    actions.on_show_call_window(show_call_window);
+    actions.on_close_call_window(close_call_window);
+    actions.on_show_call_chat(show_call_chat);
+    actions.on_show_main_window(show_main_window);
 }
 
 impl UiProps for AppWindow {
@@ -663,10 +729,23 @@ macro_rules! attach_compiled_models {
     };
 }
 
+macro_rules! attach_mirrored_models {
+    ($($field:ident $row:ident $model:ident $g:ident $gname:literal $lit:literal $s:ident;)*) => {
+        fn attach_mirrored_models(window: &CallWindow, models: &Models<CompiledBackend>) {
+            $( if call_window::mirrors($gname) {
+                window.global::<$g>().$s(ModelRc::from(Rc::clone(&models.$field)));
+            } )*
+        }
+    };
+}
+
+model_props!(attach_mirrored_models);
+
 pub struct CompiledBackend;
 
 impl UiBackend for CompiledBackend {
     type Window = AppWindow;
+    type CallWindow = CallWindow;
     type Message = MessageEntry;
     type BodyLine = BodyLine;
     type BodyPiece = BodyPiece;
@@ -709,19 +788,39 @@ impl UiBackend for CompiledBackend {
         actions(window).on_reveal_spoilers(move |unique_id| reveal(&unique_id));
     }
 
-    fn bind_call_tile_seen(window: &AppWindow, seen: impl Fn(&str, i32, i32, bool) + 'static) {
-        actions(window)
-            .on_call_tile_seen(move |feed, width, height, shown| seen(&feed, width, height, shown));
-    }
-
-    fn bind_call_media_shown(window: &AppWindow, shown: impl Fn(bool) + 'static) {
-        actions(window).on_call_media_shown(shown);
+    fn bind_window_hooks(window: &AppWindow, hooks: WindowHooks) {
+        bind_hooks(&actions(window), hooks);
     }
 
     fn bind_call_preview_seen(window: &AppWindow, seen: impl Fn(&str, i32, i32, bool) + 'static) {
         actions(window).on_call_preview_seen(move |feed, width, height, shown| {
             seen(&feed, width, height, shown);
         });
+    }
+
+    fn new_call_window(main: &AppWindow, hooks: WindowHooks) -> Option<CallWindow> {
+        let window = CallWindow::new()
+            .inspect_err(|e| tracing::warn!("the call window could not be built: {e}"))
+            .ok()?;
+        mirror_strings(main, &window);
+        mirror_bools(main, &window);
+        mirror_ints(main, &window);
+        mirror_enums(main, &window);
+        attach_mirrored_models(&window, &Self::models());
+        if let Some(tx) = call_window::commands() {
+            simple_callbacks!(bind_compiled_callbacks call_actions(&window), main, tx;);
+        }
+        bind_hooks(&call_actions(&window), hooks);
+        window.set_ready(true);
+        Some(window)
+    }
+
+    fn call_window() -> Option<CallWindow> {
+        call_window::opened()
+    }
+
+    fn keep_call_window(window: Option<CallWindow>) -> Option<CallWindow> {
+        call_window::keep(window)
     }
 
     fn notification_text(window: &AppWindow, words: &NoticeWords<'_>) -> SharedString {
@@ -886,7 +985,8 @@ impl SlintUiAdapter {
         setup_emoji_store(&self.window);
 
         let win = &self.window;
-        simple_callbacks!(bind_compiled_callbacks win cmd_tx;);
+        call_window::install_commands(cmd_tx);
+        simple_callbacks!(bind_compiled_callbacks actions(win), win, cmd_tx;);
 
         let tx = cmd_tx.clone();
         actions(win).on_move_space(move |from, to| {

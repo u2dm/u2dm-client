@@ -285,10 +285,6 @@ macro_rules! simple_callbacks {
         on_raise_hand "raise-hand" raise_hand request(on "on" flag) RaiseHand;
         on_send_call_reaction "send-call-reaction" send_call_reaction request(name "name" text)
             SendCallReaction;
-        on_watch_microphone "watch-microphone" watch_microphone request(on "on" flag)
-            WatchMicrophone;
-        on_watch_connections "watch-connections" watch_connections request(on "on" flag)
-            WatchConnections;
         on_select_room "select-room" select_room room SelectRoom;
         on_open_notification "open-notification" open_notification room OpenNotification;
         on_select_space "select-space" select_space opt_room SelectSpace;
@@ -521,6 +517,7 @@ macro_rules! bool_props {
         IdentityAlertBusy IdentityAlertView "IdentityAlertView" "busy" set_busy get_busy;
         WindowFocused WindowView "WindowView" "focused" set_focused get_focused;
         WindowActive WindowView "WindowView" "active" set_active get_active;
+        CallWindowed WindowView "WindowView" "call-windowed" set_call_windowed get_call_windowed;
         ReplySwipeArmed ReplySwipe "ReplySwipe" "armed" set_armed get_armed;
         ReducedMotion Motion "Motion" "reduced" set_reduced get_reduced;
         RoomInfoIsDirect RoomInfoView "RoomInfoView" "is-direct" set_is_direct get_is_direct;
@@ -609,6 +606,7 @@ macro_rules! int_props {
         DeviceNewsSerial CallView "CallView" "device-news-serial" set_device_news_serial get_device_news_serial;
         CallDeclines WindowView "WindowView" "call-declines" set_call_declines get_call_declines;
         CallAnswers WindowView "WindowView" "call-answers" set_call_answers get_call_answers;
+        CallChatAsks WindowView "WindowView" "call-chat-asks" set_call_chat_asks get_call_chat_asks;
         PresencePartnerMinutes PresenceView "PresenceView" "partner-minutes" set_partner_minutes get_partner_minutes;
         PresencePersonMinutes PresenceView "PresenceView" "person-minutes" set_person_minutes get_person_minutes;
         SwipeTravel WindowView "WindowView" "swipe-travel" set_swipe_travel get_swipe_travel;

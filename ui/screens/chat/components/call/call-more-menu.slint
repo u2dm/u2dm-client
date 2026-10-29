@@ -8,11 +8,11 @@ import { Actions } from "../../../../actions.slint";
 import { CallHand, CallReaction, CallScreen } from "../../../../enums.slint";
 import { CallWords } from "../../../../messages.slint";
 import { CallMode, CallPanel } from "../../../../local.slint";
-import { CallView } from "../../../../views.slint";
+import { CallView, WindowView } from "../../../../views.slint";
 import { AppStyle, Metrics, Space, Stroke } from "../../../../theme.slint";
 import { CallViewWords, MenuGroup } from "./call-view-menu.slint";
 
-enum CallMoreChoice { devices, react, hand, change-share, call-and-chat, call-only, chat-only, details }
+enum CallMoreChoice { devices, react, hand, change-share, call-and-chat, call-only, chat-only, window, back, details }
 
 export component CallMoreMenu inherits PickerCard {
     in property <length> room;
@@ -23,13 +23,17 @@ export component CallMoreMenu inherits PickerCard {
     callback react(bool);
     callback change-share(bool);
     callback mode(CallMode);
+    callback pop-out();
+    callback bring-back();
     callback details(bool);
 
     property <bool> sharing: CallView.screen == CallScreen.on;
     property <[CallMoreChoice]> actions: root.sharing
         ? [CallMoreChoice.devices, CallMoreChoice.react, CallMoreChoice.hand, CallMoreChoice.change-share]
         : [CallMoreChoice.devices, CallMoreChoice.react, CallMoreChoice.hand];
-    property <[CallMoreChoice]> modes: [CallMoreChoice.call-and-chat, CallMoreChoice.call-only, CallMoreChoice.chat-only];
+    property <[CallMoreChoice]> modes: CallPanel.own-window
+        ? [CallMoreChoice.back]
+        : [CallMoreChoice.call-and-chat, CallMoreChoice.call-only, CallMoreChoice.chat-only, CallMoreChoice.window];
     property <int> count: root.actions.length + root.modes.length + 1;
     property <int> cursor: -1;
     property <bool> keys-focused: keys.has-focus;
@@ -77,6 +81,12 @@ export component CallMoreMenu inherits PickerCard {
         if choice == CallMoreChoice.chat-only {
             return IconSet.MessageSquare;
         }
+        if choice == CallMoreChoice.window {
+            return IconSet.SquareArrowOutUpRight;
+        }
+        if choice == CallMoreChoice.back {
+            return IconSet.SquareArrowDownLeft;
+        }
         return IconSet.Activity;
     }
 
@@ -102,6 +112,12 @@ export component CallMoreMenu inherits PickerCard {
         if choice == CallMoreChoice.chat-only {
             return CallViewWords.mode(CallMode.chat-only);
         }
+        if choice == CallMoreChoice.window {
+            return CallViewWords.window();
+        }
+        if choice == CallMoreChoice.back {
+            return CallViewWords.back();
+        }
         return @tr("Connection details…");
     }
 
@@ -122,14 +138,16 @@ export component CallMoreMenu inherits PickerCard {
 
     pure function checkable(choice: CallMoreChoice) -> bool {
         return choice == CallMoreChoice.hand || choice == CallMoreChoice.call-and-chat
-            || choice == CallMoreChoice.call-only || choice == CallMoreChoice.chat-only;
+            || choice == CallMoreChoice.call-only || choice == CallMoreChoice.chat-only
+            || choice == CallMoreChoice.window;
     }
 
     pure function checked(choice: CallMoreChoice) -> bool {
         return (choice == CallMoreChoice.hand && root.hand-up)
-            || (choice == CallMoreChoice.call-and-chat && CallPanel.mode == CallMode.call-and-chat)
-            || (choice == CallMoreChoice.call-only && CallPanel.mode == CallMode.call-only)
-            || (choice == CallMoreChoice.chat-only && CallPanel.mode == CallMode.chat-only);
+            || (choice == CallMoreChoice.call-and-chat && CallPanel.mode == CallMode.call-and-chat && !WindowView.call-windowed)
+            || (choice == CallMoreChoice.call-only && CallPanel.mode == CallMode.call-only && !WindowView.call-windowed)
+            || (choice == CallMoreChoice.chat-only && CallPanel.mode == CallMode.chat-only && !WindowView.call-windowed)
+            || (choice == CallMoreChoice.window && WindowView.call-windowed);
     }
 
     pure function description(choice: CallMoreChoice) -> string {
@@ -160,6 +178,10 @@ export component CallMoreMenu inherits PickerCard {
             root.mode(CallMode.call-only);
         } else if choice == CallMoreChoice.chat-only {
             root.mode(CallMode.chat-only);
+        } else if choice == CallMoreChoice.window {
+            root.pop-out();
+        } else if choice == CallMoreChoice.back {
+            root.bring-back();
         } else {
             root.details(by-keys);
         }
@@ -244,7 +266,7 @@ export component CallMoreMenu inherits PickerCard {
                 height: Metrics.call-menu-row;
                 icon: root.icon(choice);
                 label: root.label(choice);
-                checkable: true;
+                checkable: root.checkable(choice);
                 checked: root.checked(choice);
                 trailing: root.checked(choice) ? IconSet.Check : { };
                 focusable: false;

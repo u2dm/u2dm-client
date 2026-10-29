@@ -11,6 +11,7 @@ use super::backend::{
     keep_shown_enrichment,
 };
 use super::call::apply_call;
+use super::call_window;
 use super::decode::{AvatarSlot, load_attachment_preview, load_avatar_async, request_pack_cell};
 use super::dto::{
     PackArt, PackBrowse, PackRowDto, PackTabDto, QuotedMessage, audio_row_update,
@@ -285,6 +286,7 @@ pub fn dispatch_effect<B: UiBackend>(w: &B::Window, event: Effect, ctx: &UiEvent
         Effect::Verification(update) => apply_verification(w, &update),
         Effect::SessionReset(view) => {
             ctx.notifier.withdraw_all();
+            call_window::close::<B>(w);
             let models = begin_session::<B>(w);
             let fresh = UiEventContext::<B> {
                 models: &models,

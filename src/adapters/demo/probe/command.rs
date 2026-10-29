@@ -587,6 +587,7 @@ pub enum ProbeCommand {
         px: i32,
     },
     ContextPress,
+    CloseCallWindow,
     ClickNotification {
         room_id: String,
         #[serde(default)]
@@ -655,6 +656,7 @@ impl fmt::Display for Driven {
             Self::Poke(Poke::SwipeTravel(px)) => write!(f, "SwipeTravel({px}px)"),
             Self::HandOff(handoff) => write!(f, "HandOff(link: {})", handoff.link.is_some()),
             Self::Poke(Poke::ContextPress) => f.write_str("ContextPress"),
+            Self::Poke(Poke::CloseCallWindow) => f.write_str("CloseCallWindow"),
             Self::NotificationClick { room_id, .. } => write!(f, "ClickNotification({room_id})"),
         }
     }
@@ -1368,6 +1370,7 @@ pub fn to_driven(command: ProbeCommand, selected: Selection<'_>) -> Result<Drive
         }
         ProbeCommand::SwipeTravel { px } => return Ok(Driven::Poke(Poke::SwipeTravel(px))),
         ProbeCommand::ContextPress => return Ok(Driven::Poke(Poke::ContextPress)),
+        ProbeCommand::CloseCallWindow => return Ok(Driven::Poke(Poke::CloseCallWindow)),
         ProbeCommand::ClickNotification {
             room_id,
             token,

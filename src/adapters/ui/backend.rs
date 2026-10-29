@@ -3,9 +3,11 @@ use std::ops::ControlFlow;
 use std::rc::Rc;
 use std::sync::Arc;
 
-use slint::{ComponentHandle, Image, Model, ModelRc, SharedString, VecModel};
+use slint::{CloseRequestResponse, ComponentHandle, Image, Model, ModelRc, SharedString, VecModel};
 use tokio::sync::{OwnedSemaphorePermit, mpsc, watch};
 
+use super::call_video::Host;
+use super::call_window::{self, WindowHooks};
 use super::clock::install_clock_invalidation;
 use super::decode::{
     AvatarSlot, DecodeFailure, DecodeOutcome, MediaSlot, TimelineItemKey, advance_animations,
@@ -68,6 +70,7 @@ use crate::ports::notifier::NotifierPort;
 
 pub trait UiBackend: Sized + 'static {
     type Window: ComponentHandle + UiProps + 'static;
+    type CallWindow: ComponentHandle + 'static;
     type Message: MessageFields<Self> + Clone + From<MessageDto> + 'static;
     type BodyLine: BodyLineFields<Self> + Clone + From<BodyLineDto> + 'static;
     type BodyPiece: BodyPieceFields<Self> + Clone + 'static;
@@ -98,9 +101,11 @@ pub trait UiBackend: Sized + 'static {
     fn attach_models(window: &Self::Window, models: &Models<Self>);
     fn bind_browse_packs(window: &Self::Window, browse: impl Fn(PackSurface, &str, i32) + 'static);
     fn bind_reveal_spoilers(window: &Self::Window, reveal: impl Fn(&str) + 'static);
-    fn bind_call_tile_seen(window: &Self::Window, seen: impl Fn(&str, i32, i32, bool) + 'static);
+    fn bind_window_hooks(window: &Self::Window, hooks: WindowHooks);
     fn bind_call_preview_seen(window: &Self::Window, seen: impl Fn(&str, i32, i32, bool) + 'static);
-    fn bind_call_media_shown(window: &Self::Window, shown: impl Fn(bool) + 'static);
+    fn new_call_window(main: &Self::Window, hooks: WindowHooks) -> Option<Self::CallWindow>;
+    fn call_window() -> Option<Self::CallWindow>;
+    fn keep_call_window(window: Option<Self::CallWindow>) -> Option<Self::CallWindow>;
     fn notification_text(window: &Self::Window, words: &NoticeWords<'_>) -> SharedString;
 
     fn convert_message(
@@ -241,17 +246,10 @@ pub fn spawn_event_handler<B: UiBackend>(
 ) {
     begin_session::<B>(window);
     call_video::install(call_video);
-    let seeing = window.as_weak();
-    B::bind_call_tile_seen(window, move |feed, width, height, shown| {
-        if let Some(window) = seeing.upgrade() {
-            call_video::seen::<B>(&window, feed, width, height, shown);
-        }
-    });
-    let showing = window.as_weak();
-    B::bind_call_media_shown(window, move |shown| {
-        if let Some(window) = showing.upgrade() {
-            call_video::media_shown::<B>(&window, shown);
-        }
+    B::bind_window_hooks(window, call_window::hooks::<B>(window, Host::Main));
+    window.window().on_close_requested(|| {
+        call_window::dismiss::<B>();
+        CloseRequestResponse::HideWindow
     });
     let previewing = window.as_weak();
     B::bind_call_preview_seen(window, move |feed, width, height, shown| {

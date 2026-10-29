@@ -7,6 +7,7 @@ mod autolink;
 mod backend;
 mod call;
 mod call_video;
+mod call_window;
 mod clipboard;
 mod clock;
 mod context_press;

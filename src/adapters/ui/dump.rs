@@ -9,13 +9,14 @@ use tokio::sync::oneshot;
 use super::activity;
 use super::audio;
 use super::backend::UiBackend;
+use super::call_video::Host;
 use super::fields::{
     BodyLineFields, BodyPieceFields, CallDeviceFields, CallPersonFields, CallTileFields,
     LogLineFields, MessageFields, PollAnswerFields, ReactionFields,
 };
 use super::props::{BoolProp, EnumProp, IntProp, StringProp, UiProps};
 use super::ringtone;
-use super::{call_video, context_press};
+use super::{call_video, call_window, context_press};
 use crate::domain::call::video::FrameSize;
 
 #[derive(Serialize)]
@@ -215,6 +216,8 @@ pub struct CallDump {
     pub tiles: Vec<CallTileDump>,
     pub compact_self: Vec<CallTileDump>,
     pub media_shown: bool,
+    pub window: bool,
+    pub window_media_shown: bool,
     pub attached: Vec<String>,
     pub self_view: bool,
     pub share_preview: bool,
@@ -323,6 +326,7 @@ pub enum Poke {
     UserActivity(bool),
     SwipeTravel(i32),
     ContextPress,
+    CloseCallWindow,
 }
 
 type Poker = Box<dyn Fn(Poke) + Send + Sync>;
@@ -374,6 +378,7 @@ pub fn install_probe<B: UiBackend>(window: &B::Window) {
             Poke::UserActivity(active) => activity::report(&window, active),
             Poke::SwipeTravel(px) => window.set_int(IntProp::SwipeTravel, px),
             Poke::ContextPress => context_press::announce(&window),
+            Poke::CloseCallWindow => call_window::request_close::<B>(),
         });
         if let Err(e) = queued {
             tracing::debug!("a probe poke could not reach the event loop: {e}");
@@ -503,7 +508,9 @@ fn call_view<B: UiBackend>(window: &B::Window) -> CallDump {
         follows_speaker: window.get_bool(BoolProp::FollowsSpeaker),
         tiles: call_tiles::<B>(&B::models().call_tiles),
         compact_self: call_tiles::<B>(&B::models().call_self),
-        media_shown: call_video::media_is_shown(),
+        media_shown: call_video::media_is_shown(Host::Main),
+        window: window.get_bool(BoolProp::CallWindowed),
+        window_media_shown: call_video::media_is_shown(Host::CallWindow),
         attached: call_video::attached(),
         self_view: window.get_bool(BoolProp::SelfView),
         share_preview: window.get_bool(BoolProp::SharePreview),

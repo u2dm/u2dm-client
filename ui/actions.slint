@@ -220,6 +220,10 @@ export global Actions {
     callback call-tile-seen(string, int, int, bool);
     callback call-media-shown(bool);
     callback call-preview-seen(string, int, int, bool);
+    callback show-call-window();
+    callback close-call-window();
+    callback show-call-chat();
+    callback show-main-window();
     callback user-activity-changed(bool);
     callback composer-changed(string, bool, int);
     callback keep-draft(ComposerDraft);

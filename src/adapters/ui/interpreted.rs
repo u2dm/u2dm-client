@@ -6,7 +6,7 @@ use std::sync::Arc;
 
 use slint::{Image, Model, ModelRc, Rgb8Pixel, SharedPixelBuffer, StyledText, VecModel};
 use slint_interpreter::{
-    Compiler, ComponentHandle, ComponentInstance, SharedString, Struct, Value,
+    Compiler, ComponentDefinition, ComponentHandle, ComponentInstance, SharedString, Struct, Value,
 };
 use tokio::runtime::Runtime;
 use tokio::sync::{mpsc, watch};
@@ -21,6 +21,7 @@ use super::backend::{
     last_editable_row, recent_speakers, reorder_spaces, row_of_message, selected_room_key,
     shown_room_log_text, unread_below,
 };
+use super::call_window::{self, WindowHooks};
 use super::decode::{
     AvatarSlot, request_avatar, request_custom_emoji, request_media, request_pack_cell,
 };
@@ -50,26 +51,26 @@ use super::props::{BoolProp, IntProp, StringProp, UiProps};
 use super::router::{DraftVerdict, EditedRow, EditedText};
 use super::schema::{
     account_activities, account_steps, attachment_kinds, audio_kinds, auth_stages,
-    body_line_fields, body_piece_fields, call_cameras, call_connection_fields, call_device_fields,
-    call_device_kinds, call_device_statuses, call_device_troubles, call_hands, call_link_states,
-    call_mics, call_notices, call_offers, call_person_fields, call_phases, call_reactions,
-    call_refusals, call_screen_refusals, call_screens, call_tile_fields, call_tile_marks,
-    child_accesses, connection_states, create_room_statuses, decryption_failures, deliveries,
-    device_trusts, direct_chats, emoji_arts, encryption_activities, encryption_standings,
-    encryption_steps, enum_props, identity_alert_kinds, identity_trusts, invite_answers,
-    invite_kinds, invitee_fields, invitee_states, log_levels, log_line_fields, login_activities,
-    login_methods, login_phases, media_failures, media_states, member_roles, member_row_fields,
-    member_row_kinds, message_fields, message_kinds, model_props, notify_modes, pack_cell_fields,
-    pack_origins, pack_row_fields, pack_surfaces, pack_tab_fields, pending_moderations,
-    people_search_statuses, poll_answer_fields, poll_phases, presence_lines, preview_kinds,
-    preview_troubles, reaction_fields, reaction_sends, reactor_fields, readers_statuses,
-    recovery_statuses, removal_kinds, room_accesses, room_call_marks, room_fields,
-    room_info_placements, room_kinds, room_memberships, room_preview_statuses, room_row_kinds,
-    room_scopes, roster_statuses, send_states, service_kinds, sheet_previews, shield_reasons,
-    shields, simple_callbacks, source_encryptions, source_statuses, space_child_fields,
-    space_fields, space_index_statuses, spoiler_states, test_phases, timeline_states,
-    upgrade_links, user_device_fields, user_message_kinds, verification_activities,
-    verification_phases, verify_offers,
+    body_line_fields, body_piece_fields, bool_props, call_cameras, call_connection_fields,
+    call_device_fields, call_device_kinds, call_device_statuses, call_device_troubles, call_hands,
+    call_link_states, call_mics, call_notices, call_offers, call_person_fields, call_phases,
+    call_reactions, call_refusals, call_screen_refusals, call_screens, call_tile_fields,
+    call_tile_marks, child_accesses, connection_states, create_room_statuses, decryption_failures,
+    deliveries, device_trusts, direct_chats, emoji_arts, encryption_activities,
+    encryption_standings, encryption_steps, enum_props, identity_alert_kinds, identity_trusts,
+    int_props, invite_answers, invite_kinds, invitee_fields, invitee_states, log_levels,
+    log_line_fields, login_activities, login_methods, login_phases, media_failures, media_states,
+    member_roles, member_row_fields, member_row_kinds, message_fields, message_kinds, model_props,
+    notify_modes, pack_cell_fields, pack_origins, pack_row_fields, pack_surfaces, pack_tab_fields,
+    pending_moderations, people_search_statuses, poll_answer_fields, poll_phases, presence_lines,
+    preview_kinds, preview_troubles, reaction_fields, reaction_sends, reactor_fields,
+    readers_statuses, recovery_statuses, removal_kinds, room_accesses, room_call_marks,
+    room_fields, room_info_placements, room_kinds, room_memberships, room_preview_statuses,
+    room_row_kinds, room_scopes, roster_statuses, send_states, service_kinds, sheet_previews,
+    shield_reasons, shields, simple_callbacks, source_encryptions, source_statuses,
+    space_child_fields, space_fields, space_index_statuses, spoiler_states, string_props,
+    test_phases, timeline_states, upgrade_links, user_device_fields, user_message_kinds,
+    verification_activities, verification_phases, verify_offers,
 };
 use super::session::active_models;
 use super::video::{self, millis_to_duration};
@@ -147,6 +148,12 @@ mod names {
         pub const REVEAL_SPOILERS: &str = "reveal-spoilers";
         pub const CALL_TILE_SEEN: &str = "call-tile-seen";
         pub const CALL_MEDIA_SHOWN: &str = "call-media-shown";
+        pub const WATCH_MICROPHONE: &str = "watch-microphone";
+        pub const WATCH_CONNECTIONS: &str = "watch-connections";
+        pub const SHOW_CALL_WINDOW: &str = "show-call-window";
+        pub const CLOSE_CALL_WINDOW: &str = "close-call-window";
+        pub const SHOW_CALL_CHAT: &str = "show-call-chat";
+        pub const SHOW_MAIN_WINDOW: &str = "show-main-window";
         pub const CALL_PREVIEW_SEEN: &str = "call-preview-seen";
         pub const EMOTE_AT: &str = "emote-at";
         pub const PLACE_EMOTE: &str = "place-emote";
@@ -432,40 +439,40 @@ fn bind_action(
 }
 
 macro_rules! bind_interpreted_callbacks {
-    ($inst:expr, $tx:ident;
+    ($inst:expr, $main:expr, $tx:ident;
         $($on:ident $lit:literal $fn:ident $kind:ident $(($($arg:tt)*))? $cmd:ident;)*) => {
-        $( bind_interpreted_callbacks!(@one $inst, $tx, $lit, $fn, $kind $(($($arg)*))?)?; )*
+        $( bind_interpreted_callbacks!(@one $inst, $main, $tx, $lit, $fn, $kind $(($($arg)*))?)?; )*
     };
-    (@one $inst:expr, $tx:ident, $lit:literal, $fn:ident, plain) => {
+    (@one $inst:expr, $main:expr, $tx:ident, $lit:literal, $fn:ident, plain) => {
         bind_interpreted_callbacks!(@unit $inst, $tx, $lit, $fn)
     };
-    (@one $inst:expr, $tx:ident, $lit:literal, $fn:ident, pass) => {
+    (@one $inst:expr, $main:expr, $tx:ident, $lit:literal, $fn:ident, pass) => {
         bind_interpreted_callbacks!(@string $inst, $tx, $lit, $fn)
     };
-    (@one $inst:expr, $tx:ident, $lit:literal, $fn:ident, room) => {
+    (@one $inst:expr, $main:expr, $tx:ident, $lit:literal, $fn:ident, room) => {
         bind_interpreted_callbacks!(@string $inst, $tx, $lit, $fn)
     };
-    (@one $inst:expr, $tx:ident, $lit:literal, $fn:ident, opt_room) => {
+    (@one $inst:expr, $main:expr, $tx:ident, $lit:literal, $fn:ident, opt_room) => {
         bind_interpreted_callbacks!(@string $inst, $tx, $lit, $fn)
     };
-    (@one $inst:expr, $tx:ident, $lit:literal, $fn:ident, user) => {
+    (@one $inst:expr, $main:expr, $tx:ident, $lit:literal, $fn:ident, user) => {
         bind_interpreted_callbacks!(@string $inst, $tx, $lit, $fn)
     };
-    (@one $inst:expr, $tx:ident, $lit:literal, $fn:ident, manual) => {
+    (@one $inst:expr, $main:expr, $tx:ident, $lit:literal, $fn:ident, manual) => {
         bind_interpreted_callbacks!(@unit $inst, $tx, $lit, $fn)
     };
-    (@one $inst:expr, $tx:ident, $lit:literal, $fn:ident, manual_string) => {
+    (@one $inst:expr, $main:expr, $tx:ident, $lit:literal, $fn:ident, manual_string) => {
         bind_interpreted_callbacks!(@string $inst, $tx, $lit, $fn)
     };
-    (@one $inst:expr, $tx:ident, $lit:literal, $fn:ident, room_key) => {{
+    (@one $inst:expr, $main:expr, $tx:ident, $lit:literal, $fn:ident, room_key) => {{
         let tx = $tx.clone();
-        let weak = $inst.as_weak();
+        let weak = $main.as_weak();
         bind_action($inst, $lit, move |_args| {
             router::$fn(&tx, selected_room_key::<InterpretedBackend>(&weak));
             Value::Void
         })
     }};
-    (@one $inst:expr, $tx:ident, $lit:literal, $fn:ident,
+    (@one $inst:expr, $main:expr, $tx:ident, $lit:literal, $fn:ident,
         request($($field:ident $name:literal $field_kind:ident),*)) => {{
         let tx = $tx.clone();
         bind_action($inst, $lit, move |args| {
@@ -475,7 +482,7 @@ macro_rules! bind_interpreted_callbacks {
             Value::from(router::$fn(&tx, $(bind_interpreted_callbacks!(@field s $name $field_kind)),*))
         })
     }};
-    (@one $inst:expr, $tx:ident, $lit:literal, $fn:ident,
+    (@one $inst:expr, $main:expr, $tx:ident, $lit:literal, $fn:ident,
         verdict($($field:ident $name:literal $field_kind:ident),*)) => {{
         let tx = $tx.clone();
         bind_action($inst, $lit, move |args| {
@@ -507,21 +514,60 @@ macro_rules! bind_interpreted_callbacks {
 
 macro_rules! impl_enum_setters {
     ($($v:ident $fn:ident($ty:ty) $g:ident $gname:literal $lit:literal $s:ident $get:ident;)*) => {
-        $( fn $fn(&self, value: $ty) { set_global(self, $gname, $lit, enum_value(&value)); } )*
+        $( fn $fn(&self, value: $ty) { set_view(self, $gname, $lit, enum_value(&value)); } )*
     };
+}
+
+macro_rules! mirror_props {
+    ($name:ident;
+        $($(#[$attr:meta])* $v:ident $g:ident $gname:literal $lit:literal $s:ident $get:ident;)*) => {
+        fn $name(from: &ComponentInstance, to: &ComponentInstance) {
+            $( $(#[$attr])* if call_window::mirrors($gname) { copy_global(from, to, $gname, $lit); } )*
+        }
+    };
+}
+
+macro_rules! mirror_enum_props {
+    ($name:ident;
+        $($v:ident $fn:ident($ty:ty) $g:ident $gname:literal $lit:literal $s:ident $get:ident;)*) => {
+        fn $name(from: &ComponentInstance, to: &ComponentInstance) {
+            $( if call_window::mirrors($gname) { copy_global(from, to, $gname, $lit); } )*
+        }
+    };
+}
+
+string_props!(mirror_props mirror_strings;);
+bool_props!(mirror_props mirror_bools;);
+int_props!(mirror_props mirror_ints;);
+enum_props!(mirror_enum_props mirror_enums;);
+
+fn set_view(inst: &ComponentInstance, global: &str, name: &str, value: Value) {
+    if call_window::mirrors(global) {
+        call_window::mirror(&value, |window, value| {
+            set_global(window, global, name, value);
+        });
+    }
+    set_global(inst, global, name, value);
+}
+
+fn copy_global(from: &ComponentInstance, to: &ComponentInstance, global: &str, name: &str) {
+    match from.get_global_property(global, name) {
+        Ok(value) => set_global(to, global, name, value),
+        Err(e) => tracing::warn!("failed to read property '{global}.{name}': {e:?}"),
+    }
 }
 
 impl UiProps for ComponentInstance {
     fn set_string(&self, prop: StringProp, value: SharedString) {
-        set_global(self, prop.global(), prop.as_str(), Value::String(value));
+        set_view(self, prop.global(), prop.as_str(), Value::String(value));
     }
 
     fn set_bool(&self, prop: BoolProp, value: bool) {
-        set_global(self, prop.global(), prop.as_str(), Value::Bool(value));
+        set_view(self, prop.global(), prop.as_str(), Value::Bool(value));
     }
 
     fn set_int(&self, prop: IntProp, value: i32) {
-        set_global(
+        set_view(
             self,
             prop.global(),
             prop.as_str(),
@@ -771,10 +817,86 @@ macro_rules! attach_interpreted_models {
     };
 }
 
+macro_rules! attach_mirrored_models {
+    ($($field:ident $row:ident $model:ident $g:ident $gname:literal $lit:literal $s:ident;)*) => {
+        fn attach_mirrored_models(window: &ComponentInstance, models: &Models<InterpretedBackend>) {
+            $( if call_window::mirrors($gname) {
+                set_global(window, $gname, $lit, Value::Model(ModelRc::from(Rc::clone(&models.$field))));
+            } )*
+        }
+    };
+}
+
+model_props!(attach_mirrored_models);
+
+thread_local! {
+    static CALL_WINDOW: RefCell<Option<ComponentDefinition>> = const { RefCell::new(None) };
+}
+
+fn bind_simple_callbacks(
+    window: &ComponentInstance,
+    main: &ComponentInstance,
+    cmd_tx: &CommandSender,
+) -> Result<()> {
+    simple_callbacks!(bind_interpreted_callbacks window, main, cmd_tx;);
+    Ok(())
+}
+
+fn bind_hooks(window: &ComponentInstance, hooks: WindowHooks) -> Result<()> {
+    let WindowHooks {
+        call_tile_seen,
+        call_media_shown,
+        watch_microphone,
+        watch_connections,
+        show_call_window,
+        close_call_window,
+        show_call_chat,
+        show_main_window,
+    } = hooks;
+    bind_action(window, callback::CALL_TILE_SEEN, move |args| {
+        call_tile_seen(
+            &string_arg(args, 0),
+            int_arg(args, 1).unwrap_or_default(),
+            int_arg(args, 2).unwrap_or_default(),
+            bool_arg(args, 3),
+        );
+        Value::Void
+    })?;
+    bind_action(window, callback::CALL_MEDIA_SHOWN, move |args| {
+        call_media_shown(bool_arg(args, 0));
+        Value::Void
+    })?;
+    bind_action(window, callback::WATCH_MICROPHONE, move |args| {
+        watch_microphone(struct_arg(args, 0).is_some_and(|s| flag(s, "on")));
+        Value::Void
+    })?;
+    bind_action(window, callback::WATCH_CONNECTIONS, move |args| {
+        watch_connections(struct_arg(args, 0).is_some_and(|s| flag(s, "on")));
+        Value::Void
+    })?;
+    bind_action(window, callback::SHOW_CALL_WINDOW, move |_| {
+        show_call_window();
+        Value::Void
+    })?;
+    bind_action(window, callback::CLOSE_CALL_WINDOW, move |_| {
+        close_call_window();
+        Value::Void
+    })?;
+    bind_action(window, callback::SHOW_CALL_CHAT, move |_| {
+        show_call_chat();
+        Value::Void
+    })?;
+    bind_action(window, callback::SHOW_MAIN_WINDOW, move |_| {
+        show_main_window();
+        Value::Void
+    })
+}
+
 pub struct InterpretedBackend;
 
 impl UiBackend for InterpretedBackend {
     type Window = ComponentInstance;
+    type CallWindow = ComponentInstance;
     type Message = Value;
     type BodyLine = Value;
     type BodyPiece = Value;
@@ -834,21 +956,9 @@ impl UiBackend for InterpretedBackend {
         }
     }
 
-    fn bind_call_tile_seen(
-        window: &ComponentInstance,
-        seen: impl Fn(&str, i32, i32, bool) + 'static,
-    ) {
-        let bound = bind_action(window, callback::CALL_TILE_SEEN, move |args| {
-            seen(
-                &string_arg(args, 0),
-                int_arg(args, 1).unwrap_or_default(),
-                int_arg(args, 2).unwrap_or_default(),
-                bool_arg(args, 3),
-            );
-            Value::Void
-        });
-        if let Err(e) = bound {
-            tracing::warn!("failed to bind the call tile callback: {e}");
+    fn bind_window_hooks(window: &ComponentInstance, hooks: WindowHooks) {
+        if let Err(e) = bind_hooks(window, hooks) {
+            tracing::warn!("failed to bind the window's call callbacks: {e}");
         }
     }
 
@@ -870,14 +980,34 @@ impl UiBackend for InterpretedBackend {
         }
     }
 
-    fn bind_call_media_shown(window: &ComponentInstance, shown: impl Fn(bool) + 'static) {
-        let bound = bind_action(window, callback::CALL_MEDIA_SHOWN, move |args| {
-            shown(bool_arg(args, 0));
-            Value::Void
-        });
-        if let Err(e) = bound {
-            tracing::warn!("failed to bind the call media callback: {e}");
+    fn new_call_window(main: &ComponentInstance, hooks: WindowHooks) -> Option<ComponentInstance> {
+        let window = CALL_WINDOW
+            .with_borrow(|definition| definition.as_ref().map(ComponentDefinition::create))?
+            .inspect_err(|e| tracing::warn!("the call window could not be built: {e}"))
+            .ok()?;
+        mirror_strings(main, &window);
+        mirror_bools(main, &window);
+        mirror_ints(main, &window);
+        mirror_enums(main, &window);
+        attach_mirrored_models(&window, &Self::models());
+        if let Some(tx) = call_window::commands()
+            && let Err(e) = bind_simple_callbacks(&window, main, &tx)
+        {
+            tracing::warn!("failed to bind the call window's callbacks: {e}");
         }
+        if let Err(e) = bind_hooks(&window, hooks) {
+            tracing::warn!("failed to bind the call window's call callbacks: {e}");
+        }
+        set_prop(&window, "ready", Value::Bool(true));
+        Some(window)
+    }
+
+    fn call_window() -> Option<ComponentInstance> {
+        call_window::opened()
+    }
+
+    fn keep_call_window(window: Option<ComponentInstance>) -> Option<ComponentInstance> {
+        call_window::keep(window)
     }
 
     fn notification_text(window: &ComponentInstance, words: &NoticeWords<'_>) -> SharedString {
@@ -945,6 +1075,7 @@ impl SlintUiAdapter {
                 .component("AppWindow")
                 .ok_or_else(|| AppError::Ui("failed to load ui/main.slint".into()))?;
             let inst = def.create().map_err(|e| AppError::Ui(e.to_string()))?;
+            CALL_WINDOW.set(result.component("CallWindow"));
             Ok::<_, AppError>(inst)
         })?;
         backend::identify_the_app();
@@ -1129,7 +1260,8 @@ impl SlintUiAdapter {
     ) -> Result<()> {
         setup_emoji_store(&self.instance)?;
 
-        simple_callbacks!(bind_interpreted_callbacks &self.instance, cmd_tx;);
+        call_window::install_commands(cmd_tx);
+        simple_callbacks!(bind_interpreted_callbacks &self.instance, &self.instance, cmd_tx;);
 
         let tx = cmd_tx.clone();
         bind_action(&self.instance, callback::MOVE_SPACE, move |args| {

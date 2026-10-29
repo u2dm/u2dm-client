@@ -168,7 +168,7 @@ export component CallBand inherits Rectangle {
     property <bool> offers-return: root.staged || root.follows-back;
     property <bool> compact-self: CallView.compact-self.length > 0;
     property <length> lead: max(0px, root.lead-inset - Space.md);
-    property <bool> elsewhere: CallView.active-room-id != DirectoryView.selected-room-id;
+    property <bool> elsewhere: CallPanel.own-window || CallView.active-room-id != DirectoryView.selected-room-id;
     property <bool> offers-share: CallView.offered-share != "";
     property <length> words-least: root.elsewhere || root.offers-share ? Metrics.call-header-label-min : 0px;
     property <length> view-right: root.shows-chat-button ? chat-button.x - Space.sm : row.width;
@@ -328,9 +328,13 @@ export component CallBand inherits Rectangle {
                 icon: IconSet.MessageSquare;
                 text: @tr("Chat");
                 label: @tr("Show the chat");
-                description: @tr("Shortcut: {}", CallKeys.binding(CallKey.chat));
+                description: CallPanel.own-window ? "" : @tr("Shortcut: {}", CallKeys.binding(CallKey.chat));
                 clicked => {
-                    CallPanel.show-chat();
+                    if CallPanel.own-window {
+                        Actions.show-call-chat();
+                    } else {
+                        CallPanel.show-chat();
+                    }
                 }
             }
 

@@ -7,7 +7,7 @@ import { CallNotice, CallPhase, CallScreen } from "../../../../enums.slint";
 import { CallWords, UserMessages } from "../../../../messages.slint";
 import { Actions } from "../../../../actions.slint";
 import { CallMenuOpener, CallMode, CallPanel, Shell, TipScope } from "../../../../local.slint";
-import { CallView, DirectoryView, SpaceIndexView } from "../../../../views.slint";
+import { CallView, DirectoryView, SpaceIndexView, WindowView } from "../../../../views.slint";
 import { AppStyle, Fonts, IconSize, Metrics, Motion, Radius, Size, Space, Stroke, Weight } from "../../../../theme.slint";
 import { CallCameraButton, CallHandButton, CallKey, CallLeaveButton, CallMicButton, CallMoreButton, CallReactButton, CallShareButton } from "./call-controls.slint";
 import { CallStatus, ShareStatus } from "./call-status.slint";
@@ -248,7 +248,7 @@ export component CallDock inherits Rectangle {
     property <length> pad: Space.md;
     property <length> gap: Space.md;
     property <bool> failed: !CallView.active && CallView.failed;
-    property <bool> offers-stage: CallView.active && !root.stage-shown && !root.failed;
+    property <bool> offers-stage: CallView.active && (!root.stage-shown || WindowView.call-windowed) && !root.failed;
     property <bool> explains-share;
     property <bool> tells-share-ended;
     property <bool> tells-change-cancelled;
@@ -379,6 +379,10 @@ export component CallDock inherits Rectangle {
     }
 
     function show-stage(by-keys: bool) {
+        if WindowView.call-windowed {
+            Actions.show-call-window();
+            return;
+        }
         root.uncover-call();
         CallPanel.show-call();
         if by-keys {
@@ -408,7 +412,11 @@ export component CallDock inherits Rectangle {
         Actions.change-screen-share();
     }
 
-    function open-call-chat() {
+    public function open-call-chat() {
+        if CallPanel.own-window {
+            Actions.show-call-chat();
+            return;
+        }
         Shell.nav-open = false;
         if CallView.active-room-id != DirectoryView.selected-room-id {
             Actions.select-room(CallView.active-room-id);
@@ -666,6 +674,7 @@ export component CallDock inherits Rectangle {
         text: root.offers-share ? @tr("View") : @tr("Call");
         label: root.offers-share
             ? CallWords.view-shares(CallView.first-sharer, CallView.share-count)
+            : WindowView.call-windowed ? @tr("Show the call window")
             : @tr("Show the call");
         clicked => {
             if root.offers-share {

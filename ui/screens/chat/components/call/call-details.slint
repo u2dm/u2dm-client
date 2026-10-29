@@ -237,6 +237,9 @@ export component CallDetailsDialog inherits ModalHost {
                     clicked => {
                         root.logs-by-keys = self.has-focus;
                         Actions.open-room-log(CallView.active-room-id);
+                        if CallPanel.own-window {
+                            Actions.show-main-window();
+                        }
                     }
                 }
             }

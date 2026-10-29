@@ -17,7 +17,7 @@ use super::present::{avatar_color_index, avatar_initials};
 use super::props::{BoolProp, IntProp, StringProp, UiProps};
 use super::reconcile::apply_call_tiles;
 use super::ringtone::{self, Tone};
-use super::{audio, call_video, video};
+use super::{audio, call_video, call_window, video};
 use crate::commands::messages::UserMessageKind;
 use crate::commands::view::{
     ActiveCall, AppViewState, CallDevices, CallNotice, CallPerson, CallPhase, CallSheetView,
@@ -72,6 +72,7 @@ pub fn apply_call<B: UiBackend>(
     let last_active = last.and_then(|last| last.active.as_ref());
     if last_active != next.active.as_ref() {
         apply_active::<B>(w, last_active, next.active.as_ref(), ctx.media);
+        call_window::follow::<B>(w);
     }
     let last_devices = last.and_then(shown_devices);
     let next_devices = shown_devices(next);

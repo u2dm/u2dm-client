@@ -1,5 +1,5 @@
 use std::cell::RefCell;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 
@@ -18,11 +18,17 @@ thread_local! {
 
 static NEXT_ATTACHMENT: AtomicU64 = AtomicU64::new(1);
 
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+pub enum Host {
+    Main,
+    CallWindow,
+}
+
 #[derive(Default)]
 struct Feeds {
-    media_shown: bool,
+    media_shown: HashSet<Host>,
     tiled: HashMap<FeedId, Framing>,
-    seen: HashMap<FeedId, FrameSize>,
+    seen: HashMap<FeedId, HashMap<Host, FrameSize>>,
     preview: Preview,
     shown: HashMap<FeedId, Shown>,
 }
@@ -118,10 +124,15 @@ impl Feeds {
     }
 
     fn on_a_tile(&self, feed: &FeedId) -> Option<(FrameSize, Framing)> {
-        if !self.media_shown {
-            return None;
-        }
-        Some((*self.seen.get(feed)?, *self.tiled.get(feed)?))
+        let framing = *self.tiled.get(feed)?;
+        let size = self
+            .seen
+            .get(feed)?
+            .iter()
+            .filter(|(host, _)| self.media_shown.contains(host))
+            .map(|(_, size)| *size)
+            .reduce(larger)?;
+        Some((size, framing))
     }
 }
 
@@ -154,14 +165,21 @@ fn asked(width: i32, height: i32) -> FrameSize {
     .framed(LARGEST_SHOWN, Framing::Contain)
 }
 
-pub fn seen<B: UiBackend>(window: &B::Window, feed: &str, width: i32, height: i32, shown: bool) {
+pub fn seen<B: UiBackend>(
+    window: &B::Window,
+    host: Host,
+    feed: &str,
+    width: i32,
+    height: i32,
+    shown: bool,
+) {
     let feed = FeedId::new(feed);
     let size = asked(width, height);
     settle_with::<B>(window, |state| {
         if shown {
-            state.seen.insert(feed, size);
-        } else {
-            state.seen.remove(&feed);
+            state.seen.entry(feed).or_default().insert(host, size);
+        } else if let Some(hosts) = state.seen.get_mut(&feed) {
+            hosts.remove(&host);
         }
     });
 }
@@ -186,9 +204,24 @@ pub fn follow_preview<B: UiBackend>(window: &B::Window, feed: Option<&FeedId>) {
     window.apply_call_preview(feed.and_then(|feed| last_frame(feed.as_ref())));
 }
 
-pub fn media_shown<B: UiBackend>(window: &B::Window, on: bool) {
-    tracing::debug!(on, "the call's videos are on screen");
-    settle_with::<B>(window, |state| state.media_shown = on);
+pub fn media_shown<B: UiBackend>(window: &B::Window, host: Host, on: bool) {
+    tracing::debug!(?host, on, "the call's videos are on screen");
+    settle_with::<B>(window, |state| {
+        if on {
+            state.media_shown.insert(host);
+        } else {
+            state.media_shown.remove(&host);
+        }
+    });
+}
+
+pub fn forget<B: UiBackend>(window: &B::Window, host: Host) {
+    settle_with::<B>(window, |state| {
+        state.media_shown.remove(&host);
+        for hosts in state.seen.values_mut() {
+            hosts.remove(&host);
+        }
+    });
 }
 
 fn settle_with<B: UiBackend>(window: &B::Window, change: impl FnOnce(&mut Feeds)) {
@@ -277,8 +310,8 @@ pub fn attached() -> Vec<String> {
 }
 
 #[cfg(feature = "demo")]
-pub fn media_is_shown() -> bool {
-    FEEDS.with(|cell| cell.borrow().media_shown)
+pub fn media_is_shown(host: Host) -> bool {
+    FEEDS.with(|cell| cell.borrow().media_shown.contains(&host))
 }
 
 fn sink<B: UiBackend>(weak: slint::Weak<B::Window>, feed: FeedId, attachment: u64) -> FrameSink {

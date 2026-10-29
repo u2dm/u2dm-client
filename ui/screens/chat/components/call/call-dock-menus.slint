@@ -1,0 +1,179 @@
+import { Actions } from "../../../../actions.slint";
+import { ModalHost, Placement } from "../../../../components/overlay.slint";
+import { CallMenuOpener, CallMode, CallPanel } from "../../../../local.slint";
+import { CallView } from "../../../../views.slint";
+import { Space } from "../../../../theme.slint";
+import { CallDevicesMenu } from "./call-devices-menu.slint";
+import { CallMoreMenu } from "./call-more-menu.slint";
+import { CallPeopleMenu } from "./call-people-menu.slint";
+import { CallReactionsMenu } from "./call-reactions-menu.slint";
+
+export component CallDockMenus {
+    in property <length> devices-x;
+    in property <length> devices-y;
+    in property <length> devices-size;
+    in property <length> react-x;
+    in property <length> react-y;
+    in property <length> react-size;
+    in property <length> more-x;
+    in property <length> more-y;
+    in property <length> more-size;
+    in property <bool> above-modal;
+    in property <bool> beside-chat;
+
+    callback devices-closed();
+    callback reactions-closed();
+    callback more-closed();
+    callback person-picked(string, bool);
+    callback change-share(bool);
+    callback mode(CallMode);
+
+    property <length> menu-room-above: root.devices-y - Space.xs - Space.md;
+    property <length> menu-room-below: root.height - root.devices-y - root.devices-size - Space.xs - Space.md;
+    property <bool> menu-above: root.menu-room-above >= root.menu-room-below;
+    property <length> react-room-above: root.react-y - Space.xs - Space.md;
+    property <length> react-room-below: root.height - root.react-y - root.react-size - Space.xs - Space.md;
+    property <bool> react-above: root.react-room-above >= root.react-room-below;
+    property <length> more-room-above: root.more-y - Space.xs - Space.md;
+    property <length> more-room-below: root.height - root.more-y - root.more-size - Space.xs - Space.md;
+    property <bool> more-above: root.more-room-above >= root.more-room-below;
+    property <length> people-room-above: CallPanel.people-top - Space.xs - Space.md;
+    property <length> people-room-below: root.height - CallPanel.people-bottom - Space.xs - Space.md;
+    property <bool> people-above: root.people-room-above > root.people-room-below;
+
+    if CallPanel.devices-open && CallView.active: ModalHost {
+        x: 0;
+        y: 0;
+        width: root.width;
+        height: root.height;
+        dim: false;
+        label: @tr("Devices");
+        dismissed => {
+            CallPanel.devices-open = false;
+            root.devices-closed();
+        }
+        opened => {
+            devices-menu.open(CallPanel.devices-by-keys);
+        }
+
+        devices-menu := CallDevicesMenu {
+            x: Placement.fit(root.devices-x + root.devices-size - self.width, self.width, root.width, Space.md);
+            y: root.menu-above
+                ? root.devices-y - Space.xs - self.height
+                : root.devices-y + root.devices-size + Space.xs;
+            room: root.menu-above ? root.menu-room-above : root.menu-room-below;
+            above-modal: root.above-modal;
+            in-call: true;
+            details(by-keys) => {
+                CallPanel.open-details(by-keys, CallPanel.devices-opener);
+            }
+        }
+    }
+
+    if CallPanel.reactions-open && CallView.active: ModalHost {
+        x: 0;
+        y: 0;
+        width: root.width;
+        height: root.height;
+        dim: false;
+        label: @tr("Reactions");
+        dismissed => {
+            CallPanel.reactions-open = false;
+            root.reactions-closed();
+        }
+        opened => {
+            reactions-menu.open(CallPanel.reactions-by-keys);
+        }
+
+        reactions-menu := CallReactionsMenu {
+            x: Placement.fit(root.react-x + root.react-size - self.width, self.width, root.width, Space.md);
+            y: root.react-above
+                ? root.react-y - Space.xs - self.height
+                : root.react-y + root.react-size + Space.xs;
+            room: root.react-above ? root.react-room-above : root.react-room-below;
+            above-modal: root.above-modal;
+            sent => {
+                CallPanel.reactions-open = false;
+                root.reactions-closed();
+            }
+        }
+    }
+
+    if CallPanel.people-open && CallView.active: ModalHost {
+        x: 0;
+        y: 0;
+        width: root.width;
+        height: root.height;
+        dim: false;
+        label: @tr("People in the call");
+        dismissed => {
+            CallPanel.people-open = false;
+            CallPanel.people-returns += 1;
+        }
+        opened => {
+            people-menu.open(CallPanel.people-by-keys);
+        }
+
+        people-menu := CallPeopleMenu {
+            x: Placement.fit(CallPanel.people-left, self.width, root.width, Space.md);
+            y: root.people-above
+                ? CallPanel.people-top - Space.xs - self.height
+                : CallPanel.people-bottom + Space.xs;
+            room: root.people-above ? root.people-room-above : root.people-room-below;
+            above-modal: root.above-modal;
+            picked(key, by-keys) => {
+                root.person-picked(key, by-keys);
+            }
+        }
+    }
+
+    if CallPanel.more-open && CallView.active: ModalHost {
+        x: 0;
+        y: 0;
+        width: root.width;
+        height: root.height;
+        dim: false;
+        label: @tr("More call options");
+        dismissed => {
+            CallPanel.more-open = false;
+            root.more-closed();
+        }
+        opened => {
+            more-menu.open(CallPanel.more-by-keys);
+        }
+
+        more-menu := CallMoreMenu {
+            x: Placement.fit(root.more-x + root.more-size - self.width, self.width, root.width, Space.md);
+            y: root.more-above
+                ? root.more-y - Space.xs - self.height
+                : root.more-y + root.more-size + Space.xs;
+            room: root.more-above ? root.more-room-above : root.more-room-below;
+            above-modal: root.above-modal;
+            beside-chat: root.beside-chat;
+            devices(by-keys) => {
+                CallPanel.open-devices(by-keys, CallMenuOpener.more);
+            }
+            react(by-keys) => {
+                CallPanel.open-reactions(by-keys, CallMenuOpener.more);
+            }
+            change-share(by-keys) => {
+                CallPanel.more-open = false;
+                root.change-share(by-keys);
+            }
+            mode(mode) => {
+                CallPanel.more-open = false;
+                root.mode(mode);
+            }
+            pop-out => {
+                CallPanel.more-open = false;
+                Actions.show-call-window();
+            }
+            bring-back => {
+                Actions.close-call-window();
+            }
+            details(by-keys) => {
+                CallPanel.open-details(by-keys, CallMenuOpener.more);
+            }
+        }
+    }
+}

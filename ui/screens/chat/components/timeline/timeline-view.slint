@@ -13,7 +13,7 @@ import { CloseWatch } from "../../../../components/close-watch.slint";
 import { PresenceLine, TimelineState } from "../../../../enums.slint";
 import { ClickArea } from "../../../../components/a11y.slint";
 import { CopyNotifier } from "../../../../components/copier.slint";
-import { AudioView, CallView, DirectoryView, PresenceView, RoomView, TypingView } from "../../../../views.slint";
+import { AudioView, CallView, DirectoryView, PresenceView, RoomView, TypingView, WindowView } from "../../../../views.slint";
 import { PresenceWords, TypingLine } from "../../../../messages.slint";
 import { Actions } from "../../../../actions.slint";
 import { CallMode, CallPanel, CallSheetOpener, CallSize, CallSurface, LocalState, ReplySwipe, RoomMenu, RoomMenuOrigin, RoomMenuReturn, RoomSearch, Shell } from "../../../../local.slint";
@@ -55,7 +55,7 @@ export component TimelineView inherits Rectangle {
     property <bool> in-call-room: CallView.active && CallView.active-room-id == root.room-id;
     out property <bool> call-split-fits: root.width >= Metrics.call-split-min;
     property <bool> call-stage-fitted;
-    property <CallSize> call-size: !CallView.active || !root.has-room ? CallSize.hidden
+    property <CallSize> call-size: !CallView.active || !root.has-room || WindowView.call-windowed ? CallSize.hidden
         : CallPanel.mode == CallMode.chat-only ? CallSize.hidden
         : CallPanel.mode == CallMode.call-only ? CallSize.full
         : root.call-stage-fitted ? CallSize.stage
@@ -103,7 +103,7 @@ export component TimelineView inherits Rectangle {
         if !RoomSearch.opened(root.room-id) {
             RoomSearch.opened-room = "";
         }
-        if CallView.active && root.room-id != CallView.active-room-id {
+        if CallView.active && !WindowView.call-windowed && root.room-id != CallView.active-room-id {
             CallPanel.show-chat();
         }
     }

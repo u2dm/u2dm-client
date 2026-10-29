@@ -1,0 +1,187 @@
+import { Actions } from "./actions.slint";
+import { ModalHost, Placement } from "./components/overlay.slint";
+import { TipLayer } from "./components/tip.slint";
+import { CallPanel, CallSize, Shell } from "./local.slint";
+import { AppStyle, Metrics, Space } from "./theme.slint";
+import { CallView } from "./views.slint";
+import { CallAnnouncer } from "./screens/chat/components/call/call-announcer.slint";
+import { CallBand } from "./screens/chat/components/call/call-band.slint";
+import { CallKey, CallKeys } from "./screens/chat/components/call/call-controls.slint";
+import { CallDetailsDialog } from "./screens/chat/components/call/call-details.slint";
+import { CallDock } from "./screens/chat/components/call/call-dock.slint";
+import { CallDockMenus } from "./screens/chat/components/call/call-dock-menus.slint";
+import { CallViewMenu } from "./screens/chat/components/call/call-view-menu.slint";
+
+component CallContent inherits FocusScope {
+    in property <bool> minimized;
+
+    property <bool> media-on-screen: !root.minimized;
+    property <bool> devices-open: CallPanel.devices-open && CallView.active;
+    property <bool> details-shown: CallPanel.details-open && CallView.active;
+
+    focus-on-click: false;
+    focus-on-tab-navigation: false;
+
+    key-pressed(event) => {
+        let key = CallKeys.of(event);
+        if key == CallKey.none || key == CallKey.chat || Shell.modal-over-nav || !CallView.active {
+            return reject;
+        }
+        if !event.repeat {
+            if !dock.focuses(key) {
+                announcer.expect(key);
+            }
+            CallKeys.press(key);
+        }
+        return accept;
+    }
+
+    init => {
+        CallPanel.own-window = true;
+        CallPanel.begin(CallView.video-call);
+        root.focus();
+        Actions.call-media-shown(root.media-on-screen);
+    }
+
+    changed media-on-screen => {
+        Actions.call-media-shown(self.media-on-screen);
+    }
+
+    changed devices-open => {
+        Actions.watch-microphone({ on: self.devices-open });
+    }
+
+    changed details-shown => {
+        if !self.details-shown {
+            root.hand-back-details();
+        }
+    }
+
+    function hand-back-details() {
+        let call-ended = CallPanel.details-open;
+        CallPanel.details-open = false;
+        if CallPanel.details-by-keys && !call-ended {
+            dock.focus-devices-opener(CallPanel.details-opener);
+        } else {
+            root.focus();
+        }
+    }
+
+    function show-person(key: string, by-keys: bool) {
+        CallPanel.people-open = false;
+        let staged = CallView.stage-chosen && CallView.stage.length > 0 && CallView.stage[0].key == key;
+        if by-keys && !staged {
+            CallPanel.focus-stage = true;
+        } else {
+            CallPanel.people-returns += 1;
+        }
+        Actions.focus-call-tile(key);
+    }
+
+    band := CallBand {
+        x: 0;
+        y: 0;
+        width: root.width;
+        height: root.height - dock.height;
+        size: CallSize.full;
+        top-row: Metrics.header-row;
+    }
+
+    dock := CallDock {
+        x: 0;
+        y: root.height - self.height;
+        width: root.width;
+        stage-shown: true;
+        chat-shown: false;
+    }
+
+    CallDockMenus {
+        x: 0;
+        y: 0;
+        width: root.width;
+        height: root.height;
+        devices-x: dock.devices-x;
+        devices-y: dock.devices-y;
+        devices-size: dock.devices-size;
+        react-x: dock.react-x;
+        react-y: dock.react-y;
+        react-size: dock.react-size;
+        more-x: dock.more-x;
+        more-y: dock.more-y;
+        more-size: dock.more-size;
+        devices-closed => {
+            dock.focus-devices-opener(CallPanel.devices-opener);
+        }
+        reactions-closed => {
+            dock.focus-react-opener();
+        }
+        more-closed => {
+            dock.focus-more();
+        }
+        person-picked(key, by-keys) => {
+            root.show-person(key, by-keys);
+        }
+        change-share(by-keys) => {
+            dock.change-share(by-keys);
+            if !by-keys {
+                dock.focus-more();
+            }
+        }
+    }
+
+    if CallPanel.menu-open: ModalHost {
+        x: 0;
+        y: 0;
+        width: root.width;
+        height: root.height;
+        dim: false;
+        label: @tr("View");
+        dismissed => {
+            CallPanel.menu-open = false;
+            band.focus-menu();
+        }
+        opened => {
+            view-menu.open(CallPanel.menu-by-keys);
+        }
+
+        view-menu := CallViewMenu {
+            x: Placement.fit(band.menu-right - self.width, self.width, root.width, Space.md);
+            y: Placement.fit(band.menu-bottom + Space.xs, self.height, root.height - dock.height, Space.md);
+            room: root.height - dock.height - 2 * Space.md;
+            chose => {
+                CallPanel.menu-open = false;
+                band.focus-menu();
+            }
+        }
+    }
+
+    announcer := CallAnnouncer { }
+}
+
+export component CallWindow inherits Window {
+    in property <bool> ready;
+
+    title: @tr("Call in {}", CallView.active-room-name);
+    preferred-width: Metrics.call-window-initial-width;
+    preferred-height: Metrics.call-window-initial-height;
+    min-width: Metrics.window-min-width;
+    min-height: Metrics.window-min-height;
+    background: AppStyle.call-band;
+
+    if root.ready: CallContent {
+        x: 0;
+        y: 0;
+        width: root.width;
+        height: root.height;
+        minimized: root.minimized;
+    }
+
+    if root.ready && CallView.active && CallPanel.details-open: CallDetailsDialog { }
+
+    TipLayer {
+        x: 0;
+        y: 0;
+        width: root.width;
+        height: root.height;
+    }
+}
