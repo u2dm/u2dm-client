@@ -42,6 +42,7 @@ mod session;
 mod splice_model;
 mod spoilers;
 mod swipe;
+mod touchpad_pinch;
 mod video;
 mod window_events;
 

@@ -16,7 +16,7 @@ use super::fields::{
 };
 use super::props::{BoolProp, EnumProp, IntProp, StringProp, UiProps};
 use super::ringtone;
-use super::{call_video, call_window, context_press};
+use super::{call_video, call_window, context_press, touchpad_pinch};
 use crate::domain::call::video::FrameSize;
 
 #[derive(Serialize)]
@@ -326,6 +326,7 @@ pub enum Poke {
     WindowSize(f32, f32),
     UserActivity(bool),
     SwipeTravel(i32),
+    TouchpadPinch(i32),
     ContextPress,
     CloseCallWindow,
 }
@@ -378,6 +379,7 @@ pub fn install_probe<B: UiBackend>(window: &B::Window) {
             }
             Poke::UserActivity(active) => activity::report(&window, active),
             Poke::SwipeTravel(px) => window.set_int(IntProp::SwipeTravel, px),
+            Poke::TouchpadPinch(permille) => touchpad_pinch::publish::<B>(&window, permille),
             Poke::ContextPress => context_press::announce(&window),
             Poke::CloseCallWindow => call_window::request_close::<B>(),
         });

@@ -49,9 +49,9 @@ use u2dm_ui::{
     SessionView, Shield as UiShield, ShieldReason as UiShieldReason,
     SourceEncryption as UiSourceEncryption, SourceStatus as UiSourceStatus, SourceView,
     SpaceChildEntry, SpaceEntry, SpaceIndexStatus as UiSpaceIndexStatus, SpaceIndexView,
-    SpoilerCover, SpoilerState as UiSpoilerState, TextSplice, TimelineState, TypingView,
-    UnsentView, UpgradeLink as UiUpgradeLink, UpgradeView, UserDeviceEntry, UserInfoView,
-    UserMessage as UiUserMessage, UserMessageKind as UiUserMessageKind,
+    SpoilerCover, SpoilerState as UiSpoilerState, TextSplice, TimelineState, TouchpadView,
+    TypingView, UnsentView, UpgradeLink as UiUpgradeLink, UpgradeView, UserDeviceEntry,
+    UserInfoView, UserMessage as UiUserMessage, UserMessageKind as UiUserMessageKind,
     VerificationActivity as UiVerificationActivity, VerificationEmoji, VerificationPhase,
     VerificationView, VerifyOffer as UiVerifyOffer, VideoView, WindowView,
 };

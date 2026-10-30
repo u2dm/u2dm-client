@@ -8,6 +8,7 @@ use slint::{ComponentHandle, Image, Model, Rgba8Pixel, SharedPixelBuffer, VecMod
 use super::backend::UiBackend;
 use super::fields::CallTileFields;
 use super::props::UiProps;
+use super::touchpad_pinch;
 use crate::domain::call::video::{FeedId, FrameSize, Framing, LARGEST_SHOWN};
 use crate::ports::call::{CallVideoPort, FrameSink, VideoFrame};
 
@@ -225,11 +226,12 @@ pub fn forget<B: UiBackend>(window: &B::Window, host: Host) {
 }
 
 fn settle_with<B: UiBackend>(window: &B::Window, change: impl FnOnce(&mut Feeds)) {
-    let changes = FEEDS.with(|cell| {
+    let (changes, videos_shown) = FEEDS.with(|cell| {
         let mut state = cell.borrow_mut();
         change(&mut state);
-        state.settle()
+        (state.settle(), !state.shown.is_empty())
     });
+    touchpad_pinch::follow::<B>(window, videos_shown);
     let Some(port) = port() else {
         return;
     };

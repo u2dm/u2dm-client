@@ -48,6 +48,7 @@ export global Motion {
     out property <duration> scroll-settle: 60ms;
     out property <duration> scroll-judge: 250ms;
     out property <duration> scrollbar-linger: 1000ms;
+    out property <duration> zoom-settle: 150ms;
 
     public pure function travel(span: duration) -> duration {
         return root.reduced ? 0ms : span;
@@ -388,6 +389,7 @@ export global Metrics {
     out property <length> call-device-row: Size.target;
     out property <length> call-test-meter-height: Space.xs;
     out property <float> call-screen-zoom-most: 4;
+    out property <length> call-screen-zoom-doubling: 120px;
     out property <length> call-self-chip: Size.md;
     out property <length> call-header-label-min: root.call-dock-label-min;
     out property <float> call-screen-pan-share: 0.1;

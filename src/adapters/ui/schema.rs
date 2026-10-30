@@ -610,6 +610,7 @@ macro_rules! int_props {
         PresencePartnerMinutes PresenceView "PresenceView" "partner-minutes" set_partner_minutes get_partner_minutes;
         PresencePersonMinutes PresenceView "PresenceView" "person-minutes" set_person_minutes get_person_minutes;
         SwipeTravel WindowView "WindowView" "swipe-travel" set_swipe_travel get_swipe_travel;
+        TouchpadPinch TouchpadView "TouchpadView" "pinch-permille" set_pinch_permille get_pinch_permille;
         ContextPresses WindowView "WindowView" "context-presses" set_context_presses get_context_presses;
         NotificationOpens WindowView "WindowView" "notification-opens" set_notification_opens get_notification_opens;
         ExternalLinkOpens WindowView "WindowView" "external-link-opens" set_external_link_opens get_external_link_opens;

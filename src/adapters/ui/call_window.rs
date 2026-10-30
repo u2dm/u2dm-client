@@ -21,7 +21,7 @@ use super::session::ActiveBackend;
 use super::window_events::install_call_window_events;
 use crate::app::input::CommandSender;
 
-const MIRRORED_GLOBALS: [&str; 3] = ["CallView", "Motion", "Probe"];
+const MIRRORED_GLOBALS: [&str; 4] = ["CallView", "Motion", "Probe", "TouchpadView"];
 
 type Opened = <ActiveBackend as UiBackend>::CallWindow;
 

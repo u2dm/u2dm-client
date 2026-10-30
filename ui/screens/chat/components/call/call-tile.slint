@@ -8,7 +8,7 @@ import { CallStates } from "../../../../call-states.slint";
 import { CallPanel, Shell, TipScope } from "../../../../local.slint";
 import { CallTileEntry } from "../../../../types.slint";
 import { CallWords } from "../../../../messages.slint";
-import { CallView } from "../../../../views.slint";
+import { CallView, TouchpadView } from "../../../../views.slint";
 import { AppStyle, Fonts, Glyph, IconSize, Metrics, Motion, Radius, Size, Space, Weight } from "../../../../theme.slint";
 
 component HandBadge inherits Rectangle {
@@ -299,6 +299,11 @@ export component CallTileView inherits Rectangle {
     property <bool> viewer-focused;
     property <int> wanted-width: root.zoomed ? round(root.picture-w / 1phx) : round(root.width / 1phx);
     property <int> wanted-height: root.zoomed ? round(root.picture-h / 1phx) : round(root.picture-height / 1phx);
+    property <int> asked-width;
+    property <int> asked-height;
+    property <float> held-from;
+    property <float> held-x;
+    property <float> held-y;
 
     pure function centred(wanted: float, view: length, picture: length) -> float {
         if picture <= view {
@@ -318,25 +323,44 @@ export component CallTileView inherits Rectangle {
         root.pan-to(root.centre-x + right / root.picture-w, root.centre-y + below / root.picture-h);
     }
 
-    function zoom-at(scale: float, at-x: length, at-y: length) {
-        let across = (at-x - root.picture-x) / root.picture-w;
-        let down = (at-y - root.picture-y) / root.picture-h;
-        if scale <= root.fit-scale * root.quarter {
+    function hold(at-x: length, at-y: length) {
+        root.held-from = root.scale;
+        root.held-x = (at-x - root.picture-x) / root.picture-w;
+        root.held-y = (at-y - root.picture-y) / root.picture-h;
+    }
+
+    function scale-held(scale: float, at-x: length, at-y: length) {
+        if round(scale * 100) <= round(root.fit-scale * 100) {
             CallPanel.fit-screen();
             return;
         }
         CallPanel.screen-key = root.tile.key;
-        CallPanel.screen-scale = scale;
+        CallPanel.screen-scale = min(scale, root.most);
         root.pan-to(
-            across + (root.width / 2 - at-x) / root.picture-w,
-            down + (root.picture-height / 2 - at-y) / root.picture-h);
+            root.held-x + (root.width / 2 - at-x) / root.picture-w,
+            root.held-y + (root.picture-height / 2 - at-y) / root.picture-h);
+    }
+
+    function zoom-at(scale: float, at-x: length, at-y: length) {
+        root.hold(at-x, at-y);
+        root.scale-held(scale, at-x, at-y);
     }
 
     function zoom-to(scale: float) {
+        if scale <= root.fit-scale * root.quarter {
+            CallPanel.fit-screen();
+            return;
+        }
         root.zoom-at(scale, root.width / 2, root.picture-height / 2);
     }
 
+    function pinch-to(relative: float, at-x: length, at-y: length) {
+        root.scale-held(root.held-from * relative, at-x, at-y);
+    }
+
     function report() {
+        root.asked-width = root.wanted-width;
+        root.asked-height = root.wanted-height;
         if root.feed != "" {
             Actions.call-tile-seen(root.feed, root.wanted-width, root.wanted-height, root.shown);
         }
@@ -353,13 +377,25 @@ export component CallTileView inherits Rectangle {
         root.report();
     }
     changed wanted-width => {
-        root.report();
+        if !root.zooms {
+            root.report();
+        }
     }
     changed wanted-height => {
-        root.report();
+        if !root.zooms {
+            root.report();
+        }
     }
     changed shown => {
         root.report();
+    }
+
+    Timer {
+        interval: Motion.zoom-settle;
+        running: root.zooms && (root.asked-width != root.wanted-width || root.asked-height != root.wanted-height);
+        triggered => {
+            root.report();
+        }
     }
 
     if root.zooms: keys := FocusScope {
@@ -468,42 +504,64 @@ export component CallTileView inherits Rectangle {
                 accessible-role: none;
             }
 
-            TouchArea {
-                property <float> from-x;
-                property <float> from-y;
+            pinch := ScaleRotateGestureHandler {
+                property <float> reported: 1;
+                property <float> spread: 1;
 
-                mouse-cursor: !root.zoomed ? MouseCursor.default : self.pressed ? MouseCursor.grabbing : MouseCursor.grab;
-                pointer-event(event) => {
-                    if event.kind == PointerEventKind.down {
-                        self.from-x = root.centre-x;
-                        self.from-y = root.centre-y;
-                    }
+                started => {
+                    self.reported = 1;
+                    self.spread = 1;
+                    root.hold(self.center.x, self.center.y);
                 }
-                moved => {
-                    if self.pressed && root.zoomed {
-                        root.pan-to(
-                            self.from-x - (self.mouse-x - self.pressed-x) / root.picture-w,
-                            self.from-y - (self.mouse-y - self.pressed-y) / root.picture-h);
+                updated => {
+                    if self.reported > 0 {
+                        self.spread += self.scale / self.reported - 1;
                     }
+                    self.reported = self.scale;
+                    root.pinch-to(self.spread, self.center.x, self.center.y);
                 }
-                scroll-event(event) => {
-                    if event.modifiers.control {
-                        if event.delta-y > 0 && root.can-zoom-in {
-                            root.zoom-at(root.step-in, self.mouse-x, self.mouse-y);
-                        } else if event.delta-y < 0 && root.zoomed {
-                            root.zoom-at(root.step-out, self.mouse-x, self.mouse-y);
+
+                TouchArea {
+                    property <float> from-x;
+                    property <float> from-y;
+                    property <int> touchpad-pinch: TouchpadView.pinch-permille;
+                    property <bool> touchpad-pinching;
+
+                    mouse-cursor: !root.zoomed ? MouseCursor.default : self.pressed ? MouseCursor.grabbing : MouseCursor.grab;
+                    pointer-event(event) => {
+                        if event.kind == PointerEventKind.down {
+                            self.from-x = root.centre-x;
+                            self.from-y = root.centre-y;
                         }
+                    }
+                    moved => {
+                        if self.pressed && root.zoomed {
+                            root.pan-to(
+                                self.from-x - (self.mouse-x - self.pressed-x) / root.picture-w,
+                                self.from-y - (self.mouse-y - self.pressed-y) / root.picture-h);
+                        }
+                    }
+                    scroll-event(event) => {
+                        if event.delta-y == 0px {
+                            return reject;
+                        }
+                        root.zoom-at(
+                            root.scale * pow(2, event.delta-y / Metrics.call-screen-zoom-doubling),
+                            self.mouse-x,
+                            self.mouse-y);
                         return accept;
                     }
-                    if !root.zoomed {
-                        return reject;
+                    changed touchpad-pinch => {
+                        if self.touchpad-pinch == 0 {
+                            self.touchpad-pinching = false;
+                        } else if self.touchpad-pinching {
+                            root.pinch-to(self.touchpad-pinch / 1000, self.mouse-x, self.mouse-y);
+                        } else if self.has-hover && !pinch.active {
+                            root.hold(self.mouse-x, self.mouse-y);
+                            root.held-from = root.scale * 1000 / self.touchpad-pinch;
+                            self.touchpad-pinching = true;
+                        }
                     }
-                    if event.modifiers.shift || root.picture-h <= root.picture-height {
-                        root.pan-by(-event.delta-x - event.delta-y, 0px);
-                    } else {
-                        root.pan-by(-event.delta-x, -event.delta-y);
-                    }
-                    return accept;
                 }
             }
         }
