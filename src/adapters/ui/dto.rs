@@ -1278,7 +1278,11 @@ pub fn message_to_dto(m: &TimelineMessage, pinned: bool, media: &dyn MediaCache)
     let (body, preview_body) = row_body_and_preview(&item, m, media);
     let mut dto = MessageDto {
         unique_id: SharedString::from(&m.unique_id),
-        local_id: m.local_id.as_deref().map(SharedString::from).unwrap_or_default(),
+        local_id: m
+            .local_id
+            .as_deref()
+            .map(SharedString::from)
+            .unwrap_or_default(),
         sender: SharedString::from(message_sender_label(m)),
         sender_id: SharedString::from(&m.sender),
         pronouns: pronoun_labels(&m.sender_pronouns)

@@ -32,10 +32,14 @@ pub enum MessagePreviewKind {
 pub enum ServiceEvent {
     Joined,
     Left,
-    Invited { target: NamedUser },
+    Invited {
+        target: NamedUser,
+    },
     InvitationAccepted,
     InvitationRejected,
-    InvitationRevoked { target: NamedUser },
+    InvitationRevoked {
+        target: NamedUser,
+    },
     Kicked {
         target: NamedUser,
         reason: Option<String>,
@@ -44,18 +48,34 @@ pub enum ServiceEvent {
         target: NamedUser,
         reason: Option<String>,
     },
-    Unbanned { target: NamedUser },
+    Unbanned {
+        target: NamedUser,
+    },
     Knocked,
-    KnockAccepted { target: NamedUser },
+    KnockAccepted {
+        target: NamedUser,
+    },
     KnockRetracted,
-    KnockDenied { target: NamedUser },
-    ThirdPartyInvited { name: String },
-    ThirdPartyInviteRevoked { name: String },
-    DisplayNameSet { name: String },
-    DisplayNameChanged { name: String },
+    KnockDenied {
+        target: NamedUser,
+    },
+    ThirdPartyInvited {
+        name: String,
+    },
+    ThirdPartyInviteRevoked {
+        name: String,
+    },
+    DisplayNameSet {
+        name: String,
+    },
+    DisplayNameChanged {
+        name: String,
+    },
     DisplayNameRemoved,
     AvatarChanged,
-    RoomNameChanged { name: String },
+    RoomNameChanged {
+        name: String,
+    },
     RoomNameRemoved,
     RoomTopicChanged,
     RoomAvatarChanged,
@@ -67,7 +87,9 @@ pub enum ServiceEvent {
     HistoryVisibilityChanged(HistoryVisibility),
     GuestAccessChanged(GuestAccess),
     ServerAclChanged,
-    MainAddressSet { alias: String },
+    MainAddressSet {
+        alias: String,
+    },
     MainAddressRemoved,
     AlternativeAddressesChanged,
     MessagePinned,

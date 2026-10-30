@@ -1,8 +1,8 @@
-use super::catalog::{Flag, Scenarios};
-use super::{data, media};
 use std::env;
 use std::sync::OnceLock;
 
+use super::catalog::{Flag, Scenarios};
+use super::{data, media};
 use crate::domain::message::{MessageBody, ReplyInfo, RichText, SendState, TimelineMessage};
 
 const ENV_VAR: &str = "U2DM_DEMO_RICHTEXT";

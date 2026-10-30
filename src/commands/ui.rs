@@ -346,9 +346,13 @@ pub enum UiCommand {
         draft: PollDraft,
     },
     #[strum(to_string = "RetrySend({local_id})")]
-    RetrySend { local_id: String },
+    RetrySend {
+        local_id: String,
+    },
     #[strum(to_string = "DiscardSend({local_id})")]
-    DiscardSend { local_id: String },
+    DiscardSend {
+        local_id: String,
+    },
     RetryTimeline,
     AcceptVerification,
     RejectVerification,

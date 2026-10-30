@@ -3,11 +3,10 @@ use std::path::{Path, PathBuf};
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError};
 use std::time::Duration;
 
-use ffmpeg_next::Packet;
 use ffmpeg_next::format::Pixel;
 use ffmpeg_next::software::scaling;
 use ffmpeg_next::util::frame::Video as VideoFrame;
-use ffmpeg_next::{Rational, codec, format, media};
+use ffmpeg_next::{Packet, Rational, codec, format, media};
 use image::RgbImage;
 use image::metadata::Orientation;
 
@@ -158,7 +157,8 @@ impl Session {
             .decoder()
             .video()
             .ok()?;
-        let (width, height) = super::scaled_extent(decoder.width(), decoder.height(), MAX_DIMENSION);
+        let (width, height) =
+            super::scaled_extent(decoder.width(), decoder.height(), MAX_DIMENSION);
         let scaler = scaling::Context::get(
             decoder.format(),
             decoder.width(),

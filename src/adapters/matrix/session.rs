@@ -7,7 +7,6 @@ use matrix_sdk::ruma::{IdParseError, OwnedRoomId};
 use tokio::sync::{RwLock, mpsc};
 
 use super::account::MatrixAccount;
-use super::auth;
 use super::encryption::MatrixEncryption;
 use super::identity_alerts::MatrixIdentityAlerts;
 use super::image_packs::MatrixImagePacks;
@@ -19,11 +18,11 @@ use super::rooms::{
     MatrixSync, MatrixTyping, MatrixUpgrades,
 };
 use super::rtc::{MatrixCallSignals, MatrixRtcMembership};
-use super::server_logout;
 use super::store::StoreLayout;
 use super::timeline::{MatrixPinned, MatrixTimeline};
 use super::user_info::MatrixUserInfo;
 use super::verification::MatrixVerification;
+use super::{auth, server_logout};
 use crate::domain::account::AccountScope;
 use crate::domain::auth::Session;
 use crate::domain::room::RoomId;

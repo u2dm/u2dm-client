@@ -973,7 +973,10 @@ impl SlintUiAdapter {
         });
     }
 
-    #[allow(clippy::unnecessary_wraps, reason = "mirrors the fallible interpreted adapter")]
+    #[allow(
+        clippy::unnecessary_wraps,
+        reason = "mirrors the fallible interpreted adapter"
+    )]
     pub fn register_callbacks(
         &self,
         cmd_tx: &CommandSender,

@@ -238,8 +238,7 @@ fn probe(prefix: &str, name: &str) -> Option<PathBuf> {
 }
 
 pub(super) fn video_asset_path(event_id: &str) -> Option<PathBuf> {
-    asset(&format!("video-{event_id}.mp4"))
-        .or_else(|| asset(&format!("video-{event_id}.webm")))
+    asset(&format!("video-{event_id}.mp4")).or_else(|| asset(&format!("video-{event_id}.webm")))
 }
 
 fn audio_asset_path(event_id: &str) -> Option<PathBuf> {

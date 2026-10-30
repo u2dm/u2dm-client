@@ -20,10 +20,9 @@ use super::connection::{
     self, Connection, Dialled, OwnIndex, Unheard, Wiring, hear_as_chosen, use_own_index,
 };
 use super::devices::{Listing, select_microphone, select_speaker};
-use super::e2ee;
 use super::feeds::Feeds;
 use super::screen::{self, OwnScreen};
-use super::stats;
+use super::{e2ee, stats};
 use crate::adapters::video::camera::CameraDevice;
 use crate::domain::call::device_test::{amplitude_loudness, loudness_percent};
 use crate::domain::call::devices::{

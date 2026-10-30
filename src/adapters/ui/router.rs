@@ -1,13 +1,11 @@
 use tokio::sync::watch;
 
-use super::clipboard;
-use super::emote;
-use super::permalink;
 use super::props::send_command;
 use super::schema::{
     call_device_kinds, notify_modes, room_accesses, room_kinds, simple_callbacks, variant_named,
 };
 use super::sending::SendingContext;
+use super::{clipboard, emote, permalink};
 use crate::adapters::draft_size;
 use crate::app::input::CommandSender;
 use crate::commands::ui::{

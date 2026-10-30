@@ -6,8 +6,6 @@ use serde::Serialize;
 use slint::{ComponentHandle, LogicalSize, Model};
 use tokio::sync::oneshot;
 
-use super::activity;
-use super::audio;
 use super::backend::UiBackend;
 use super::call_video::Host;
 use super::fields::{
@@ -15,8 +13,7 @@ use super::fields::{
     LogLineFields, MessageFields, PollAnswerFields, ReactionFields,
 };
 use super::props::{BoolProp, EnumProp, IntProp, StringProp, UiProps};
-use super::ringtone;
-use super::{call_video, call_window, context_press, touchpad_pinch};
+use super::{activity, audio, call_video, call_window, context_press, ringtone, touchpad_pinch};
 use crate::domain::call::video::FrameSize;
 
 #[derive(Serialize)]

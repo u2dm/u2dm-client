@@ -1,9 +1,9 @@
-use super::catalog::{Flag, Scenarios};
-use super::media;
 use std::env;
 use std::sync::OnceLock;
 use std::time::Duration;
 
+use super::catalog::{Flag, Scenarios};
+use super::media;
 use crate::domain::member_name::MemberName;
 use crate::domain::message::{Reaction, ReactionSend, Reactor, TimelineMessage};
 

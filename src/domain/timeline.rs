@@ -183,12 +183,29 @@ pub enum TimelineCommand {
         key: String,
         shortcode: Option<String>,
     },
-    VotePoll { event_id: String, answer_id: String },
-    EndPoll { event_id: String },
-    EditPoll { event_id: String, draft: PollDraft },
-    LocateAudio { request: u64, lookup: AudioLookup },
-    LocateSource { request: u64, event_id: String },
-    LocateReaders { request: u64, event_id: String },
+    VotePoll {
+        event_id: String,
+        answer_id: String,
+    },
+    EndPoll {
+        event_id: String,
+    },
+    EditPoll {
+        event_id: String,
+        draft: PollDraft,
+    },
+    LocateAudio {
+        request: u64,
+        lookup: AudioLookup,
+    },
+    LocateSource {
+        request: u64,
+        event_id: String,
+    },
+    LocateReaders {
+        request: u64,
+        event_id: String,
+    },
 }
 
 impl TimelineCommand {

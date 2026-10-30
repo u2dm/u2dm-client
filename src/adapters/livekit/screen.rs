@@ -1,8 +1,7 @@
-use std::env;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
-use std::thread;
 use std::time::Duration;
+use std::{env, thread};
 
 use glib::MainContext;
 use livekit::options::{TrackPublishOptions, VideoCodec, VideoEncoding};

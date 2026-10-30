@@ -2,12 +2,11 @@ use std::collections::{HashMap, HashSet};
 use std::f64::consts::TAU;
 use std::future::{Future, poll_fn};
 use std::pin::Pin;
-use std::result;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::task::{Context, Poll};
-use std::thread;
 use std::time::Duration;
+use std::{result, thread};
 
 use async_trait::async_trait;
 use tokio::sync::{mpsc, oneshot};

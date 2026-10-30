@@ -1,8 +1,7 @@
 use std::fmt;
+use std::time::Duration;
 
 use serde::{Deserialize, Deserializer, de};
-
-use std::time::Duration;
 
 use super::names;
 use crate::adapters::demo::attachments;

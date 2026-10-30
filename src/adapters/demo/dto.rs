@@ -22,7 +22,6 @@ use crate::domain::room_state::{GuestAccess, HistoryVisibility, PowerChange, Rol
 use crate::domain::space_index::{ChildKind, JoinRule, SpaceChild};
 use crate::domain::user_info::UserId;
 
-
 #[derive(Deserialize, Default)]
 #[serde(deny_unknown_fields)]
 pub struct DemoData {

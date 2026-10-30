@@ -1,10 +1,9 @@
 use std::collections::{HashMap, VecDeque};
 use std::future::Future;
-use std::mem;
 use std::pin::Pin;
-use std::result;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
+use std::{mem, result};
 
 use async_trait::async_trait;
 use futures_util::StreamExt;

@@ -199,7 +199,11 @@ mod backend {
         let stride = rgb.stride(0);
         let row_bytes = target_width as usize * 3;
         let mut packed = Vec::with_capacity(row_bytes * target_height as usize);
-        for row in rgb.data(0).chunks_exact(stride).take(target_height as usize) {
+        for row in rgb
+            .data(0)
+            .chunks_exact(stride)
+            .take(target_height as usize)
+        {
             packed.extend_from_slice(row.get(..row_bytes)?);
         }
 

@@ -13,12 +13,12 @@ use tokio::sync::Semaphore;
 use tokio::task::spawn_blocking;
 use tokio::time::{sleep, timeout};
 
-use super::bounded;
 use super::cache::{CacheHandle, FailureTracker};
 use super::flight::SingleFlight;
 use super::{
     AUDIO_DIR, AVATARS_DIR, MediaLane, STICKERS_DIR, ThumbnailRequest, VIDEOS_DIR, audio_key,
-    file_content, mxc_avatar_key, source, sticker_key, thumb_key, thumbnail_format, video_key,
+    bounded, file_content, mxc_avatar_key, source, sticker_key, thumb_key, thumbnail_format,
+    video_key,
 };
 use crate::adapters::matrix::store::purge_dir;
 use crate::adapters::{container, private_fs, video};

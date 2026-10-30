@@ -1,12 +1,11 @@
 use std::collections::{BTreeMap, HashMap, HashSet};
-use std::fs;
 use std::future::pending;
-use std::mem;
 use std::ops::Range;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
+use std::{fs, mem};
 
 use async_trait::async_trait;
 use tokio::sync::{mpsc, watch};
@@ -683,7 +682,12 @@ impl DemoAuthed {
         })
     }
 
-    async fn patch_queued_send(&self, room_id: &RoomId, local_id: &str, resend: bool) -> Result<()> {
+    async fn patch_queued_send(
+        &self,
+        room_id: &RoomId,
+        local_id: &str,
+        resend: bool,
+    ) -> Result<()> {
         let prepared = {
             let Ok(mut guard) = self.active.lock() else {
                 return Err(unavailable("the demo timeline"));

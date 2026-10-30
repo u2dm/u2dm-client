@@ -87,9 +87,7 @@ impl AudioOutput {
 
     pub fn position(&self) -> Duration {
         let frames = self.shared.frames_played.load(Ordering::Relaxed);
-        Duration::from_micros(
-            frames.saturating_mul(1_000_000) / u64::from(self.sample_rate.max(1)),
-        )
+        Duration::from_micros(frames.saturating_mul(1_000_000) / u64::from(self.sample_rate.max(1)))
     }
 
     pub fn is_full(&self) -> bool {

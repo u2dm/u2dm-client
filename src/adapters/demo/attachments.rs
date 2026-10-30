@@ -1,4 +1,3 @@
-use super::catalog::{Flag, Scenarios};
 use std::collections::HashMap;
 use std::env;
 use std::path::{Path, PathBuf};
@@ -6,6 +5,8 @@ use std::sync::{Mutex, OnceLock};
 use std::time::Duration;
 
 use tokio::time::sleep;
+
+use super::catalog::{Flag, Scenarios};
 
 const ENV_VAR: &str = "U2DM_DEMO_ATTACHMENTS";
 

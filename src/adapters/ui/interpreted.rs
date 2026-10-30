@@ -4,17 +4,16 @@ use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::Arc;
 
+use names::{
+    callback, composer_draft, draft_verdict, emoji_entry, emoji_row, emoji_store, mention_word,
+    text_splice, user_message, verification_emoji,
+};
 use slint::{Image, Model, ModelRc, Rgb8Pixel, SharedPixelBuffer, StyledText, VecModel};
 use slint_interpreter::{
     Compiler, ComponentDefinition, ComponentHandle, ComponentInstance, SharedString, Struct, Value,
 };
 use tokio::runtime::Runtime;
 use tokio::sync::{mpsc, watch};
-
-use names::{
-    callback, composer_draft, draft_verdict, emoji_entry, emoji_row, emoji_store, mention_word,
-    text_splice, user_message, verification_emoji,
-};
 
 use super::backend::{
     self, Models, RECENT_SPEAKERS, UiBackend, adopted_room_key, current_edited_row,
@@ -578,7 +577,12 @@ impl UiProps for ComponentInstance {
     enum_props!(impl_enum_setters);
 
     fn apply_video_frame(&self, buffer: SharedPixelBuffer<Rgb8Pixel>) {
-        set_global(self, "VideoView", "frame", Value::Image(Image::from_rgb8(buffer)));
+        set_global(
+            self,
+            "VideoView",
+            "frame",
+            Value::Image(Image::from_rgb8(buffer)),
+        );
         set_global(self, "VideoView", "has-frame", Value::Bool(true));
     }
 

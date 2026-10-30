@@ -96,7 +96,10 @@ impl Lifecycle {
 
     pub(super) fn awaits(&self, attempt: u64) -> bool {
         self.attempt == attempt
-            && matches!(self.phase, AppPhase::Authenticating | AppPhase::Reauthenticating)
+            && matches!(
+                self.phase,
+                AppPhase::Authenticating | AppPhase::Reauthenticating
+            )
     }
 
     pub(super) fn runs(&self, session: u64) -> bool {

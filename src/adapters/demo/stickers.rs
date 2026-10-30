@@ -1,9 +1,10 @@
-use super::catalog::{Flag, Scenarios};
 use std::env;
 use std::sync::OnceLock;
 use std::time::Duration;
 
 use tokio::time::sleep;
+
+use super::catalog::{Flag, Scenarios};
 
 const ENV_VAR: &str = "U2DM_DEMO_STICKERS";
 

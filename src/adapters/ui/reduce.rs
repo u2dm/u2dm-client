@@ -5,13 +5,11 @@ use std::sync::Arc;
 
 use slint::{ComponentHandle, Model, SharedString, StyledText};
 
-use super::audio;
 use super::backend::{
     UiBackend, UiEventContext, apply_pack_art, apply_pack_avatar, enrich_message,
     keep_shown_enrichment,
 };
 use super::call::apply_call;
-use super::call_window;
 use super::decode::{AvatarSlot, load_attachment_preview, load_avatar_async, request_pack_cell};
 use super::dto::{
     PackArt, PackBrowse, PackRowDto, PackTabDto, QuotedMessage, audio_row_update,
@@ -19,7 +17,6 @@ use super::dto::{
     preview_line, quoted_message, removal_avatar_path, removal_shape, rich_body,
     room_preview_avatar_path, user_info_pronouns,
 };
-use super::emote;
 use super::fields::{InviteeFields, MemberRowFields, MessageFields, SpaceChildFields, SpaceFields};
 use super::notices::apply_notifications;
 use super::present::{
@@ -34,10 +31,9 @@ use super::reconcile::{
 };
 use super::richtext::recognise_own_user;
 use super::rows::patch_rows_by_id;
-use super::sending;
 use super::session::{begin_session, with_session};
 use super::splice_model::SpliceModel;
-use super::video;
+use super::{audio, call_window, emote, sending, video};
 use crate::commands::effects::{Effect, VerificationActivity, VerificationUpdate};
 use crate::commands::messages::{UserMessage, UserMessageKind};
 use crate::commands::ui::Draft;

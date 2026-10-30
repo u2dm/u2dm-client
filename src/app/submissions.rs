@@ -140,12 +140,7 @@ impl Submissions {
         });
     }
 
-    pub(super) fn settled(
-        &mut self,
-        submission: i32,
-        enqueue: Enqueue,
-        selected: Option<&RoomId>,
-    ) {
+    pub(super) fn settled(&mut self, submission: i32, enqueue: Enqueue, selected: Option<&RoomId>) {
         let Some(held) = self
             .held
             .iter_mut()
