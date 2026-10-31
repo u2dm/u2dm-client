@@ -1,4 +1,5 @@
 use crate::domain::mention::ends_tag;
+use crate::util::saturating_i32;
 
 pub const NO_WORD: i32 = -1;
 
@@ -39,8 +40,8 @@ pub fn word_at(text: &str, caret: i32) -> (i32, String) {
 
 pub fn complete(text: &str, caret: i32, insert: &str) -> (String, i32) {
     let caret = clamped(text, caret);
-    let Some(word) = mention_word(text, offset(caret)) else {
-        return (text.to_owned(), offset(caret));
+    let Some(word) = mention_word(text, saturating_i32(caret)) else {
+        return (text.to_owned(), saturating_i32(caret));
     };
     let after = text.get(caret..).unwrap_or_default();
     let run = after
@@ -59,7 +60,7 @@ pub fn complete(text: &str, caret: i32, insert: &str) -> (String, i32) {
     completed.push_str(spacer);
     completed.push_str(rest);
     let caret = word.start + insert.len() + spacer.len() + skipped;
-    (completed, offset(caret))
+    (completed, saturating_i32(caret))
 }
 
 fn is_id_char(ch: char) -> bool {
@@ -74,6 +75,3 @@ fn clamped(text: &str, caret: i32) -> usize {
     caret
 }
 
-fn offset(caret: usize) -> i32 {
-    i32::try_from(caret).unwrap_or(i32::MAX)
-}

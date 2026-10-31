@@ -4,6 +4,7 @@ use matrix_sdk::encryption::identities::UserIdentity;
 use matrix_sdk::ruma::UserId;
 use tokio::sync::{Notify, mpsc};
 
+use crate::adapters::matrix::encryption::master_key;
 use crate::adapters::matrix::user_info::own_user;
 use crate::domain::identity::OwnIdentity;
 use crate::error::{AppError, Result};
@@ -21,7 +22,7 @@ pub(super) async fn follow(
             .encryption()
             .user_identities_stream()
             .await
-            .map_err(|e| AppError::Other(e.to_string()))?,
+            .map_err(AppError::other)?,
     );
     let mut reported = None;
     loop {
@@ -58,7 +59,7 @@ pub(super) async fn acknowledge(client: &Client) -> Result<()> {
         identity
             .withdraw_verification()
             .await
-            .map_err(|e| AppError::Other(e.to_string()))?;
+            .map_err(AppError::other)?;
     }
     acknowledge_master_key(client, &master_key(&identity)).await?;
     tracing::info!("acknowledged that the account's identity was reset");
@@ -106,15 +107,7 @@ async fn own_identity(client: &Client, own: &UserId) -> Result<Option<UserIdenti
         .encryption()
         .get_user_identity(own)
         .await
-        .map_err(|e| AppError::Other(e.to_string()))
-}
-
-fn master_key(identity: &UserIdentity) -> String {
-    identity
-        .master_key()
-        .get_first_key()
-        .map(|key| key.to_base64())
-        .unwrap_or_default()
+        .map_err(AppError::other)
 }
 
 async fn acknowledged_master_key(client: &Client) -> Result<Option<String>> {
@@ -122,11 +115,11 @@ async fn acknowledged_master_key(client: &Client) -> Result<Option<String>> {
         .state_store()
         .get_custom_value(ACKNOWLEDGED_MASTER_KEY)
         .await
-        .map_err(|e| AppError::Other(e.to_string()))?;
+        .map_err(AppError::other)?;
     stored
         .map(String::from_utf8)
         .transpose()
-        .map_err(|e| AppError::Other(e.to_string()))
+        .map_err(AppError::other)
 }
 
 async fn acknowledge_master_key(client: &Client, master_key: &str) -> Result<()> {
@@ -135,5 +128,5 @@ async fn acknowledge_master_key(client: &Client, master_key: &str) -> Result<()>
         .set_custom_value(ACKNOWLEDGED_MASTER_KEY, master_key.as_bytes().to_vec())
         .await
         .map(drop)
-        .map_err(|e| AppError::Other(e.to_string()))
+        .map_err(AppError::other)
 }

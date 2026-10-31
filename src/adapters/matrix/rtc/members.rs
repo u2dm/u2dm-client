@@ -13,9 +13,9 @@ use serde::Deserialize;
 use serde_json::{Map, Value};
 use tokio::time::timeout;
 
-use super::http::host_of;
 use super::{CALL_MEMBER_TYPE, capability_named};
 use crate::adapters::matrix::member_name::named_member_with_avatar;
+use crate::domain::call::sfu::host_of;
 use crate::domain::call::{
     CallIntent, CallMember, Capabilities, DeviceId, FocusSelection, MemberSession, RoomCall,
     Transport,

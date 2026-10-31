@@ -28,6 +28,7 @@ use std::time::Duration;
 use async_trait::async_trait;
 use matrix_sdk::attachment::AttachmentConfig;
 use matrix_sdk::room::reply::{EnforceThread, Reply};
+use matrix_sdk::ruma::OwnedEventId;
 use matrix_sdk::ruma::events::room::message::{
     AddMentions, MessageType, RoomMessageEventContent, RoomMessageEventContentWithoutRelation,
 };
@@ -35,7 +36,6 @@ use matrix_sdk::ruma::events::{
     AnyMessageLikeEventContent, Mentions, MessageLikeEventContent, MessageLikeEventType,
 };
 use matrix_sdk::ruma::serde::Raw;
-use matrix_sdk::ruma::{IdParseError, OwnedEventId};
 use matrix_sdk::send_queue::{LocalEchoContent, SendHandle};
 use matrix_sdk::{Client, EncryptionState, Room};
 use mime::Mime;
@@ -66,6 +66,7 @@ use super::profile::PronounCache;
 use super::session::ClientHandle;
 use crate::adapters::draft_size::MediaDraft;
 use crate::adapters::markdown::{self, Composed, RoomMentions};
+use crate::adapters::matrix::requests::in_time;
 use crate::adapters::poll_content;
 use crate::domain::emote::Emote;
 use crate::domain::event_size::Encryption;
@@ -231,7 +232,7 @@ async fn queued_send(room: &Room, local_id: &str) -> Result<SendHandle> {
         .send_queue()
         .subscribe()
         .await
-        .map_err(|e| AppError::Other(e.to_string()))?;
+        .map_err(AppError::other)?;
     echoes
         .into_iter()
         .find(|echo| echo.transaction_id.as_str() == txn)
@@ -259,13 +260,11 @@ async fn queue(room: &Room, content: AnyMessageLikeEventContent) -> Result<()> {
         .send(content)
         .await
         .map(|_handle| ())
-        .map_err(|e| AppError::Other(e.to_string()))
+        .map_err(AppError::other)
 }
 
 fn reply_relation(in_reply_to: &str) -> Result<Reply> {
-    let event_id: OwnedEventId = in_reply_to
-        .try_into()
-        .map_err(|e: IdParseError| AppError::Other(e.to_string()))?;
+    let event_id: OwnedEventId = in_reply_to.try_into().map_err(AppError::other)?;
     Ok(Reply {
         event_id,
         enforce_thread: EnforceThread::MaybeThreaded,
@@ -279,14 +278,12 @@ async fn reply_event(
     in_reply_to: &str,
 ) -> Result<RoomMessageEventContent> {
     let reply = reply_relation(in_reply_to)?;
-    timeout(PRE_QUEUE_LOOKUP_WAIT, room.make_reply_event(content, reply))
-        .await
-        .map_err(|_| {
-            AppError::Other(format!(
-                "the replied-to event {in_reply_to} did not arrive in time"
-            ))
-        })?
-        .map_err(|e| AppError::Other(e.to_string()))
+    in_time(
+        PRE_QUEUE_LOOKUP_WAIT,
+        format!("the replied-to event {in_reply_to} did not arrive in time"),
+        room.make_reply_event(content, reply),
+    )
+    .await
 }
 
 async fn with_resolved_reply(
@@ -437,7 +434,7 @@ async fn queue_attachment(
             queueable.config,
         )
         .await
-        .map_err(|e| AppError::Other(e.to_string()))?;
+        .map_err(AppError::other)?;
     Ok(AttachmentHandoff::Queued)
 }
 
@@ -529,7 +526,7 @@ impl TimelinePort for MatrixTimeline {
             .await?
             .unwedge()
             .await
-            .map_err(|e| AppError::Other(e.to_string()))?;
+            .map_err(AppError::other)?;
         room.send_queue().set_enabled(true);
         Ok(())
     }
@@ -540,7 +537,7 @@ impl TimelinePort for MatrixTimeline {
             .await?
             .abort()
             .await
-            .map_err(|e| AppError::Other(e.to_string()))?;
+            .map_err(AppError::other)?;
         room.send_queue().set_enabled(true);
         Ok(())
     }

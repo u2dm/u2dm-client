@@ -38,6 +38,11 @@ impl fmt::Display for SfuId {
     }
 }
 
+pub fn host_of(url: &str) -> &str {
+    let rest = url.split_once("://").map_or(url, |(_, rest)| rest);
+    rest.split(['/', '?', '#']).next().unwrap_or(rest)
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SfuRole {
     Publish,

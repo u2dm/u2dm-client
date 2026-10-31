@@ -75,7 +75,7 @@ impl RoomPreviewPort for MatrixRoomPreviews {
                     tracing::warn!(%room_id, "joined the room, but finishing the join failed: {e}");
                     Ok(RoomId::new(room_id.as_str()))
                 }
-                None => Err(AppError::Other(e.to_string())),
+                None => Err(AppError::other(e)),
             },
         }
     }

@@ -57,6 +57,12 @@ pub enum AppError {
     Other(String),
 }
 
+impl AppError {
+    pub fn other(error: impl fmt::Display) -> Self {
+        Self::Other(error.to_string())
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AuthFailure {
     Unreachable,

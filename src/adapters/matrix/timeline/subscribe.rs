@@ -7,7 +7,7 @@ use matrix_sdk::event_cache::EventCacheError;
 use matrix_sdk::paginators::PaginatorError;
 use matrix_sdk::ruma::api::error::ErrorKind;
 use matrix_sdk::ruma::events::fully_read::FullyReadEventContent;
-use matrix_sdk::ruma::{EventId, IdParseError, OwnedEventId, OwnedRoomId, UserId};
+use matrix_sdk::ruma::{EventId, OwnedEventId, UserId};
 use matrix_sdk::{Client, Room};
 use matrix_sdk_ui::eyeball_im::VectorDiff;
 use matrix_sdk_ui::timeline::{
@@ -36,6 +36,7 @@ use super::undecrypted::UndecryptedResponses;
 use super::{EnrichmentClaim, EnrichmentPool, TimelineContext, polls, source};
 use crate::adapters::matrix::media::{MediaService, ThumbnailRequest};
 use crate::adapters::matrix::profile::PronounCache;
+use crate::adapters::matrix::session::known_room;
 use crate::domain::emote::Emote;
 use crate::domain::media::{ContentKey, ThumbnailOutcome};
 use crate::domain::message::{ReactionSend, TimelineMessage};
@@ -279,7 +280,7 @@ async fn toggle_own_reaction(
             shortcode.map(reaction_shortcode),
         )
         .await
-        .map_err(|e| AppError::Other(e.to_string()))?;
+        .map_err(AppError::other)?;
     Ok(match (added, own) {
         (true, _) => ReactionToggle::Added,
         (false, Some(ReactionSend::Failed)) => ReactionToggle::DiscardedFailedSend,
@@ -575,16 +576,6 @@ async fn paginate_forwards(timeline: &Timeline) -> PaginationOutcome {
     }
 }
 
-fn resolve_room(client: &Client, room_id: &RoomId) -> Result<Room> {
-    let room_id_parsed: OwnedRoomId = room_id
-        .as_ref()
-        .try_into()
-        .map_err(|e: IdParseError| AppError::Other(e.to_string()))?;
-    client
-        .get_room(&room_id_parsed)
-        .ok_or_else(|| AppError::Other("Room not found".into()))
-}
-
 async fn setup_timeline(
     room: &Room,
     focus: &TimelineFocus,
@@ -595,7 +586,7 @@ async fn setup_timeline(
                 .await
                 .build()
                 .await
-                .map_err(|e| AppError::Other(e.to_string()))?,
+                .map_err(AppError::other)?,
         );
         let backwards_outcome = paginate_backwards(&timeline).await;
         return Ok((timeline, backwards_outcome));
@@ -606,9 +597,7 @@ async fn setup_timeline(
 }
 
 async fn build_focused_timeline(room: &Room, target: &str) -> Result<Timeline> {
-    let target: OwnedEventId = target
-        .try_into()
-        .map_err(|e: IdParseError| AppError::Other(e.to_string()))?;
+    let target: OwnedEventId = target.try_into().map_err(AppError::other)?;
     timeline_builder(room)
         .await
         .with_focus(SdkTimelineFocus::Event {
@@ -627,7 +616,7 @@ fn focus_failure(error: &TimelineError) -> AppError {
     if names_unreachable_event(error) {
         return AppError::FocusedEventUnavailable;
     }
-    AppError::Other(error.to_string())
+    AppError::other(error)
 }
 
 fn names_unreachable_event(error: &TimelineError) -> bool {
@@ -927,7 +916,7 @@ pub(crate) async fn subscribe_timeline(
     timeline_tx: mpsc::Sender<TimelineUpdate>,
     commands: Commands,
 ) -> Result<()> {
-    let room = resolve_room(client, room_id)?;
+    let room = known_room(client, room_id)?;
     let ending = Arc::new(EndingPolls::default());
     let discarded = Arc::new(DiscardedEdits::default());
     let opening = open_timeline(

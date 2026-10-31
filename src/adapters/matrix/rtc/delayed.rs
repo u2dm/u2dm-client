@@ -17,8 +17,9 @@ use serde_json::{Value, json};
 use tokio::sync::OnceCell;
 
 use super::CALL_MEMBER_TYPE;
-use super::http::{Auth, JsonRequest, Reply, homeserver_url, send_json};
+use super::http::{Auth, JsonRequest, NOT_FOUND, Reply, homeserver_url, send_json};
 use super::routes::{DELAYED_EVENTS_STABLE, advertises};
+use crate::adapters::matrix::requests::refuses_endpoint;
 use crate::domain::call::{RestartFailure, RestartResult, ScheduleFailure};
 
 const DELAY_TOO_LARGE: [&str; 3] = [
@@ -27,7 +28,6 @@ const DELAY_TOO_LARGE: [&str; 3] = [
     "M_MAX_DELAY_EXCEEDED",
 ];
 const MAX_DELAY_FIELD: &str = "org.matrix.msc4140.max_delay";
-const NOT_FOUND: &str = "M_NOT_FOUND";
 const LIMITS: [&str; 2] = ["m.delayed_events", "org.matrix.msc4140.delayed_events"];
 const SCHEDULE_PATH: &str = "/_matrix/client/v3/rooms";
 const UPDATE_PATH: &str = "/_matrix/client/v1/delayed_events";
@@ -384,12 +384,7 @@ fn schedule_failure(error: &HttpError, known_max: Option<u64>) -> ScheduleFailur
         tracing::info!("the homeserver refused the delayed leave: {error}");
         return ScheduleFailure::Refused;
     }
-    let endpoint_missing = unrecognized(error)
-        || matches!(
-            refusal,
-            Some(StatusCode::NOT_FOUND | StatusCode::METHOD_NOT_ALLOWED)
-        );
-    if endpoint_missing {
+    if refuses_endpoint(error) {
         ScheduleFailure::Unsupported
     } else {
         ScheduleFailure::Failed(error.to_string())

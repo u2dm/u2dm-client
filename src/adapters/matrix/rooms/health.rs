@@ -4,13 +4,13 @@ use std::time::Duration;
 use matrix_sdk::authentication::oauth::OAuthError;
 use matrix_sdk::authentication::oauth::error::{BasicErrorResponseType, RequestTokenError};
 use matrix_sdk::ruma::api::error::ErrorKind;
-use matrix_sdk::ruma::exports::http::StatusCode;
 use matrix_sdk::{HttpError, RefreshTokenError};
 use matrix_sdk_ui::encryption_sync_service::Error as EncryptionSyncError;
 use matrix_sdk_ui::room_list_service::Error as RoomListError;
 use matrix_sdk_ui::sync_service::Error as SyncServiceError;
 use tokio::time::Instant;
 
+use crate::adapters::matrix::requests::refuses_endpoint;
 use crate::domain::sync::{ReauthReason, SessionLoss};
 
 const SYNC_RESTART_BACKOFF_START: Duration = Duration::from_secs(1);
@@ -76,15 +76,6 @@ pub(super) fn endpoint_missing(err: &SyncServiceError) -> bool {
         return false;
     };
     refuses_endpoint(http)
-}
-
-pub(super) fn refuses_endpoint(http: &HttpError) -> bool {
-    http.as_client_api_error().is_some_and(|refusal| {
-        matches!(
-            refusal.status_code,
-            StatusCode::NOT_FOUND | StatusCode::METHOD_NOT_ALLOWED
-        ) || matches!(refusal.error_kind(), Some(ErrorKind::Unrecognized))
-    })
 }
 
 pub(super) struct SyncHealth {

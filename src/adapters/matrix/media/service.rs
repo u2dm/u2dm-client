@@ -88,6 +88,13 @@ impl DownloadLimits {
     }
 }
 
+struct MxcTarget<'a> {
+    dir: &'static str,
+    noun: &'static str,
+    cache_key: &'a str,
+    fetch: Fetch,
+}
+
 #[derive(Clone)]
 pub(crate) struct Fetch {
     format: MediaFormat,
@@ -479,25 +486,13 @@ impl MediaService {
         cache_key: &str,
         mxc: OwnedMxcUri,
     ) -> Option<PathBuf> {
-        if let Some(cached) = self.cache_get(cache_key) {
-            return Some(cached);
-        }
-        let avatars = self.avatars_dir()?;
-        if let Err(e) = private_fs::create_dir(&avatars).await {
-            tracing::warn!("failed to create avatar dir: {e}");
-            return None;
-        }
-        let cache_stem = avatars.join(hex_encode_id(mxc.as_str()));
-        let source = MediaSource::Plain(mxc);
-        self.fetch_and_materialize(
-            client,
-            source,
+        let into = MxcTarget {
+            dir: AVATARS_DIR,
+            noun: "avatar",
             cache_key,
-            &cache_stem,
-            Fetch::rendered(thumbnail_format()),
-        )
-        .await
-        .ok()
+            fetch: Fetch::rendered(thumbnail_format()),
+        };
+        self.fetch_mxc_into(client, mxc, into).await
     }
 
     pub(crate) async fn fetch_sticker_by_mxc(
@@ -506,25 +501,34 @@ impl MediaService {
         mxc: OwnedMxcUri,
     ) -> Option<PathBuf> {
         let cache_key = sticker_key(mxc.as_str());
-        if let Some(cached) = self.cache_get(&cache_key) {
+        let into = MxcTarget {
+            dir: STICKERS_DIR,
+            noun: "sticker",
+            cache_key: &cache_key,
+            fetch: Fetch::rendered(MediaFormat::File),
+        };
+        self.fetch_mxc_into(client, mxc, into).await
+    }
+
+    async fn fetch_mxc_into(
+        &self,
+        client: &Client,
+        mxc: OwnedMxcUri,
+        into: MxcTarget<'_>,
+    ) -> Option<PathBuf> {
+        if let Some(cached) = self.cache_get(into.cache_key) {
             return Some(cached);
         }
-        let stickers = self.stickers_dir()?;
-        if let Err(e) = private_fs::create_dir(&stickers).await {
-            tracing::warn!("failed to create sticker dir: {e}");
+        let dir = self.session()?.media_dir.join(into.dir);
+        if let Err(e) = private_fs::create_dir(&dir).await {
+            tracing::warn!("failed to create {} dir: {e}", into.noun);
             return None;
         }
-        let cache_stem = stickers.join(hex_encode_id(mxc.as_str()));
+        let cache_stem = dir.join(hex_encode_id(mxc.as_str()));
         let source = MediaSource::Plain(mxc);
-        self.fetch_and_materialize(
-            client,
-            source,
-            &cache_key,
-            &cache_stem,
-            Fetch::rendered(MediaFormat::File),
-        )
-        .await
-        .ok()
+        self.fetch_and_materialize(client, source, into.cache_key, &cache_stem, into.fetch)
+            .await
+            .ok()
     }
 
     pub(crate) async fn fetch_user_avatar(&self, client: &Client) -> Option<PathBuf> {
@@ -590,14 +594,6 @@ impl MediaService {
 
     fn needs_download(&self, cache_key: &str) -> bool {
         self.cache_get(cache_key).is_none() && !self.is_failed(cache_key)
-    }
-
-    fn avatars_dir(&self) -> Option<PathBuf> {
-        Some(self.session()?.media_dir.join(AVATARS_DIR))
-    }
-
-    fn stickers_dir(&self) -> Option<PathBuf> {
-        Some(self.session()?.media_dir.join(STICKERS_DIR))
     }
 
     fn playable_dir(&self, playable: Playable) -> Option<PathBuf> {

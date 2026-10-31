@@ -45,3 +45,7 @@ pub fn format_bytes(bytes: u64) -> String {
         format!("{size:.1} {label}")
     }
 }
+
+pub fn saturating_i32<T: TryInto<i32>>(value: T) -> i32 {
+    value.try_into().unwrap_or(i32::MAX)
+}

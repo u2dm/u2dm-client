@@ -24,7 +24,7 @@ pub use slots::{AvatarSlot, MediaSlot, TimelineItemKey};
 use waiters::Waiters;
 pub use waiters::{DecodeOutcome, set_avatar_ready, set_image_ready};
 
-use super::session::with_session;
+use super::session::{active_generation, with_session};
 
 const DISPLAY_MAX_DIMENSION: u32 = 512;
 
@@ -67,10 +67,6 @@ impl Default for MediaSession {
 
 fn with_media<R>(f: impl FnOnce(&mut MediaSession) -> R) -> R {
     with_session(|session| f(&mut session.media))
-}
-
-fn active_generation() -> i32 {
-    with_session(|session| session.room.active_generation())
 }
 
 fn image_from_rgba(rgba: &[u8], width: u32, height: u32) -> Image {

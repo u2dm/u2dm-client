@@ -71,9 +71,7 @@ impl DesktopMediaFiles {
         let png = spawn_blocking(move || encode_png(&image))
             .await
             .map_err(|e| AppError::Other(format!("failed to encode the pasted image: {e}")))??;
-        private_fs::create_dir(session_dir).await?;
-        let path = session_dir.join(format!("{}.png", random_hex(FILE_TOKEN_BYTES)));
-        private_fs::write_private(&path, &png).await?;
+        let path = write_session_file(session_dir, "png", &png).await?;
         let picked = self.describe(&path).await?;
         Ok(PickedAttachment {
             filename: PASTED_IMAGE_FILENAME.to_owned(),
@@ -93,9 +91,7 @@ impl MediaFilePort for DesktopMediaFiles {
     async fn open_media(&self, _event_id: &str, data: &[u8]) -> Result<()> {
         let session_dir = self.session_dir()?;
         let extension = launcher_safe_extension(data).ok_or(AppError::UnviewableMedia)?;
-        private_fs::create_dir(session_dir).await?;
-        let path = session_dir.join(format!("{}.{extension}", random_hex(FILE_TOKEN_BYTES)));
-        private_fs::write_private(&path, data).await?;
+        let path = write_session_file(session_dir, extension, data).await?;
         spawn_blocking(move || open::that_detached(&path))
             .await
             .map_err(|e| AppError::Other(format!("failed to launch media viewer: {e}")))??;
@@ -307,10 +303,14 @@ async fn write_poster(path: &Path, dir: &Path) -> Option<PathBuf> {
         .await
         .ok()
         .flatten()?;
-    private_fs::create_dir(dir).await.ok()?;
-    let poster = dir.join(format!("{}.jpg", random_hex(FILE_TOKEN_BYTES)));
-    private_fs::write_private(&poster, &jpeg).await.ok()?;
-    Some(poster)
+    write_session_file(dir, "jpg", &jpeg).await.ok()
+}
+
+async fn write_session_file(dir: &Path, extension: &str, bytes: &[u8]) -> Result<PathBuf> {
+    private_fs::create_dir(dir).await?;
+    let path = dir.join(format!("{}.{extension}", random_hex(FILE_TOKEN_BYTES)));
+    private_fs::write_private(&path, bytes).await?;
+    Ok(path)
 }
 
 async fn sniff_mimetype(path: &Path) -> String {

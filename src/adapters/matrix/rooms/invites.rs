@@ -41,7 +41,7 @@ impl InvitePort for MatrixInvites {
                 tracing::warn!(%room_id, "joined the room, but finishing the join failed: {e}");
                 Ok(())
             }
-            Err(e) => Err(AppError::Other(e.to_string())),
+            Err(e) => Err(AppError::other(e)),
         }
     }
 
@@ -70,7 +70,7 @@ async fn send_leave(room: &Room) -> Result<()> {
             );
             Ok(())
         }
-        Err(e) => Err(AppError::Other(e.to_string())),
+        Err(e) => Err(AppError::other(e)),
     }
 }
 
@@ -82,7 +82,7 @@ async fn mark_left(room: &Room) -> Result<()> {
         (info, RoomInfoNotableUpdateReasons::MEMBERSHIP)
     })
     .await
-    .map_err(|e| AppError::Other(e.to_string()))
+    .map_err(AppError::other)
 }
 
 async fn forget(room: &Room) {

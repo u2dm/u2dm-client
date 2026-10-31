@@ -2,6 +2,8 @@ use std::sync::OnceLock;
 
 use emojis::{Group, SkinTone};
 
+use crate::util::saturating_i32;
+
 pub struct EmojiEntry {
     pub base: String,
     pub tones: Vec<String>,
@@ -108,7 +110,7 @@ pub fn insert_at(text: &str, offset: i32, glyph: &str) -> (String, i32) {
     result.push_str(before);
     result.push_str(glyph);
     result.push_str(after);
-    let caret = i32::try_from(before.len() + glyph.len()).unwrap_or(i32::MAX);
+    let caret = saturating_i32(before.len() + glyph.len());
     (result, caret)
 }
 

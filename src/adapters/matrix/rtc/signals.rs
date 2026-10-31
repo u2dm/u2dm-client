@@ -23,7 +23,6 @@ use matrix_sdk_base::crypto::CollectStrategy;
 use serde::Deserialize;
 use serde_json::{Map, Value, json};
 use tokio::sync::mpsc;
-use tokio::time::timeout;
 
 use super::hands::{
     REACTION_TYPE, REDACTION_TYPE, hand_of, lower, raise, raised, raises_a_hand, redacted_event,
@@ -38,6 +37,7 @@ use super::{
 use crate::adapters::matrix::decrypt_wait::{Attempt, LateDecryption, decrypt_or_wait};
 use crate::adapters::matrix::media::fetch_avatar_thumbnails;
 use crate::adapters::matrix::member_name::named_member;
+use crate::adapters::matrix::requests::in_time;
 use crate::adapters::matrix::session::{ClientHandle, SessionResource};
 use crate::domain::call::hands::HandSighting;
 use crate::domain::call::reactions::ReactionOption;
@@ -308,22 +308,16 @@ impl CallSignalPort for MatrixCallSignals {
 
     async fn decline(&self, room_id: &RoomId, ring: &RingId) -> Result<()> {
         let room = self.matrix.room(room_id).await?;
-        let notification =
-            OwnedEventId::try_from(ring.as_ref()).map_err(|e| AppError::Other(e.to_string()))?;
-        let sent = timeout(
+        let notification = OwnedEventId::try_from(ring.as_ref()).map_err(AppError::other)?;
+        in_time(
             DECLINE_WAIT,
+            "the decline was not sent in time",
             room.send(RtcDeclineEventContent::new(notification))
                 .with_request_config(RequestConfig::short_retry()),
         )
-        .await;
-        match sent {
-            Ok(Ok(_)) => {
-                tracing::debug!(%room_id, "declined the call");
-                Ok(())
-            }
-            Ok(Err(e)) => Err(AppError::Other(e.to_string())),
-            Err(_) => Err(AppError::Other("the decline was not sent in time".into())),
-        }
+        .await?;
+        tracing::debug!(%room_id, "declined the call");
+        Ok(())
     }
 
     async fn announce_call(&self, room_id: &RoomId, ring: &OutgoingRing) -> Result<RingId> {
@@ -340,14 +334,13 @@ impl CallSignalPort for MatrixCallSignals {
             "lifetime": OUTGOING_RING_LIFETIME_MS,
             "m.call.intent": intent_word(ring.intent),
         });
-        let sent = timeout(
+        let sent = in_time(
             ANNOUNCE_WAIT,
+            "the call notification was not sent in time",
             room.send_raw(NOTIFICATION_TYPE, content)
                 .with_request_config(RequestConfig::short_retry()),
         )
-        .await
-        .map_err(|_| AppError::Other("the call notification was not sent in time".into()))?
-        .map_err(|e| AppError::Other(e.to_string()))?;
+        .await?;
         Ok(RingId::new(sent.response.event_id.as_str()))
     }
 

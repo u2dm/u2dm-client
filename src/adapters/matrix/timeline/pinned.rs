@@ -18,12 +18,12 @@ use matrix_sdk_ui::timeline::{
     TimelineFocus as SdkTimelineFocus, TimelineItem, TimelineItemContent,
 };
 use tokio::sync::mpsc;
-use tokio::time::timeout;
 
 use super::PRE_QUEUE_LOOKUP_WAIT;
 use super::convert::content_preview;
 use super::event_filter::timeline_builder;
 use crate::adapters::matrix::permissions::message_permissions;
+use crate::adapters::matrix::requests::{absent_as_none, in_time};
 use crate::adapters::matrix::session::ClientHandle;
 use crate::domain::message::{MessagePreviewKind, PinChange, PinnedMessage};
 use crate::domain::room::RoomId;
@@ -57,7 +57,7 @@ impl PinnedPort for MatrixPinned {
             .with_focus(SdkTimelineFocus::PinnedEvents)
             .build()
             .await
-            .map_err(|e| AppError::Other(e.to_string()))?;
+            .map_err(AppError::other)?;
         let (items, diffs) = timeline.subscribe().await;
         tokio::join!(
             refresh_pinned_ids(&room, None),
@@ -73,8 +73,7 @@ impl PinnedPort for MatrixPinned {
                 "the power levels of {room_id} do not let you pin"
             )));
         }
-        let event_id =
-            OwnedEventId::try_from(event_id).map_err(|e| AppError::Other(e.to_string()))?;
+        let event_id = OwnedEventId::try_from(event_id).map_err(AppError::other)?;
         if change == PinChange::Pin {
             confirm_in_room(&room, &event_id).await?;
         }
@@ -87,12 +86,12 @@ impl PinnedPort for MatrixPinned {
             &EmptyStateKey,
             &RoomPinnedEventsEventContent::new(pins),
         )
-        .map_err(|e| AppError::Other(e.to_string()))?;
+        .map_err(AppError::other)?;
         room.client()
             .send(request)
             .with_request_config(RequestConfig::short_retry())
             .await
-            .map_err(|e| AppError::Other(e.to_string()))?;
+            .map_err(AppError::other)?;
         tracing::info!(%room_id, %event_id, ?change, "changed the room's pins");
         refresh_pinned_ids(&room, Some(RequestConfig::short_retry())).await;
         Ok(())
@@ -100,18 +99,13 @@ impl PinnedPort for MatrixPinned {
 }
 
 async fn confirm_in_room(room: &Room, event_id: &EventId) -> Result<()> {
-    timeout(
+    in_time(
         PRE_QUEUE_LOOKUP_WAIT,
+        format!("the event {event_id} to pin did not arrive in time"),
         room.load_or_fetch_event(event_id, Some(RequestConfig::short_retry())),
     )
     .await
-    .map_err(|_| {
-        AppError::Other(format!(
-            "the event {event_id} to pin did not arrive in time"
-        ))
-    })?
     .map(drop)
-    .map_err(|e| AppError::Other(e.to_string()))
 }
 
 async fn current_pins(room: &Room) -> Result<Vec<OwnedEventId>> {
@@ -120,20 +114,19 @@ async fn current_pins(room: &Room) -> Result<Vec<OwnedEventId>> {
         StateEventType::RoomPinnedEvents,
         String::new(),
     );
-    match room
+    let sent = room
         .client()
         .send(request)
         .with_request_config(RequestConfig::short_retry())
-        .await
-    {
-        Ok(response) => response
-            .into_content()
-            .deserialize_as_unchecked::<RoomPinnedEventsEventContent>()
-            .map(|content| content.pinned)
-            .map_err(|e| AppError::Other(e.to_string())),
-        Err(e) if e.client_api_error_kind() == Some(&ErrorKind::NotFound) => Ok(Vec::new()),
-        Err(e) => Err(AppError::Other(e.to_string())),
-    }
+        .await;
+    let Some(response) = absent_as_none(sent)? else {
+        return Ok(Vec::new());
+    };
+    response
+        .into_content()
+        .deserialize_as_unchecked::<RoomPinnedEventsEventContent>()
+        .map(|content| content.pinned)
+        .map_err(AppError::other)
 }
 
 fn changed_pins(

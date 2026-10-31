@@ -12,8 +12,8 @@ use matrix_sdk::{Client, HttpError};
 use tokio::time::timeout;
 use tracing::Instrument;
 
-use super::health::refuses_endpoint;
 use super::send_queue::retry_after;
+use crate::adapters::matrix::requests::refuses_endpoint;
 use crate::adapters::matrix::session::ClientHandle;
 use crate::domain::presence::{
     Availability, BeaconFailure, BeaconResult, LookupFailure, LookupResult, PresenceReport,

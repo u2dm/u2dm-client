@@ -60,15 +60,12 @@ use crate::error::{AppError, Result as AppResult};
 use crate::ports::matrix::{SpaceOrderPort, SyncPort, SyncSink as OnSync};
 
 async fn build_sync_service(client: &Client) -> AppResult<SyncService> {
-    client
-        .event_cache()
-        .subscribe()
-        .map_err(|e| AppError::Other(e.to_string()))?;
+    client.event_cache().subscribe().map_err(AppError::other)?;
 
     SyncService::builder(client.clone())
         .build()
         .await
-        .map_err(|e| AppError::Other(e.to_string()))
+        .map_err(AppError::other)
 }
 
 enum LoopAction {
@@ -511,10 +508,10 @@ impl MatrixSpaceOrder {
 impl SpaceOrderPort for MatrixSpaceOrder {
     async fn set_space_order(&self, space_id: &RoomId, order: &str) -> AppResult<()> {
         let room = self.matrix.room(space_id).await?;
-        let order = SpaceChildOrder::parse(order).map_err(|e| AppError::Other(e.to_string()))?;
+        let order = SpaceChildOrder::parse(order).map_err(AppError::other)?;
         room.set_account_data(SpaceOrderEventContent::new(order))
             .await
-            .map_err(|e| AppError::Other(e.to_string()))?;
+            .map_err(AppError::other)?;
         Ok(())
     }
 }

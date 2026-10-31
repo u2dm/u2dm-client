@@ -340,36 +340,19 @@ async fn notify(
     replaces: u32,
     markup: bool,
 ) -> zbus::Result<u32> {
-    let body = if markup {
-        escape_markup(&notice.body)
-    } else {
-        notice.body.clone()
+    let call = NotifyCall {
+        replaces,
+        summary: &notice.summary,
+        body: &shown_body(&notice.body, markup),
+        actions: &[DEFAULT_ACTION, notice.open_label.as_str()],
+        hints: hints(
+            NORMAL_URGENCY,
+            CATEGORY,
+            notice.sound.then_some(MESSAGE_SOUND),
+        ),
+        timeout: SERVER_DEFAULT_TIMEOUT,
     };
-    let actions = [DEFAULT_ACTION, notice.open_label.as_str()];
-    let mut hints: HashMap<&str, Value<'_>> = HashMap::new();
-    hints.insert("urgency", Value::U8(NORMAL_URGENCY));
-    hints.insert("category", Value::from(CATEGORY));
-    hints.insert("desktop-entry", Value::from(APP_ID));
-    if notice.sound {
-        hints.insert("sound-name", Value::from(MESSAGE_SOUND));
-    } else {
-        hints.insert("suppress-sound", Value::Bool(true));
-    }
-    proxy
-        .call(
-            "Notify",
-            &(
-                APP_NAME,
-                replaces,
-                NO_ICON,
-                notice.summary.as_str(),
-                body.as_str(),
-                &actions[..],
-                hints,
-                SERVER_DEFAULT_TIMEOUT,
-            ),
-        )
-        .await
+    call.send(proxy).await
 }
 
 fn message_action(action: &str) -> Option<NoticeAction> {
@@ -391,11 +374,6 @@ async fn notify_ring(
     replaces: u32,
     markup: bool,
 ) -> zbus::Result<u32> {
-    let body = if markup {
-        escape_markup(&notice.body)
-    } else {
-        notice.body.clone()
-    };
     let mut actions = vec![
         DEFAULT_ACTION,
         notice.open_label.as_str(),
@@ -405,30 +383,72 @@ async fn notify_ring(
     if let Some(answer_label) = &notice.answer_label {
         actions.extend([ANSWER_ACTION, answer_label.as_str()]);
     }
-    let mut hints: HashMap<&str, Value<'_>> = HashMap::new();
-    hints.insert("urgency", Value::U8(CRITICAL_URGENCY));
-    hints.insert("category", Value::from(RING_CATEGORY));
-    hints.insert("desktop-entry", Value::from(APP_ID));
-    if notice.sound {
-        hints.insert("sound-name", Value::from(RING_SOUND));
-    } else {
-        hints.insert("suppress-sound", Value::Bool(true));
+    let call = NotifyCall {
+        replaces,
+        summary: &notice.summary,
+        body: &shown_body(&notice.body, markup),
+        actions: &actions,
+        hints: hints(
+            CRITICAL_URGENCY,
+            RING_CATEGORY,
+            notice.sound.then_some(RING_SOUND),
+        ),
+        timeout: NEVER_EXPIRES,
+    };
+    call.send(proxy).await
+}
+
+struct NotifyCall<'a> {
+    replaces: u32,
+    summary: &'a str,
+    body: &'a str,
+    actions: &'a [&'a str],
+    hints: HashMap<&'static str, Value<'static>>,
+    timeout: i32,
+}
+
+impl NotifyCall<'_> {
+    async fn send(self, proxy: &Proxy<'static>) -> zbus::Result<u32> {
+        proxy
+            .call(
+                "Notify",
+                &(
+                    APP_NAME,
+                    self.replaces,
+                    NO_ICON,
+                    self.summary,
+                    self.body,
+                    self.actions,
+                    self.hints,
+                    self.timeout,
+                ),
+            )
+            .await
     }
-    proxy
-        .call(
-            "Notify",
-            &(
-                APP_NAME,
-                replaces,
-                NO_ICON,
-                notice.summary.as_str(),
-                body.as_str(),
-                &actions[..],
-                hints,
-                NEVER_EXPIRES,
-            ),
-        )
-        .await
+}
+
+fn shown_body(body: &str, markup: bool) -> String {
+    if markup {
+        escape_markup(body)
+    } else {
+        body.to_owned()
+    }
+}
+
+fn hints(
+    urgency: u8,
+    category: &'static str,
+    sound: Option<&'static str>,
+) -> HashMap<&'static str, Value<'static>> {
+    let mut hints = HashMap::new();
+    hints.insert("urgency", Value::U8(urgency));
+    hints.insert("category", Value::from(category));
+    hints.insert("desktop-entry", Value::from(APP_ID));
+    match sound {
+        Some(sound) => hints.insert("sound-name", Value::from(sound)),
+        None => hints.insert("suppress-sound", Value::Bool(true)),
+    };
+    hints
 }
 
 fn signal_of(message: &Message) -> Option<Signal> {

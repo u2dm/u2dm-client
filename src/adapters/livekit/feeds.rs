@@ -13,6 +13,7 @@ use crate::domain::call::identity::MediaIdentity;
 use crate::domain::call::sfu::SfuId;
 use crate::domain::call::video::{FeedId, FrameSize, Framing, VideoKind};
 use crate::ports::call::{FrameSink, VideoFrame};
+use crate::util::saturating_i32;
 
 const RGBA: usize = 4;
 const FEED_SEPARATOR: char = '|';
@@ -342,7 +343,7 @@ const fn swapped(size: FrameSize) -> FrameSize {
 }
 
 pub(super) fn signed(side: u32) -> i32 {
-    i32::try_from(side).unwrap_or(i32::MAX)
+    saturating_i32(side)
 }
 
 fn rotate(upright: &[u8], size: FrameSize, rotation: VideoRotation, out: &mut [u8]) -> bool {

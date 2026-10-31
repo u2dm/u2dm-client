@@ -8,14 +8,16 @@ use matrix_sdk::ruma::{OwnedRoomId, OwnedServerName};
 use matrix_sdk::{Client, HttpError};
 use serde_json::{Value, json};
 
-use super::http::{Auth, JsonRequest, REQUEST_TIMEOUT, Reply, homeserver_url, host_of, send_json};
+use super::http::{
+    Auth, JsonRequest, NOT_FOUND, REQUEST_TIMEOUT, Reply, UNRECOGNIZED, homeserver_url, send_json,
+};
 use crate::domain::call::Secret;
 use crate::domain::call::identity::{MediaIdentity, spellings};
-use crate::domain::call::sfu::{GrantFailure, GrantRequest, GrantResult, SfuGrant, SfuRole};
+use crate::domain::call::sfu::{
+    GrantFailure, GrantRequest, GrantResult, SfuGrant, SfuRole, host_of,
+};
 
 const ROOM_SLOT: &str = "m.call#ROOM";
-const UNRECOGNIZED: &str = "M_UNRECOGNIZED";
-const NOT_FOUND: &str = "M_NOT_FOUND";
 const STABLE_TOKEN_PATH: &str = "/_matrix/client/v1/rtc/livekit/get_token";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

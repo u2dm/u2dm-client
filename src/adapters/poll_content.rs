@@ -39,8 +39,7 @@ pub fn start_block(
     choice: PollChoice,
     disclosure: PollDisclosure,
 ) -> Result<UnstablePollStartContentBlock> {
-    let answers =
-        UnstablePollAnswers::try_from(answers).map_err(|e| AppError::Other(e.to_string()))?;
+    let answers = UnstablePollAnswers::try_from(answers).map_err(AppError::other)?;
     let mut block = UnstablePollStartContentBlock::new(question, answers);
     block.kind = match disclosure {
         PollDisclosure::Disclosed => PollKind::Disclosed,

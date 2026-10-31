@@ -26,6 +26,7 @@ use serde_json::{Map, Value, json};
 use tokio::sync::Semaphore;
 use tokio::task::JoinSet;
 
+use super::requests::absent_as_none;
 use super::session::ClientHandle;
 use super::timeline::{refuse_oversized, refuse_unpermitted};
 use super::user_info::own_user;
@@ -385,7 +386,7 @@ impl MatrixImagePacks {
             .reference_writes
             .acquire()
             .await
-            .map_err(|e| AppError::Other(e.to_string()))?;
+            .map_err(AppError::other)?;
         let client = self.matrix.client().await?;
         let own = own_user(&client)?;
         let mut updates = Vec::new();
@@ -641,17 +642,16 @@ async fn fetch_pack_rooms(
         own.clone(),
         GlobalAccountDataEventType::from(event_type),
     );
-    match client
+    let sent = client
         .send(request)
         .with_request_config(RequestConfig::short_retry())
-        .await
-    {
-        Ok(response) => serde_json::from_str(response.account_data.json().get())
-            .map(Some)
-            .map_err(|e| AppError::Other(e.to_string())),
-        Err(e) if e.client_api_error_kind() == Some(&ErrorKind::NotFound) => Ok(None),
-        Err(e) => Err(AppError::Other(e.to_string())),
-    }
+        .await;
+    let Some(response) = absent_as_none(sent)? else {
+        return Ok(None);
+    };
+    serde_json::from_str(response.account_data.json().get())
+        .map(Some)
+        .map_err(AppError::other)
 }
 
 async fn put_pack_rooms(
@@ -660,9 +660,7 @@ async fn put_pack_rooms(
     event_type: &str,
     content: &Value,
 ) -> Result<()> {
-    let data = Raw::new(content)
-        .map_err(|e| AppError::Other(e.to_string()))?
-        .cast_unchecked();
+    let data = Raw::new(content).map_err(AppError::other)?.cast_unchecked();
     let request = set_global_account_data::v3::Request::new_raw(
         own.clone(),
         GlobalAccountDataEventType::from(event_type),
@@ -673,7 +671,7 @@ async fn put_pack_rooms(
         .with_request_config(RequestConfig::short_retry())
         .await
         .map(drop)
-        .map_err(|e| AppError::Other(e.to_string()))
+        .map_err(AppError::other)
 }
 
 fn referencing(
@@ -903,13 +901,13 @@ impl ImagePackPort for MatrixImagePacks {
         refuse_unpermitted(&room, MessageLikeEventType::Sticker).await?;
         refuse_oversized(&room, &content, STICKER_EVENT_TYPE).await?;
         let content = Raw::new(&content)
-            .map_err(|e| AppError::Other(e.to_string()))?
+            .map_err(AppError::other)?
             .cast_unchecked();
         room.send_queue()
             .send_raw(content, STICKER_EVENT_TYPE.to_owned())
             .await
             .map(|_handle| ())
-            .map_err(|e| AppError::Other(e.to_string()))
+            .map_err(AppError::other)
     }
 
     async fn set_global(&self, pack: &PackId, global: bool) -> Result<()> {

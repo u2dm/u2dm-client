@@ -95,7 +95,7 @@ impl Unpublished {
     }
 }
 
-fn master_key(identity: &UserIdentity) -> String {
+pub(super) fn master_key(identity: &UserIdentity) -> String {
     identity
         .master_key()
         .get_first_key()
@@ -331,10 +331,7 @@ async fn homeserver_holds_identity(client: &Client, own: &UserId) -> Result<bool
 }
 
 async fn create_identity(client: &Client, auth: Option<&AuthAnswer>) -> Result<IdentityOutcome> {
-    let auth_data = auth
-        .map(|auth| uia::auth_data(client, auth))
-        .transpose()?
-        .flatten();
+    let auth_data = uia::answered(client, auth)?;
     let Err(error) = client.encryption().bootstrap_cross_signing(auth_data).await else {
         return Ok(IdentityOutcome::Ready);
     };
@@ -425,13 +422,13 @@ async fn wakes(client: &Client, own: &OwnedUserId) -> Result<SelectAll<Wakes>> {
     let identities = encryption
         .user_identities_stream()
         .await
-        .map_err(|e| AppError::Other(e.to_string()))?
+        .map_err(AppError::other)?
         .map(move |update| wake_if(names(&update.new, &update.changed, &identity_owner)));
     let device_owner = own.clone();
     let devices = encryption
         .devices_stream()
         .await
-        .map_err(|e| AppError::Other(e.to_string()))?
+        .map_err(AppError::other)?
         .map(move |update| wake_if(names(&update.new, &update.changed, &device_owner)));
     let streams: Vec<Wakes> = vec![
         Box::pin(identities),
@@ -492,7 +489,7 @@ async fn assess(
     let identity = encryption
         .get_user_identity(own)
         .await
-        .map_err(|e| AppError::Other(e.to_string()))?
+        .map_err(AppError::other)?
         .filter(|identity| !unpublished.holds(identity));
     let trust = match identity {
         None => SessionTrust::NoIdentity,
@@ -528,7 +525,7 @@ async fn own_device_signed(client: &Client) -> Result<bool> {
         .encryption()
         .get_own_device()
         .await
-        .map_err(|e| AppError::Other(e.to_string()))?
+        .map_err(AppError::other)?
         .is_some_and(|device| device.is_cross_signed_by_owner()))
 }
 

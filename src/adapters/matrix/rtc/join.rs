@@ -160,7 +160,7 @@ impl RtcMembershipPort for MatrixRtcMembership {
         room.send_state_event_raw(CALL_MEMBER_TYPE, &key, json!({}))
             .await
             .map(|_| ())
-            .map_err(|e| AppError::Other(e.to_string()))
+            .map_err(AppError::other)
     }
 
     async fn send_membership(
@@ -173,7 +173,7 @@ impl RtcMembershipPort for MatrixRtcMembership {
         let response = room
             .send_state_event_raw(CALL_MEMBER_TYPE, &key, content)
             .await
-            .map_err(|e| AppError::Other(e.to_string()))?;
+            .map_err(AppError::other)?;
         Ok(SentMembership {
             event_id: response.event_id.to_string(),
             created_ms,

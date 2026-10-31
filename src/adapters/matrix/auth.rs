@@ -13,7 +13,7 @@ use matrix_sdk::media::MediaRetentionPolicy;
 use matrix_sdk::ruma::api::client::session::get_login_types::v3::LoginType;
 use matrix_sdk::ruma::api::error::ErrorKind;
 use matrix_sdk::ruma::serde::Raw;
-use matrix_sdk::ruma::{IdParseError, OwnedDeviceId, OwnedUserId};
+use matrix_sdk::ruma::{OwnedDeviceId, OwnedUserId};
 use matrix_sdk::sliding_sync::{
     Version as SlidingSyncVersion, VersionBuilder as SlidingSyncVersionBuilder,
 };
@@ -59,13 +59,13 @@ async fn open_store(
         .sqlite_store_with_cache_path(&paths.data, &paths.cache, Some(passphrase))
         .build()
         .await
-        .map_err(|e| AppError::Other(e.to_string()))?;
+        .map_err(AppError::other)?;
 
     client
         .media()
         .set_media_retention_policy(MediaRetentionPolicy::new())
         .await
-        .map_err(|e| AppError::Other(e.to_string()))?;
+        .map_err(AppError::other)?;
 
     Ok(client)
 }
@@ -266,7 +266,7 @@ pub(super) async fn login_oauth_start(
         .login(redirect_uri, reuse_device, Some(metadata.into()), None)
         .build()
         .await
-        .map_err(|e| AppError::Other(e.to_string()))?;
+        .map_err(AppError::other)?;
 
     let auth_url = LauncherSafeUrl::sign_in_page(auth_data.url)?;
     *redirect_handle.lock().await = Some(server_handle);
@@ -371,7 +371,7 @@ pub(super) async fn open_session(
         .user_id
         .as_str()
         .try_into()
-        .map_err(|e: IdParseError| AppError::Other(e.to_string()))?;
+        .map_err(AppError::other)?;
     let device_id: OwnedDeviceId = session.device_id.as_str().into();
     let meta = SessionMeta { user_id, device_id };
     let tokens = SessionTokens {
@@ -468,13 +468,13 @@ pub(super) async fn subscribe_session_changes(
 fn client_metadata() -> Result<Raw<ClientMetadata>> {
     let ipv4_uri: Url = format!("http://{}/", Ipv4Addr::LOCALHOST)
         .parse()
-        .map_err(|e: url::ParseError| AppError::Other(e.to_string()))?;
+        .map_err(AppError::other)?;
     let ipv6_uri: Url = format!("http://[{}]/", Ipv6Addr::LOCALHOST)
         .parse()
-        .map_err(|e: url::ParseError| AppError::Other(e.to_string()))?;
+        .map_err(AppError::other)?;
     let client_uri: Url = "https://github.com/u2dm/u2dm-client"
         .parse()
-        .map_err(|e: url::ParseError| AppError::Other(e.to_string()))?;
+        .map_err(AppError::other)?;
 
     let client_uri = Localized::new(client_uri, []);
     let metadata = ClientMetadata {

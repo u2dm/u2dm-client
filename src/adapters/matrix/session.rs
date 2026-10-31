@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use matrix_sdk::Client;
-use matrix_sdk::ruma::{IdParseError, OwnedRoomId};
+use matrix_sdk::ruma::OwnedRoomId;
 use tokio::sync::{RwLock, mpsc};
 
 use super::account::MatrixAccount;
@@ -50,14 +50,7 @@ impl ClientHandle {
     }
 
     pub(super) async fn room(&self, room_id: &RoomId) -> Result<matrix_sdk::Room> {
-        let room_id_parsed: OwnedRoomId = room_id
-            .as_ref()
-            .try_into()
-            .map_err(|e: IdParseError| AppError::Other(e.to_string()))?;
-        self.client()
-            .await?
-            .get_room(&room_id_parsed)
-            .ok_or_else(|| AppError::Other("Room not found".into()))
+        known_room(&self.client().await?, room_id)
     }
 
     async fn release(&self) {
@@ -71,6 +64,13 @@ impl ClientHandle {
         report.merge(self.layout.purge_account(&self.account).await);
         report
     }
+}
+
+pub(super) fn known_room(client: &Client, room_id: &RoomId) -> Result<matrix_sdk::Room> {
+    let room_id_parsed: OwnedRoomId = room_id.as_ref().try_into().map_err(AppError::other)?;
+    client
+        .get_room(&room_id_parsed)
+        .ok_or_else(|| AppError::Other("Room not found".into()))
 }
 
 #[async_trait]

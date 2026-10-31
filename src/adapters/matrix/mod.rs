@@ -12,6 +12,7 @@ mod member_name;
 mod permissions;
 mod preview;
 mod profile;
+mod requests;
 mod room_state;
 mod rooms;
 mod rtc;

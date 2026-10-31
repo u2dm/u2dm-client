@@ -69,7 +69,7 @@ pub(super) async fn follow(room: &Room, alerts_tx: mpsc::Sender<Vec<RoomAlert>>)
         .encryption()
         .user_identities_stream()
         .await
-        .map_err(|e| AppError::Other(e.to_string()))?;
+        .map_err(AppError::other)?;
     let statuses = statuses_of(room).await?;
     let mut watch = RoomWatch {
         statuses,
@@ -95,7 +95,7 @@ async fn statuses_of(room: &Room) -> Result<Statuses> {
     let statuses = room
         .subscribe_to_identity_status_changes()
         .await
-        .map_err(|e| AppError::Other(e.to_string()))?;
+        .map_err(AppError::other)?;
     Ok(Box::pin(statuses))
 }
 

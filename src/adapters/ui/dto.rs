@@ -55,7 +55,7 @@ use crate::domain::space_index::{ChildKind, SpaceChild};
 use crate::domain::timeline::EnrichmentDelta;
 use crate::domain::user_info::{DeviceTrust, Pronouns, UserDevice, UserProfile};
 use crate::ports::media::MediaCache;
-use crate::util::format_bytes;
+use crate::util::{format_bytes, saturating_i32};
 
 media_states!(define_ui_enum MediaState;);
 media_states!(define_ui_names MediaState;);
@@ -714,10 +714,6 @@ pub struct EnrichUpdate {
     pub pronouns: Option<Vec<SharedString>>,
 }
 
-fn count<T: TryInto<i32>>(value: T) -> i32 {
-    value.try_into().unwrap_or(i32::MAX)
-}
-
 fn reactor_avatar_dto(
     item: &TimelineItemKey,
     reactor: &Reactor,
@@ -812,12 +808,12 @@ fn reaction_dto(
         label,
         art,
         image,
-        count: count(reaction.count()),
+        count: saturating_i32(reaction.count()),
         mine: reaction.mine,
         send: reaction.send,
         overflow: false,
         reactors: SharedString::from(reactors),
-        hidden_reactors: count(hidden),
+        hidden_reactors: saturating_i32(hidden),
         avatars: reactor_avatar_dtos(item, reaction, media),
     }
 }
@@ -828,7 +824,7 @@ fn overflow_dto(hidden: usize) -> ReactionDto {
         label: SharedString::new(),
         art: EmojiArt::Text,
         image: None,
-        count: count(hidden),
+        count: saturating_i32(hidden),
         mine: false,
         send: ReactionSend::default(),
         overflow: true,
@@ -927,11 +923,11 @@ fn poll_answer_dto(
         return sealed;
     }
     PollAnswerDto {
-        count: count(answer.votes()),
+        count: saturating_i32(answer.votes()),
         share: answer.share(turnout),
         leading: !poll.is_open() && poll.is_leading(answer),
         voters: SharedString::from(voters),
-        hidden_voters: count(hidden_voters),
+        hidden_voters: saturating_i32(hidden_voters),
         ..sealed
     }
 }
@@ -941,9 +937,9 @@ fn apply_poll(dto: &mut MessageDto, poll: &Poll, message: &TimelineMessage) {
     let turnout = poll.voter_count();
     dto.poll_phase = poll_phase(poll);
     dto.poll_editable = sent && message.is_own && poll.editable;
-    dto.poll_choices = count(poll.choice.max().min(poll.answers.len()));
+    dto.poll_choices = saturating_i32(poll.choice.max().min(poll.answers.len()));
     dto.poll_voters = if poll.reveals_results() {
-        count(turnout)
+        saturating_i32(turnout)
     } else {
         0
     };
@@ -1204,7 +1200,7 @@ fn body_line_dto(
             .map(|piece| body_piece_dto(item, piece, body_emoji, media))
             .collect(),
         words: line.words.clone(),
-        gaps: count(line.gaps),
+        gaps: saturating_i32(line.gaps),
     }
 }
 
@@ -1323,8 +1319,8 @@ pub fn message_to_dto(m: &TimelineMessage, pinned: bool, media: &dyn MediaCache)
         shield_reason: shield_reason(m.shield),
         decryption_failure: decryption_failure(&m.body),
         readers: SharedString::from(readers),
-        hidden_readers: count(hidden_readers),
-        reader_count: count(m.read_by.total),
+        hidden_readers: saturating_i32(hidden_readers),
+        reader_count: saturating_i32(m.read_by.total),
         has_reply: reply.is_some(),
         reply_event_id: SharedString::from(reply.map_or("", |r| r.event_id.as_str())),
         reply_sender: reply
@@ -1336,13 +1332,7 @@ pub fn message_to_dto(m: &TimelineMessage, pinned: bool, media: &dyn MediaCache)
         service_target: SharedString::from(
             m.body.service().map(service_target).unwrap_or_default(),
         ),
-        service_reason: SharedString::from(
-            m.body
-                .service()
-                .and_then(ServiceEvent::reason)
-                .map(isolated)
-                .unwrap_or_default(),
-        ),
+        service_reason: service_reason(&m.body),
         image_width: 0,
         image_height: 0,
         duration: SharedString::new(),
@@ -1376,6 +1366,15 @@ pub fn message_to_dto(m: &TimelineMessage, pinned: bool, media: &dyn MediaCache)
     dto.needs_media = thumbnail_undecoded || avatar_undecoded;
     record_media_need(&item, thumbnail_path.as_deref(), avatar_path.as_deref());
     dto
+}
+
+fn service_reason(body: &MessageBody) -> SharedString {
+    SharedString::from(
+        body.service()
+            .and_then(ServiceEvent::reason)
+            .map(isolated)
+            .unwrap_or_default(),
+    )
 }
 
 fn apply_sender_avatar(
@@ -1444,7 +1443,7 @@ pub fn room_to_dto(r: &Room, media: &dyn MediaCache) -> RoomDto {
         members: if r.is_direct {
             0
         } else {
-            count(r.member_count)
+            saturating_i32(r.member_count)
         },
         alert: r.alert(),
         mention: r.mention(),
@@ -1515,7 +1514,7 @@ pub fn record_room_avatar_need(r: &Room, media: &dyn MediaCache) -> ShownAvatar 
 
 pub fn heading_to_dto(id: &str, kind: RoomRowKind, invites: usize) -> RoomDto {
     RoomDto {
-        invite_count: count(invites),
+        invite_count: saturating_i32(invites),
         ..bare_row_dto(id, kind)
     }
 }
@@ -1614,7 +1613,7 @@ pub fn space_match_to_dto(m: &SpaceMatch, media: &dyn MediaCache) -> RoomDto {
         alert: m.flags.alert,
         mention: m.flags.mention,
         hint: m.flags.hint,
-        space_rooms: count(m.rooms),
+        space_rooms: saturating_i32(m.rooms),
         space_parent: SharedString::from(m.parent.as_deref().unwrap_or_default()),
         has_avatar: avatar.is_some(),
         avatar,
@@ -1703,7 +1702,7 @@ pub fn space_child_to_dto(row: &SpaceIndexRow, media: &dyn MediaCache) -> SpaceC
     let child = &row.child;
     let (is_space, children) = match child.kind {
         ChildKind::Room => (false, 0),
-        ChildKind::Space { children } => (true, count(children)),
+        ChildKind::Space { children } => (true, saturating_i32(children)),
     };
     let avatar = space_child_avatar_path(child, media).and_then(|path| peek_avatar(&path));
     SpaceChildDto {
@@ -1712,7 +1711,7 @@ pub fn space_child_to_dto(row: &SpaceIndexRow, media: &dyn MediaCache) -> SpaceC
         initial: SharedString::from(avatar_initials(&child.name)),
         color_index: avatar_color_index(child.id.as_ref()),
         detail: SharedString::from(space_child_detail(child)),
-        members: count(child.member_count),
+        members: saturating_i32(child.member_count),
         is_space,
         children,
         access: row.access,
@@ -1887,7 +1886,7 @@ pub fn call_tile_to_dto(tile: &CallTile) -> CallTileDto {
 }
 
 fn hand_position(hand: Option<usize>) -> i32 {
-    hand.map_or(0, |position| i32::try_from(position).unwrap_or(i32::MAX))
+    hand.map_or(0, saturating_i32)
 }
 
 fn reaction_emoji(reaction: Option<&CallReaction>) -> SharedString {
@@ -1914,7 +1913,7 @@ pub fn call_person_to_dto(person: &CallPerson) -> CallPersonDto {
         has_avatar: false,
         avatar: None,
         you: person.you,
-        devices: i32::try_from(person.devices).unwrap_or(i32::MAX),
+        devices: saturating_i32(person.devices),
         muted: person.muted,
         muted_for_you: person.muted_for_you,
         hand: hand_position(person.hand),
@@ -1951,9 +1950,7 @@ pub fn call_face_to_dto(face: &CallFace) -> CallPersonDto {
 }
 
 pub fn call_connection_rows(servers: &[ServerDetails]) -> Vec<CallConnectionDto> {
-    let known =
-        |value: Option<u32>| value.map_or(-1, |value| i32::try_from(value).unwrap_or(i32::MAX));
-    let pixels = |value: u32| i32::try_from(value).unwrap_or(i32::MAX);
+    let known = |value: Option<u32>| value.map_or(-1, saturating_i32);
     let mut rows = Vec::new();
     for server in servers {
         rows.push(CallConnectionDto {
@@ -1983,8 +1980,8 @@ pub fn call_connection_rows(servers: &[ServerDetails]) -> Vec<CallConnectionDto>
                 received_kbps: -1,
                 loss_permille: -1,
                 round_trip_ms: -1,
-                width: pixels(size.width),
-                height: pixels(size.height),
+                width: saturating_i32(size.width),
+                height: saturating_i32(size.height),
                 name: SharedString::new(),
             });
         }
@@ -2000,8 +1997,8 @@ pub fn call_connection_rows(servers: &[ServerDetails]) -> Vec<CallConnectionDto>
                 received_kbps: -1,
                 loss_permille: -1,
                 round_trip_ms: -1,
-                width: pixels(size.width),
-                height: pixels(size.height),
+                width: saturating_i32(size.width),
+                height: saturating_i32(size.height),
                 name: SharedString::from(name.shown()),
             });
         }

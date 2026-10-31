@@ -5,6 +5,7 @@ use std::sync::Arc;
 use super::session::with_session;
 use crate::domain::emote::Emote;
 use crate::domain::image_pack::{ImagePack, PackId, PackImage, PackTitle};
+use crate::util::saturating_i32;
 
 pub const NO_WORD: i32 = -1;
 
@@ -56,7 +57,7 @@ pub fn place_picked(
     });
     match token {
         Some(token) => place(text, caret, &token, replaces_word),
-        None => (text.to_owned(), offset(clamped(text, caret))),
+        None => (text.to_owned(), saturating_i32(clamped(text, caret))),
     }
 }
 
@@ -219,7 +220,7 @@ pub fn word_at(text: &str, caret: i32) -> (i32, String) {
 
 pub fn place(text: &str, caret: i32, token: &str, replaces_word: bool) -> (String, i32) {
     let caret = clamped(text, caret);
-    let (start, end) = match emote_word(text, offset(caret)).filter(|_| replaces_word) {
+    let (start, end) = match emote_word(text, saturating_i32(caret)).filter(|_| replaces_word) {
         Some(word) => {
             let after = text.get(caret..).unwrap_or_default();
             let run = after
@@ -246,7 +247,7 @@ pub fn place(text: &str, caret: i32, token: &str, replaces_word: bool) -> (Strin
     placed.push_str(trail);
     placed.push_str(rest);
     let caret = before.len() + lead.len() + token.len() + trail.len() + skipped;
-    (placed, offset(caret))
+    (placed, saturating_i32(caret))
 }
 
 fn is_query_char(ch: char) -> bool {
@@ -261,6 +262,3 @@ fn clamped(text: &str, caret: i32) -> usize {
     caret
 }
 
-fn offset(caret: usize) -> i32 {
-    i32::try_from(caret).unwrap_or(i32::MAX)
-}

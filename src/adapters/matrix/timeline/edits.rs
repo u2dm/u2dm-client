@@ -27,6 +27,7 @@ use super::{
 use crate::adapters::body_emoji;
 use crate::adapters::draft_size::MESSAGE_TYPE;
 use crate::adapters::markdown::{self, Composed};
+use crate::adapters::matrix::requests::in_time;
 use crate::domain::emote::Emote;
 use crate::domain::message::{EditKind, EditTarget, MessageEdit};
 use crate::error::{AppError, Result};
@@ -36,8 +37,7 @@ const SANITIZER_MODE: HtmlSanitizerMode = HtmlSanitizerMode::Compat;
 pub(super) async fn edit(room: &Room, edit: &MessageEdit) -> Result<()> {
     match &edit.target {
         EditTarget::Sent(event_id) => {
-            let target = OwnedEventId::try_from(event_id.as_str())
-                .map_err(|e| AppError::Other(e.to_string()))?;
+            let target = OwnedEventId::try_from(event_id.as_str()).map_err(AppError::other)?;
             let content = replacement(room, &target, edit).await?;
             queue(room, content).await
         }
@@ -172,8 +172,9 @@ async fn fetched_with_replacements(
     room: &Room,
     target: &EventId,
 ) -> Result<(TimelineEvent, Vec<TimelineEvent>)> {
-    timeout(
+    in_time(
         PRE_QUEUE_LOOKUP_WAIT,
+        format!("the edited event {target} did not arrive in time"),
         room.load_or_fetch_event_with_relations(
             target,
             Some(vec![RelationType::Replacement]),
@@ -181,8 +182,6 @@ async fn fetched_with_replacements(
         ),
     )
     .await
-    .map_err(|_| AppError::Other(format!("the edited event {target} did not arrive in time")))?
-    .map_err(|e| AppError::Other(e.to_string()))
 }
 
 fn revised(msgtype: MessageType, text: &str, composed: &Composed) -> Option<MessageType> {
@@ -309,7 +308,7 @@ async fn edit_queued(room: &Room, local_id: &str, edit: &MessageEdit) -> Result<
         .send_queue()
         .subscribe()
         .await
-        .map_err(|e| AppError::Other(e.to_string()))?;
+        .map_err(AppError::other)?;
     let (queued, handle) = echoes
         .iter()
         .filter(|echo| echo.transaction_id.as_str() == transaction)
@@ -343,7 +342,7 @@ async fn edit_queued(room: &Room, local_id: &str, edit: &MessageEdit) -> Result<
             .edit_media_caption(caption, formatted, revised.mentions)
             .await
     }
-    .map_err(|e| AppError::Other(e.to_string()))?;
+    .map_err(AppError::other)?;
     if replaced {
         Ok(())
     } else {
@@ -384,13 +383,19 @@ fn latest_version(
 fn version_html(msgtype: &MessageType) -> Option<&str> {
     let formatted = match msgtype {
         MessageType::Text(text) => text.formatted.as_ref(),
-        MessageType::Image(image) => image.formatted_caption(),
-        MessageType::Video(video) => video.formatted_caption(),
-        MessageType::Audio(audio) => audio.formatted_caption(),
-        MessageType::File(file) => file.formatted_caption(),
-        _ => None,
+        captioned => caption_of(captioned)?.1,
     }?;
     (formatted.format == MessageFormat::Html).then_some(formatted.body.as_str())
+}
+
+fn caption_of(msgtype: &MessageType) -> Option<(Option<&str>, Option<&FormattedBody>)> {
+    match msgtype {
+        MessageType::Image(image) => Some((image.caption(), image.formatted_caption())),
+        MessageType::Video(video) => Some((video.caption(), video.formatted_caption())),
+        MessageType::Audio(audio) => Some((audio.caption(), audio.formatted_caption())),
+        MessageType::File(file) => Some((file.caption(), file.formatted_caption())),
+        _ => None,
+    }
 }
 
 fn with_target_emotes(picked: &[Emote], target_html: Option<&str>) -> Vec<Emote> {
@@ -436,23 +441,10 @@ pub(super) fn replaced_text(content: &Raw<AnyMessageLikeEventContent>) -> Option
             EditKind::Message,
             composer_form(&text.body, text.formatted.as_ref()),
         ),
-        MessageType::Image(image) => (
-            EditKind::Caption,
-            caption_form(image.caption(), image.formatted_caption()),
-        ),
-        MessageType::Video(video) => (
-            EditKind::Caption,
-            caption_form(video.caption(), video.formatted_caption()),
-        ),
-        MessageType::Audio(audio) => (
-            EditKind::Caption,
-            caption_form(audio.caption(), audio.formatted_caption()),
-        ),
-        MessageType::File(file) => (
-            EditKind::Caption,
-            caption_form(file.caption(), file.formatted_caption()),
-        ),
-        _ => return None,
+        captioned => {
+            let (caption, formatted) = caption_of(captioned)?;
+            (EditKind::Caption, caption_form(caption, formatted))
+        }
     };
     Some(MessageEdit {
         target: EditTarget::Sent(replacement.event_id.to_string()),

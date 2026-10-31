@@ -5,7 +5,7 @@ use async_trait::async_trait;
 use matrix_sdk::Client;
 use matrix_sdk::ruma::api::client::space::{SpaceHierarchyRoomsChunk, get_hierarchy};
 use matrix_sdk::ruma::room::RoomType;
-use matrix_sdk::ruma::{IdParseError, OwnedRoomId, OwnedServerName, RoomOrAliasId, UInt};
+use matrix_sdk::ruma::{OwnedRoomId, OwnedServerName, RoomOrAliasId, UInt};
 
 use super::build::space_child_vias;
 use crate::adapters::matrix::media::fetch_avatar_thumbnails;
@@ -38,10 +38,7 @@ impl SpaceIndexPort for MatrixSpaceIndex {
         let mut request = get_hierarchy::v1::Request::new(space.room_id().to_owned());
         request.max_depth = Some(UInt::from(DIRECT_CHILDREN_ONLY));
         request.from = from.map(ToOwned::to_owned);
-        let response = client
-            .send(request)
-            .await
-            .map_err(|e| AppError::Other(e.to_string()))?;
+        let response = client.send(request).await.map_err(AppError::other)?;
 
         let mut vias: Vias = space_child_vias(&space).await.into_iter().collect();
         let (own, children): (Vec<_>, Vec<_>) = response
@@ -63,10 +60,7 @@ impl SpaceIndexPort for MatrixSpaceIndex {
 
     async fn join(&self, room_id: &RoomId, via: &[String]) -> Result<()> {
         let client = self.matrix.client().await?;
-        let id: OwnedRoomId = room_id
-            .as_ref()
-            .try_into()
-            .map_err(|e: IdParseError| AppError::Other(e.to_string()))?;
+        let id: OwnedRoomId = room_id.as_ref().try_into().map_err(AppError::other)?;
         let servers: Vec<OwnedServerName> = via
             .iter()
             .filter_map(|server| server.as_str().try_into().ok())
@@ -74,7 +68,7 @@ impl SpaceIndexPort for MatrixSpaceIndex {
         client
             .join_room_by_id_or_alias(<&RoomOrAliasId>::from(&*id), &servers)
             .await
-            .map_err(|e| AppError::Other(e.to_string()))?;
+            .map_err(AppError::other)?;
         Ok(())
     }
 

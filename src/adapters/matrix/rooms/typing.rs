@@ -8,14 +8,14 @@ use matrix_sdk::ruma::events::typing::SyncTypingEvent;
 use matrix_sdk::ruma::{OwnedRoomId, OwnedUserId};
 use matrix_sdk::{Client, Room};
 use tokio::sync::{mpsc, watch};
-use tokio::time::timeout;
 use tracing::Instrument;
 
 use crate::adapters::matrix::member_name::named_member;
+use crate::adapters::matrix::requests::in_time;
 use crate::adapters::matrix::session::{ClientHandle, SessionResource};
 use crate::domain::member_name::NamedUser;
 use crate::domain::room::RoomId;
-use crate::error::{AppError, Result};
+use crate::error::Result;
 use crate::ports::matrix::TypingPort;
 
 const NOTICE_LIFETIME: Duration = Duration::from_secs(4);
@@ -88,13 +88,13 @@ impl TypingPort for MatrixTyping {
 
     async fn notify_typing(&self, room_id: &RoomId, typing: bool) -> Result<()> {
         let room = self.matrix.room(room_id).await?;
-        timeout(NOTICE_LIFETIME, room.typing_notice(typing))
-            .instrument(tracing::debug_span!("typing", %room_id, typing))
-            .await
-            .map_err(|_| {
-                AppError::Other("the homeserver took longer than the notice lasts".into())
-            })?
-            .map_err(|e| AppError::Other(e.to_string()))
+        in_time(
+            NOTICE_LIFETIME,
+            "the homeserver took longer than the notice lasts",
+            room.typing_notice(typing),
+        )
+        .instrument(tracing::debug_span!("typing", %room_id, typing))
+        .await
     }
 }
 

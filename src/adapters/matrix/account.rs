@@ -15,7 +15,7 @@ use tokio::sync::{Notify, mpsc};
 use url::Url;
 
 use super::session::ClientHandle;
-use super::uia::{auth_data, guarded, refused_as_weak};
+use super::uia::{answered, guarded, refused_as_weak};
 use super::user_info::{device_trust, next_wake, own_user, trust_wakes};
 use crate::domain::capabilities::{
     AVATAR_FIELD, AccountApi, AccountFacts, AccountPage, Capabilities, DISPLAY_NAME_FIELD,
@@ -115,10 +115,7 @@ impl AccountPort for MatrixAccount {
     ) -> Result<Guarded> {
         let client = self.matrix.client().await?;
         let mut request = delete_devices::v3::Request::new(vec![OwnedDeviceId::from(device_id)]);
-        request.auth = auth
-            .map(|auth| auth_data(&client, auth))
-            .transpose()?
-            .flatten();
+        request.auth = answered(&client, auth)?;
         let sent = client
             .send(request)
             .with_request_config(RequestConfig::short_retry())
@@ -137,10 +134,7 @@ impl AccountPort for MatrixAccount {
         let client = self.matrix.client().await?;
         let mut request = change_password::v3::Request::new(password.expose().to_owned());
         request.logout_devices = sign_out_others;
-        request.auth = auth
-            .map(|auth| auth_data(&client, auth))
-            .transpose()?
-            .flatten();
+        request.auth = answered(&client, auth)?;
         let sent = client
             .send(request)
             .with_request_config(RequestConfig::short_retry())
@@ -158,10 +152,7 @@ impl AccountPort for MatrixAccount {
         let client = self.matrix.client().await?;
         let mut request = deactivate::v3::Request::new();
         request.erase = erase;
-        request.auth = auth
-            .map(|auth| auth_data(&client, auth))
-            .transpose()?
-            .flatten();
+        request.auth = answered(&client, auth)?;
         let sent = client
             .send(request)
             .with_request_config(RequestConfig::short_retry().disable_retry())
@@ -322,7 +313,7 @@ async fn own_sessions(client: &Client, own: &OwnedUserId) -> Result<OwnSessions>
         .encryption()
         .get_user_devices(own)
         .await
-        .map_err(|e| AppError::Other(e.to_string()))?;
+        .map_err(AppError::other)?;
     let this_device = client
         .device_id()
         .map(ToString::to_string)

@@ -5,7 +5,6 @@ use std::time::Duration;
 use async_trait::async_trait;
 use matrix_sdk::config::RequestConfig;
 use matrix_sdk::ruma::api::client::state::get_state_event_for_key;
-use matrix_sdk::ruma::api::error::ErrorKind;
 use matrix_sdk::ruma::events::StateEventType;
 use matrix_sdk::ruma::events::room::member::{MembershipState, RoomMemberEventContent};
 use matrix_sdk::ruma::events::room::power_levels::RoomPowerLevels;
@@ -14,6 +13,7 @@ use matrix_sdk::{Client, Room, RoomState};
 use tokio::time::timeout;
 
 use crate::adapters::matrix::permissions::member_role;
+use crate::adapters::matrix::requests::{absent_as_none, in_time};
 use crate::adapters::matrix::session::ClientHandle;
 use crate::domain::departure::AdminStanding;
 use crate::domain::room::RoomId;
@@ -40,9 +40,7 @@ impl LeavePort for MatrixLeaves {
         let client = self.matrix.client().await?;
         let room = self.matrix.room(room_id).await?;
         let versions = versions_left_with(&client, &room);
-        room.leave()
-            .await
-            .map_err(|e| AppError::Other(e.to_string()))?;
+        room.leave().await.map_err(AppError::other)?;
         if forgets_on_leave(&client).await {
             tracing::info!(%room_id, "left the room; the homeserver forgets it by itself");
             return Ok(());
@@ -55,16 +53,14 @@ impl LeavePort for MatrixLeaves {
 
     async fn forget(&self, room_id: &RoomId) -> Result<()> {
         let room = self.matrix.room(room_id).await?;
-        match timeout(FORGET_WAIT, room.forget()).await {
-            Ok(Ok(())) => {
-                tracing::info!(%room_id, "forgot the room you were removed from");
-                Ok(())
-            }
-            Ok(Err(e)) => Err(AppError::Other(e.to_string())),
-            Err(_) => Err(AppError::Other(
-                "the homeserver took too long to forget the room".to_owned(),
-            )),
-        }
+        in_time(
+            FORGET_WAIT,
+            "the homeserver took too long to forget the room",
+            room.forget(),
+        )
+        .await?;
+        tracing::info!(%room_id, "forgot the room you were removed from");
+        Ok(())
     }
 
     async fn admin_standing(&self, room_id: &RoomId) -> Result<AdminStanding> {
@@ -159,18 +155,17 @@ async fn membership_of(room: &Room, user: &UserId) -> Result<Option<MembershipSt
         StateEventType::RoomMember,
         user.to_string(),
     );
-    match room
+    let sent = room
         .client()
         .send(request)
         .with_request_config(RequestConfig::short_retry())
-        .await
-    {
-        Ok(response) => response
-            .into_content()
-            .deserialize_as_unchecked::<RoomMemberEventContent>()
-            .map(|content| Some(content.membership))
-            .map_err(|e| AppError::Other(e.to_string())),
-        Err(e) if e.client_api_error_kind() == Some(&ErrorKind::NotFound) => Ok(None),
-        Err(e) => Err(AppError::Other(e.to_string())),
-    }
+        .await;
+    let Some(response) = absent_as_none(sent)? else {
+        return Ok(None);
+    };
+    response
+        .into_content()
+        .deserialize_as_unchecked::<RoomMemberEventContent>()
+        .map(|content| Some(content.membership))
+        .map_err(AppError::other)
 }

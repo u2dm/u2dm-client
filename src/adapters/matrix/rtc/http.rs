@@ -9,7 +9,8 @@ const BODY_MAX_BYTES: usize = 64 * 1024;
 pub(super) const REQUEST_TIMEOUT: Duration = Duration::from_secs(10);
 const JSON: &str = "application/json";
 const UNKNOWN_TOKEN: &str = "M_UNKNOWN_TOKEN";
-const UNRECOGNIZED: &str = "M_UNRECOGNIZED";
+pub(super) const UNRECOGNIZED: &str = "M_UNRECOGNIZED";
+pub(super) const NOT_FOUND: &str = "M_NOT_FOUND";
 
 #[derive(Debug)]
 pub(super) struct Reply {
@@ -130,9 +131,4 @@ pub(super) fn homeserver_url(
         .map_err(|()| format!("{path} takes no path segments"))?
         .extend(segments);
     Ok(url.into())
-}
-
-pub(super) fn host_of(url: &str) -> &str {
-    let rest = url.split_once("://").map_or(url, |(_, rest)| rest);
-    rest.split(['/', '?', '#']).next().unwrap_or(rest)
 }

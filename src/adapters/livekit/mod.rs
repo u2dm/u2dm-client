@@ -77,7 +77,7 @@ impl CallMediaPort for LiveKitMedia {
     async fn list_devices(&self) -> Result<DeviceLists> {
         let listing = spawn_blocking(|| PlatformAudio::new().map(|audio| Listing::read(&audio)))
             .await
-            .map_err(|e| AppError::Other(e.to_string()))?;
+            .map_err(AppError::other)?;
         listing
             .map(Listing::into_lists)
             .map_err(|e| AppError::Other(format!("the audio devices did not open: {e}")))
@@ -110,7 +110,7 @@ impl CallMediaPort for LiveKitMedia {
     ) -> Result<Box<dyn MediaSession>> {
         let audio = spawn_blocking(PlatformAudio::new)
             .await
-            .map_err(|e| AppError::Other(e.to_string()))?;
+            .map_err(AppError::other)?;
         let audio = match audio {
             Ok(audio) => audio,
             Err(e) => {
@@ -150,9 +150,4 @@ fn tell_screen_refusal(events_tx: mpsc::UnboundedSender<MediaEvent>) {
         }
         .in_current_span(),
     );
-}
-
-fn host_of(url: &str) -> &str {
-    let rest = url.split_once("://").map_or(url, |(_, rest)| rest);
-    rest.split(['/', '?', '#']).next().unwrap_or(rest)
 }

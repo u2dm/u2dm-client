@@ -3,10 +3,9 @@ use std::collections::HashMap;
 use std::rc::Rc;
 use std::sync::Arc;
 
-use slint::{
-    ComponentHandle, Image, Model, ModelRc, Rgb8Pixel, SharedPixelBuffer, SharedString, StyledText,
-    VecModel,
-};
+use slint::{ComponentHandle, Image, Model, ModelRc, SharedString, StyledText, VecModel};
+#[cfg(feature = "video")]
+use slint::{Rgb8Pixel, SharedPixelBuffer};
 use tokio::runtime::Runtime;
 use tokio::sync::{mpsc, watch};
 use u2dm_ui::{
@@ -338,6 +337,7 @@ impl UiProps for AppWindow {
     #[cfg(feature = "demo")]
     enum_props!(impl_enum_getter);
 
+    #[cfg(feature = "video")]
     fn apply_video_frame(&self, buffer: SharedPixelBuffer<Rgb8Pixel>) {
         let video = self.global::<VideoView>();
         video.set_frame(Image::from_rgb8(buffer));
@@ -851,7 +851,6 @@ impl SlintUiAdapter {
         Ok(Self { window })
     }
 
-    #[allow(clippy::unnecessary_wraps)]
     fn bind_video_callbacks(win: &AppWindow) {
         let weak = win.as_weak();
         actions(win).on_toggle_video(move || {

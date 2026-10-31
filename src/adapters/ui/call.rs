@@ -29,7 +29,7 @@ use crate::domain::call::video::{FeedId, Framing};
 use crate::domain::member_name::NamedUser;
 use crate::ports::media::MediaCache;
 use crate::ports::notifier::{NotifierPort, RingNotice};
-use crate::util::unix_now_ms;
+use crate::util::{saturating_i32, unix_now_ms};
 
 const ELAPSED_TICK: Duration = Duration::from_secs(1);
 const SECONDS_PER_MINUTE: u64 = 60;
@@ -110,10 +110,7 @@ fn apply_notice(w: &impl UiProps, notice: Option<&CallNotice>) {
         _ => (String::new(), 0),
     };
     w.set_string(StringProp::NoticeName, SharedString::from(name));
-    w.set_int(
-        IntProp::NoticeOthers,
-        i32::try_from(others).unwrap_or(i32::MAX),
-    );
+    w.set_int(IntProp::NoticeOthers, saturating_i32(others));
     w.set_call_notice(call_notice_mark(notice));
 }
 
@@ -152,10 +149,7 @@ fn apply_sheet(w: &impl UiProps, sheet: Option<&CallSheetView>) {
     w.set_call_sheet_offer(call_offer_mark(Some(sheet.offer)));
     w.set_bool(BoolProp::SheetDirect, sheet.direct);
     w.set_bool(BoolProp::SheetVideo, sheet.video);
-    w.set_int(
-        IntProp::SheetPeople,
-        i32::try_from(sheet.people).unwrap_or(i32::MAX),
-    );
+    w.set_int(IntProp::SheetPeople, saturating_i32(sheet.people));
     apply_names(
         w,
         &sheet.others,
@@ -274,10 +268,7 @@ fn apply_active<B: UiBackend>(
         StringProp::ActiveRoomName,
         SharedString::from(&active.room_name),
     );
-    w.set_int(
-        IntProp::ActiveCall,
-        i32::try_from(active.call).unwrap_or(i32::MAX),
-    );
+    w.set_int(IntProp::ActiveCall, saturating_i32(active.call));
     w.set_bool(BoolProp::ActiveRoomAlert, active.room_unread.alert);
     w.set_bool(BoolProp::ActiveRoomMention, active.room_unread.mention);
     w.set_bool(BoolProp::ActiveRoomHint, active.room_unread.hint);
@@ -342,14 +333,11 @@ fn apply_stage<B: UiBackend>(
     w.set_bool(BoolProp::SharePreview, active.share_preview);
     w.set_int(
         IntProp::ShareChangeCancelled,
-        i32::try_from(active.share_change_cancelled).unwrap_or(i32::MAX),
+        saturating_i32(active.share_change_cancelled),
     );
     w.set_bool(BoolProp::StageChosen, active.stage_chosen);
     w.set_string(StringProp::FirstSharer, shown_name(active.shares.first()));
-    w.set_int(
-        IntProp::ShareCount,
-        i32::try_from(active.shares.len()).unwrap_or(i32::MAX),
-    );
+    w.set_int(IntProp::ShareCount, saturating_i32(active.shares.len()));
     w.set_string(
         StringProp::OfferedShare,
         shown_name(active.offered_share.as_ref()),
@@ -425,10 +413,7 @@ fn shown_name(who: Option<&NamedUser>) -> SharedString {
 
 fn apply_hands(w: &impl UiProps, active: &ActiveCall) {
     w.set_call_hand(active.hand);
-    w.set_int(
-        IntProp::HandsRaised,
-        i32::try_from(active.hands_raised).unwrap_or(i32::MAX),
-    );
+    w.set_int(IntProp::HandsRaised, saturating_i32(active.hands_raised));
     w.set_string(
         StringProp::HandNews,
         shown_name(active.hand_news.as_ref().map(|news| &news.who)),
@@ -438,7 +423,7 @@ fn apply_hands(w: &impl UiProps, active: &ActiveCall) {
         active
             .hand_news
             .as_ref()
-            .map_or(0, |news| i32::try_from(news.serial).unwrap_or(i32::MAX)),
+            .map_or(0, |news| saturating_i32(news.serial)),
     );
 }
 
@@ -463,16 +448,13 @@ fn apply_reactions(w: &impl UiProps, active: &ActiveCall) {
     );
     w.set_int(
         IntProp::ReactionNewsSerial,
-        news.map_or(0, |news| i32::try_from(news.serial).unwrap_or(i32::MAX)),
+        news.map_or(0, |news| saturating_i32(news.serial)),
     );
 }
 
 fn apply_share_news(w: &impl UiProps, news: Option<&ShareNews>, who: StringProp, serial: IntProp) {
     w.set_string(who, shown_name(news.map(|news| &news.who)));
-    w.set_int(
-        serial,
-        news.map_or(0, |news| i32::try_from(news.serial).unwrap_or(i32::MAX)),
-    );
+    w.set_int(serial, news.map_or(0, |news| saturating_i32(news.serial)));
 }
 
 fn shown_devices(call: &CallView) -> Option<&CallDevices> {
@@ -536,10 +518,7 @@ fn apply_device_news(w: &impl UiProps, news: Option<&DeviceNews>) {
     w.set_device_news_kind(news.kind);
     w.set_device_news_trouble(news.trouble);
     w.set_string(StringProp::DeviceNewsName, SharedString::from(&news.name));
-    w.set_int(
-        IntProp::DeviceNewsSerial,
-        i32::try_from(news.serial).unwrap_or(i32::MAX),
-    );
+    w.set_int(IntProp::DeviceNewsSerial, saturating_i32(news.serial));
 }
 
 fn device_model<B: UiBackend>(models: &Models<B>, kind: DeviceKind) -> &VecModel<B::CallDevice> {
@@ -676,10 +655,7 @@ fn apply_names(
     };
     w.set_string(first, shown(0));
     w.set_string(second, shown(1));
-    w.set_int(
-        more,
-        i32::try_from(names.len().saturating_sub(2)).unwrap_or(i32::MAX),
-    );
+    w.set_int(more, saturating_i32(names.len().saturating_sub(2)));
 }
 
 const fn framing(kind: TileKind) -> Framing {
@@ -750,10 +726,7 @@ fn apply_here<B: UiBackend>(w: &B::Window, here: Option<&RoomCallSummary>, media
         StringProp::HereRoomId,
         SharedString::from(here.room_id.as_ref()),
     );
-    w.set_int(
-        IntProp::HerePeople,
-        i32::try_from(here.people).unwrap_or(i32::MAX),
-    );
+    w.set_int(IntProp::HerePeople, saturating_i32(here.people));
     w.set_bool(BoolProp::HereVideo, here.video);
     w.set_bool(BoolProp::HereJoined, here.joined_by_you);
 }
@@ -829,10 +802,7 @@ fn show_card(w: &impl UiProps, ring: &RingView) {
     if let Some(refusal) = ring.refusal {
         w.set_ring_refusal(refusal);
     }
-    w.set_int(
-        IntProp::RingSerial,
-        i32::try_from(ring.serial).unwrap_or(i32::MAX),
-    );
+    w.set_int(IntProp::RingSerial, saturating_i32(ring.serial));
     w.set_bool(BoolProp::RingVisible, true);
 }
 

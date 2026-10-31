@@ -4273,7 +4273,7 @@ async fn send_update(timeline_tx: &mpsc::Sender<TimelineUpdate>, update: Timelin
 async fn demo_oauth_start() -> Result<OAuthLoginData> {
     let page = login::sign_in_page().ok_or_else(|| unavailable("OAuth login"))?;
     login::pause().await;
-    let page = Url::parse(page).map_err(|e| AppError::Other(e.to_string()))?;
+    let page = Url::parse(page).map_err(AppError::other)?;
     Ok(OAuthLoginData {
         auth_url: LauncherSafeUrl::sign_in_page(page)?,
     })

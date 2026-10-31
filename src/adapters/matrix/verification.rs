@@ -542,19 +542,12 @@ async fn verify_this_session(
     verification_request: &Mutex<Option<VerificationRequest>>,
     outgoing: &Mutex<Option<mpsc::Sender<VerificationRequest>>>,
 ) -> Result<()> {
-    if verification_request.lock().await.is_some() {
-        return Err(AppError::Other("a verification is already running".into()));
-    }
-    let queue = outgoing
-        .lock()
-        .await
-        .clone()
-        .ok_or_else(|| AppError::Other("verification requests are not followed".into()))?;
+    let queue = request_queue(verification_request, outgoing).await?;
     let encryption = client.encryption();
     let can_answer = encryption
         .has_devices_to_verify_against()
         .await
-        .map_err(|e| AppError::Other(e.to_string()))?;
+        .map_err(AppError::other)?;
     if !can_answer {
         return Err(AppError::Other(
             "no other session of this account can verify this one".into(),
@@ -563,19 +556,13 @@ async fn verify_this_session(
     let identity = encryption
         .get_user_identity(&own_user(client)?)
         .await
-        .map_err(|e| AppError::Other(e.to_string()))?
+        .map_err(AppError::other)?
         .ok_or_else(|| AppError::Other("the account has no identity to verify against".into()))?;
     let request = identity
         .request_verification_with_methods(vec![VerificationMethod::SasV1])
         .await
         .map_err(|e| AppError::Other(format!("could not send the verification request: {e}")))?;
-    if let Err(refused) = queue.try_send(request) {
-        refused.into_inner().cancel().await.ok();
-        return Err(AppError::Other(
-            "the verification request could not be followed".into(),
-        ));
-    }
-    Ok(())
+    hand_over(&queue, request).await
 }
 
 async fn verify_user(
@@ -584,14 +571,7 @@ async fn verify_user(
     verification_request: &Mutex<Option<VerificationRequest>>,
     outgoing: &Mutex<Option<mpsc::Sender<VerificationRequest>>>,
 ) -> Result<()> {
-    if verification_request.lock().await.is_some() {
-        return Err(AppError::Other("a verification is already running".into()));
-    }
-    let queue = outgoing
-        .lock()
-        .await
-        .clone()
-        .ok_or_else(|| AppError::Other("verification requests are not followed".into()))?;
+    let queue = request_queue(verification_request, outgoing).await?;
     let user = parse_user(user_id)?;
     let encryption = client.encryption();
     let can_sign = encryption
@@ -613,7 +593,7 @@ async fn verify_user(
             .request_user_identity(&user)
             .await?
             .ok_or_else(|| AppError::Other("this person has no cross-signing identity".into()))?,
-        Err(e) => return Err(AppError::Other(e.to_string())),
+        Err(e) => return Err(AppError::other(e)),
     };
     if identity.is_verified() {
         return Err(AppError::Other("this person is already verified".into()));
@@ -623,6 +603,27 @@ async fn verify_user(
         .await
         .map_err(|e| AppError::Other(format!("could not send the verification request: {e}")))?;
     tracing::info!(room_id = %room.room_id(), %user, "sent a verification request to the direct chat");
+    hand_over(&queue, request).await
+}
+
+async fn request_queue(
+    verification_request: &Mutex<Option<VerificationRequest>>,
+    outgoing: &Mutex<Option<mpsc::Sender<VerificationRequest>>>,
+) -> Result<mpsc::Sender<VerificationRequest>> {
+    if verification_request.lock().await.is_some() {
+        return Err(AppError::Other("a verification is already running".into()));
+    }
+    outgoing
+        .lock()
+        .await
+        .clone()
+        .ok_or_else(|| AppError::Other("verification requests are not followed".into()))
+}
+
+async fn hand_over(
+    queue: &mpsc::Sender<VerificationRequest>,
+    request: VerificationRequest,
+) -> Result<()> {
     if let Err(refused) = queue.try_send(request) {
         refused.into_inner().cancel().await.ok();
         return Err(AppError::Other(
@@ -643,20 +644,24 @@ async fn ensure_partner_in(room: &Room, user: &OwnedUserId) -> Result<()> {
             Err(AppError::PartnerLeftChat)
         }
         Ok(_) => Ok(()),
-        Err(e) => Err(AppError::Other(e.to_string())),
+        Err(e) => Err(AppError::other(e)),
     }
+}
+
+async fn pending(
+    verification_request: &Mutex<Option<VerificationRequest>>,
+) -> Result<VerificationRequest> {
+    verification_request
+        .lock()
+        .await
+        .clone()
+        .ok_or_else(|| AppError::Other("No pending verification request".into()))
 }
 
 async fn accept_verification(
     verification_request: &Mutex<Option<VerificationRequest>>,
 ) -> Result<()> {
-    let request = {
-        let guard = verification_request.lock().await;
-        guard
-            .clone()
-            .ok_or_else(|| AppError::Other("No pending verification request".into()))?
-    };
-    request.accept().await?;
+    pending(verification_request).await?.accept().await?;
     Ok(())
 }
 
@@ -686,10 +691,7 @@ async fn reject_verification(
 async fn cancel_verification(
     verification_request: &Mutex<Option<VerificationRequest>>,
 ) -> Result<()> {
-    let request = verification_request.lock().await.clone();
-    let request =
-        request.ok_or_else(|| AppError::Other("No pending verification request".into()))?;
-    request.cancel().await?;
+    pending(verification_request).await?.cancel().await?;
     Ok(())
 }
 

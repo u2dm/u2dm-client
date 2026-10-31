@@ -11,6 +11,7 @@ use super::props::UiProps;
 use super::touchpad_pinch;
 use crate::domain::call::video::{FeedId, FrameSize, Framing, LARGEST_SHOWN};
 use crate::ports::call::{CallVideoPort, FrameSink, VideoFrame};
+use crate::util::saturating_i32;
 
 thread_local! {
     static PORT: RefCell<Option<Arc<dyn CallVideoPort>>> = const { RefCell::new(None) };
@@ -274,8 +275,8 @@ pub fn show_last<B: UiBackend>(tile: &mut B::CallTile) {
 }
 
 fn put_source<B: UiBackend>(tile: &mut B::CallTile, source: FrameSize) {
-    tile.set_source_width(i32::try_from(source.width).unwrap_or(i32::MAX));
-    tile.set_source_height(i32::try_from(source.height).unwrap_or(i32::MAX));
+    tile.set_source_width(saturating_i32(source.width));
+    tile.set_source_height(saturating_i32(source.height));
 }
 
 #[cfg(feature = "demo")]

@@ -26,7 +26,7 @@ use crate::domain::call::keys::KeyIndex;
 use crate::domain::call::media::{
     ConnectionQuality, Decryption, EncryptionTrouble, MediaEvent, MediaSource, SfuState,
 };
-use crate::domain::call::sfu::{SfuGrant, SfuId, SfuRole};
+use crate::domain::call::sfu::{SfuGrant, SfuId, SfuRole, host_of};
 use crate::domain::call::video::VideoKind;
 
 const CONNECT_WAIT: Duration = Duration::from_secs(15);
@@ -64,7 +64,7 @@ pub(super) async fn dial(
     options.auto_subscribe = true;
     options.dynacast = true;
     options.encryption = encryption.as_ref().map(e2ee::options);
-    let host = super::host_of(&grant.url).to_owned();
+    let host = host_of(&grant.url).to_owned();
     tracing::info!(sfu = %grant.sfu, host, role = ?grant.role, encrypted = encryption.is_some(), "connecting to a call media server");
     let connected = timeout(
         CONNECT_WAIT,

@@ -36,7 +36,7 @@ impl MatrixIdentityAlerts {
             .encryption()
             .get_user_identity(&user)
             .await
-            .map_err(|e| AppError::Other(e.to_string()))?
+            .map_err(AppError::other)?
             .ok_or_else(|| AppError::Other(format!("no identity is known for {user_id}")))
     }
 }
@@ -62,7 +62,7 @@ impl IdentityPort for MatrixIdentityAlerts {
             .await?
             .pin()
             .await
-            .map_err(|e| AppError::Other(e.to_string()))?;
+            .map_err(AppError::other)?;
         tracing::info!(%user_id, "accepted the user's new identity");
         Ok(())
     }
@@ -72,7 +72,7 @@ impl IdentityPort for MatrixIdentityAlerts {
             .await?
             .withdraw_verification()
             .await
-            .map_err(|e| AppError::Other(e.to_string()))?;
+            .map_err(AppError::other)?;
         tracing::info!(%user_id, "withdrew the verification of the user");
         Ok(())
     }

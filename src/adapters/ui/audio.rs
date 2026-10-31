@@ -5,6 +5,7 @@ use std::time::Duration;
 use slint::ComponentHandle;
 
 use super::props::{BoolProp, IntProp, UiProps, send_command};
+use super::video::duration_to_millis;
 #[cfg(feature = "video")]
 use crate::adapters::video::audio_player::{self, AudioEvent, Sound};
 #[cfg(feature = "video")]
@@ -66,7 +67,10 @@ pub fn prepare<W: UiProps>(window: &W, request: u64, duration: Option<Duration>)
     window.set_bool(BoolProp::AudioPlaying, false);
     window.set_bool(BoolProp::AudioSilent, false);
     window.set_int(IntProp::AudioPositionMs, 0);
-    window.set_int(IntProp::AudioDurationMs, duration.map_or(0, millis));
+    window.set_int(
+        IntProp::AudioDurationMs,
+        duration.map_or(0, duration_to_millis),
+    );
 }
 
 pub fn open<W>(window: &W, weak: &slint::Weak<W>, request: u64, path: &Path, start: Start)
@@ -121,7 +125,7 @@ pub fn seek<W: UiProps>(window: &W, position: Duration) {
             session.playback.seek(position);
         }
     });
-    window.set_int(IntProp::AudioPositionMs, millis(position));
+    window.set_int(IntProp::AudioPositionMs, duration_to_millis(position));
 }
 
 #[cfg(feature = "video")]
@@ -132,12 +136,12 @@ pub fn apply<W: UiProps>(window: &W, request: u64, update: Update) {
     match update {
         Update::Ready { duration, silent } => {
             if let Some(duration) = duration {
-                window.set_int(IntProp::AudioDurationMs, millis(duration));
+                window.set_int(IntProp::AudioDurationMs, duration_to_millis(duration));
             }
             window.set_bool(BoolProp::AudioSilent, silent);
         }
         Update::Position(position) => {
-            window.set_int(IntProp::AudioPositionMs, millis(position));
+            window.set_int(IntProp::AudioPositionMs, duration_to_millis(position));
         }
         Update::Ended => finish(window, request, AudioEnd::Finished),
         Update::Failed => finish(window, request, AudioEnd::Failed),
@@ -152,10 +156,6 @@ fn finish<W: UiProps>(window: &W, request: u64, end: AudioEnd) {
             send_command(commands, UiCommand::AudioEnded { request, end });
         }
     });
-}
-
-fn millis(duration: Duration) -> i32 {
-    i32::try_from(duration.as_millis()).unwrap_or(i32::MAX)
 }
 
 #[cfg(feature = "video")]

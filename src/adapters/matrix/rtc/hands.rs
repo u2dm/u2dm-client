@@ -12,6 +12,7 @@ use serde::Deserialize;
 use serde_json::{Map, Value};
 use tokio::time::timeout;
 
+use crate::adapters::matrix::requests::in_time;
 use crate::domain::call::hands::{HandSighting, RAISED_HAND_KEY};
 use crate::error::{AppError, Result};
 
@@ -73,7 +74,7 @@ pub(super) fn redacted_event(
 }
 
 fn event_id(id: &str) -> Result<OwnedEventId> {
-    OwnedEventId::try_from(id).map_err(|e| AppError::Other(e.to_string()))
+    OwnedEventId::try_from(id).map_err(AppError::other)
 }
 
 pub(super) async fn raise(room: &Room, membership_event: &str) -> Result<String> {
@@ -81,23 +82,24 @@ pub(super) async fn raise(room: &Room, membership_event: &str) -> Result<String>
         event_id(membership_event)?,
         RAISED_HAND_KEY.to_owned(),
     ));
-    let sent = timeout(
+    let sent = in_time(
         HAND_WAIT,
+        "the raised hand was not sent in time",
         room.send(content)
             .with_request_config(RequestConfig::short_retry()),
     )
-    .await
-    .map_err(|_| AppError::Other("the raised hand was not sent in time".into()))?
-    .map_err(|e| AppError::Other(e.to_string()))?;
+    .await?;
     Ok(sent.response.event_id.to_string())
 }
 
 pub(super) async fn lower(room: &Room, reaction: &str) -> Result<()> {
     let reaction = event_id(reaction)?;
-    timeout(HAND_WAIT, room.redact(&reaction, None, None))
-        .await
-        .map_err(|_| AppError::Other("the lowered hand was not sent in time".into()))?
-        .map_err(|e| AppError::Other(e.to_string()))?;
+    in_time(
+        HAND_WAIT,
+        "the lowered hand was not sent in time",
+        room.redact(&reaction, None, None),
+    )
+    .await?;
     Ok(())
 }
 

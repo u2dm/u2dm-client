@@ -68,6 +68,10 @@ pub fn with_session<R>(f: impl FnOnce(&mut UiSession<ActiveBackend>) -> R) -> R 
     SESSION.with_borrow_mut(f)
 }
 
+pub fn active_generation() -> i32 {
+    with_session(|session| session.room.active_generation())
+}
+
 pub fn active_models() -> Rc<Models<ActiveBackend>> {
     with_session(|session| Rc::clone(&session.models))
 }

@@ -46,11 +46,9 @@ async fn successor(room: &Room) -> Result<LinkedRoom> {
     let raw = room
         .get_state_event_static::<RoomTombstoneEventContent>()
         .await
-        .map_err(|e| AppError::Other(e.to_string()))?
+        .map_err(AppError::other)?
         .ok_or_else(|| AppError::Other("The room has no tombstone".into()))?;
-    let tombstone = raw
-        .deserialize()
-        .map_err(|e| AppError::Other(e.to_string()))?;
+    let tombstone = raw.deserialize().map_err(AppError::other)?;
     match tombstone {
         SyncOrStrippedState::Sync(SyncStateEvent::Original(tombstone)) => Ok(LinkedRoom {
             room_id: tombstone.content.replacement_room,
@@ -98,7 +96,7 @@ async fn join(client: &Client, linked: &LinkedRoom) -> Result<()> {
             );
             Ok(())
         }
-        Err(e) => Err(AppError::Other(e.to_string())),
+        Err(e) => Err(AppError::other(e)),
     }
 }
 

@@ -8,7 +8,9 @@ use names::{
     callback, composer_draft, draft_verdict, emoji_entry, emoji_row, emoji_store, mention_word,
     text_splice, user_message, verification_emoji,
 };
-use slint::{Image, Model, ModelRc, Rgb8Pixel, SharedPixelBuffer, StyledText, VecModel};
+use slint::{Image, Model, ModelRc, StyledText, VecModel};
+#[cfg(feature = "video")]
+use slint::{Rgb8Pixel, SharedPixelBuffer};
 use slint_interpreter::{
     Compiler, ComponentDefinition, ComponentHandle, ComponentInstance, SharedString, Struct, Value,
 };
@@ -576,6 +578,7 @@ impl UiProps for ComponentInstance {
 
     enum_props!(impl_enum_setters);
 
+    #[cfg(feature = "video")]
     fn apply_video_frame(&self, buffer: SharedPixelBuffer<Rgb8Pixel>) {
         set_global(
             self,

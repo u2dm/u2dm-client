@@ -60,6 +60,13 @@ pub(super) fn auth_data(client: &Client, answer: &AuthAnswer) -> Result<Option<A
     })
 }
 
+pub(super) fn answered(client: &Client, answer: Option<&AuthAnswer>) -> Result<Option<AuthData>> {
+    Ok(answer
+        .map(|answer| auth_data(client, answer))
+        .transpose()?
+        .flatten())
+}
+
 pub(super) fn guarded(client: &Client, error: &HttpError) -> Option<Guarded> {
     error
         .as_uiaa_response()

@@ -10,7 +10,6 @@ use matrix_sdk::room::RoomMember;
 use matrix_sdk::ruma::api::client::config::{get_global_account_data, set_global_account_data};
 use matrix_sdk::ruma::api::client::membership::{ban_user, kick_user, unban_user};
 use matrix_sdk::ruma::api::client::room::create_room;
-use matrix_sdk::ruma::api::error::ErrorKind;
 use matrix_sdk::ruma::events::direct::DirectEventContent;
 use matrix_sdk::ruma::events::ignored_user_list::{IgnoredUser, IgnoredUserListEventContent};
 use matrix_sdk::ruma::events::room::encryption::RoomEncryptionEventContent;
@@ -26,6 +25,7 @@ use super::media::fetch_avatar_thumbnails;
 use super::member_name::member_name;
 use super::permissions::{member_role, moderation_powers};
 use super::profile::{PronounCache, pronouns_of};
+use super::requests::absent_as_none;
 use super::session::ClientHandle;
 use crate::domain::member_name::MemberName;
 use crate::domain::room::RoomId;
@@ -61,17 +61,17 @@ impl MatrixUserInfo {
             .direct_writes
             .acquire()
             .await
-            .map_err(|e| AppError::Other(e.to_string()))?;
+            .map_err(AppError::other)?;
         let own = own_user(client)?;
         let mut direct = current_direct(client, &own).await?;
         direct.entry(user.into()).or_default().push(room_id.clone());
-        let request = set_global_account_data::v3::Request::new(own, &direct)
-            .map_err(|e| AppError::Other(e.to_string()))?;
+        let request =
+            set_global_account_data::v3::Request::new(own, &direct).map_err(AppError::other)?;
         client
             .send(request)
             .with_request_config(RequestConfig::short_retry())
             .await
-            .map_err(|e| AppError::Other(e.to_string()))?;
+            .map_err(AppError::other)?;
         Ok(())
     }
 
@@ -105,7 +105,7 @@ impl UserInfoPort for MatrixUserInfo {
         let member = room
             .get_member_no_sync(&user)
             .await
-            .map_err(|e| AppError::Other(e.to_string()))?;
+            .map_err(AppError::other)?;
         let levels = room.power_levels_or_default().await;
         let is_self = *user == *room.own_user_id();
         let client = room.client();
@@ -155,7 +155,7 @@ impl UserInfoPort for MatrixUserInfo {
             .account()
             .fetch_user_profile_of(&user)
             .await
-            .map_err(|e| AppError::Other(e.to_string()))?;
+            .map_err(AppError::other)?;
         Ok(GlobalProfile {
             display_name: profile.get_static::<DisplayName>().ok().flatten(),
             avatar_mxc: profile
@@ -184,7 +184,7 @@ impl UserInfoPort for MatrixUserInfo {
             .send(direct_room_request(&user))
             .with_request_config(RequestConfig::short_retry().disable_retry())
             .await
-            .map_err(|e| AppError::Other(e.to_string()))?;
+            .map_err(AppError::other)?;
         let room_id = response.room_id;
         if let Err(e) = self.mark_direct(&client, &room_id, &user).await {
             tracing::warn!(%room_id, %user, "started a chat but could not mark it direct: {e}");
@@ -203,10 +203,10 @@ impl UserInfoPort for MatrixUserInfo {
             .account()
             .account_data::<IgnoredUserListEventContent>()
             .await
-            .map_err(|e| AppError::Other(e.to_string()))?
+            .map_err(AppError::other)?
             .map(|raw| raw.deserialize())
             .transpose()
-            .map_err(|e| AppError::Other(e.to_string()))?
+            .map_err(AppError::other)?
             .unwrap_or_default();
         let changed = match change {
             IgnoreChange::Ignore => list
@@ -218,13 +218,13 @@ impl UserInfoPort for MatrixUserInfo {
         if !changed {
             return Ok(());
         }
-        let request = set_global_account_data::v3::Request::new(own, &list)
-            .map_err(|e| AppError::Other(e.to_string()))?;
+        let request =
+            set_global_account_data::v3::Request::new(own, &list).map_err(AppError::other)?;
         client
             .send(request)
             .with_request_config(RequestConfig::short_retry())
             .await
-            .map_err(|e| AppError::Other(e.to_string()))?;
+            .map_err(AppError::other)?;
         Ok(())
     }
 
@@ -311,11 +311,11 @@ async fn user_trust(client: &Client, user: &OwnedUserId) -> Result<UserTrust> {
     let identity = encryption
         .get_user_identity(user)
         .await
-        .map_err(|e| AppError::Other(e.to_string()))?;
+        .map_err(AppError::other)?;
     let devices = encryption
         .get_user_devices(user)
         .await
-        .map_err(|e| AppError::Other(e.to_string()))?;
+        .map_err(AppError::other)?;
     let devices = devices
         .devices()
         .filter(|device| !device.is_deleted() && !device.is_dehydrated())
@@ -359,7 +359,7 @@ pub(super) async fn trust_wakes(client: &Client, people: [OwnedUserId; 2]) -> Re
     let identities = encryption
         .user_identities_stream()
         .await
-        .map_err(|e| AppError::Other(e.to_string()))?
+        .map_err(AppError::other)?
         .map(move |update| {
             watched
                 .iter()
@@ -368,7 +368,7 @@ pub(super) async fn trust_wakes(client: &Client, people: [OwnedUserId; 2]) -> Re
     let devices = encryption
         .devices_stream()
         .await
-        .map_err(|e| AppError::Other(e.to_string()))?
+        .map_err(AppError::other)?
         .map(move |update| {
             people
                 .iter()
@@ -431,7 +431,7 @@ async fn send_moderation(
                 .map(drop)
         }
     };
-    sent.map_err(|e| AppError::Other(e.to_string()))
+    sent.map_err(AppError::other)
 }
 
 pub(super) fn own_user(client: &Client) -> Result<OwnedUserId> {
@@ -458,20 +458,17 @@ fn direct_room_request(user: &OwnedUserId) -> create_room::v3::Request {
 async fn current_direct(client: &Client, own: &OwnedUserId) -> Result<DirectEventContent> {
     let request =
         get_global_account_data::v3::Request::new(own.clone(), GlobalAccountDataEventType::Direct);
-    match client
+    let sent = client
         .send(request)
         .with_request_config(RequestConfig::short_retry())
-        .await
-    {
-        Ok(response) => response
-            .account_data
-            .deserialize_as_unchecked::<DirectEventContent>()
-            .map_err(|e| AppError::Other(e.to_string())),
-        Err(e) if e.client_api_error_kind() == Some(&ErrorKind::NotFound) => {
-            Ok(DirectEventContent::default())
-        }
-        Err(e) => Err(AppError::Other(e.to_string())),
-    }
+        .await;
+    let Some(response) = absent_as_none(sent)? else {
+        return Ok(DirectEventContent::default());
+    };
+    response
+        .account_data
+        .deserialize_as_unchecked::<DirectEventContent>()
+        .map_err(AppError::other)
 }
 
 pub(super) fn parse_user(user_id: &UserId) -> Result<OwnedUserId> {

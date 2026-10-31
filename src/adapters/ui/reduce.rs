@@ -31,7 +31,7 @@ use super::reconcile::{
 };
 use super::richtext::recognise_own_user;
 use super::rows::patch_rows_by_id;
-use super::session::{begin_session, with_session};
+use super::session::{active_generation, begin_session, with_session};
 use super::splice_model::SpliceModel;
 use super::{audio, call_window, emote, sending, video};
 use crate::commands::effects::{Effect, VerificationActivity, VerificationUpdate};
@@ -66,7 +66,7 @@ use crate::domain::timeline::{OlderHistory, SourceEncryption, TimelinePatch, Tim
 use crate::domain::user_info::Moderation;
 use crate::domain::verification::VerificationEvent as DomainVerificationEvent;
 use crate::ports::media::MediaCache;
-use crate::util::format_bytes;
+use crate::util::{format_bytes, saturating_i32};
 
 const NO_ANCHOR: i32 = -1;
 const NO_SELECTED_ROW: i32 = -1;
@@ -104,10 +104,6 @@ impl RoomCursor {
 pub struct SheetAvatar {
     room_id: String,
     path: Option<PathBuf>,
-}
-
-fn active_generation() -> i32 {
-    with_session(|session| session.room.active_generation())
 }
 
 fn adopt_selected_generation(generation: i32) -> bool {
@@ -233,10 +229,7 @@ pub fn dispatch_effect<B: UiBackend>(w: &B::Window, event: Effect, ctx: &UiEvent
                 avatar_color_index(id.as_ref()),
             );
             show_selected_room_avatar(w, id.as_ref(), avatar_mxc.as_deref(), ctx.media);
-            w.set_int(
-                IntProp::SelectedRoomMembers,
-                i32::try_from(member_count).unwrap_or(i32::MAX),
-            );
+            w.set_int(IntProp::SelectedRoomMembers, saturating_i32(member_count));
             w.set_bool(BoolProp::SelectedRoomEncrypted, encrypted);
             w.set_bool(BoolProp::SelectedRoomReadableByAnyone, readable_by_anyone);
             apply_poll_permissions(w, polls);
@@ -519,10 +512,7 @@ fn apply_room_log<B: UiBackend>(
         );
     }
     w.set_string(StringProp::RoomLogName, SharedString::from(&next.name));
-    w.set_int(
-        IntProp::RoomLogDropped,
-        i32::try_from(next.log.dropped).unwrap_or(i32::MAX),
-    );
+    w.set_int(IntProp::RoomLogDropped, saturating_i32(next.log.dropped));
     w.set_int(IntProp::RoomLogLinesLanded, next.lines_landed);
     w.set_bool(BoolProp::RoomLogVisible, true);
     run_change_handlers_next_frame(w);
@@ -631,10 +621,7 @@ fn apply_readers<B: UiBackend>(
         apply_quoted_message(w, quoted_message(message.as_deref()));
     }
     if last.is_none_or(|l| l.total != *total) {
-        w.set_int(
-            IntProp::ReadersCount,
-            i32::try_from(*total).unwrap_or(i32::MAX),
-        );
+        w.set_int(IntProp::ReadersCount, saturating_i32(*total));
     }
     if last.is_none_or(|l| l.has_more != *has_more) {
         w.set_bool(BoolProp::ReadersHasMore, *has_more);
@@ -861,10 +848,7 @@ fn apply_directory<B: UiBackend>(
         w.set_bool(BoolProp::InvitesPending, *invites_pending);
     }
     if last.is_none_or(|l| l.attention != *attention) {
-        w.set_int(
-            IntProp::Attention,
-            i32::try_from(*attention).unwrap_or(i32::MAX),
-        );
+        w.set_int(IntProp::Attention, saturating_i32(*attention));
     }
 }
 
@@ -875,7 +859,7 @@ fn apply_listed_space(w: &impl UiProps, listed_space: &SpaceHeading) {
     );
     w.set_int(
         IntProp::ListedSpaceMembers,
-        i32::try_from(listed_space.member_count).unwrap_or(i32::MAX),
+        saturating_i32(listed_space.member_count),
     );
     w.set_string(
         StringProp::ListedSpaceId,
@@ -1082,14 +1066,8 @@ fn apply_leave_space(w: &impl UiProps, last: Option<&LeaveSpaceView>, view: &Lea
         SharedString::from(space.id.as_ref()),
     );
     w.set_string(StringProp::LeaveSpaceName, SharedString::from(&space.name));
-    w.set_int(
-        IntProp::LeaveSpaceRooms,
-        i32::try_from(space.rooms).unwrap_or(i32::MAX),
-    );
-    w.set_int(
-        IntProp::LeaveSpaceSpaces,
-        i32::try_from(space.spaces).unwrap_or(i32::MAX),
-    );
+    w.set_int(IntProp::LeaveSpaceRooms, saturating_i32(space.rooms));
+    w.set_int(IntProp::LeaveSpaceSpaces, saturating_i32(space.spaces));
     w.set_bool(BoolProp::LeaveSpaceVisible, true);
 }
 
@@ -1256,7 +1234,7 @@ fn apply_room_preview_card(w: &impl UiProps, shown: &ShownPreview) {
     );
     w.set_int(
         IntProp::RoomPreviewMembers,
-        i32::try_from(room.member_count).unwrap_or(i32::MAX),
+        saturating_i32(room.member_count),
     );
     w.set_bool(BoolProp::RoomPreviewIsSpace, room.is_space);
     w.set_bool(BoolProp::RoomPreviewOpensEvent, shown.opens_event);
@@ -1419,10 +1397,7 @@ fn apply_room_card(w: &impl UiProps, card: Option<&RoomCard>, media: &dyn MediaC
         SharedString::from(avatar_initials(&card.name)),
     );
     w.set_int(IntProp::RoomInfoColorIndex, avatar_color_index(&card.id));
-    w.set_int(
-        IntProp::RoomInfoMembers,
-        i32::try_from(card.member_count).unwrap_or(i32::MAX),
-    );
+    w.set_int(IntProp::RoomInfoMembers, saturating_i32(card.member_count));
     w.set_bool(BoolProp::RoomInfoIsDirect, card.is_direct);
     w.set_bool(BoolProp::RoomInfoMayInvite, card.may_invite);
     w.set_bool(BoolProp::RoomInfoReadableByAnyone, card.readable_by_anyone);
@@ -1692,10 +1667,7 @@ fn sync_timeline_chrome(w: &(impl UiProps + ComponentHandle), pagination: &Pagin
         older_history == OlderHistory::Available,
     );
     w.set_bool(BoolProp::ForwardsLoading, forwards);
-    w.set_int(
-        IntProp::NewMessagesCount,
-        i32::try_from(badge).unwrap_or(i32::MAX),
-    );
+    w.set_int(IntProp::NewMessagesCount, saturating_i32(badge));
     run_change_handlers_next_frame(w);
 }
 
@@ -1706,14 +1678,8 @@ fn apply_pinned(w: &impl UiProps, pinned: &PinnedView) {
         Some(_) => (pinned.messages.len(), pinned.shown),
         None => (0, 0),
     };
-    w.set_int(
-        IntProp::PinnedCount,
-        i32::try_from(count).unwrap_or(i32::MAX),
-    );
-    w.set_int(
-        IntProp::PinnedIndex,
-        i32::try_from(index).unwrap_or(i32::MAX),
-    );
+    w.set_int(IntProp::PinnedCount, saturating_i32(count));
+    w.set_int(IntProp::PinnedIndex, saturating_i32(index));
     w.set_string(
         StringProp::PinnedEventId,
         SharedString::from(shown.map_or("", |message| message.event_id.as_str())),
@@ -2052,7 +2018,7 @@ fn apply_presence(w: &impl UiProps, last: Option<&PresenceView>, view: &Presence
 
 fn minutes_seen(line: PresenceLine) -> i32 {
     match line {
-        PresenceLine::LastSeen { minutes } => i32::try_from(minutes).unwrap_or(i32::MAX),
+        PresenceLine::LastSeen { minutes } => saturating_i32(minutes),
         PresenceLine::Hidden | PresenceLine::Online | PresenceLine::Away => 0,
     }
 }
@@ -2071,10 +2037,7 @@ fn apply_typing(w: &impl UiProps, last: Option<&TypingView>, view: &TypingView) 
         StringProp::TypingRoomId,
         SharedString::from(view.room_id.as_deref().unwrap_or_default()),
     );
-    w.set_int(
-        IntProp::TypingCount,
-        i32::try_from(typists.len()).unwrap_or(i32::MAX),
-    );
+    w.set_int(IntProp::TypingCount, saturating_i32(typists.len()));
     w.set_string(StringProp::TypingFirst, shown(0));
     w.set_string(StringProp::TypingSecond, shown(1));
 }
@@ -2132,10 +2095,6 @@ fn apply_encryption(w: &impl UiProps, last: Option<&EncryptionView>, view: &Encr
         StringProp::EncryptionAuthErrorDetail,
         SharedString::from(&prompt.error.detail),
     );
-}
-
-fn saturating_i32(count: usize) -> i32 {
-    i32::try_from(count).unwrap_or(i32::MAX)
 }
 
 fn apply_account<B: UiBackend>(

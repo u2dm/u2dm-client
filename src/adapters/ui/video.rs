@@ -24,6 +24,7 @@ thread_local! {
 
 #[cfg(feature = "video")]
 use crate::adapters::video::playback::Playback;
+use crate::util::saturating_i32;
 
 #[cfg(feature = "video")]
 struct Session {
@@ -139,7 +140,7 @@ pub fn seek<W: UiProps>(window: &W, position: Duration) {
             session.seek(position);
         }
     });
-    window.set_int(IntProp::VideoPositionMs, millis(position));
+    window.set_int(IntProp::VideoPositionMs, duration_to_millis(position));
 }
 
 #[cfg(feature = "video")]
@@ -149,13 +150,16 @@ pub fn apply<W: UiProps>(window: &W, generation: u64, update: Update) {
     }
     match update {
         Update::Ready(duration) => {
-            window.set_int(IntProp::VideoDurationMs, duration.map_or(0, millis));
+            window.set_int(
+                IntProp::VideoDurationMs,
+                duration.map_or(0, duration_to_millis),
+            );
             PLAYING.set(true);
             window.set_bool(BoolProp::VideoPlaying, true);
         }
         Update::Frame { buffer, position } => {
             window.apply_video_frame(buffer);
-            window.set_int(IntProp::VideoPositionMs, millis(position));
+            window.set_int(IntProp::VideoPositionMs, duration_to_millis(position));
         }
         Update::Ended => {
             PLAYING.set(false);
@@ -175,8 +179,8 @@ pub fn millis_to_duration(millis: Option<usize>) -> Duration {
     Duration::from_millis(millis.unwrap_or(0) as u64)
 }
 
-fn millis(duration: Duration) -> i32 {
-    i32::try_from(duration.as_millis()).unwrap_or(i32::MAX)
+pub fn duration_to_millis(duration: Duration) -> i32 {
+    saturating_i32(duration.as_millis())
 }
 
 #[cfg(feature = "video")]

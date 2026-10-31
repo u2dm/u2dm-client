@@ -4,11 +4,11 @@ use matrix_sdk::Room;
 use matrix_sdk::config::RequestConfig;
 use matrix_sdk::ruma::{OwnedEventId, OwnedUserId};
 use serde_json::{Map, Value, json};
-use tokio::time::timeout;
 
 use super::REFERENCE;
+use crate::adapters::matrix::requests::in_time;
 use crate::domain::call::reactions::{ReactionOption, ReactionSighting};
-use crate::error::{AppError, Result};
+use crate::error::Result;
 
 pub(super) const CALL_REACTION_TYPE: &str = "io.element.call.reaction";
 const REACTION_WAIT: Duration = Duration::from_secs(10);
@@ -53,13 +53,12 @@ pub(super) async fn react(
     reaction: ReactionOption,
 ) -> Result<String> {
     let content = reaction_content(membership_event, reaction);
-    let sent = timeout(
+    let sent = in_time(
         REACTION_WAIT,
+        "the call reaction was not sent in time",
         room.send_raw(CALL_REACTION_TYPE, content)
             .with_request_config(RequestConfig::short_retry()),
     )
-    .await
-    .map_err(|_| AppError::Other("the call reaction was not sent in time".into()))?
-    .map_err(|e| AppError::Other(e.to_string()))?;
+    .await?;
     Ok(sent.response.event_id.to_string())
 }

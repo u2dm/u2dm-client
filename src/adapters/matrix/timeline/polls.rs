@@ -82,7 +82,7 @@ async fn apply_revision(
             },
         )
         .await
-        .map_err(|e| AppError::Other(e.to_string()))
+        .map_err(AppError::other)
 }
 
 fn revision_of(
@@ -90,7 +90,7 @@ fn revision_of(
     event_id: &str,
     draft: &PollDraft,
 ) -> Result<Option<(OwnedEventId, PollRevision)>> {
-    let target = OwnedEventId::try_from(event_id).map_err(|e| AppError::Other(e.to_string()))?;
+    let target = OwnedEventId::try_from(event_id).map_err(AppError::other)?;
     let poll = own_editable_poll(items, &target).ok_or_else(|| {
         AppError::Other("only an own poll nobody has answered can be edited".to_owned())
     })?;

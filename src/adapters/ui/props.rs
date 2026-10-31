@@ -1,4 +1,6 @@
-use slint::{Image, Rgb8Pixel, SharedPixelBuffer, SharedString, StyledText};
+use slint::{Image, SharedString, StyledText};
+#[cfg(feature = "video")]
+use slint::{Rgb8Pixel, SharedPixelBuffer};
 
 use super::dto::{
     CallNoticeMark, CallOfferMark, CallScreenMark, PackSurface, SheetPreviewMark, TestPhaseMark,
@@ -82,6 +84,7 @@ pub trait UiProps {
     fn set_bool(&self, prop: BoolProp, value: bool);
     fn set_int(&self, prop: IntProp, value: i32);
     enum_props!(declare_enum_setters);
+    #[cfg(feature = "video")]
     fn apply_video_frame(&self, buffer: SharedPixelBuffer<Rgb8Pixel>);
     fn clear_video_frame(&self);
     fn get_string(&self, prop: StringProp) -> SharedString;

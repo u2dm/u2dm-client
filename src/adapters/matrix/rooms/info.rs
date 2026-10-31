@@ -53,7 +53,7 @@ impl RoomInfoPort for MatrixRoomInfo {
         let members = room
             .members(RoomMemberships::ACTIVE)
             .await
-            .map_err(|e| AppError::Other(e.to_string()))?;
+            .map_err(AppError::other)?;
         let mut roster = Vec::with_capacity(members.len());
         for member in &members {
             if let Some(section) = roster_section(member) {
@@ -87,7 +87,7 @@ impl RoomInfoPort for MatrixRoomInfo {
                 .set_room_notification_mode(room.room_id(), target)
                 .await
         };
-        written.map_err(|e| AppError::Other(e.to_string()))
+        written.map_err(AppError::other)
     }
 
     async fn mark_read(&self, room_id: &RoomId) -> Result<()> {
@@ -101,7 +101,7 @@ impl RoomInfoPort for MatrixRoomInfo {
             .fully_read_marker(event_id);
         room.send_multiple_receipts(receipts)
             .await
-            .map_err(|e| AppError::Other(e.to_string()))
+            .map_err(AppError::other)
     }
 
     async fn fetch_avatars(&self, mxcs: &[String]) -> usize {
