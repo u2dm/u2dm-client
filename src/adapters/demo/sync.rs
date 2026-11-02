@@ -1,15 +1,15 @@
-use std::env;
 use std::sync::OnceLock;
 use std::time::Duration;
 
 use tokio::time::sleep;
 use tokio_util::sync::CancellationToken;
 
-use super::catalog::{Flag, Scenarios};
+use super::catalog::{Flag, Scenarios, scenario_from_env};
 use crate::domain::sync::{SyncEvent, SyncOutcome, SyncSupport};
 use crate::ports::matrix::SyncSink;
 
 const ENV_VAR: &str = "U2DM_DEMO_SYNC";
+const SHAPING: &str = "demo mode: shaping what the homeserver offers for syncing";
 
 pub const CATALOG: Scenarios = Scenarios {
     env: ENV_VAR,
@@ -39,22 +39,7 @@ impl Default for Scenario {
 
 fn scenario() -> Scenario {
     static SCENARIO: OnceLock<Scenario> = OnceLock::new();
-    *SCENARIO.get_or_init(from_env)
-}
-
-fn from_env() -> Scenario {
-    let Ok(raw) = env::var(ENV_VAR) else {
-        return Scenario::default();
-    };
-    let mut scenario = Scenario::default();
-    for flag in raw.split(',').map(str::trim) {
-        apply(&mut scenario, flag);
-    }
-    tracing::info!(
-        support = ?scenario.support,
-        "demo mode: shaping what the homeserver offers for syncing"
-    );
-    scenario
+    *SCENARIO.get_or_init(|| scenario_from_env(ENV_VAR, apply, SHAPING))
 }
 
 fn apply(scenario: &mut Scenario, flag: &str) {

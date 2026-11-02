@@ -1,13 +1,13 @@
 use std::collections::HashSet;
-use std::env;
 use std::sync::{Mutex, OnceLock};
 use std::time::Duration;
 
 use tokio::time::sleep;
 
-use super::catalog::{Flag, Scenarios};
+use super::catalog::{Flag, Scenarios, scenario_from_env};
 
 const ENV_VAR: &str = "U2DM_DEMO_SPACE_INDEX";
+const SHAPING: &str = "demo mode: shaping the space index";
 
 pub const CATALOG: Scenarios = Scenarios {
     env: ENV_VAR,
@@ -56,25 +56,7 @@ pub struct Scenario {
 
 pub fn scenario() -> Scenario {
     static SCENARIO: OnceLock<Scenario> = OnceLock::new();
-    *SCENARIO.get_or_init(from_env)
-}
-
-fn from_env() -> Scenario {
-    let Ok(raw) = env::var(ENV_VAR) else {
-        return Scenario::default();
-    };
-    let mut scenario = Scenario::default();
-    for flag in raw.split(',').map(str::trim) {
-        apply(&mut scenario, flag);
-    }
-    tracing::info!(
-        is_slow = scenario.is_slow,
-        first_page_fails = scenario.first_page_fails,
-        next_page_fails = scenario.next_page_fails,
-        join_fails = scenario.join_fails,
-        "demo mode: shaping the space index"
-    );
-    scenario
+    *SCENARIO.get_or_init(|| scenario_from_env(ENV_VAR, apply, SHAPING))
 }
 
 fn apply(scenario: &mut Scenario, flag: &str) {

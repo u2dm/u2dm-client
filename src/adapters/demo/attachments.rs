@@ -1,14 +1,14 @@
 use std::collections::HashMap;
-use std::env;
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, OnceLock};
 use std::time::Duration;
 
 use tokio::time::sleep;
 
-use super::catalog::{Flag, Scenarios};
+use super::catalog::{Flag, Scenarios, scenario_from_env};
 
 const ENV_VAR: &str = "U2DM_DEMO_ATTACHMENTS";
+const SHAPING: &str = "demo mode: reproducing real-account attachment upload timing";
 
 pub const CATALOG: Scenarios = Scenarios {
     env: ENV_VAR,
@@ -59,25 +59,7 @@ pub struct Scenario {
 
 pub fn scenario() -> &'static Scenario {
     static SCENARIO: OnceLock<Scenario> = OnceLock::new();
-    SCENARIO.get_or_init(from_env)
-}
-
-fn from_env() -> Scenario {
-    let Ok(raw) = env::var(ENV_VAR) else {
-        return Scenario::default();
-    };
-    let mut scenario = Scenario::default();
-    for flag in raw.split(',').map(str::trim) {
-        apply(&mut scenario, flag);
-    }
-    tracing::info!(
-        upload_is_slow = scenario.upload_is_slow,
-        send_fails = scenario.send_fails,
-        refuses_size = scenario.refuses_size,
-        preset_pick = ?scenario.preset_pick,
-        "demo mode: reproducing real-account attachment upload timing"
-    );
-    scenario
+    SCENARIO.get_or_init(|| scenario_from_env(ENV_VAR, apply, SHAPING))
 }
 
 fn apply(scenario: &mut Scenario, flag: &str) {

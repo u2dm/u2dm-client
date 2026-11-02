@@ -4,7 +4,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use matrix_sdk::notification_settings::NotificationSettings;
-use matrix_sdk::ruma::{MilliSecondsSinceUnixEpoch, OwnedRoomId, RoomId as MatrixRoomId};
+use matrix_sdk::ruma::{OwnedRoomId, RoomId as MatrixRoomId};
 use matrix_sdk::sync::{JoinedRoomUpdate, RoomUpdates, State};
 use matrix_sdk::{Client, Room, RoomState};
 use matrix_sdk_base::{RoomInfoNotableUpdate, RoomInfoNotableUpdateReasons};
@@ -20,6 +20,7 @@ use crate::domain::invite::Invite;
 use crate::domain::room::{Room as DomainRoom, Space as DomainSpace};
 use crate::domain::sync::SyncEvent;
 use crate::ports::matrix::SyncSink as OnSync;
+use crate::util::unix_now_ms;
 
 const EMIT_DEBOUNCE: Duration = Duration::from_millis(50);
 const CALL_EXPIRY_SLACK_MS: u64 = 1_000;
@@ -34,10 +35,6 @@ const REBUILD_REASONS: RoomInfoNotableUpdateReasons = RoomInfoNotableUpdateReaso
 enum RoomRefresh {
     Flags,
     Full,
-}
-
-fn now_ms() -> u64 {
-    MilliSecondsSinceUnixEpoch::now().0.into()
 }
 
 fn refresh_for(reasons: RoomInfoNotableUpdateReasons) -> Option<RoomRefresh> {
@@ -206,11 +203,11 @@ impl Directory {
             .filter_map(|room| room.call.as_ref()?.next_expiry_ms())
             .min()?;
         let due = next.saturating_add(CALL_EXPIRY_SLACK_MS);
-        Some(Instant::now() + Duration::from_millis(due.saturating_sub(now_ms())))
+        Some(Instant::now() + Duration::from_millis(due.saturating_sub(unix_now_ms())))
     }
 
     pub(super) fn expire_calls(&mut self) {
-        let now = now_ms();
+        let now = unix_now_ms();
         let expired: Vec<OwnedRoomId> = self
             .rooms
             .values()

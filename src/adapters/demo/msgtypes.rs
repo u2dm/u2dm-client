@@ -1,13 +1,13 @@
-use std::env;
 use std::sync::OnceLock;
 
-use super::catalog::{Flag, Scenarios};
+use super::catalog::{Flag, Scenarios, scenario_from_env};
 use super::{data, media};
 use crate::domain::location::Location;
 use crate::domain::media::FileMeta;
 use crate::domain::message::{MessageBody, RichText, SendState, TimelineMessage};
 
 const ENV_VAR: &str = "U2DM_DEMO_MSGTYPES";
+const SHAPING: &str = "demo mode: appending message types";
 
 pub const CATALOG: Scenarios = Scenarios {
     env: ENV_VAR,
@@ -161,26 +161,7 @@ impl Scenario {
 
 pub fn scenario() -> Scenario {
     static SCENARIO: OnceLock<Scenario> = OnceLock::new();
-    *SCENARIO.get_or_init(from_env)
-}
-
-fn from_env() -> Scenario {
-    let Ok(raw) = env::var(ENV_VAR) else {
-        return Scenario::default();
-    };
-    let mut scenario = Scenario::default();
-    for flag in raw.split(',').map(str::trim) {
-        apply(&mut scenario, flag);
-    }
-    tracing::info!(
-        notice = scenario.notice,
-        emote = scenario.emote,
-        file = scenario.file,
-        location = scenario.location,
-        unknown = scenario.unknown,
-        "demo mode: appending message types"
-    );
-    scenario
+    *SCENARIO.get_or_init(|| scenario_from_env(ENV_VAR, apply, SHAPING))
 }
 
 fn apply(scenario: &mut Scenario, flag: &str) {

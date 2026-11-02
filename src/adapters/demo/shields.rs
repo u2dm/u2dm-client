@@ -1,18 +1,16 @@
-use std::collections::BTreeMap;
-use std::env;
 use std::sync::OnceLock;
 
-use super::catalog::{Flag, Scenarios};
+use super::catalog::{Flag, Scenarios, scenario_from_env};
 use super::{data, media};
 use crate::domain::media::ImageMeta;
 use crate::domain::member_name::MemberName;
 use crate::domain::message::{
-    DecryptionFailure, MessageBody, ReadBy, RichText, SendState, Shield, ShieldCode,
-    TimelineMessage,
+    DecryptionFailure, MessageBody, RichText, Shield, ShieldCode, TimelineMessage,
 };
 use crate::domain::room::RoomId;
 
 const ENV_VAR: &str = "U2DM_DEMO_SHIELDS";
+const SHAPING: &str = "demo mode: adding messages the encryption cannot vouch for";
 
 pub const CATALOG: Scenarios = Scenarios {
     env: ENV_VAR,
@@ -70,25 +68,7 @@ pub struct Scenario {
 
 pub fn scenario() -> Scenario {
     static SCENARIO: OnceLock<Scenario> = OnceLock::new();
-    *SCENARIO.get_or_init(from_env)
-}
-
-fn from_env() -> Scenario {
-    let Ok(raw) = env::var(ENV_VAR) else {
-        return Scenario::default();
-    };
-    let mut scenario = Scenario::default();
-    for flag in raw.split(',').map(str::trim) {
-        apply(&mut scenario, flag);
-    }
-    tracing::info!(
-        marks = scenario.marks,
-        hidden = scenario.hidden,
-        undecryptable = scenario.undecryptable,
-        own = scenario.own,
-        "demo mode: adding messages the encryption cannot vouch for"
-    );
-    scenario
+    *SCENARIO.get_or_init(|| scenario_from_env(ENV_VAR, apply, SHAPING))
 }
 
 fn apply(scenario: &mut Scenario, flag: &str) {
@@ -304,31 +284,16 @@ fn own_posts(own_user: &str) -> Vec<Post<'_>> {
 
 fn message(post: Post<'_>, own_user: &str, now_ms: u64) -> TimelineMessage {
     let is_own = post.sender == own_user;
+    let at = now_ms.saturating_sub(post.minutes_ago.saturating_mul(MINUTE_MS));
     TimelineMessage {
-        unique_id: post.id.to_owned(),
-        event_id: Some(post.id.to_owned()),
-        local_id: None,
-        sender: post.sender.to_owned(),
         sender_name: if is_own {
             data::own_sender_name()
         } else {
             MemberName::Unset
         },
-        sender_avatar_url: Some(post.sender.to_owned()),
-        sender_pronouns: Vec::new(),
-        body_emoji: BTreeMap::new(),
-        body: post.body,
-        mentions_room: false,
-        timestamp: now_ms.saturating_sub(post.minutes_ago.saturating_mul(MINUTE_MS)),
         is_own,
-        reply: None,
-        edited: false,
-        editable: false,
-        is_first_unread: false,
-        send_state: SendState::Sent,
         shield: post.shield,
-        reactions: Vec::new(),
-        read_by: ReadBy::default(),
+        ..data::posted(post.id, post.sender, at, post.body)
     }
 }
 

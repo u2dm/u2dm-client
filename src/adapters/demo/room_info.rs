@@ -1,14 +1,14 @@
 use std::collections::HashSet;
-use std::env;
 use std::sync::{Mutex, OnceLock};
 use std::time::Duration;
 
 use tokio::time::sleep;
 
-use super::catalog::{Flag, Scenarios};
+use super::catalog::{Flag, Scenarios, scenario_from_env};
 use crate::domain::room::RoomId;
 
 const ENV_VAR: &str = "U2DM_DEMO_ROOM_INFO";
+const SHAPING: &str = "demo mode: shaping the room info sheet and the room menu";
 
 pub const CATALOG: Scenarios = Scenarios {
     env: ENV_VAR,
@@ -75,28 +75,7 @@ pub struct Scenario {
 
 pub fn scenario() -> Scenario {
     static SCENARIO: OnceLock<Scenario> = OnceLock::new();
-    *SCENARIO.get_or_init(from_env)
-}
-
-fn from_env() -> Scenario {
-    let Ok(raw) = env::var(ENV_VAR) else {
-        return Scenario::default();
-    };
-    let mut scenario = Scenario::default();
-    for flag in raw.split(',').map(str::trim) {
-        apply(&mut scenario, flag);
-    }
-    tracing::info!(
-        is_slow = scenario.is_slow,
-        roster_fails_once = scenario.roster_fails_once,
-        notify_fails = scenario.notify_fails,
-        leave_fails = scenario.leave_fails,
-        read_fails = scenario.read_fails,
-        link_fails = scenario.link_fails,
-        echo_is_lost = scenario.echo_is_lost,
-        "demo mode: shaping the room info sheet and the room menu"
-    );
-    scenario
+    *SCENARIO.get_or_init(|| scenario_from_env(ENV_VAR, apply, SHAPING))
 }
 
 fn apply(scenario: &mut Scenario, flag: &str) {

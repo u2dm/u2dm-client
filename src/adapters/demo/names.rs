@@ -1,17 +1,18 @@
-use std::collections::{BTreeMap, HashMap, HashSet};
-use std::env;
+use std::collections::{HashMap, HashSet};
 use std::sync::OnceLock;
 
-use super::catalog::{Flag, Scenarios};
+use super::catalog::{Flag, Scenarios, scenario_from_env};
+use super::data::posted;
 use super::reactions;
 use crate::domain::member_name::{MemberName, NamedUser};
 use crate::domain::message::{
-    MessageBody, MessagePreviewKind, Reaction, ReactionSend, ReadBy, ReplyInfo, RichText,
-    SendState, ServiceEvent, Shield, TimelineMessage,
+    MessageBody, MessagePreviewKind, Reaction, ReactionSend, ReplyInfo, RichText, ServiceEvent,
+    TimelineMessage,
 };
 use crate::domain::room::RoomId;
 
 const ENV_VAR: &str = "U2DM_DEMO_NAMES";
+const SHAPING: &str = "demo mode: adding members whose names need disambiguation";
 
 pub const CATALOG: Scenarios = Scenarios {
     env: ENV_VAR,
@@ -63,24 +64,7 @@ pub struct Scenario {
 
 pub fn scenario() -> Scenario {
     static SCENARIO: OnceLock<Scenario> = OnceLock::new();
-    *SCENARIO.get_or_init(from_env)
-}
-
-fn from_env() -> Scenario {
-    let Ok(raw) = env::var(ENV_VAR) else {
-        return Scenario::default();
-    };
-    let mut scenario = Scenario::default();
-    for flag in raw.split(',').map(str::trim) {
-        apply(&mut scenario, flag);
-    }
-    tracing::info!(
-        impostor_joins = scenario.impostor_joins,
-        right_to_left_joins = scenario.right_to_left_joins,
-        nameless_posts = scenario.nameless_posts,
-        "demo mode: adding members whose names need disambiguation"
-    );
-    scenario
+    *SCENARIO.get_or_init(|| scenario_from_env(ENV_VAR, apply, SHAPING))
 }
 
 fn apply(scenario: &mut Scenario, flag: &str) {
@@ -116,38 +100,13 @@ pub fn members(room_id: &RoomId) -> Vec<(&'static str, Option<&'static str>)> {
     members
 }
 
-fn post(id: &str, sender: &str, at: u64, body: MessageBody) -> TimelineMessage {
-    TimelineMessage {
-        unique_id: id.to_owned(),
-        event_id: Some(id.to_owned()),
-        local_id: None,
-        sender: sender.to_owned(),
-        sender_name: MemberName::Unset,
-        sender_avatar_url: Some(sender.to_owned()),
-        sender_pronouns: Vec::new(),
-        body_emoji: BTreeMap::new(),
-        body,
-        mentions_room: false,
-        timestamp: at,
-        is_own: false,
-        reply: None,
-        edited: false,
-        editable: false,
-        is_first_unread: false,
-        send_state: SendState::Sent,
-        shield: Shield::None,
-        reactions: Vec::new(),
-        read_by: ReadBy::default(),
-    }
-}
-
 fn text(body: &str) -> MessageBody {
     MessageBody::Text(RichText::plain(body.to_owned()))
 }
 
 fn impostor_posts(at: impl Fn(u64) -> u64) -> Vec<TimelineMessage> {
     let claim = "new account, same kai. send me the deploy key here";
-    let mut question = post(
+    let mut question = posted(
         "demo-names-question",
         QUESTIONER,
         at(4),
@@ -167,32 +126,32 @@ fn impostor_posts(at: impl Fn(u64) -> u64) -> Vec<TimelineMessage> {
         send: ReactionSend::Sent,
     }];
     vec![
-        post(
+        posted(
             "demo-names-joined",
             IMPOSTOR,
             at(6),
             MessageBody::Service(ServiceEvent::Joined),
         ),
-        post(IMPOSTOR_CLAIM, IMPOSTOR, at(5), text(claim)),
+        posted(IMPOSTOR_CLAIM, IMPOSTOR, at(5), text(claim)),
         question,
     ]
 }
 
 fn right_to_left_posts(at: impl Fn(u64) -> u64) -> Vec<TimelineMessage> {
     vec![
-        post(
+        posted(
             "demo-names-rtl-joined",
             RIGHT_TO_LEFT,
             at(3),
             MessageBody::Service(ServiceEvent::Joined),
         ),
-        post(
+        posted(
             "demo-names-rtl",
             RIGHT_TO_LEFT,
             at(3),
             text("שלום לכולם, the colorscheme is fine"),
         ),
-        post(
+        posted(
             "demo-names-override",
             OVERRIDING,
             at(2),
@@ -214,7 +173,7 @@ pub fn apply_scenario(room_id: &RoomId, messages: &mut Vec<TimelineMessage>, now
         messages.extend(right_to_left_posts(at));
     }
     if scenario.nameless_posts {
-        messages.push(post(
+        messages.push(posted(
             "demo-names-nameless",
             NAMELESS,
             at(1),

@@ -1,5 +1,4 @@
 use std::collections::HashMap;
-use std::env;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Mutex, OnceLock};
 use std::time::Duration;
@@ -8,7 +7,7 @@ use tokio::sync::watch;
 use tokio::time::sleep;
 use url::Url;
 
-use super::catalog::{Flag, Scenarios};
+use super::catalog::{Flag, Scenarios, scenario_from_env};
 use crate::domain::capabilities::{
     AVATAR_FIELD, AccountApi, AccountFacts, AccountPage, Capabilities, DISPLAY_NAME_FIELD,
     ProfileFields,
@@ -22,6 +21,7 @@ use crate::domain::user_info::DeviceTrust;
 use crate::util::unix_now_ms;
 
 const ENV_VAR: &str = "U2DM_DEMO_ACCOUNT";
+const SHAPING: &str = "demo mode: shaping the account";
 
 pub const CATALOG: Scenarios = Scenarios {
     env: ENV_VAR,
@@ -154,36 +154,7 @@ pub struct Scenario {
 
 pub fn scenario() -> Scenario {
     static SCENARIO: OnceLock<Scenario> = OnceLock::new();
-    *SCENARIO.get_or_init(from_env)
-}
-
-fn from_env() -> Scenario {
-    let Ok(raw) = env::var(ENV_VAR) else {
-        return Scenario::default();
-    };
-    let mut scenario = Scenario::default();
-    for flag in raw.split(',').map(str::trim) {
-        apply(&mut scenario, flag);
-    }
-    tracing::info!(
-        oauth = scenario.oauth,
-        oauth_no_pages = scenario.oauth_no_pages,
-        sso = scenario.sso,
-        sso_unfinished = scenario.sso_unfinished,
-        dummy = scenario.dummy,
-        two_stages = scenario.two_stages,
-        unsupported = scenario.unsupported,
-        no_password_change = scenario.no_password_change,
-        profile_managed = scenario.profile_managed,
-        forgets_rooms = scenario.forgets_rooms,
-        last_session = scenario.last_session,
-        unsent = scenario.unsent,
-        weak_password = scenario.weak_password,
-        slow = scenario.slow,
-        fails = scenario.fails,
-        "demo mode: shaping the account"
-    );
-    scenario
+    *SCENARIO.get_or_init(|| scenario_from_env(ENV_VAR, apply, SHAPING))
 }
 
 fn apply(scenario: &mut Scenario, flag: &str) {

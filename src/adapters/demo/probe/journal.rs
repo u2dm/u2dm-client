@@ -1,10 +1,10 @@
 use std::collections::VecDeque;
 use std::sync::Mutex;
-use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde::Serialize;
 
 use crate::commands::effects::Effect;
+use crate::util::unix_now_ms;
 
 const CAPACITY: usize = 2048;
 
@@ -72,7 +72,7 @@ impl Journal {
         ring.next += 1;
         ring.records.push_back(Record {
             seq,
-            at_ms: now_ms(),
+            at_ms: unix_now_ms(),
             kind,
             room_id,
             generation,
@@ -185,9 +185,3 @@ impl Selected {
     }
 }
 
-fn now_ms() -> u64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|since| u64::try_from(since.as_millis()).unwrap_or(u64::MAX))
-        .unwrap_or_default()
-}

@@ -1,12 +1,11 @@
 use std::collections::HashSet;
-use std::env;
 use std::sync::{Mutex, OnceLock};
 use std::time::Duration;
 
 use tokio::sync::watch;
 use tokio::time::sleep;
 
-use super::catalog::{Flag, Scenarios};
+use super::catalog::{Flag, Scenarios, scenario_from_env};
 use super::data;
 use crate::domain::identity::{OwnIdentity, RoomAlert};
 use crate::domain::member_name::NamedUser;
@@ -14,6 +13,7 @@ use crate::domain::room::RoomId;
 use crate::domain::user_info::IdentityTrust;
 
 const ENV_VAR: &str = "U2DM_DEMO_IDENTITY";
+const SHAPING: &str = "demo mode: raising identity alerts";
 
 pub const CATALOG: Scenarios = Scenarios {
     env: ENV_VAR,
@@ -75,26 +75,7 @@ pub struct Scenario {
 
 pub fn scenario() -> Scenario {
     static SCENARIO: OnceLock<Scenario> = OnceLock::new();
-    *SCENARIO.get_or_init(from_env)
-}
-
-fn from_env() -> Scenario {
-    let Ok(raw) = env::var(ENV_VAR) else {
-        return Scenario::default();
-    };
-    let mut scenario = Scenario::default();
-    for flag in raw.split(',').map(str::trim) {
-        apply(&mut scenario, flag);
-    }
-    tracing::info!(
-        resets = scenario.resets,
-        verified_reset = scenario.verified_reset,
-        own_reset = scenario.own_reset,
-        slow = scenario.slow,
-        acks_fail = scenario.acks_fail,
-        "demo mode: raising identity alerts"
-    );
-    scenario
+    *SCENARIO.get_or_init(|| scenario_from_env(ENV_VAR, apply, SHAPING))
 }
 
 fn apply(scenario: &mut Scenario, flag: &str) {

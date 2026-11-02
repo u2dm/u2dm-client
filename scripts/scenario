@@ -1391,7 +1391,7 @@ cmd_run() {
     *)          die "unknown flag: $mode (use --shot or --headless)" ;;
   esac
 
-  echo "# $name — $(scenario_note "$name")"
+  echo "# $name > $(scenario_note "$name")"
   echo "# env: $env"
   ( eval "export $env"; "$DRIVE" up "${launch[@]}" ) >"$out/up.log" 2>&1 ||
     { cat "$out/up.log" >&2; die "the app did not come up"; }

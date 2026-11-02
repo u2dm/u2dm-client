@@ -1,13 +1,13 @@
-use std::env;
 use std::sync::OnceLock;
 use std::time::Duration;
 
-use super::catalog::{Flag, Scenarios};
+use super::catalog::{Flag, Scenarios, scenario_from_env};
 use super::media;
 use crate::domain::member_name::MemberName;
 use crate::domain::message::{Reaction, ReactionSend, Reactor, TimelineMessage};
 
 const ENV_VAR: &str = "U2DM_DEMO_REACTIONS";
+const SHAPING: &str = "demo mode: reproducing real-account reaction timing";
 
 pub const CATALOG: Scenarios = Scenarios {
     env: ENV_VAR,
@@ -80,28 +80,7 @@ pub struct Scenario {
 
 pub fn scenario() -> Scenario {
     static SCENARIO: OnceLock<Scenario> = OnceLock::new();
-    *SCENARIO.get_or_init(from_env)
-}
-
-fn from_env() -> Scenario {
-    let Ok(raw) = env::var(ENV_VAR) else {
-        return Scenario::default();
-    };
-    let mut scenario = Scenario::default();
-    for flag in raw.split(',').map(str::trim) {
-        apply(&mut scenario, flag);
-    }
-    tracing::info!(
-        reactions_arrive_late = scenario.reactions_arrive_late,
-        keys_overflow = scenario.keys_overflow,
-        key_is_long = scenario.key_is_long,
-        mine_stays_pending = scenario.mine_stays_pending,
-        mine_fails_to_send = scenario.mine_fails_to_send,
-        crowd_reacts = scenario.crowd_reacts,
-        toggle_has_no_echo = scenario.toggle_has_no_echo,
-        "demo mode: reproducing real-account reaction timing"
-    );
-    scenario
+    *SCENARIO.get_or_init(|| scenario_from_env(ENV_VAR, apply, SHAPING))
 }
 
 fn apply(scenario: &mut Scenario, flag: &str) {

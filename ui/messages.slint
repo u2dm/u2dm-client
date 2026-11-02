@@ -1680,7 +1680,7 @@ export global CallWords {
             return @tr("Starting the test…");
         }
         if phase == CallTestPhase.running {
-            return kind == CallDeviceKind.speaker ? @tr("Playing a test sound") : @tr("Recording for test — not sent");
+            return kind == CallDeviceKind.speaker ? @tr("Playing a test sound") : @tr("Recording for test, not sent");
         }
         if phase == CallTestPhase.failed {
             return kind == CallDeviceKind.speaker ? @tr("The test sound could not be played") : @tr("Your microphone could not be tested");

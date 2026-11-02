@@ -106,6 +106,18 @@ const HANDOFF: Scenarios = Scenarios {
     ],
 };
 
+pub fn scenario_from_env<S: Default>(variable: &str, apply: fn(&mut S, &str), shaping: &str) -> S {
+    let Ok(raw) = env::var(variable) else {
+        return S::default();
+    };
+    let mut scenario = S::default();
+    for flag in raw.split(',').map(str::trim) {
+        apply(&mut scenario, flag);
+    }
+    tracing::info!(flags = raw, "{shaping}");
+    scenario
+}
+
 pub fn print() -> ExitCode {
     match write_catalog() {
         Ok(()) => ExitCode::SUCCESS,

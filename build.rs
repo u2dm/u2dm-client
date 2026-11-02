@@ -377,198 +377,55 @@ fn main() {
     compile_bundled_catalogs(&bundled_catalog_root());
 }
 
-struct ScenarioSource {
-    file: &'static str,
-    arms_between: (&'static str, &'static str),
-    ignored: &'static [&'static str],
-}
+const APPLY_ARMS: (&str, &str) = ("fn apply(scenario: &mut Scenario, flag: &str) {", "\n}");
 
-const SCENARIO_SOURCES: &[ScenarioSource] = &[
-    ScenarioSource {
-        file: "src/adapters/demo/timeline.rs",
-        arms_between: ("fn apply(scenario: &mut Scenario, flag: &str) {", "\n}"),
-        ignored: &[],
-    },
-    ScenarioSource {
-        file: "src/adapters/demo/pinned.rs",
-        arms_between: ("fn apply(scenario: &mut Scenario, flag: &str) {", "\n}"),
-        ignored: &[],
-    },
-    ScenarioSource {
-        file: "src/adapters/demo/reactions.rs",
-        arms_between: ("fn apply(scenario: &mut Scenario, flag: &str) {", "\n}"),
-        ignored: &[],
-    },
-    ScenarioSource {
-        file: "src/adapters/demo/polls.rs",
-        arms_between: ("fn apply(scenario: &mut Scenario, flag: &str) {", "\n}"),
-        ignored: &[],
-    },
-    ScenarioSource {
-        file: "src/adapters/demo/receipts.rs",
-        arms_between: ("fn apply(scenario: &mut Scenario, flag: &str) {", "\n}"),
-        ignored: &[],
-    },
-    ScenarioSource {
-        file: "src/adapters/demo/names.rs",
-        arms_between: ("fn apply(scenario: &mut Scenario, flag: &str) {", "\n}"),
-        ignored: &[],
-    },
-    ScenarioSource {
-        file: "src/adapters/demo/shields.rs",
-        arms_between: ("fn apply(scenario: &mut Scenario, flag: &str) {", "\n}"),
-        ignored: &[],
-    },
-    ScenarioSource {
-        file: "src/adapters/demo/richtext.rs",
-        arms_between: ("fn apply(scenario: &mut Scenario, flag: &str) {", "\n}"),
-        ignored: &[],
-    },
-    ScenarioSource {
-        file: "src/adapters/demo/msgtypes.rs",
-        arms_between: ("fn apply(scenario: &mut Scenario, flag: &str) {", "\n}"),
-        ignored: &[],
-    },
-    ScenarioSource {
-        file: "src/adapters/demo/stickers.rs",
-        arms_between: ("fn apply(scenario: &mut Scenario, flag: &str) {", "\n}"),
-        ignored: &[],
-    },
-    ScenarioSource {
-        file: "src/adapters/demo/audio.rs",
-        arms_between: ("fn apply(scenario: &mut Scenario, flag: &str) {", "\n}"),
-        ignored: &[],
-    },
-    ScenarioSource {
-        file: "src/adapters/demo/videos.rs",
-        arms_between: ("fn apply(scenario: &mut Scenario, flag: &str) {", "\n}"),
-        ignored: &[],
-    },
-    ScenarioSource {
-        file: "src/adapters/demo/space_index.rs",
-        arms_between: ("fn apply(scenario: &mut Scenario, flag: &str) {", "\n}"),
-        ignored: &[],
-    },
-    ScenarioSource {
-        file: "src/adapters/demo/invites.rs",
-        arms_between: ("fn apply(scenario: &mut Scenario, flag: &str) {", "\n}"),
-        ignored: &[],
-    },
-    ScenarioSource {
-        file: "src/adapters/demo/departures.rs",
-        arms_between: ("fn apply(scenario: &mut Scenario, flag: &str) {", "\n}"),
-        ignored: &[],
-    },
-    ScenarioSource {
-        file: "src/adapters/demo/upgrades.rs",
-        arms_between: ("fn apply(scenario: &mut Scenario, flag: &str) {", "\n}"),
-        ignored: &[],
-    },
-    ScenarioSource {
-        file: "src/adapters/demo/links.rs",
-        arms_between: ("fn apply(scenario: &mut Scenario, flag: &str) {", "\n}"),
-        ignored: &[],
-    },
-    ScenarioSource {
-        file: "src/adapters/demo/create_room.rs",
-        arms_between: ("fn apply(scenario: &mut Scenario, flag: &str) {", "\n}"),
-        ignored: &[],
-    },
-    ScenarioSource {
-        file: "src/adapters/demo/invite_people.rs",
-        arms_between: ("fn apply(scenario: &mut Scenario, flag: &str) {", "\n}"),
-        ignored: &[],
-    },
-    ScenarioSource {
-        file: "src/adapters/demo/typing.rs",
-        arms_between: ("fn apply(scenario: &mut Scenario, flag: &str) {", "\n}"),
-        ignored: &[],
-    },
-    ScenarioSource {
-        file: "src/adapters/demo/presence.rs",
-        arms_between: ("fn apply(scenario: &mut Scenario, flag: &str) {", "\n}"),
-        ignored: &[],
-    },
-    ScenarioSource {
-        file: "src/adapters/demo/calls.rs",
-        arms_between: ("fn apply(scenario: &mut Scenario, flag: &str) {", "\n}"),
-        ignored: &[],
-    },
-    ScenarioSource {
-        file: "src/adapters/demo/notifications.rs",
-        arms_between: ("fn apply(scenario: &mut Scenario, flag: &str) {", "\n}"),
-        ignored: &[],
-    },
-    ScenarioSource {
-        file: "src/adapters/demo/room_info.rs",
-        arms_between: ("fn apply(scenario: &mut Scenario, flag: &str) {", "\n}"),
-        ignored: &[],
-    },
-    ScenarioSource {
-        file: "src/adapters/demo/user_info.rs",
-        arms_between: ("fn apply(scenario: &mut Scenario, flag: &str) {", "\n}"),
-        ignored: &[],
-    },
-    ScenarioSource {
-        file: "src/adapters/demo/identity.rs",
-        arms_between: ("fn apply(scenario: &mut Scenario, flag: &str) {", "\n}"),
-        ignored: &[],
-    },
-    ScenarioSource {
-        file: "src/adapters/demo/encryption.rs",
-        arms_between: ("fn apply(scenario: &mut Scenario, flag: &str) {", "\n}"),
-        ignored: &[],
-    },
-    ScenarioSource {
-        file: "src/adapters/demo/account.rs",
-        arms_between: ("fn apply(scenario: &mut Scenario, flag: &str) {", "\n}"),
-        ignored: &[],
-    },
-    ScenarioSource {
-        file: "src/adapters/demo/message_menu.rs",
-        arms_between: ("fn apply(scenario: &mut Scenario, flag: &str) {", "\n}"),
-        ignored: &[],
-    },
-    ScenarioSource {
-        file: "src/adapters/demo/powers.rs",
-        arms_between: ("fn apply(scenario: &mut Scenario, flag: &str) {", "\n}"),
-        ignored: &[],
-    },
-    ScenarioSource {
-        file: "src/adapters/demo/logout.rs",
-        arms_between: ("fn apply(scenario: &mut Scenario, flag: &str) {", "\n}"),
-        ignored: &[],
-    },
-    ScenarioSource {
-        file: "src/adapters/demo/sync.rs",
-        arms_between: ("fn apply(scenario: &mut Scenario, flag: &str) {", "\n}"),
-        ignored: &[],
-    },
-    ScenarioSource {
-        file: "src/adapters/demo/motion.rs",
-        arms_between: ("fn apply(scenario: &mut Scenario, flag: &str) {", "\n}"),
-        ignored: &[],
-    },
-    ScenarioSource {
-        file: "src/adapters/demo/attachments.rs",
-        arms_between: ("fn apply(scenario: &mut Scenario, flag: &str) {", "\n}"),
-        ignored: &["pick=<path>"],
-    },
+const SCENARIO_SOURCES: &[(&str, &[&str])] = &[
+    ("src/adapters/demo/timeline.rs", &[]),
+    ("src/adapters/demo/pinned.rs", &[]),
+    ("src/adapters/demo/reactions.rs", &[]),
+    ("src/adapters/demo/polls.rs", &[]),
+    ("src/adapters/demo/receipts.rs", &[]),
+    ("src/adapters/demo/names.rs", &[]),
+    ("src/adapters/demo/shields.rs", &[]),
+    ("src/adapters/demo/richtext.rs", &[]),
+    ("src/adapters/demo/msgtypes.rs", &[]),
+    ("src/adapters/demo/stickers.rs", &[]),
+    ("src/adapters/demo/audio.rs", &[]),
+    ("src/adapters/demo/videos.rs", &[]),
+    ("src/adapters/demo/space_index.rs", &[]),
+    ("src/adapters/demo/invites.rs", &[]),
+    ("src/adapters/demo/departures.rs", &[]),
+    ("src/adapters/demo/upgrades.rs", &[]),
+    ("src/adapters/demo/links.rs", &[]),
+    ("src/adapters/demo/create_room.rs", &[]),
+    ("src/adapters/demo/invite_people.rs", &[]),
+    ("src/adapters/demo/typing.rs", &[]),
+    ("src/adapters/demo/presence.rs", &[]),
+    ("src/adapters/demo/calls.rs", &[]),
+    ("src/adapters/demo/notifications.rs", &[]),
+    ("src/adapters/demo/room_info.rs", &[]),
+    ("src/adapters/demo/user_info.rs", &[]),
+    ("src/adapters/demo/identity.rs", &[]),
+    ("src/adapters/demo/encryption.rs", &[]),
+    ("src/adapters/demo/account.rs", &[]),
+    ("src/adapters/demo/message_menu.rs", &[]),
+    ("src/adapters/demo/powers.rs", &[]),
+    ("src/adapters/demo/logout.rs", &[]),
+    ("src/adapters/demo/sync.rs", &[]),
+    ("src/adapters/demo/motion.rs", &[]),
+    ("src/adapters/demo/attachments.rs", &["pick=<path>"]),
 ];
 
 fn check_scenario_catalogs() {
-    for source in SCENARIO_SOURCES {
-        println!("cargo::rerun-if-changed={}", source.file);
-        let Ok(text) = fs::read_to_string(source.file) else {
-            panic!(
-                "failed to read {}, so its scenario catalog cannot be checked",
-                source.file
-            );
+    for &(file, ignored) in SCENARIO_SOURCES {
+        println!("cargo::rerun-if-changed={file}");
+        let Ok(text) = fs::read_to_string(file) else {
+            panic!("failed to read {file}, so its scenario catalog cannot be checked");
         };
-        let arms = section(&text, source.file, source.arms_between, "the flag match");
+        let arms = section(&text, file, APPLY_ARMS, "the flag match");
         let catalog = section(
             &text,
-            source.file,
+            file,
             ("pub const CATALOG: Scenarios = Scenarios {", "\n};"),
             "the CATALOG const",
         );
@@ -582,7 +439,7 @@ fn check_scenario_catalogs() {
             .filter(is_flag)
             .map(str::to_owned)
             .collect();
-        listed.retain(|value| !source.ignored.contains(&value.as_str()));
+        listed.retain(|value| !ignored.contains(&value.as_str()));
         flags.sort_unstable();
         flags.dedup();
         listed.sort_unstable();
@@ -592,10 +449,9 @@ fn check_scenario_catalogs() {
         let extra: Vec<&String> = listed.iter().filter(|l| !flags.contains(l)).collect();
         assert!(
             missing.is_empty() && extra.is_empty(),
-            "{} and its CATALOG disagree: the match accepts {missing:?} that the catalog does not \
-             list, and the catalog lists {extra:?} that the match does not accept. The catalog is \
-             what `--demo-scenarios` reports.",
-            source.file
+            "{file} and its CATALOG disagree: the match accepts {missing:?} that the catalog does \
+             not list, and the catalog lists {extra:?} that the match does not accept. The catalog \
+             is what `--demo-scenarios` reports."
         );
     }
 }

@@ -1,11 +1,11 @@
-use std::env;
 use std::sync::OnceLock;
 
-use super::catalog::{Flag, Scenarios};
+use super::catalog::{Flag, Scenarios, scenario_from_env};
 use super::{data, media};
 use crate::domain::message::{MessageBody, ReplyInfo, RichText, SendState, TimelineMessage};
 
 const ENV_VAR: &str = "U2DM_DEMO_RICHTEXT";
+const SHAPING: &str = "demo mode: injecting formatted messages";
 
 pub const CATALOG: Scenarios = Scenarios {
     env: ENV_VAR,
@@ -281,28 +281,7 @@ impl Scenario {
 
 pub fn scenario() -> Scenario {
     static SCENARIO: OnceLock<Scenario> = OnceLock::new();
-    *SCENARIO.get_or_init(from_env)
-}
-
-fn from_env() -> Scenario {
-    let Ok(raw) = env::var(ENV_VAR) else {
-        return Scenario::default();
-    };
-    let mut scenario = Scenario::default();
-    for flag in raw.split(',').map(str::trim) {
-        apply(&mut scenario, flag);
-    }
-    tracing::info!(
-        adversarial = scenario.adversarial,
-        hard = scenario.hard,
-        links = scenario.links,
-        bare = scenario.bare,
-        oversized = scenario.oversized,
-        emoji = scenario.emoji,
-        spoilers = scenario.spoilers,
-        "demo mode: injecting formatted messages"
-    );
-    scenario
+    *SCENARIO.get_or_init(|| scenario_from_env(ENV_VAR, apply, SHAPING))
 }
 
 fn apply(scenario: &mut Scenario, flag: &str) {

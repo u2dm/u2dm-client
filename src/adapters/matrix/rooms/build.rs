@@ -17,7 +17,7 @@ use matrix_sdk::ruma::events::{
     AnyMessageLikeEventContent, AnySyncMessageLikeEvent, AnySyncStateEvent, AnySyncTimelineEvent,
     SyncMessageLikeEvent, SyncStateEvent,
 };
-use matrix_sdk::ruma::{MilliSecondsSinceUnixEpoch, OwnedDirectUserIdentifier, OwnedUserId};
+use matrix_sdk::ruma::{OwnedDirectUserIdentifier, OwnedUserId};
 use matrix_sdk::{Client, Room};
 use tracing::Instrument;
 
@@ -31,12 +31,9 @@ use crate::domain::member_name::NamedUser;
 use crate::domain::message::{MessagePreviewKind, RichText, ServiceEvent};
 use crate::domain::room::{NotifyMode, Room as DomainRoom, RoomId, Space as DomainSpace};
 use crate::domain::user_info::UserId;
+use crate::util::unix_now_ms;
 
 const SEED_INFLIGHT: usize = 16;
-
-fn now_ms() -> u64 {
-    MilliSecondsSinceUnixEpoch::now().0.into()
-}
 
 pub(super) async fn room_avatar_mxc(room: &Room, is_direct: bool) -> Option<String> {
     if let Some(mxc) = room.avatar_url() {
@@ -148,7 +145,7 @@ async fn build_room(room: &Room, settings: &NotificationSettings) -> DomainRoom 
         message_permissions: permissions.messages,
         may_invite: permissions.invite,
         may_join_calls: permissions.calls,
-        call: room_call(room, now_ms()).await,
+        call: room_call(room, unix_now_ms()).await,
         member_count,
         has_unread: flags.has_unread,
         has_mentions: flags.has_mentions,

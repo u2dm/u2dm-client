@@ -1,13 +1,13 @@
-use std::env;
 use std::sync::OnceLock;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
-use super::catalog::{Flag, Scenarios};
+use super::catalog::{Flag, Scenarios, scenario_from_env};
 use crate::domain::message::{MessageBody, TimelineMessage};
 use crate::domain::poll::{Poll, PollAnswer, PollDraft, PollPermissions, PollStatus, Voter};
 
 const ENV_VAR: &str = "U2DM_DEMO_POLLS";
+const SHAPING: &str = "demo mode: reproducing real-account poll timing";
 
 pub const CATALOG: Scenarios = Scenarios {
     env: ENV_VAR,
@@ -107,31 +107,7 @@ pub struct Scenario {
 
 pub fn scenario() -> Scenario {
     static SCENARIO: OnceLock<Scenario> = OnceLock::new();
-    *SCENARIO.get_or_init(from_env)
-}
-
-fn from_env() -> Scenario {
-    let Ok(raw) = env::var(ENV_VAR) else {
-        return Scenario::default();
-    };
-    let mut scenario = Scenario::default();
-    for flag in raw.split(',').map(str::trim) {
-        apply(&mut scenario, flag);
-    }
-    tracing::info!(
-        tallies_arrive_late = scenario.tallies_arrive_late,
-        members_keep_voting = scenario.members_keep_voting,
-        newest_poll_ends = scenario.newest_poll_ends,
-        answers_are_many = scenario.answers_are_many,
-        voters_are_crowded = scenario.voters_are_crowded,
-        votes_fail = scenario.votes_fail,
-        ends_fail = scenario.ends_fail,
-        edits_fail = scenario.edits_fail,
-        rooms_are_barred = scenario.rooms_are_barred,
-        permissions_get_revoked = scenario.permissions_get_revoked,
-        "demo mode: reproducing real-account poll timing"
-    );
-    scenario
+    *SCENARIO.get_or_init(|| scenario_from_env(ENV_VAR, apply, SHAPING))
 }
 
 fn apply(scenario: &mut Scenario, flag: &str) {

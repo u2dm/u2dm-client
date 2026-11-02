@@ -1,5 +1,4 @@
 use std::collections::HashMap;
-use std::env;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Duration;
@@ -7,7 +6,7 @@ use std::time::Duration;
 use tokio::sync::mpsc;
 use tokio::time::{Instant, sleep, sleep_until};
 
-use super::catalog::{Flag, Scenarios};
+use super::catalog::{Flag, Scenarios, scenario_from_env};
 use super::{data, room_info};
 use crate::domain::call::hands::HandSighting;
 use crate::domain::call::identity::{MediaIdentity, spellings};
@@ -27,6 +26,7 @@ use crate::domain::user_info::UserId;
 use crate::util::unix_now_ms;
 
 const ENV_VAR: &str = "U2DM_DEMO_CALLS";
+const SHAPING: &str = "demo mode: shaping calls";
 
 pub const CATALOG: Scenarios = Scenarios {
     env: ENV_VAR,
@@ -537,19 +537,7 @@ pub struct Scenario {
 
 pub fn scenario() -> Scenario {
     static SCENARIO: OnceLock<Scenario> = OnceLock::new();
-    *SCENARIO.get_or_init(from_env)
-}
-
-fn from_env() -> Scenario {
-    let Ok(raw) = env::var(ENV_VAR) else {
-        return Scenario::default();
-    };
-    let mut scenario = Scenario::default();
-    for flag in raw.split(',').map(str::trim) {
-        apply(&mut scenario, flag);
-    }
-    tracing::info!(flags = raw, "demo mode: shaping calls");
-    scenario
+    *SCENARIO.get_or_init(|| scenario_from_env(ENV_VAR, apply, SHAPING))
 }
 
 fn apply(scenario: &mut Scenario, flag: &str) {
@@ -665,6 +653,14 @@ impl Joiner {
             sfu: DEMO_SFU,
             revision: 0,
         }
+    }
+
+    fn is_own(self) -> bool {
+        self.user == data::own_user()
+    }
+
+    fn is_this_device(self) -> bool {
+        self.is_own() && self.device == own_device()
     }
 
     fn membership_event(self, room_id: &str) -> String {
@@ -949,11 +945,7 @@ impl CallBook {
         calls
             .rooms
             .get_mut(room_id)
-            .and_then(|joiners| {
-                joiners
-                    .iter_mut()
-                    .find(|joiner| joiner.user == data::own_user() && joiner.device == own_device())
-            })
+            .and_then(|joiners| joiners.iter_mut().find(|joiner| joiner.is_this_device()))
             .map(|own| {
                 own.intent = intent;
                 own.revision = own.revision.wrapping_add(1);
@@ -967,7 +959,7 @@ impl CallBook {
             .rooms
             .get(room_id)?
             .iter()
-            .find(|joiner| joiner.user == data::own_user() && joiner.device == own_device())
+            .find(|joiner| joiner.is_this_device())
             .map(|own| own.membership_event(room_id))
     }
 
@@ -1222,27 +1214,12 @@ impl CallBook {
         if let Ok(mut calls) = self.calls.lock()
             && let Some(joiners) = calls.rooms.get_mut(room_id)
         {
-            joiners.retain(|joiner| {
-                !(joiner.user == data::own_user() && joiner.device == own_device())
-            });
+            joiners.retain(|joiner| !joiner.is_this_device());
         }
     }
 
     pub fn watch(&self, room_id: &str, sfu: &str, events_tx: mpsc::UnboundedSender<MediaEvent>) {
-        let present: Vec<Joiner> = self
-            .calls
-            .lock()
-            .map(|calls| {
-                calls
-                    .rooms
-                    .get(room_id)
-                    .into_iter()
-                    .flatten()
-                    .filter(|joiner| joiner.sfu == sfu && joiner.user != data::own_user())
-                    .copied()
-                    .collect()
-            })
-            .unwrap_or_default();
+        let present = self.joiners(room_id, |joiner| joiner.sfu == sfu && !joiner.is_own());
         if let Some(id) = sfu_id(sfu) {
             for joiner in present {
                 send_media(
@@ -1278,20 +1255,7 @@ impl CallBook {
         let (Some(id), true) = (sfu_id(sfu), scenario().full_reconnect) else {
             return (Vec::new(), Vec::new());
         };
-        let here: Vec<Joiner> = self
-            .calls
-            .lock()
-            .map(|calls| {
-                calls
-                    .rooms
-                    .get(room_id)
-                    .into_iter()
-                    .flatten()
-                    .filter(|joiner| joiner.sfu == sfu && joiner.user != data::own_user())
-                    .copied()
-                    .collect()
-            })
-            .unwrap_or_default();
+        let here = self.joiners(room_id, |joiner| joiner.sfu == sfu && !joiner.is_own());
         let mut gone = Vec::new();
         let mut back = Vec::new();
         for joiner in here {
@@ -1311,7 +1275,7 @@ impl CallBook {
     }
 
     fn tell_watchers(&self, room_id: &str, joiner: Joiner, present: bool) {
-        if joiner.user == data::own_user() {
+        if joiner.is_own() {
             return;
         }
         let Some(id) = sfu_id(joiner.sfu) else {
@@ -1345,20 +1309,9 @@ impl CallBook {
         let Some(id) = sfu_id(sfu) else {
             return Vec::new();
         };
-        let here: Vec<Joiner> = self
-            .calls
-            .lock()
-            .map(|calls| {
-                calls
-                    .rooms
-                    .get(room_id)
-                    .into_iter()
-                    .flatten()
-                    .filter(|joiner| joiner.sfu == sfu && joiner.on_main_device())
-                    .copied()
-                    .collect()
-            })
-            .unwrap_or_default();
+        let here = self.joiners(room_id, |joiner| {
+            joiner.sfu == sfu && joiner.on_main_device()
+        });
         let mut troubles = Vec::new();
         for joiner in here {
             troubles.extend(missing_media(&id, joiner));
@@ -1387,20 +1340,7 @@ impl CallBook {
         let Some(id) = sfu_id(sfu) else {
             return Vec::new();
         };
-        let here: Vec<Joiner> = self
-            .calls
-            .lock()
-            .map(|calls| {
-                calls
-                    .rooms
-                    .get(room_id)
-                    .into_iter()
-                    .flatten()
-                    .filter(|joiner| joiner.sfu == sfu && joiner.user != data::own_user())
-                    .copied()
-                    .collect()
-            })
-            .unwrap_or_default();
+        let here = self.joiners(room_id, |joiner| joiner.sfu == sfu && !joiner.is_own());
         here.into_iter()
             .filter_map(|joiner| match camera_news(&id, joiner, true)? {
                 MediaEvent::Video {
@@ -1414,6 +1354,13 @@ impl CallBook {
     }
 
     pub fn others_in(&self, room_id: &str) -> Vec<(MemberKey, MediaIdentity)> {
+        self.joiners(room_id, |joiner| !joiner.is_own())
+            .into_iter()
+            .map(|joiner| (joiner.key(), joiner.identity()))
+            .collect()
+    }
+
+    fn joiners(&self, room_id: &str, keep: impl Fn(&Joiner) -> bool) -> Vec<Joiner> {
         self.calls
             .lock()
             .map(|calls| {
@@ -1422,8 +1369,8 @@ impl CallBook {
                     .get(room_id)
                     .into_iter()
                     .flatten()
-                    .filter(|joiner| joiner.user != data::own_user())
-                    .map(|joiner| (joiner.key(), joiner.identity()))
+                    .filter(|joiner| keep(joiner))
+                    .copied()
                     .collect()
             })
             .unwrap_or_default()
@@ -1797,15 +1744,18 @@ impl Trouble {
 fn missing_media(sfu: &SfuId, joiner: Joiner) -> Vec<Trouble> {
     let shaped = scenario();
     let mut troubles = Vec::new();
-    if joiner.user == JORDAN && shaped.unreceived_audio {
-        troubles.push(Trouble::missing(
+    let jordan_audio_missing = || {
+        Trouble::missing(
             sfu,
             joiner,
             TROUBLE_AFTER,
             MediaSource::Microphone,
             true,
             "demo: Jordan's audio is not received",
-        ));
+        )
+    };
+    if joiner.user == JORDAN && shaped.unreceived_audio {
+        troubles.push(jordan_audio_missing());
         troubles.push(Trouble::missing(
             sfu,
             joiner,
@@ -1816,14 +1766,7 @@ fn missing_media(sfu: &SfuId, joiner: Joiner) -> Vec<Trouble> {
         ));
     }
     if joiner.user == JORDAN && shaped.unreceived_media {
-        troubles.push(Trouble::missing(
-            sfu,
-            joiner,
-            TROUBLE_AFTER,
-            MediaSource::Microphone,
-            true,
-            "demo: Jordan's audio is not received",
-        ));
+        troubles.push(jordan_audio_missing());
         troubles.push(Trouble::missing(
             sfu,
             joiner,

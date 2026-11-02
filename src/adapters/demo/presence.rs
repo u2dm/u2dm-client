@@ -1,10 +1,9 @@
-use std::env;
 use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
 use tokio::time::sleep;
 
-use super::catalog::{Flag, Scenarios};
+use super::catalog::{Flag, Scenarios, scenario_from_env};
 use super::data;
 use crate::domain::presence::{
     Availability, BeaconFailure, BeaconResult, LookupFailure, LookupResult, PresenceReport,
@@ -12,6 +11,7 @@ use crate::domain::presence::{
 use crate::domain::user_info::UserId;
 
 const ENV_VAR: &str = "U2DM_DEMO_PRESENCE";
+const SHAPING: &str = "demo mode: shaping presence";
 
 pub const CATALOG: Scenarios = Scenarios {
     env: ENV_VAR,
@@ -85,28 +85,7 @@ pub struct Scenario {
 
 pub fn scenario() -> Scenario {
     static SCENARIO: OnceLock<Scenario> = OnceLock::new();
-    *SCENARIO.get_or_init(from_env)
-}
-
-fn from_env() -> Scenario {
-    let Ok(raw) = env::var(ENV_VAR) else {
-        return Scenario::default();
-    };
-    let mut scenario = Scenario::default();
-    for flag in raw.split(',').map(str::trim) {
-        apply(&mut scenario, flag);
-    }
-    tracing::info!(
-        partners = scenario.partners,
-        status = scenario.status,
-        changing = scenario.changing,
-        slow = scenario.slow,
-        refused = scenario.refused,
-        throttled = scenario.throttled,
-        flaky = scenario.flaky,
-        "demo mode: shaping presence"
-    );
-    scenario
+    *SCENARIO.get_or_init(|| scenario_from_env(ENV_VAR, apply, SHAPING))
 }
 
 fn apply(scenario: &mut Scenario, flag: &str) {

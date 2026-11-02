@@ -1,10 +1,10 @@
-use std::env;
 use std::sync::OnceLock;
 use std::time::Duration;
 
-use super::catalog::{Flag, Scenarios};
+use super::catalog::{Flag, Scenarios, scenario_from_env};
 
 const ENV_VAR: &str = "U2DM_DEMO_TIMELINE";
+const SHAPING: &str = "demo mode: reproducing real-account timeline timing";
 
 pub const CATALOG: Scenarios = Scenarios {
     env: ENV_VAR,
@@ -144,38 +144,7 @@ pub struct Scenario {
 
 pub fn scenario() -> Scenario {
     static SCENARIO: OnceLock<Scenario> = OnceLock::new();
-    *SCENARIO.get_or_init(from_env)
-}
-
-fn from_env() -> Scenario {
-    let Ok(raw) = env::var(ENV_VAR) else {
-        return Scenario::default();
-    };
-    let mut scenario = Scenario::default();
-    for flag in raw.split(',').map(str::trim) {
-        apply(&mut scenario, flag);
-    }
-    tracing::info!(
-        reset_is_slow = scenario.reset_is_slow,
-        reset_is_batched = scenario.reset_is_batched,
-        reset_repeats = scenario.reset_repeats,
-        repeat_drops_anchor = scenario.repeat_drops_anchor,
-        rows_keep_resizing = scenario.rows_keep_resizing,
-        room_list_keeps_updating = scenario.room_list_keeps_updating,
-        message_arrives_late = scenario.message_arrives_late,
-        pagination_returns_history = scenario.pagination_returns_history,
-        history_is_long = scenario.history_is_long,
-        read_position_precedes_history = scenario.read_position_precedes_history,
-        resolving_unread = scenario.resolving_unread,
-        unread_boundary_is_unresolved = scenario.unread_boundary_is_unresolved,
-        window_is_short = scenario.window_is_short,
-        sends_fail = scenario.sends_fail,
-        sends_are_refused = scenario.sends_are_refused,
-        edits_are_refused = scenario.edits_are_refused,
-        edits_fail = scenario.edits_fail,
-        "demo mode: reproducing real-account timeline timing"
-    );
-    scenario
+    *SCENARIO.get_or_init(|| scenario_from_env(ENV_VAR, apply, SHAPING))
 }
 
 fn apply(scenario: &mut Scenario, flag: &str) {

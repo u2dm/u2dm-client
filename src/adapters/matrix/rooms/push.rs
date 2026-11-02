@@ -32,6 +32,7 @@ use crate::domain::push::{NoticeContent, PushNotice, PushTweaks};
 use crate::domain::room::RoomId;
 use crate::error::Result;
 use crate::ports::matrix::PushPort;
+use crate::util::unix_now_ms;
 
 const CATCH_UP_AGE: Duration = Duration::from_mins(5);
 const SEEN_PER_ROOM: usize = 64;
@@ -124,7 +125,7 @@ struct LiveFilter {
 impl LiveFilter {
     fn arm(client: &Client) -> Self {
         Self {
-            armed_at: now_ms(),
+            armed_at: unix_now_ms(),
             seen: HashMap::new(),
             invites: client
                 .invited_rooms()
@@ -362,7 +363,7 @@ async fn invite_notice(room: &Room, tweaks: PushTweaks) -> PushNotice {
     PushNotice {
         room_id: invite.id,
         room_name: invite.name,
-        sent_at: now_ms(),
+        sent_at: unix_now_ms(),
         content: NoticeContent::Invite {
             inviter: invite.inviter,
         },
@@ -391,6 +392,3 @@ async fn read_elsewhere(room: &Room, event_id: &EventId) -> bool {
     false
 }
 
-fn now_ms() -> u64 {
-    MilliSecondsSinceUnixEpoch::now().0.into()
-}

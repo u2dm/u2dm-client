@@ -1,10 +1,10 @@
-use std::env;
 use std::sync::{Arc, OnceLock};
 
-use super::catalog::{Flag, Scenarios};
+use super::catalog::{Flag, Scenarios, scenario_from_env};
 use crate::ports::appearance::{AppearancePort, MotionPreference, MotionSink};
 
 const ENV_VAR: &str = "U2DM_DEMO_MOTION";
+const SHAPING: &str = "demo mode: standing in for the desktop's motion preference";
 
 pub const CATALOG: Scenarios = Scenarios {
     env: ENV_VAR,
@@ -33,22 +33,7 @@ impl Default for Scenario {
 
 fn scenario() -> Scenario {
     static SCENARIO: OnceLock<Scenario> = OnceLock::new();
-    *SCENARIO.get_or_init(from_env)
-}
-
-fn from_env() -> Scenario {
-    let Ok(raw) = env::var(ENV_VAR) else {
-        return Scenario::default();
-    };
-    let mut scenario = Scenario::default();
-    for flag in raw.split(',').map(str::trim) {
-        apply(&mut scenario, flag);
-    }
-    tracing::info!(
-        motion = ?scenario.motion,
-        "demo mode: standing in for the desktop's motion preference"
-    );
-    scenario
+    *SCENARIO.get_or_init(|| scenario_from_env(ENV_VAR, apply, SHAPING))
 }
 
 fn apply(scenario: &mut Scenario, flag: &str) {

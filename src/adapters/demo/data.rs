@@ -1,9 +1,8 @@
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::sync::{Arc, OnceLock};
-use std::time::{SystemTime, UNIX_EPOCH};
 use std::{fs, mem};
 
-use super::dto::{DemoData, InviteDto, RoomDto, SpaceDto, UnjoinedDto};
+use super::dto::{DemoData, InviteDto, RoomDto, SpaceDto, UnjoinedDto, quiet_room};
 use super::names::{self, NameBook};
 use super::timeline::{self, scenario};
 use super::{calls, invite_people, media, powers};
@@ -11,7 +10,6 @@ use crate::adapters::markdown::{self, Composed, RoomMentions};
 use crate::domain::auth::Session;
 use crate::domain::departure::{Removal, RemovalKind};
 use crate::domain::emote::Emote;
-use crate::domain::event_size::EventIds;
 use crate::domain::image_pack::{ImagePack, PackImage, PackOrigin};
 use crate::domain::invite::Invite;
 use crate::domain::media::{
@@ -28,11 +26,11 @@ use crate::domain::room_info::{
     MemberRole, Reader, RoomAbout, RosterMember, RosterSection, sort_roster,
 };
 use crate::domain::room_preview::{PreviewMembership, RoomPreview};
-use crate::domain::room_state::HistoryVisibility;
 use crate::domain::space_index::{ChildKind, SpaceChild};
 use crate::domain::user_info::{
     IdentityTrust, ModerationPowers, Pronouns, RoomMembership, UserId, UserProfile, localpart,
 };
+use crate::util::unix_now_ms;
 
 const UNKNOWN_SENDER: &str = "@member:matrix.org";
 const SENT_STICKER_EXTENT: u32 = 512;
@@ -125,7 +123,7 @@ impl Removed {
             kind,
             by: by.to_owned(),
             reason: reason.map(ToOwned::to_owned),
-            at_ms: now_ms().saturating_sub(minutes.saturating_mul(MINUTE_MS)),
+            at_ms: unix_now_ms().saturating_sub(minutes.saturating_mul(MINUTE_MS)),
         }
     }
 }
@@ -162,13 +160,13 @@ impl Arrived {
             kind,
             body,
             highlight,
-            at_ms: now_ms(),
+            at_ms: unix_now_ms(),
         }
     }
 }
 
 pub fn rooms_with(joined: &[RoomId], overrides: &RoomOverrides) -> Vec<Arc<Room>> {
-    let now = now_ms();
+    let now = unix_now_ms();
     let data = data();
     data.rooms
         .iter()
@@ -213,70 +211,27 @@ pub fn rooms_with(joined: &[RoomId], overrides: &RoomOverrides) -> Vec<Arc<Room>
 }
 
 fn started_chat(room_id: &str, user_id: &str, now: u64) -> Room {
+    let name = person_name(user_id).unwrap_or_else(|| localpart(user_id).to_owned());
     Room {
-        id: RoomId::new(room_id),
-        display_name: person_name(user_id).unwrap_or_else(|| localpart(user_id).to_owned()),
         avatar_mxc: Some(user_id.to_owned()),
-        topic: None,
-        canonical_alias: None,
         is_direct: true,
         direct_partner: Some(UserId::new(user_id)),
         is_encrypted: true,
-        event_ids: EventIds::Hashed,
-        history_visibility: HistoryVisibility::default(),
-        poll_permissions: powers::polls(),
-        message_permissions: powers::messages(),
-        may_invite: invite_people::may_invite(),
-        may_join_calls: true,
-        call: None,
         member_count: 2,
-        has_unread: false,
-        has_mentions: false,
-        has_activity: false,
-        notify: NotifyMode::AllMessages,
-        last_activity_ts: now,
-        last_message_sender: None,
-        last_message_kind: MessagePreviewKind::None,
-        last_message_body: RichText::plain(String::new()),
-        last_message_service: None,
-        last_message_is_own: false,
-        last_message_edited: false,
-        successor: None,
-        predecessor: None,
+        ..quiet_room(RoomId::new(room_id), name, now)
     }
 }
 
 fn created_room(created: &Created) -> Room {
     Room {
-        id: RoomId::new(&created.id),
-        display_name: created.name.clone(),
-        avatar_mxc: None,
         topic: created.topic.clone(),
         canonical_alias: created.alias.clone(),
-        is_direct: false,
-        direct_partner: None,
         is_encrypted: created.encrypted,
-        event_ids: EventIds::Hashed,
-        history_visibility: HistoryVisibility::default(),
-        poll_permissions: powers::polls(),
-        message_permissions: powers::messages(),
-        may_invite: invite_people::may_invite(),
-        may_join_calls: true,
-        call: None,
-        member_count: 1,
-        has_unread: false,
-        has_mentions: false,
-        has_activity: false,
-        notify: NotifyMode::AllMessages,
-        last_activity_ts: created.at_ms,
-        last_message_sender: None,
-        last_message_kind: MessagePreviewKind::None,
-        last_message_body: RichText::plain(String::new()),
-        last_message_service: None,
-        last_message_is_own: false,
-        last_message_edited: false,
-        successor: None,
-        predecessor: None,
+        ..quiet_room(
+            RoomId::new(&created.id),
+            created.name.clone(),
+            created.at_ms,
+        )
     }
 }
 
@@ -331,7 +286,7 @@ pub fn removals_with(overrides: &RoomOverrides) -> Vec<Arc<Removal>> {
         .filter(|(room_id, _)| !overrides.forgotten.contains(*room_id))
         .filter_map(|(room_id, removed)| {
             let room = data.rooms.iter().find(|room| room.id == *room_id)?;
-            let shown = room.to_room(now_ms(), None);
+            let shown = room.to_room(unix_now_ms(), None);
             Some(Arc::new(Removal {
                 id: shown.id,
                 name: shown.display_name,
@@ -357,7 +312,7 @@ pub fn removals_with(overrides: &RoomOverrides) -> Vec<Arc<Removal>> {
 }
 
 pub fn invites_with(joined: &[RoomId], overrides: &RoomOverrides) -> Vec<Arc<Invite>> {
-    let now = now_ms();
+    let now = unix_now_ms();
     data()
         .invites
         .iter()
@@ -419,7 +374,7 @@ pub fn room_about(room_id: &RoomId) -> Option<RoomAbout> {
     let data = data();
     if let Some(room) = data.rooms.iter().find(|room| room.id == room_id.as_ref()) {
         return Some(RoomAbout {
-            joined_at: room.joined_at(now_ms()),
+            joined_at: room.joined_at(unix_now_ms()),
             link: room_link(room_id, room.alias.as_deref()),
             topic: room.rich_topic(),
         });
@@ -935,7 +890,7 @@ pub fn sticker_image(pack_id: &str, shortcode: &str) -> Option<PackImage> {
 }
 
 pub fn messages(room_id: &RoomId) -> Vec<TimelineMessage> {
-    let now = now_ms();
+    let now = unix_now_ms();
     let mut messages = match data().timelines.get(room_id.as_ref()) {
         Some(timeline) => timeline
             .iter()
@@ -1162,13 +1117,38 @@ pub fn own_message(
         body_emoji: media::emoji_states(&body),
         body,
         mentions_room: sent.mentions_room,
-        timestamp: now_ms(),
+        timestamp: unix_now_ms(),
         is_own: true,
         reply,
         edited: false,
         editable: true,
         is_first_unread: false,
         send_state,
+        shield: Shield::None,
+        reactions: Vec::new(),
+        read_by: ReadBy::default(),
+    }
+}
+
+pub fn posted(id: &str, sender: &str, at: u64, body: MessageBody) -> TimelineMessage {
+    TimelineMessage {
+        unique_id: id.to_owned(),
+        event_id: Some(id.to_owned()),
+        local_id: None,
+        sender: sender.to_owned(),
+        sender_name: MemberName::Unset,
+        sender_avatar_url: Some(sender.to_owned()),
+        sender_pronouns: Vec::new(),
+        body_emoji: BTreeMap::new(),
+        body,
+        mentions_room: false,
+        timestamp: at,
+        is_own: false,
+        reply: None,
+        edited: false,
+        editable: false,
+        is_first_unread: false,
+        send_state: SendState::Sent,
         shield: Shield::None,
         reactions: Vec::new(),
         read_by: ReadBy::default(),
@@ -1226,7 +1206,7 @@ pub fn own_sticker(sequence: u64, image: &PackImage, reply: Option<ReplyInfo>) -
         },
         body_emoji: BTreeMap::new(),
         mentions_room: false,
-        timestamp: now_ms(),
+        timestamp: unix_now_ms(),
         is_own: true,
         reply,
         edited: false,
@@ -1252,7 +1232,7 @@ pub fn own_verification_request(sequence: u64, target: NamedUser) -> TimelineMes
         body: MessageBody::Service(ServiceEvent::VerificationRequested { target }),
         body_emoji: BTreeMap::new(),
         mentions_room: false,
-        timestamp: now_ms(),
+        timestamp: unix_now_ms(),
         is_own: true,
         reply: None,
         edited: false,
@@ -1343,7 +1323,7 @@ pub fn own_attachment(
         body_emoji: media::emoji_states(&body),
         body,
         mentions_room,
-        timestamp: now_ms(),
+        timestamp: unix_now_ms(),
         is_own: true,
         reply,
         edited: false,
@@ -1405,7 +1385,7 @@ pub fn arrived_message(sequence: u64, sender: &NamedUser, body: MessageBody) -> 
         body_emoji: BTreeMap::new(),
         body,
         mentions_room: false,
-        timestamp: now_ms(),
+        timestamp: unix_now_ms(),
         is_own: false,
         reply: None,
         edited: false,
@@ -1426,7 +1406,7 @@ fn last_message_only(room_id: &RoomId) -> Vec<TimelineMessage> {
         return Vec::new();
     }
 
-    vec![synthesized_message(dto, &dto.to_room(now_ms(), None))]
+    vec![synthesized_message(dto, &dto.to_room(unix_now_ms(), None))]
 }
 
 fn synthesized_message(dto: &RoomDto, room: &Room) -> TimelineMessage {
@@ -1473,13 +1453,6 @@ fn synthesized_message(dto: &RoomDto, room: &Room) -> TimelineMessage {
 }
 
 pub fn arrived_at() -> u64 {
-    now_ms()
+    unix_now_ms()
 }
 
-pub fn now_ms() -> u64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .ok()
-        .and_then(|elapsed| u64::try_from(elapsed.as_millis()).ok())
-        .unwrap_or_default()
-}

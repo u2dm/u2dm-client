@@ -572,38 +572,64 @@ impl DemoAuthed {
     }
 
     fn revise_own_text(&self, room_id: &RoomId, edit: &MessageEdit) -> Option<RevisedText> {
+        self.with_active(room_id, |active| {
+            let offset = active
+                .messages
+                .iter()
+                .position(|message| edit_names(&edit.target, message))?;
+            let row = active.prepended.saturating_add(offset);
+            let message = active.messages.get_mut(offset)?;
+            message.editable_text()?;
+            let emotes = with_target_emotes(&edit.emotes, message.body.html());
+            let sent = data::sent_text(&edit.body, &emotes);
+            let revised = revised_body(&message.body, &edit.body, sent.text)?;
+            let revised_emoji = media::emoji_states(&revised);
+            let previous = Revision {
+                body: mem::replace(&mut message.body, revised),
+                body_emoji: mem::replace(&mut message.body_emoji, revised_emoji),
+                mentions_room: message.mentions_room,
+                edited: message.edited,
+            };
+            message.mentions_room = sent.mentions_room;
+            message.edited |= edit.target.event_id().is_some();
+            if !timeline::scenario().edits_fail {
+                self.keep_own_edit(room_id, message);
+            }
+            Some(RevisedText {
+                timeline_tx: active.timeline_tx.clone(),
+                row,
+                previous,
+                message: message.clone(),
+            })
+        })
+    }
+
+    fn with_active<T>(
+        &self,
+        room_id: &RoomId,
+        work: impl FnOnce(&mut ActiveRoom) -> Option<T>,
+    ) -> Option<T> {
         let mut guard = self.active.lock().ok()?;
-        let active = guard.as_mut()?;
-        if &active.room_id != room_id {
-            return None;
-        }
-        let offset = active
-            .messages
-            .iter()
-            .position(|message| edit_names(&edit.target, message))?;
-        let row = active.prepended.saturating_add(offset);
-        let message = active.messages.get_mut(offset)?;
-        message.editable_text()?;
-        let emotes = with_target_emotes(&edit.emotes, message.body.html());
-        let sent = data::sent_text(&edit.body, &emotes);
-        let revised = revised_body(&message.body, &edit.body, sent.text)?;
-        let revised_emoji = media::emoji_states(&revised);
-        let previous = Revision {
-            body: mem::replace(&mut message.body, revised),
-            body_emoji: mem::replace(&mut message.body_emoji, revised_emoji),
-            mentions_room: message.mentions_room,
-            edited: message.edited,
-        };
-        message.mentions_room = sent.mentions_room;
-        message.edited |= edit.target.event_id().is_some();
-        if !timeline::scenario().edits_fail {
-            self.keep_own_edit(room_id, message);
-        }
-        Some(RevisedText {
-            timeline_tx: active.timeline_tx.clone(),
-            row,
-            previous,
-            message: message.clone(),
+        guard
+            .as_mut()
+            .filter(|active| &active.room_id == room_id)
+            .and_then(work)
+    }
+
+    fn append_own(
+        &self,
+        room_id: &RoomId,
+        build: impl FnOnce(&ActiveRoom) -> TimelineMessage,
+    ) -> Option<(mpsc::Sender<TimelineUpdate>, usize, TimelineMessage)> {
+        self.with_active(room_id, |active| {
+            let message = build(active);
+            self.keep_own_send(room_id, &message);
+            if !active.live {
+                return None;
+            }
+            active.messages.push(message.clone());
+            let index = active.messages.len() - 1;
+            Some((active.timeline_tx.clone(), index, message))
         })
     }
 
@@ -654,31 +680,28 @@ impl DemoAuthed {
         event_id: &str,
         restamp_replies: bool,
     ) -> Option<RemovedMessage> {
-        let mut guard = self.active.lock().ok()?;
-        let active = guard.as_mut()?;
-        if &active.room_id != room_id {
-            return None;
-        }
-        let offset = active
-            .messages
-            .iter()
-            .position(|message| message.event_id.as_deref() == Some(event_id))?;
-        let message = active.messages.remove(offset);
-        let mut replies = Vec::new();
-        if restamp_replies {
-            let deleted = HashSet::from([event_id.to_owned()]);
-            for (index, reply) in active.messages.iter_mut().enumerate() {
-                if stamp_deleted_reply(reply, &deleted) {
-                    replies.push((active.prepended.saturating_add(index), reply.clone()));
+        self.with_active(room_id, |active| {
+            let offset = active
+                .messages
+                .iter()
+                .position(|message| message.event_id.as_deref() == Some(event_id))?;
+            let message = active.messages.remove(offset);
+            let mut replies = Vec::new();
+            if restamp_replies {
+                let deleted = HashSet::from([event_id.to_owned()]);
+                for (index, reply) in active.messages.iter_mut().enumerate() {
+                    if stamp_deleted_reply(reply, &deleted) {
+                        replies.push((active.prepended.saturating_add(index), reply.clone()));
+                    }
                 }
             }
-        }
-        Some(RemovedMessage {
-            timeline_tx: active.timeline_tx.clone(),
-            offset,
-            row: active.prepended.saturating_add(offset),
-            message,
-            replies,
+            Some(RemovedMessage {
+                timeline_tx: active.timeline_tx.clone(),
+                offset,
+                row: active.prepended.saturating_add(offset),
+                message,
+                replies,
+            })
         })
     }
 
@@ -731,33 +754,18 @@ impl DemoAuthed {
         emotes: &[Emote],
         in_reply_to: Option<&str>,
     ) {
-        let prepared = {
-            let Ok(mut guard) = self.active.lock() else {
-                return;
-            };
-            let Some(active) = guard.as_mut() else {
-                return;
-            };
-            if &active.room_id != room_id {
-                return;
-            }
-
+        let Some((timeline_tx, _, message)) = self.append_own(room_id, |active| {
             let reply = in_reply_to.and_then(|event_id| self.reply_in_room(active, event_id));
-            let message = data::own_message(
+            data::own_message(
                 self.sent.fetch_add(1, Ordering::Relaxed),
                 body,
                 emotes,
                 reply,
                 self.send_state_in(room_id),
-            );
-            self.keep_own_send(room_id, &message);
-            if !active.live {
-                return;
-            }
-            active.messages.push(message.clone());
-            (active.timeline_tx.clone(), message)
+            )
+        }) else {
+            return;
         };
-        let (timeline_tx, message) = prepared;
 
         let seen = receipts::scenario().member_sees_sends && message.event_id.is_some();
         let unique_id = message.unique_id.clone();
@@ -768,29 +776,15 @@ impl DemoAuthed {
     }
 
     async fn append_own_poll(&self, room_id: &RoomId, draft: &PollDraft) {
-        let prepared = {
-            let Ok(mut guard) = self.active.lock() else {
-                return;
-            };
-            let Some(active) = guard.as_mut() else {
-                return;
-            };
-            if &active.room_id != room_id {
-                return;
-            }
-            let message = data::own_poll(
+        let Some((timeline_tx, _, message)) = self.append_own(room_id, |_| {
+            data::own_poll(
                 self.sent.fetch_add(1, Ordering::Relaxed),
                 draft,
                 self.send_state_in(room_id),
-            );
-            self.keep_own_send(room_id, &message);
-            if !active.live {
-                return;
-            }
-            active.messages.push(message.clone());
-            (active.timeline_tx.clone(), message)
+            )
+        }) else {
+            return;
         };
-        let (timeline_tx, message) = prepared;
         send_patch(&timeline_tx, TimelinePatch::PushBack(message)).await;
     }
 
@@ -800,28 +794,12 @@ impl DemoAuthed {
         image: &PackImage,
         in_reply_to: Option<&str>,
     ) {
-        let prepared = {
-            let Ok(mut guard) = self.active.lock() else {
-                return;
-            };
-            let Some(active) = guard.as_mut() else {
-                return;
-            };
-            if &active.room_id != room_id {
-                return;
-            }
-
+        let Some((timeline_tx, _, message)) = self.append_own(room_id, |active| {
             let reply = in_reply_to.and_then(|event_id| self.reply_in_room(active, event_id));
-            let message =
-                data::own_sticker(self.sent.fetch_add(1, Ordering::Relaxed), image, reply);
-            self.keep_own_send(room_id, &message);
-            if !active.live {
-                return;
-            }
-            active.messages.push(message.clone());
-            (active.timeline_tx.clone(), message)
+            data::own_sticker(self.sent.fetch_add(1, Ordering::Relaxed), image, reply)
+        }) else {
+            return;
         };
-        let (timeline_tx, message) = prepared;
 
         send_patch(&timeline_tx, TimelinePatch::PushBack(message)).await;
     }
@@ -856,15 +834,7 @@ impl DemoAuthed {
         attachment: &OutgoingAttachment,
         opening: SendState,
     ) -> Option<(usize, TimelineMessage)> {
-        let prepared = {
-            let Ok(mut guard) = self.active.lock() else {
-                return None;
-            };
-            let active = guard.as_mut()?;
-            if &active.room_id != room_id {
-                return None;
-            }
-
+        let (timeline_tx, index, settled) = self.append_own(room_id, |active| {
             let reply = attachment
                 .reply_to
                 .as_deref()
@@ -872,15 +842,8 @@ impl DemoAuthed {
             let settled =
                 data::own_attachment(self.sent.fetch_add(1, Ordering::Relaxed), attachment, reply);
             remember_sent_media(&settled, attachment);
-            self.keep_own_send(room_id, &settled);
-            if !active.live {
-                return None;
-            }
-            active.messages.push(settled.clone());
-            let index = active.messages.len() - 1;
-            (active.timeline_tx.clone(), index, settled)
-        };
-        let (timeline_tx, index, settled) = prepared;
+            settled
+        })?;
 
         let mut opening_echo = settled.clone();
         opening_echo.send_state = opening;
@@ -2219,7 +2182,7 @@ impl RoomCreationPort for DemoAuthed {
             topic: blueprint.topic().map(str::to_owned),
             alias,
             encrypted: matches!(blueprint.shape(), Shape::Room { encrypted: true }),
-            at_ms: data::now_ms(),
+            at_ms: unix_now_ms(),
         };
         self.change_lists(|lists| lists.overrides.created.push(created));
         if let (ChildLink::Added, Some(parent)) = (child, blueprint.parent()) {

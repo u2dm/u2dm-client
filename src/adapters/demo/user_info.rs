@@ -1,12 +1,11 @@
 use std::collections::HashSet;
-use std::env;
 use std::sync::{Mutex, OnceLock};
 use std::time::Duration;
 
 use tokio::sync::watch;
 use tokio::time::sleep;
 
-use super::catalog::{Flag, Scenarios};
+use super::catalog::{Flag, Scenarios, scenario_from_env};
 use super::{data, room_info};
 use crate::domain::room_info::{ADMIN_LEVEL, MODERATOR_LEVEL, MemberRole};
 use crate::domain::user_info::{
@@ -15,6 +14,7 @@ use crate::domain::user_info::{
 };
 
 const ENV_VAR: &str = "U2DM_DEMO_USER_INFO";
+const SHAPING: &str = "demo mode: shaping the user info sheet";
 
 pub const CATALOG: Scenarios = Scenarios {
     env: ENV_VAR,
@@ -133,33 +133,7 @@ pub enum VerifyAnswer {
 
 pub fn scenario() -> Scenario {
     static SCENARIO: OnceLock<Scenario> = OnceLock::new();
-    *SCENARIO.get_or_init(from_env)
-}
-
-fn from_env() -> Scenario {
-    let Ok(raw) = env::var(ENV_VAR) else {
-        return Scenario::default();
-    };
-    let mut scenario = Scenario::default();
-    for flag in raw.split(',').map(str::trim) {
-        apply(&mut scenario, flag);
-    }
-    tracing::info!(
-        is_slow = scenario.is_slow,
-        profile_fails_once = scenario.profile_fails_once,
-        verified = scenario.verified,
-        departed = scenario.departed,
-        dm_fails = scenario.dm_fails,
-        dm_echo_lost = scenario.dm_echo_lost,
-        ignore_fails = scenario.ignore_fails,
-        admin = scenario.admin,
-        kick_fails = scenario.kick_fails,
-        ban_fails = scenario.ban_fails,
-        unban_fails = scenario.unban_fails,
-        verify_fails = scenario.verify_fails,
-        "demo mode: shaping the user info sheet"
-    );
-    scenario
+    *SCENARIO.get_or_init(|| scenario_from_env(ENV_VAR, apply, SHAPING))
 }
 
 fn apply(scenario: &mut Scenario, flag: &str) {

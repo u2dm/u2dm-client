@@ -1,17 +1,17 @@
 use std::collections::HashMap;
-use std::env;
 use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
 use tokio::sync::mpsc;
 use tokio::time::sleep;
 
-use super::catalog::{Flag, Scenarios};
+use super::catalog::{Flag, Scenarios, scenario_from_env};
 use super::data;
 use crate::domain::member_name::NamedUser;
 use crate::domain::room::RoomId;
 
 const ENV_VAR: &str = "U2DM_DEMO_TYPING";
+const SHAPING: &str = "demo mode: shaping who types";
 
 pub const CATALOG: Scenarios = Scenarios {
     env: ENV_VAR,
@@ -77,23 +77,10 @@ pub fn scenario() -> Scenario {
 }
 
 fn from_env() -> Scenario {
-    let Ok(raw) = env::var(ENV_VAR) else {
-        return Scenario::default();
-    };
-    let mut scenario = Scenario::default();
-    for flag in raw.split(',').map(str::trim) {
-        apply(&mut scenario, flag);
-    }
+    let mut scenario = scenario_from_env(ENV_VAR, apply, SHAPING);
     if scenario.in_bursts {
         scenario.typists = scenario.typists.max(1);
     }
-    tracing::info!(
-        typists = scenario.typists,
-        in_bursts = scenario.in_bursts,
-        notices_slow = scenario.notices_slow,
-        notices_fail = scenario.notices_fail,
-        "demo mode: shaping who types"
-    );
     scenario
 }
 

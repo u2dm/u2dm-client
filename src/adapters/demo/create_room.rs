@@ -1,14 +1,14 @@
-use std::env;
 use std::sync::OnceLock;
 use std::time::Duration;
 
 use tokio::time::sleep;
 
-use super::catalog::{Flag, Scenarios};
+use super::catalog::{Flag, Scenarios, scenario_from_env};
 use super::invite_people;
 use crate::domain::room::SpacePowers;
 
 const ENV_VAR: &str = "U2DM_DEMO_CREATE_ROOM";
+const SHAPING: &str = "demo mode: shaping room creation";
 
 pub const CATALOG: Scenarios = Scenarios {
     env: ENV_VAR,
@@ -73,28 +73,7 @@ pub struct Scenario {
 
 pub fn scenario() -> Scenario {
     static SCENARIO: OnceLock<Scenario> = OnceLock::new();
-    *SCENARIO.get_or_init(from_env)
-}
-
-fn from_env() -> Scenario {
-    let Ok(raw) = env::var(ENV_VAR) else {
-        return Scenario::default();
-    };
-    let mut scenario = Scenario::default();
-    for flag in raw.split(',').map(str::trim) {
-        apply(&mut scenario, flag);
-    }
-    tracing::info!(
-        is_slow = scenario.is_slow,
-        fails = scenario.fails,
-        refused = scenario.refused,
-        child_fails = scenario.child_fails,
-        parent_late = scenario.parent_late,
-        echo_lost = scenario.echo_lost,
-        no_space_rights = scenario.no_space_rights,
-        "demo mode: shaping room creation"
-    );
-    scenario
+    *SCENARIO.get_or_init(|| scenario_from_env(ENV_VAR, apply, SHAPING))
 }
 
 fn apply(scenario: &mut Scenario, flag: &str) {

@@ -52,6 +52,7 @@ use crate::domain::room::RoomId;
 use crate::domain::user_info::UserId;
 use crate::error::{AppError, Result};
 use crate::ports::matrix::CallSignalPort;
+use crate::util::unix_now_ms;
 
 const SEEN_PER_ROOM: usize = 32;
 const DECLINES_KEPT: usize = 32;
@@ -105,13 +106,9 @@ impl Kind {
     }
 }
 
-fn now_ms() -> u64 {
-    MilliSecondsSinceUnixEpoch::now().0.into()
-}
-
 fn recent(sent: MilliSecondsSinceUnixEpoch) -> bool {
     let sent: u64 = sent.0.into();
-    sent.saturating_add(MAX_RING_LIFETIME_MS + MAX_SENDER_TS_OFFSET_MS) > now_ms()
+    sent.saturating_add(MAX_RING_LIFETIME_MS + MAX_SENDER_TS_OFFSET_MS) > unix_now_ms()
 }
 
 pub(in crate::adapters::matrix) struct MatrixCallSignals {
@@ -233,7 +230,7 @@ fn read_and_pass(
         content: &event.content,
         sender: sender.as_str(),
         sender_device: device.as_str(),
-        received_ms: now_ms(),
+        received_ms: unix_now_ms(),
     };
     match read_key(&arrival) {
         Ok((room_id, key)) => {
@@ -708,7 +705,7 @@ struct Invitation {
 async fn ring(own: &OwnedUserId, room: &Room, facts: Facts) -> Option<CallSignal> {
     let room_id = room.room_id();
     let event_id = &facts.event_id;
-    let checked = match invitation(own, &facts, now_ms()) {
+    let checked = match invitation(own, &facts, unix_now_ms()) {
         Ok(invitation) => confirm(room, &facts, &invitation)
             .await
             .map(|session| (invitation, session)),
@@ -861,7 +858,9 @@ async fn confirm(
     let Some(membership) = &invitation.membership else {
         return Ok(None);
     };
-    let referenced = match referenced_membership(room, membership, &facts.sender, now_ms()).await {
+    let referenced = match referenced_membership(room, membership, &facts.sender, unix_now_ms())
+        .await
+    {
         Ok(referenced) => referenced,
         Err(reason) => {
             tracing::debug!(%membership, reason, "the membership a call notification references does not count");

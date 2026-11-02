@@ -1,15 +1,15 @@
 use std::collections::HashMap;
-use std::env;
 use std::sync::OnceLock;
 use std::time::Duration;
 
-use super::catalog::{Flag, Scenarios};
+use super::catalog::{Flag, Scenarios, scenario_from_env};
 use super::data;
 use crate::domain::member_name::MemberName;
 use crate::domain::message::{ReadBy, ReadScan, TimelineMessage};
 use crate::domain::timeline::MessageReaders;
 
 const ENV_VAR: &str = "U2DM_DEMO_RECEIPTS";
+const SHAPING: &str = "demo mode: reproducing real-account read receipts";
 
 pub const CATALOG: Scenarios = Scenarios {
     env: ENV_VAR,
@@ -71,26 +71,7 @@ pub struct Scenario {
 
 pub fn scenario() -> Scenario {
     static SCENARIO: OnceLock<Scenario> = OnceLock::new();
-    *SCENARIO.get_or_init(from_env)
-}
-
-fn from_env() -> Scenario {
-    let Ok(raw) = env::var(ENV_VAR) else {
-        return Scenario::default();
-    };
-    let mut scenario = Scenario::default();
-    for flag in raw.split(',').map(str::trim) {
-        apply(&mut scenario, flag);
-    }
-    tracing::info!(
-        marks_arrive_late = scenario.marks_arrive_late,
-        crowd_reads = scenario.crowd_reads,
-        throng_reads = scenario.throng_reads,
-        member_sees_sends = scenario.member_sees_sends,
-        sends_stay_pending = scenario.sends_stay_pending,
-        "demo mode: reproducing real-account read receipts"
-    );
-    scenario
+    *SCENARIO.get_or_init(|| scenario_from_env(ENV_VAR, apply, SHAPING))
 }
 
 fn apply(scenario: &mut Scenario, flag: &str) {

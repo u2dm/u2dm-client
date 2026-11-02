@@ -1,13 +1,13 @@
-use std::env;
 use std::sync::OnceLock;
 use std::time::Duration;
 
 use tokio::time::sleep;
 
-use super::catalog::{Flag, Scenarios};
+use super::catalog::{Flag, Scenarios, scenario_from_env};
 use crate::domain::message::MessagePermissions;
 
 const ENV_VAR: &str = "U2DM_DEMO_MESSAGE_MENU";
+const SHAPING: &str = "demo mode: shaping the message menu";
 
 pub const CATALOG: Scenarios = Scenarios {
     env: ENV_VAR,
@@ -84,28 +84,7 @@ pub struct Scenario {
 
 pub fn scenario() -> Scenario {
     static SCENARIO: OnceLock<Scenario> = OnceLock::new();
-    *SCENARIO.get_or_init(from_env)
-}
-
-fn from_env() -> Scenario {
-    let Ok(raw) = env::var(ENV_VAR) else {
-        return Scenario::default();
-    };
-    let mut scenario = Scenario::default();
-    for flag in raw.split(',').map(str::trim) {
-        apply(&mut scenario, flag);
-    }
-    tracing::info!(
-        is_slow = scenario.is_slow,
-        link_fails = scenario.link_fails,
-        source_unavailable = scenario.source_unavailable,
-        delete_refused = scenario.delete_refused,
-        delete_fails = scenario.delete_fails,
-        pin_fails = scenario.pin_fails,
-        powers = ?scenario.powers,
-        "demo mode: shaping the message menu"
-    );
-    scenario
+    *SCENARIO.get_or_init(|| scenario_from_env(ENV_VAR, apply, SHAPING))
 }
 
 fn apply(scenario: &mut Scenario, flag: &str) {

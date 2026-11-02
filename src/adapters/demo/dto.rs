@@ -819,28 +819,20 @@ impl RoomDto {
 
     pub fn to_room(&self, now_ms: u64, notify: Option<NotifyMode>) -> Room {
         let notify = notify.unwrap_or_else(|| self.notify.to_mode());
+        let last_activity_ts = ago_ms(now_ms, self.minutes_ago, self.days_ago);
         Room {
-            id: RoomId::new(&self.id),
-            display_name: self.name.clone(),
             avatar_mxc: self.avatar.clone(),
             topic: self.topic.clone(),
             canonical_alias: self.alias.clone(),
             is_direct: self.direct,
             direct_partner: direct_partner(self.direct, self.avatar.as_deref()),
             is_encrypted: self.encrypted,
-            event_ids: EventIds::Hashed,
             history_visibility: self.history_visibility.to_visibility(),
-            poll_permissions: powers::polls(),
-            message_permissions: powers::messages(),
-            may_invite: invite_people::may_invite(),
-            may_join_calls: true,
-            call: None,
             member_count: self.members,
             has_unread: self.unread > 0 && notify == NotifyMode::AllMessages,
             has_mentions: self.mentions > 0,
             has_activity: self.unread > 0,
             notify,
-            last_activity_ts: ago_ms(now_ms, self.minutes_ago, self.days_ago),
             last_message_sender: self.last_message.named_sender(&self.id),
             last_message_kind: self.last_message.kind.to_kind(),
             last_message_body: self.last_message.rich_body(),
@@ -849,6 +841,7 @@ impl RoomDto {
             last_message_edited: self.last_message.edited,
             successor: self.successor.as_deref().map(RoomId::new),
             predecessor: self.predecessor.as_deref().map(RoomId::new),
+            ..quiet_room(RoomId::new(&self.id), self.name.clone(), last_activity_ts)
         }
     }
 
@@ -890,35 +883,13 @@ impl UnjoinedDto {
 
     pub fn to_room(&self, now_ms: u64) -> Room {
         Room {
-            id: RoomId::new(&self.id),
-            display_name: self.name.clone(),
             avatar_mxc: self.avatar.clone(),
             topic: self.topic.clone(),
             canonical_alias: self.alias.clone(),
-            is_direct: false,
-            direct_partner: None,
-            is_encrypted: false,
-            event_ids: EventIds::Hashed,
-            history_visibility: HistoryVisibility::default(),
-            poll_permissions: powers::polls(),
-            message_permissions: powers::messages(),
-            may_invite: invite_people::may_invite(),
-            may_join_calls: true,
-            call: None,
             member_count: self.joined_members(),
-            has_unread: false,
-            has_mentions: false,
-            has_activity: false,
-            notify: NotifyMode::AllMessages,
-            last_activity_ts: now_ms,
-            last_message_sender: None,
-            last_message_kind: MessagePreviewKind::None,
-            last_message_body: RichText::default(),
-            last_message_service: None,
-            last_message_is_own: false,
-            last_message_edited: false,
             successor: self.successor.as_deref().map(RoomId::new),
             predecessor: self.predecessor.as_deref().map(RoomId::new),
+            ..quiet_room(RoomId::new(&self.id), self.name.clone(), now_ms)
         }
     }
 
@@ -954,35 +925,13 @@ impl InviteDto {
 
     pub fn to_room(&self, now_ms: u64) -> Room {
         Room {
-            id: RoomId::new(&self.id),
-            display_name: self.name.clone(),
             avatar_mxc: self.avatar.clone(),
             topic: self.topic.clone(),
-            canonical_alias: None,
             is_direct: self.direct,
             direct_partner: direct_partner(self.direct, self.inviter.as_deref()),
             is_encrypted: self.encrypted,
-            event_ids: EventIds::Hashed,
-            history_visibility: HistoryVisibility::default(),
-            poll_permissions: powers::polls(),
-            message_permissions: powers::messages(),
-            may_invite: invite_people::may_invite(),
-            may_join_calls: true,
-            call: None,
             member_count: self.joined_members(),
-            has_unread: false,
-            has_mentions: false,
-            has_activity: false,
-            notify: NotifyMode::AllMessages,
-            last_activity_ts: now_ms,
-            last_message_sender: None,
-            last_message_kind: MessagePreviewKind::None,
-            last_message_body: RichText::default(),
-            last_message_service: None,
-            last_message_is_own: false,
-            last_message_edited: false,
-            successor: None,
-            predecessor: None,
+            ..quiet_room(RoomId::new(&self.id), self.name.clone(), now_ms)
         }
     }
 
@@ -1250,6 +1199,40 @@ fn direct_partner(direct: bool, person: Option<&str>) -> Option<UserId> {
     person
         .filter(|user_id| direct && user_id.starts_with('@'))
         .map(UserId::new)
+}
+
+pub fn quiet_room(id: RoomId, display_name: String, last_activity_ts: u64) -> Room {
+    Room {
+        id,
+        display_name,
+        avatar_mxc: None,
+        topic: None,
+        canonical_alias: None,
+        is_direct: false,
+        direct_partner: None,
+        is_encrypted: false,
+        event_ids: EventIds::Hashed,
+        history_visibility: HistoryVisibility::default(),
+        poll_permissions: powers::polls(),
+        message_permissions: powers::messages(),
+        may_invite: invite_people::may_invite(),
+        may_join_calls: true,
+        call: None,
+        member_count: 1,
+        has_unread: false,
+        has_mentions: false,
+        has_activity: false,
+        notify: NotifyMode::AllMessages,
+        last_activity_ts,
+        last_message_sender: None,
+        last_message_kind: MessagePreviewKind::None,
+        last_message_body: RichText::default(),
+        last_message_service: None,
+        last_message_is_own: false,
+        last_message_edited: false,
+        successor: None,
+        predecessor: None,
+    }
 }
 
 fn ago_ms(now_ms: u64, minutes: u64, days: u64) -> u64 {
