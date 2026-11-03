@@ -1,4 +1,4 @@
-import { Palette, ScrollView } from "std-widgets.slint";
+import { Palette } from "std-widgets.slint";
 import { Icon, IconDisplay, IconSet } from "@lucide";
 
 import { AttachmentKind, UserMessageKind } from "../../../../enums.slint";
@@ -9,7 +9,7 @@ import { ReplyDraft } from "../../../../types.slint";
 import { AppStyle, Fonts, IconSize, Metrics, Radius, Space, Stroke, Weight } from "../../../../theme.slint";
 import { ErrorBanner } from "../../../../components/banner.slint";
 import { CheckRow } from "../../../../components/check-row.slint";
-import { DialogCard, ModalHost } from "../../../../components/overlay.slint";
+import { ModalHost, ScrollingDialogCard } from "../../../../components/overlay.slint";
 import { FocusRing, FocusTrail } from "../../../../components/a11y.slint";
 import { ComposerField } from "./composer-field.slint";
 import { EmotePopup } from "./emote-popup.slint";
@@ -113,14 +113,6 @@ export component AttachmentDialog inherits ModalHost {
         field.focus-input();
     }
 
-    property <length> card-width: min(AppStyle.card-width-wide, root.width - AppStyle.card-inset);
-    property <length> card-height: clamp(
-        root.height - AppStyle.card-inset,
-        card-body.min-height,
-        card-body.preferred-height,
-    );
-    property <length> card-padding: Space.xl;
-
     property <bool> as-document: false;
     property <string> caption: "";
     property <bool> holds-reply: false;
@@ -144,7 +136,7 @@ export component AttachmentDialog inherits ModalHost {
         ? AttachmentView.width / AttachmentView.height
         : 1.5;
     property <length> preview-width: min(
-        root.card-width - 2 * root.card-padding,
+        card.card-width - 2 * card.body-padding,
         max(Metrics.attachment-preview-min, Metrics.attachment-preview-max * root.aspect),
     );
     property <length> preview-height: min(
@@ -212,89 +204,74 @@ export component AttachmentDialog inherits ModalHost {
         }
     }
 
-    scroll := ScrollView {
-        x: 0;
-        y: 0;
-        width: 100%;
-        height: 100%;
-        content-width: self.width;
-        content-height: max(self.height, root.card-height + AppStyle.card-inset);
+    card := ScrollingDialogCard {
+        body-padding: Space.xl;
+        body-spacing: Space.lg;
+        squeezes: true;
 
-        DialogCard {
-            x: (root.width - self.width) / 2;
-            y: (scroll.content-height - self.height) / 2;
-            width: root.card-width;
-            height: root.card-height;
+        Text {
+            text: root.heading();
+            font-size: Fonts.heading;
+            font-weight: Weight.bold;
+            overflow: elide;
+        }
 
-            card-body := VerticalLayout {
-                padding: root.card-padding;
-                spacing: Space.lg;
+        if root.shows-preview: MediaPreview {
+            min-height: Metrics.attachment-preview-min;
+            preferred-height: root.preview-height;
+            max-height: root.preview-height;
+            aspect: root.aspect;
+        }
 
-                Text {
-                    text: root.heading();
-                    font-size: Fonts.heading;
-                    font-weight: Weight.bold;
-                    overflow: elide;
+        if !root.shows-preview: FileChip {
+            icon: root.is-audio ? IconSet.Music : IconSet.File;
+            detail: root.is-audio ? root.audio-detail : root.file-detail;
+        }
+
+        if AttachmentView.kind == AttachmentKind.image: CheckRow {
+            label: @tr("Send as a document");
+            checked <=> root.as-document;
+        }
+
+        if AttachmentView.error != UserMessageKind.none: ErrorBanner {
+            messages: [{ kind: AttachmentView.error, detail: AttachmentView.error-detail }];
+        }
+
+        field := ComposerField {
+            above-modal: true;
+            text <=> root.caption;
+            placeholder: @tr("Add a caption...");
+            input-label: @tr("Caption");
+            lead-icon: IconSet.X;
+            lead-label: @tr("Discard the attachment");
+            lead-destructive: true;
+            emoji-label: @tr("Emoji and emotes");
+            emoji-active: root.emoji-picker-open;
+            text-optional: true;
+            busy: AttachmentView.sending;
+            lead-clicked => {
+                root.cancel();
+            }
+            emoji-clicked => {
+                root.emoji-picker-open = true;
+            }
+            submitted => {
+                root.submit();
+            }
+            key-captured(event) => {
+                if mentions.key(event) == EventResult.accept {
+                    return EventResult.accept;
                 }
+                return emotes.key(event);
+            }
 
-                if root.shows-preview: MediaPreview {
-                    min-height: Metrics.attachment-preview-min;
-                    preferred-height: root.preview-height;
-                    max-height: root.preview-height;
-                    aspect: root.aspect;
-                }
-
-                if !root.shows-preview: FileChip {
-                    icon: root.is-audio ? IconSet.Music : IconSet.File;
-                    detail: root.is-audio ? root.audio-detail : root.file-detail;
-                }
-
-                if AttachmentView.kind == AttachmentKind.image: CheckRow {
-                    label: @tr("Send as a document");
-                    checked <=> root.as-document;
-                }
-
-                if AttachmentView.error != UserMessageKind.none: ErrorBanner {
-                    messages: [{ kind: AttachmentView.error, detail: AttachmentView.error-detail }];
-                }
-
-                field := ComposerField {
-                    above-modal: true;
-                    text <=> root.caption;
-                    placeholder: @tr("Add a caption...");
-                    input-label: @tr("Caption");
-                    lead-icon: IconSet.X;
-                    lead-label: @tr("Discard the attachment");
-                    lead-destructive: true;
-                    emoji-label: @tr("Emoji and emotes");
-                    emoji-active: root.emoji-picker-open;
-                    text-optional: true;
-                    busy: AttachmentView.sending;
-                    lead-clicked => {
-                        root.cancel();
-                    }
-                    emoji-clicked => {
-                        root.emoji-picker-open = true;
-                    }
-                    submitted => {
-                        root.submit();
-                    }
-                    key-captured(event) => {
-                        if mentions.key(event) == EventResult.accept {
-                            return EventResult.accept;
-                        }
-                        return emotes.key(event);
-                    }
-
-                    if root.is-replying: ReplyBar {
-                        sender: root.reply.sender;
-                        preview: root.reply.preview;
-                        enabled: !AttachmentView.sending;
-                        above-modal: true;
-                        cancel-clicked => {
-                            root.cancel-reply();
-                        }
-                    }
+            if root.is-replying: ReplyBar {
+                sender: root.reply.sender;
+                preview: root.reply.preview;
+                enabled: !AttachmentView.sending;
+                above-modal: true;
+                cancel-clicked => {
+                    root.cancel-reply();
                 }
             }
         }

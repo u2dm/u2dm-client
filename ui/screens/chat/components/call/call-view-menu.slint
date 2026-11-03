@@ -1,7 +1,7 @@
-import { ScrollView } from "std-widgets.slint";
 import { Icon, IconSet } from "@lucide";
 
 import { RovingKeys } from "../../../../components/a11y.slint";
+import { MenuScroll } from "../../../../components/menu.slint";
 import { MenuRow } from "../../../../components/menu-row.slint";
 import { PickerCard } from "../../../../components/overlay.slint";
 import { Actions } from "../../../../actions.slint";
@@ -269,16 +269,8 @@ export component CallViewMenu inherits PickerCard {
         root.chose();
     }
 
-    function reveal(top: length, size: length) {
-        if top < -scroll.content-y {
-            scroll.content-y = -top;
-        } else if top + size > -scroll.content-y + scroll.visible-height {
-            scroll.content-y = -(top + size - scroll.visible-height);
-        }
-    }
-
     width: Metrics.call-menu-width;
-    height: min(rows.preferred-height + 2 * Space.sm, root.room);
+    height: min(scroll.rows-height + 2 * Space.sm, root.room);
 
     TouchArea { }
 
@@ -303,89 +295,78 @@ export component CallViewMenu inherits PickerCard {
         }
     }
 
-    scroll := ScrollView {
-        x: 0;
-        y: Space.sm;
+    scroll := MenuScroll {
         width: parent.width;
         height: parent.height - 2 * Space.sm;
-        content-width: self.visible-width;
-        content-height: rows.preferred-height;
 
-        rows := VerticalLayout {
-            width: scroll.visible-width;
-            padding-left: Space.sm;
-            padding-right: Space.sm;
-            spacing: Space.xs;
+        MenuGroup {
+            heading: @tr("Layout");
+            first: true;
+        }
 
-            MenuGroup {
-                heading: @tr("Layout");
-                first: true;
-            }
-
-            for choice[index] in root.modes: MenuRow {
-                height: Metrics.call-menu-row;
-                icon: root.icon(choice);
-                label: root.label(choice);
-                checkable: root.checkable(choice);
-                checked: root.checked(choice);
-                trailing: root.checked(choice) ? IconSet.Check : { };
-                focusable: false;
-                roving-focus: root.keys-focused && root.cursor == index;
-                changed roving-focus => {
-                    if self.roving-focus {
-                        root.reveal(self.y, self.height);
-                    }
-                }
-                clicked => {
-                    root.choose(choice);
+        for choice[index] in root.modes: MenuRow {
+            height: Metrics.call-menu-row;
+            icon: root.icon(choice);
+            label: root.label(choice);
+            checkable: root.checkable(choice);
+            checked: root.checked(choice);
+            trailing: root.checked(choice) ? IconSet.Check : { };
+            focusable: false;
+            roving-focus: root.keys-focused && root.cursor == index;
+            changed roving-focus => {
+                if self.roving-focus {
+                    scroll.reveal(self.y, self.height);
                 }
             }
-
-            MenuGroup {
-                heading: @tr("Stage");
+            clicked => {
+                root.choose(choice);
             }
+        }
 
-            for choice[index] in root.stages: MenuRow {
-                height: Metrics.call-menu-row;
-                icon: root.icon(choice);
-                label: root.label(choice);
-                detail: root.detail(choice);
-                checkable: true;
-                checked: root.checked(choice);
-                trailing: root.checked(choice) ? IconSet.Check : { };
-                focusable: false;
-                roving-focus: root.keys-focused && root.cursor == root.modes.length + index;
-                changed roving-focus => {
-                    if self.roving-focus {
-                        root.reveal(self.y, self.height);
-                    }
-                }
-                clicked => {
-                    root.choose(choice);
+        MenuGroup {
+            heading: @tr("Stage");
+        }
+
+        for choice[index] in root.stages: MenuRow {
+            height: Metrics.call-menu-row;
+            icon: root.icon(choice);
+            label: root.label(choice);
+            detail: root.detail(choice);
+            checkable: true;
+            checked: root.checked(choice);
+            trailing: root.checked(choice) ? IconSet.Check : { };
+            focusable: false;
+            roving-focus: root.keys-focused && root.cursor == root.modes.length + index;
+            changed roving-focus => {
+                if self.roving-focus {
+                    scroll.reveal(self.y, self.height);
                 }
             }
-
-            MenuGroup {
-                heading: @tr("Display");
+            clicked => {
+                root.choose(choice);
             }
+        }
 
-            for choice[index] in root.views: MenuRow {
-                height: Metrics.call-menu-row;
-                icon: root.icon(choice);
-                label: root.label(choice);
-                checkable: root.checkable(choice);
-                checked: root.checked(choice);
-                trailing: root.checked(choice) ? IconSet.Check : { };
-                focusable: false;
-                roving-focus: root.keys-focused && root.cursor == root.modes.length + root.stages.length + index;
-                changed roving-focus => {
-                    if self.roving-focus {
-                        root.reveal(self.y, self.height);
-                    }
+        MenuGroup {
+            heading: @tr("Display");
+        }
+
+        for choice[index] in root.views: MenuRow {
+            height: Metrics.call-menu-row;
+            icon: root.icon(choice);
+            label: root.label(choice);
+            checkable: root.checkable(choice);
+            checked: root.checked(choice);
+            trailing: root.checked(choice) ? IconSet.Check : { };
+            focusable: false;
+            roving-focus: root.keys-focused && root.cursor == root.modes.length + root.stages.length + index;
+            changed roving-focus => {
+                if self.roving-focus {
+                    scroll.reveal(self.y, self.height);
                 }
-                clicked => {
-                    root.choose(choice);
-                }
+            }
+            clicked => {
+                root.choose(choice);
             }
         }
     }

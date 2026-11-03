@@ -1,12 +1,11 @@
-import { ScrollView } from "std-widgets.slint";
 import { IconSet } from "@lucide";
 
 import { AppButton } from "../../../components/button.slint";
-import { DialogCard, ModalHost } from "../../../components/overlay.slint";
+import { ModalHost } from "../../../components/overlay.slint";
 import { DotPulse } from "../../../components/dot-pulse.slint";
 import { ErrorBanner } from "../../../components/banner.slint";
 import { TextField } from "../../../components/text-field.slint";
-import { SheetCloseChip, SheetCover } from "./sheet.slint";
+import { SheetCard, SheetCover } from "./sheet.slint";
 import { ChildAccessText } from "./space-index.slint";
 import { AppStyle, Fonts, Metrics, Size, Space, Weight } from "../../../theme.slint";
 import { ChildAccess, RoomPreviewStatus, UserMessageKind } from "../../../enums.slint";
@@ -159,11 +158,6 @@ component Banner inherits HorizontalLayout {
 }
 
 export component RoomPreviewDialog inherits ModalHost {
-    property <length> card-width: min(AppStyle.card-width-wide, root.width - AppStyle.card-inset);
-    property <length> card-height: min(
-        body.preferred-height,
-        root.height - AppStyle.card-inset,
-        Metrics.room-preview-max-height);
     property <bool> entry: RoomPreviewView.entry;
     property <RoomPreviewStatus> status: RoomPreviewView.status;
     property <bool> clears-close-chip: !root.entry && root.status != RoomPreviewStatus.loaded;
@@ -190,89 +184,67 @@ export component RoomPreviewDialog inherits ModalHost {
         }
     }
 
-    DialogCard {
-        x: (root.width - self.width) / 2;
-        y: (root.height - self.height) / 2;
-        width: root.card-width;
-        height: root.card-height;
-        clip: true;
+    SheetCard {
+        max-card-height: Metrics.room-preview-max-height;
+        body-padding-top: root.clears-close-chip ? Space.md + Size.md + Space.sm : Space.xl;
+        body-spacing: 0;
+        close-label: @tr("Close");
+        close-clicked => {
+            Actions.close-room-preview();
+        }
 
-        ScrollView {
-            width: 100%;
-            height: 100%;
-            content-width: root.card-width;
-            content-height: body.preferred-height;
-
-            body := VerticalLayout {
-                width: root.card-width;
-                padding-top: root.clears-close-chip ? Space.md + Size.md + Space.sm : Space.xl;
-                padding-bottom: Space.xl;
-
-                entry-field := AddressEntry {
-                    visible: root.entry;
-                    height: root.entry ? self.preferred-height : 0;
-                    typed <=> root.typed;
-                    submitted => {
-                        root.find();
-                    }
-                }
-
-                VerticalLayout {
-                    spacing: Space.lg;
-
-                    if root.status == RoomPreviewStatus.loading: VerticalLayout {
-                        padding-left: Space.xl;
-                        padding-right: Space.xl;
-                        spacing: Space.lg;
-
-                        HorizontalLayout {
-                            alignment: center;
-
-                            DotPulse {
-                                dot-size: Space.md;
-                            }
-                        }
-
-                        PreviewNote {
-                            text: @tr("Looking up {}…", RoomPreviewView.address);
-                        }
-                    }
-
-                    if root.status == RoomPreviewStatus.loaded: PreviewCover { }
-
-                    if root.status == RoomPreviewStatus.loaded && RoomPreviewView.opens-event: PreviewNote {
-                        text: @tr("The link points to a message in this room.");
-                    }
-
-                    if root.status == RoomPreviewStatus.unavailable: VerticalLayout {
-                        padding-left: Space.xl;
-                        padding-right: Space.xl;
-
-                        PreviewNote {
-                            text: @tr("{} can't be previewed. You may still be able to join it.", RoomPreviewView.address);
-                        }
-                    }
-
-                    if root.status == RoomPreviewStatus.loaded || root.status == RoomPreviewStatus.unavailable: JoinAction { }
-
-                    if root.status == RoomPreviewStatus.failed || root.status == RoomPreviewStatus.unavailable: RetryAction { }
-
-                    if RoomPreviewView.error != UserMessageKind.none: Banner {
-                        kind: RoomPreviewView.error;
-                        detail: RoomPreviewView.error-detail;
-                    }
-                }
+        entry-field := AddressEntry {
+            visible: root.entry;
+            height: root.entry ? self.preferred-height : 0;
+            typed <=> root.typed;
+            submitted => {
+                root.find();
             }
         }
 
-        SheetCloseChip {
-            x: parent.width - self.width - Space.md;
-            y: Space.md;
-            surface: AppStyle.elevated;
-            label: @tr("Close");
-            above-modal: true;
-            clicked => {
-                Actions.close-room-preview();
+        VerticalLayout {
+            spacing: Space.lg;
+
+            if root.status == RoomPreviewStatus.loading: VerticalLayout {
+                padding-left: Space.xl;
+                padding-right: Space.xl;
+                spacing: Space.lg;
+
+                HorizontalLayout {
+                    alignment: center;
+
+                    DotPulse {
+                        dot-size: Space.md;
+                    }
+                }
+
+                PreviewNote {
+                    text: @tr("Looking up {}…", RoomPreviewView.address);
+                }
+            }
+
+            if root.status == RoomPreviewStatus.loaded: PreviewCover { }
+
+            if root.status == RoomPreviewStatus.loaded && RoomPreviewView.opens-event: PreviewNote {
+                text: @tr("The link points to a message in this room.");
+            }
+
+            if root.status == RoomPreviewStatus.unavailable: VerticalLayout {
+                padding-left: Space.xl;
+                padding-right: Space.xl;
+
+                PreviewNote {
+                    text: @tr("{} can't be previewed. You may still be able to join it.", RoomPreviewView.address);
+                }
+            }
+
+            if root.status == RoomPreviewStatus.loaded || root.status == RoomPreviewStatus.unavailable: JoinAction { }
+
+            if root.status == RoomPreviewStatus.failed || root.status == RoomPreviewStatus.unavailable: RetryAction { }
+
+            if RoomPreviewView.error != UserMessageKind.none: Banner {
+                kind: RoomPreviewView.error;
+                detail: RoomPreviewView.error-detail;
             }
         }
     }

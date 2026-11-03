@@ -1,4 +1,4 @@
-import { Palette } from "std-widgets.slint";
+import { Palette, ScrollView } from "std-widgets.slint";
 import { Icon, IconSet } from "@lucide";
 
 import { MenuRow } from "./menu-row.slint";
@@ -33,6 +33,32 @@ export component MenuCard inherits PickerCard {
     TouchArea { }
 
     @children
+}
+
+export component MenuScroll inherits ScrollView {
+    out property <length> rows-height: rows.preferred-height;
+
+    public function reveal(top: length, size: length) {
+        if top < -root.content-y {
+            root.content-y = -top;
+        } else if top + size > -root.content-y + root.visible-height {
+            root.content-y = -(top + size - root.visible-height);
+        }
+    }
+
+    x: 0;
+    y: Space.sm;
+    content-width: self.visible-width;
+    content-height: rows.preferred-height;
+
+    rows := VerticalLayout {
+        width: root.visible-width;
+        padding-left: Space.sm;
+        padding-right: Space.sm;
+        spacing: Space.xs;
+
+        @children
+    }
 }
 
 export component MenuConfirmation inherits VerticalLayout {

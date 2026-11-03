@@ -5,6 +5,7 @@ import { Avatar } from "../../../components/avatar.slint";
 import { AppButton, HeaderIconButton } from "../../../components/button.slint";
 import { RetryNotice } from "../../../components/retry-notice.slint";
 import { StatusPill } from "../../../components/status-pill.slint";
+import { RowTitle } from "./row-title.slint";
 import { SpaceBadge } from "./space-badge.slint";
 import { SpaceChildEntry } from "../../../types.slint";
 import { AppStyle, Fonts, Metrics, Space, Stroke, Weight } from "../../../theme.slint";
@@ -146,14 +147,8 @@ component ChildRow inherits Rectangle {
             HorizontalLayout {
                 spacing: Space.md;
 
-                Text {
-                    horizontal-stretch: 1;
+                RowTitle {
                     text: root.entry.name;
-                    font-family: Fonts.emoji;
-                    font-size: Fonts.body;
-                    font-weight: Weight.semibold;
-                    vertical-alignment: center;
-                    overflow: elide;
                 }
 
                 if root.entry.members > 0: Text {

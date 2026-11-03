@@ -1,0 +1,10 @@
+import { Fonts, Weight } from "../../../theme.slint";
+
+export component RowTitle inherits Text {
+    horizontal-stretch: 1;
+    font-family: Fonts.emoji;
+    font-size: Fonts.body;
+    font-weight: Weight.semibold;
+    vertical-alignment: center;
+    overflow: elide;
+}

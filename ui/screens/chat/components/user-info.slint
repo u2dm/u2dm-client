@@ -1,9 +1,9 @@
-import { Palette, ScrollView } from "std-widgets.slint";
+import { Palette } from "std-widgets.slint";
 import { IconDisplay, IconSet, Icon } from "@lucide";
 
 import { AppButton } from "../../../components/button.slint";
 import { CopyFeedback } from "../../../components/copier.slint";
-import { DialogCard, ModalHost } from "../../../components/overlay.slint";
+import { ModalHost } from "../../../components/overlay.slint";
 import { ErrorBanner } from "../../../components/banner.slint";
 import { MenuRow } from "../../../components/menu-row.slint";
 import { TextField } from "../../../components/text-field.slint";
@@ -11,7 +11,7 @@ import { ActionTile } from "./action-tile.slint";
 import { DetailLine } from "./detail-line.slint";
 import { MemberRoles } from "./member-roles.slint";
 import { PresenceLabel } from "./presence-label.slint";
-import { CopyLinkTile, SheetCloseChip, SheetCover, TilePrompt, TileRow } from "./sheet.slint";
+import { CopyLinkTile, SheetCard, SheetCover, TilePrompt, TileRow } from "./sheet.slint";
 import { AppStyle, Fonts, IconSize, Metrics, Space, Weight } from "../../../theme.slint";
 import { DeviceTrust, DirectChat, IdentityTrust, Moderation, PresenceLine, RoomMembership, UserMessageKind, VerifyOffer } from "../../../enums.slint";
 import { UserDeviceEntry } from "../../../types.slint";
@@ -327,11 +327,6 @@ component ModerationRows inherits VerticalLayout {
 }
 
 export component UserInfoDialog inherits ModalHost {
-    property <length> card-width: min(AppStyle.card-width-wide, root.width - AppStyle.card-inset);
-    property <length> card-height: min(
-        body.preferred-height,
-        root.height - AppStyle.card-inset,
-        Metrics.user-info-max-height);
     property <bool> offers-actions: !UserInfoView.is-self
         && !UserInfoView.read-failed
         && !UserInfoView.retrying;
@@ -465,161 +460,136 @@ export component UserInfoDialog inherits ModalHost {
 
     link-copy := CopyFeedback { }
 
-    DialogCard {
-        x: (root.width - self.width) / 2;
-        y: (root.height - self.height) / 2;
-        width: root.card-width;
-        height: root.card-height;
-        clip: true;
+    SheetCard {
+        max-card-height: Metrics.user-info-max-height;
+        close-label: @tr("Close the profile");
+        close-clicked => {
+            Actions.close-user-info();
+        }
 
-        scroll := ScrollView {
-            width: 100%;
-            height: 100%;
-            content-width: root.card-width;
-            content-height: body.preferred-height;
+        ProfileCover { }
 
-            body := VerticalLayout {
-                width: root.card-width;
-                padding-top: Space.xl;
-                padding-bottom: Space.xl;
-                spacing: Space.lg;
+        tiles := TileRow {
+            height: Metrics.user-info-action;
 
-                ProfileCover { }
-
-                tiles := TileRow {
-                    height: Metrics.user-info-action;
-
-                    if root.asking == Asking.none && UserInfoView.direct != DirectChat.hidden: ActionTile {
-                        width: tiles.slot-width;
-                        enabled: UserInfoView.direct != DirectChat.starting;
-                        busy: UserInfoView.direct == DirectChat.starting;
-                        icon: IconSet.MessageCircle;
-                        text: root.direct-text(UserInfoView.direct);
-                        label: root.direct-label(UserInfoView.direct);
-                        clicked => {
-                            Actions.message-user(UserInfoView.user-id);
-                        }
-                    }
-
-                    if root.asking == Asking.none && UserInfoView.verify != VerifyOffer.hidden: ActionTile {
-                        width: tiles.slot-width;
-                        enabled: UserInfoView.verify == VerifyOffer.offered;
-                        busy: UserInfoView.verify == VerifyOffer.requesting;
-                        icon: IconSet.ShieldCheck;
-                        text: UserInfoView.verify == VerifyOffer.requesting ? @tr("Asking…") : @tr("Verify");
-                        label: UserInfoView.verify == VerifyOffer.requesting
-                            ? @tr("Asking {} to verify", UserInfoView.name)
-                            : @tr("Verify {}", UserInfoView.name);
-                        clicked => {
-                            Actions.verify-user(UserInfoView.user-id);
-                        }
-                    }
-
-                    if root.asking == Asking.none: CopyLinkTile {
-                        width: tiles.slot-width;
-                        enabled: UserInfoView.link != "";
-                        copied: link-copy.copied;
-                        copy-label: @tr("Copy the link to this profile");
-                        clicked => {
-                            link-copy.copy(UserInfoView.link);
-                        }
-                    }
-
-                    if root.asking != Asking.none: TilePrompt {
-                        width: 2 * tiles.slot-width + Space.md;
-                        text: root.asking-copy.prompt;
-                        overflow: elide;
-                    }
-
-                    if root.asking != Asking.none: ActionTile {
-                        width: tiles.slot-width;
-                        destructive: true;
-                        icon: root.asking-copy.confirm-icon;
-                        text: root.asking-copy.confirm-text;
-                        label: root.asking-copy.confirm-label;
-                        clicked => {
-                            root.confirm();
-                        }
-                    }
+            if root.asking == Asking.none && UserInfoView.direct != DirectChat.hidden: ActionTile {
+                width: tiles.slot-width;
+                enabled: UserInfoView.direct != DirectChat.starting;
+                busy: UserInfoView.direct == DirectChat.starting;
+                icon: IconSet.MessageCircle;
+                text: root.direct-text(UserInfoView.direct);
+                label: root.direct-label(UserInfoView.direct);
+                clicked => {
+                    Actions.message-user(UserInfoView.user-id);
                 }
+            }
 
-                if root.asks-reason: HorizontalLayout {
-                    padding-left: Space.xl;
-                    padding-right: Space.xl;
-
-                    TextField {
-                        text <=> root.reason;
-                        icon: IconSet.MessageSquareText;
-                        placeholder: @tr("Reason (optional)");
-                        label: root.asking == Asking.ban
-                            ? @tr("Reason for banning {}", UserInfoView.name)
-                            : @tr("Reason for removing {}", UserInfoView.name);
-                        above-modal: true;
-                        accepted => {
-                            root.confirm();
-                        }
-                    }
+            if root.asking == Asking.none && UserInfoView.verify != VerifyOffer.hidden: ActionTile {
+                width: tiles.slot-width;
+                enabled: UserInfoView.verify == VerifyOffer.offered;
+                busy: UserInfoView.verify == VerifyOffer.requesting;
+                icon: IconSet.ShieldCheck;
+                text: UserInfoView.verify == VerifyOffer.requesting ? @tr("Asking…") : @tr("Verify");
+                label: UserInfoView.verify == VerifyOffer.requesting
+                    ? @tr("Asking {} to verify", UserInfoView.name)
+                    : @tr("Verify {}", UserInfoView.name);
+                clicked => {
+                    Actions.verify-user(UserInfoView.user-id);
                 }
+            }
 
-                if UserInfoView.error != UserMessageKind.none: HorizontalLayout {
-                    padding-left: Space.xl;
-                    padding-right: Space.xl;
-
-                    ErrorBanner {
-                        messages: [{ kind: UserInfoView.error, detail: UserInfoView.error-detail }];
-                    }
+            if root.asking == Asking.none: CopyLinkTile {
+                width: tiles.slot-width;
+                enabled: UserInfoView.link != "";
+                copied: link-copy.copied;
+                copy-label: @tr("Copy the link to this profile");
+                clicked => {
+                    link-copy.copy(UserInfoView.link);
                 }
+            }
 
-                if UserInfoView.read-failed || UserInfoView.retrying: HorizontalLayout {
-                    alignment: center;
+            if root.asking != Asking.none: TilePrompt {
+                width: 2 * tiles.slot-width + Space.md;
+                text: root.asking-copy.prompt;
+                overflow: elide;
+            }
 
-                    AppButton {
-                        text: @tr("Retry");
-                        filled: false;
-                        above-modal: true;
-                        enabled: !UserInfoView.retrying;
-                        busy: UserInfoView.retrying;
-                        clicked => {
-                            Actions.retry-user-info();
-                        }
-                    }
-                }
-
-                VerticalLayout {
-                    padding-left: Space.xl;
-                    padding-right: Space.xl;
-
-                    DetailLine {
-                        value: UserInfoView.user-id;
-                        caption: @tr("Matrix ID");
-                    }
-                }
-
-                if root.shows-sessions: SessionsSection { }
-
-                if root.offers-actions: ModerationRows {
-                    asking: root.asking;
-                    ignore-clicked => {
-                        root.ignore-clicked();
-                    }
-                    remove-clicked => {
-                        root.remove-clicked();
-                    }
-                    ban-clicked => {
-                        root.ban-clicked();
-                    }
+            if root.asking != Asking.none: ActionTile {
+                width: tiles.slot-width;
+                destructive: true;
+                icon: root.asking-copy.confirm-icon;
+                text: root.asking-copy.confirm-text;
+                label: root.asking-copy.confirm-label;
+                clicked => {
+                    root.confirm();
                 }
             }
         }
 
-        SheetCloseChip {
-            x: parent.width - self.width - Space.md;
-            y: Space.md;
-            surface: AppStyle.elevated;
-            label: @tr("Close the profile");
-            above-modal: true;
-            clicked => {
-                Actions.close-user-info();
+        if root.asks-reason: HorizontalLayout {
+            padding-left: Space.xl;
+            padding-right: Space.xl;
+
+            TextField {
+                text <=> root.reason;
+                icon: IconSet.MessageSquareText;
+                placeholder: @tr("Reason (optional)");
+                label: root.asking == Asking.ban
+                    ? @tr("Reason for banning {}", UserInfoView.name)
+                    : @tr("Reason for removing {}", UserInfoView.name);
+                above-modal: true;
+                accepted => {
+                    root.confirm();
+                }
+            }
+        }
+
+        if UserInfoView.error != UserMessageKind.none: HorizontalLayout {
+            padding-left: Space.xl;
+            padding-right: Space.xl;
+
+            ErrorBanner {
+                messages: [{ kind: UserInfoView.error, detail: UserInfoView.error-detail }];
+            }
+        }
+
+        if UserInfoView.read-failed || UserInfoView.retrying: HorizontalLayout {
+            alignment: center;
+
+            AppButton {
+                text: @tr("Retry");
+                filled: false;
+                above-modal: true;
+                enabled: !UserInfoView.retrying;
+                busy: UserInfoView.retrying;
+                clicked => {
+                    Actions.retry-user-info();
+                }
+            }
+        }
+
+        VerticalLayout {
+            padding-left: Space.xl;
+            padding-right: Space.xl;
+
+            DetailLine {
+                value: UserInfoView.user-id;
+                caption: @tr("Matrix ID");
+            }
+        }
+
+        if root.shows-sessions: SessionsSection { }
+
+        if root.offers-actions: ModerationRows {
+            asking: root.asking;
+            ignore-clicked => {
+                root.ignore-clicked();
+            }
+            remove-clicked => {
+                root.remove-clicked();
+            }
+            ban-clicked => {
+                root.ban-clicked();
             }
         }
     }

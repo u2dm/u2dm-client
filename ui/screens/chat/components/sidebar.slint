@@ -9,6 +9,7 @@ import { SubspaceRail } from "./subspace-rail.slint";
 import { SubspaceTabs } from "./subspace-tabs.slint";
 import { CallWords, MessagePreview, ServiceLabel } from "../../../messages.slint";
 import { HeaderTitle } from "./header-title.slint";
+import { RowTitle } from "./row-title.slint";
 import { Avatar } from "../../../components/avatar.slint";
 import { ClickArea, Interaction, ListItemArea } from "../../../components/a11y.slint";
 import { UnreadDot } from "./unread-dot.slint";
@@ -77,14 +78,8 @@ component RoomSummary inherits VerticalLayout {
     HorizontalLayout {
         spacing: Space.md;
 
-        Text {
-            horizontal-stretch: 1;
+        RowTitle {
             text: root.entry.name;
-            font-family: Fonts.emoji;
-            font-size: Fonts.body;
-            font-weight: Weight.semibold;
-            vertical-alignment: center;
-            overflow: elide;
         }
 
         if root.entry.call != RoomCallMark.none: IconDisplay {
@@ -247,14 +242,8 @@ component InviteSummary inherits VerticalLayout {
     HorizontalLayout {
         spacing: Space.md;
 
-        Text {
-            horizontal-stretch: 1;
+        RowTitle {
             text: root.entry.name;
-            font-family: Fonts.emoji;
-            font-size: Fonts.body;
-            font-weight: Weight.semibold;
-            vertical-alignment: center;
-            overflow: elide;
         }
 
         if root.entry.last-message-time != "": Text {

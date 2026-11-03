@@ -228,6 +228,18 @@ component FailedCallLabel inherits Rectangle {
     }
 }
 
+export struct DockAnchor {
+    x: length,
+    y: length,
+    size: length,
+}
+
+export struct DockAnchors {
+    devices: DockAnchor,
+    react: DockAnchor,
+    more: DockAnchor,
+}
+
 export component CallDock inherits Rectangle {
     in property <bool> above-modal;
     in property <bool> stage-shown;
@@ -235,15 +247,23 @@ export component CallDock inherits Rectangle {
 
     callback returned();
 
-    out property <length> devices-x: root.devices-shown ? devices.absolute-position.x : more.absolute-position.x;
-    out property <length> devices-y: root.devices-shown ? devices.absolute-position.y : more.absolute-position.y;
-    out property <length> devices-size: devices.height;
-    out property <length> react-x: root.react-shown ? react.absolute-position.x : more.absolute-position.x;
-    out property <length> react-y: root.react-shown ? react.absolute-position.y : more.absolute-position.y;
-    out property <length> react-size: react.height;
-    out property <length> more-x: more.absolute-position.x;
-    out property <length> more-y: more.absolute-position.y;
-    out property <length> more-size: more.height;
+    out property <DockAnchors> anchors: {
+        devices: {
+            x: root.devices-shown ? devices.absolute-position.x : more.absolute-position.x,
+            y: root.devices-shown ? devices.absolute-position.y : more.absolute-position.y,
+            size: devices.height,
+        },
+        react: {
+            x: root.react-shown ? react.absolute-position.x : more.absolute-position.x,
+            y: root.react-shown ? react.absolute-position.y : more.absolute-position.y,
+            size: react.height,
+        },
+        more: {
+            x: more.absolute-position.x,
+            y: more.absolute-position.y,
+            size: more.height,
+        },
+    };
 
     property <length> pad: Space.md;
     property <length> gap: Space.md;

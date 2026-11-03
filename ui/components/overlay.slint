@@ -1,4 +1,4 @@
-import { Palette } from "std-widgets.slint";
+import { Palette, ScrollView } from "std-widgets.slint";
 import { AppStyle, Fonts, Motion, Opacity, Radius, Size, Space, Weight } from "../theme.slint";
 
 export global Placement {
@@ -55,6 +55,37 @@ export component DialogCard inherits Rectangle {
     TouchArea { }
 
     @children
+}
+
+export component ScrollingDialogCard inherits ScrollView {
+    in property <length> body-padding: Space.xxl;
+    in property <length> body-spacing: Space.xl;
+    in property <bool> squeezes;
+    out property <length> card-width: min(AppStyle.card-width-wide, root.width - AppStyle.card-inset);
+    out property <length> card-height: root.squeezes
+        ? clamp(root.height - AppStyle.card-inset, card-body.min-height, card-body.preferred-height)
+        : card-body.preferred-height;
+
+    x: 0;
+    y: 0;
+    width: 100%;
+    height: 100%;
+    content-width: self.width;
+    content-height: max(self.height, root.card-height + AppStyle.card-inset);
+
+    DialogCard {
+        x: (root.width - self.width) / 2;
+        y: (root.content-height - self.height) / 2;
+        width: root.card-width;
+        height: root.card-height;
+
+        card-body := VerticalLayout {
+            padding: root.body-padding;
+            spacing: root.body-spacing;
+
+            @children
+        }
+    }
 }
 
 export component ModalHost inherits Rectangle {

@@ -1,7 +1,7 @@
-import { ScrollView } from "std-widgets.slint";
 import { Icon, IconSet } from "@lucide";
 
 import { RovingKeys } from "../../../../components/a11y.slint";
+import { MenuScroll } from "../../../../components/menu.slint";
 import { MenuRow } from "../../../../components/menu-row.slint";
 import { PickerCard } from "../../../../components/overlay.slint";
 import { Actions } from "../../../../actions.slint";
@@ -187,16 +187,8 @@ export component CallMoreMenu inherits PickerCard {
         }
     }
 
-    function reveal(top: length, size: length) {
-        if top < -scroll.content-y {
-            scroll.content-y = -top;
-        } else if top + size > -scroll.content-y + scroll.visible-height {
-            scroll.content-y = -(top + size - scroll.visible-height);
-        }
-    }
-
     width: Metrics.call-menu-width;
-    height: min(rows.preferred-height + 2 * Space.sm, root.room);
+    height: min(scroll.rows-height + 2 * Space.sm, root.room);
 
     TouchArea { }
 
@@ -222,91 +214,80 @@ export component CallMoreMenu inherits PickerCard {
         }
     }
 
-    scroll := ScrollView {
-        x: 0;
-        y: Space.sm;
+    scroll := MenuScroll {
         width: parent.width;
         height: parent.height - 2 * Space.sm;
-        content-width: self.visible-width;
-        content-height: rows.preferred-height;
 
-        rows := VerticalLayout {
-            width: scroll.visible-width;
-            padding-left: Space.sm;
-            padding-right: Space.sm;
-            spacing: Space.xs;
-
-            for choice[index] in root.actions: MenuRow {
-                height: Metrics.call-menu-row;
-                icon: root.icon(choice);
-                label: root.label(choice);
-                enabled: root.offered(choice);
-                busy: root.pending(choice);
-                checkable: root.checkable(choice);
-                checked: root.checked(choice);
-                trailing: root.checked(choice) ? IconSet.Check : { };
-                focusable: false;
-                above-modal: root.above-modal;
-                roving-focus: root.keys-focused && root.cursor == index;
-                changed roving-focus => {
-                    if self.roving-focus {
-                        root.reveal(self.y, self.height);
-                    }
-                }
-                clicked => {
-                    root.choose(choice, false);
+        for choice[index] in root.actions: MenuRow {
+            height: Metrics.call-menu-row;
+            icon: root.icon(choice);
+            label: root.label(choice);
+            enabled: root.offered(choice);
+            busy: root.pending(choice);
+            checkable: root.checkable(choice);
+            checked: root.checked(choice);
+            trailing: root.checked(choice) ? IconSet.Check : { };
+            focusable: false;
+            above-modal: root.above-modal;
+            roving-focus: root.keys-focused && root.cursor == index;
+            changed roving-focus => {
+                if self.roving-focus {
+                    scroll.reveal(self.y, self.height);
                 }
             }
-
-            MenuGroup {
-                heading: @tr("Layout");
+            clicked => {
+                root.choose(choice, false);
             }
+        }
 
-            for choice[index] in root.modes: MenuRow {
-                height: Metrics.call-menu-row;
-                icon: root.icon(choice);
-                label: root.label(choice);
-                checkable: root.checkable(choice);
-                checked: root.checked(choice);
-                trailing: root.checked(choice) ? IconSet.Check : { };
-                focusable: false;
-                above-modal: root.above-modal;
-                roving-focus: root.keys-focused && root.cursor == root.actions.length + index;
-                changed roving-focus => {
-                    if self.roving-focus {
-                        root.reveal(self.y, self.height);
-                    }
-                }
-                clicked => {
-                    root.choose(choice, false);
+        MenuGroup {
+            heading: @tr("Layout");
+        }
+
+        for choice[index] in root.modes: MenuRow {
+            height: Metrics.call-menu-row;
+            icon: root.icon(choice);
+            label: root.label(choice);
+            checkable: root.checkable(choice);
+            checked: root.checked(choice);
+            trailing: root.checked(choice) ? IconSet.Check : { };
+            focusable: false;
+            above-modal: root.above-modal;
+            roving-focus: root.keys-focused && root.cursor == root.actions.length + index;
+            changed roving-focus => {
+                if self.roving-focus {
+                    scroll.reveal(self.y, self.height);
                 }
             }
+            clicked => {
+                root.choose(choice, false);
+            }
+        }
+
+        Rectangle {
+            height: Metrics.call-menu-group-gap;
 
             Rectangle {
-                height: Metrics.call-menu-group-gap;
+                y: (parent.height - self.height) / 2;
+                height: Stroke.hairline;
+                background: AppStyle.border;
+            }
+        }
 
-                Rectangle {
-                    y: (parent.height - self.height) / 2;
-                    height: Stroke.hairline;
-                    background: AppStyle.border;
+        MenuRow {
+            height: Metrics.call-menu-row;
+            icon: root.icon(CallMoreChoice.details);
+            label: root.label(CallMoreChoice.details);
+            focusable: false;
+            above-modal: root.above-modal;
+            roving-focus: root.keys-focused && root.cursor == root.count - 1;
+            changed roving-focus => {
+                if self.roving-focus {
+                    scroll.reveal(self.y, self.height);
                 }
             }
-
-            MenuRow {
-                height: Metrics.call-menu-row;
-                icon: root.icon(CallMoreChoice.details);
-                label: root.label(CallMoreChoice.details);
-                focusable: false;
-                above-modal: root.above-modal;
-                roving-focus: root.keys-focused && root.cursor == root.count - 1;
-                changed roving-focus => {
-                    if self.roving-focus {
-                        root.reveal(self.y, self.height);
-                    }
-                }
-                clicked => {
-                    root.choose(CallMoreChoice.details, false);
-                }
+            clicked => {
+                root.choose(CallMoreChoice.details, false);
             }
         }
     }

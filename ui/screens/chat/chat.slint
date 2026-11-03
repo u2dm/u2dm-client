@@ -379,15 +379,7 @@ export component ChatScreen inherits FocusScope {
         y: 0;
         width: root.width;
         height: root.height;
-        devices-x: dock.devices-x;
-        devices-y: dock.devices-y;
-        devices-size: dock.devices-size;
-        react-x: dock.react-x;
-        react-y: dock.react-y;
-        react-size: dock.react-size;
-        more-x: dock.more-x;
-        more-y: dock.more-y;
-        more-size: dock.more-size;
+        anchors: dock.anchors;
         above-modal: Shell.nav-on-top;
         beside-chat: timeline.call-split-fits;
         devices-closed => {

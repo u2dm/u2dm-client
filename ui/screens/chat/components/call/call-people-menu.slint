@@ -1,7 +1,7 @@
-import { ScrollView } from "std-widgets.slint";
 import { IconDisplay, IconSet } from "@lucide";
 
 import { ClickArea, RovingKeys } from "../../../../components/a11y.slint";
+import { MenuScroll } from "../../../../components/menu.slint";
 import { Actions } from "../../../../actions.slint";
 import { Avatar } from "../../../../components/avatar.slint";
 import { PickerCard } from "../../../../components/overlay.slint";
@@ -277,16 +277,8 @@ export component CallPeopleMenu inherits PickerCard {
         }
     }
 
-    function reveal(top: length, size: length) {
-        if top < -scroll.content-y {
-            scroll.content-y = -top;
-        } else if top + size > -scroll.content-y + scroll.visible-height {
-            scroll.content-y = -(top + size - scroll.visible-height);
-        }
-    }
-
     width: Metrics.call-people-width;
-    height: min(rows.preferred-height + 2 * Space.sm, root.room);
+    height: min(scroll.rows-height + 2 * Space.sm, root.room);
 
     TouchArea { }
 
@@ -330,38 +322,27 @@ export component CallPeopleMenu inherits PickerCard {
         }
     }
 
-    scroll := ScrollView {
-        x: 0;
-        y: Space.sm;
+    scroll := MenuScroll {
         width: parent.width;
         height: parent.height - 2 * Space.sm;
-        content-width: self.visible-width;
-        content-height: rows.preferred-height;
 
-        rows := VerticalLayout {
-            width: scroll.visible-width;
-            padding-left: Space.sm;
-            padding-right: Space.sm;
-            spacing: Space.xs;
-
-            for person[index] in CallView.people: PersonRow {
-                person: person;
-                detail: root.detail-of(person);
-                label: root.label-of(person);
-                above-modal: root.above-modal;
-                offers-hand: root.offers-hand;
-                hand-up: root.hand-up;
-                roving-focus: root.keys-focused && root.cursor == index && !(root.acts);
-                action-focus: root.keys-focused && root.cursor == index && root.acts;
-                roved(top, size) => {
-                    root.reveal(top, size);
-                }
-                picked => {
-                    root.pick-at(index, false);
-                }
-                toggled => {
-                    root.toggle-at(index);
-                }
+        for person[index] in CallView.people: PersonRow {
+            person: person;
+            detail: root.detail-of(person);
+            label: root.label-of(person);
+            above-modal: root.above-modal;
+            offers-hand: root.offers-hand;
+            hand-up: root.hand-up;
+            roving-focus: root.keys-focused && root.cursor == index && !(root.acts);
+            action-focus: root.keys-focused && root.cursor == index && root.acts;
+            roved(top, size) => {
+                scroll.reveal(top, size);
+            }
+            picked => {
+                root.pick-at(index, false);
+            }
+            toggled => {
+                root.toggle-at(index);
             }
         }
     }

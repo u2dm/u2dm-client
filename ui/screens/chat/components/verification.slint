@@ -1,4 +1,4 @@
-import { Palette, ScrollView } from "std-widgets.slint";
+import { Palette } from "std-widgets.slint";
 import { IconDisplay, IconSet, Icon } from "@lucide";
 
 import { VerificationPhase, VerificationActivity, UserMessageKind } from "../../../enums.slint";
@@ -10,7 +10,7 @@ import { AppStyle, Fonts, Glyph, IconSize, Metrics, Radius, Size, Space, Stroke,
 import { ErrorBanner } from "../../../components/banner.slint";
 import { AppButton, IconButton } from "../../../components/button.slint";
 import { DotPulse } from "../../../components/dot-pulse.slint";
-import { DialogCard, ModalHost } from "../../../components/overlay.slint";
+import { ModalHost, ScrollingDialogCard } from "../../../components/overlay.slint";
 
 export component DialogNote inherits Text {
     font-size: Fonts.body-small;
@@ -248,197 +248,175 @@ export component VerificationDialog inherits ModalHost {
         Actions.dismiss-verification();
     }
 
-    property <length> card-width: min(AppStyle.card-width-wide, root.width - AppStyle.card-inset);
-    property <length> card-height: card-body.preferred-height;
+    card := ScrollingDialogCard {
+        VerificationHeader {
+            title: VerificationView.is-self ? @tr("Device verification") : @tr("User verification");
+            subtitle: VerificationView.is-self
+                ? @tr("One of your own sessions")
+                : VerificationView.sender;
+            close-label: @tr("Close the verification dialog");
+            close-clicked => {
+                Actions.dismiss-verification();
+            }
+        }
 
-    scroll := ScrollView {
-        x: 0;
-        y: 0;
-        width: 100%;
-        height: 100%;
-        content-width: self.width;
-        content-height: max(self.height, root.card-height + AppStyle.card-inset);
+        Rectangle {
+            height: Stroke.hairline;
+            background: AppStyle.overlay-pressed;
+        }
 
-        DialogCard {
-            x: (root.width - self.width) / 2;
-            y: (scroll.content-height - self.height) / 2;
-            width: root.card-width;
-            height: root.card-height;
+        if VerificationView.step == VerificationPhase.requested: VerticalLayout {
+            spacing: Space.xl;
 
-            card-body := VerticalLayout {
-                padding: Space.xxl;
-                spacing: Space.xl;
+            DialogNote {
+                text: VerificationView.is-self
+                    ? @tr("Accept to compare a row of emoji with your other device and unlock your encrypted history.")
+                    : @tr("{} wants to verify this session. Accept to compare a row of emoji with them.", VerificationView.sender);
+            }
 
-                VerificationHeader {
-                    title: VerificationView.is-self ? @tr("Device verification") : @tr("User verification");
-                    subtitle: VerificationView.is-self
-                        ? @tr("One of your own sessions")
-                        : VerificationView.sender;
-                    close-label: @tr("Close the verification dialog");
-                    close-clicked => {
-                        Actions.dismiss-verification();
-                    }
+            AnswerPair {
+                refuse-text: @tr("Decline");
+                refusing: VerificationView.activity == VerificationActivity.declining;
+                agree-text: @tr("Accept");
+                agreeing: VerificationView.activity == VerificationActivity.accepting;
+                refused => {
+                    Actions.reject-verification();
                 }
-
-                Rectangle {
-                    height: Stroke.hairline;
-                    background: AppStyle.overlay-pressed;
-                }
-
-                if VerificationView.step == VerificationPhase.requested: VerticalLayout {
-                    spacing: Space.xl;
-
-                    DialogNote {
-                        text: VerificationView.is-self
-                            ? @tr("Accept to compare a row of emoji with your other device and unlock your encrypted history.")
-                            : @tr("{} wants to verify this session. Accept to compare a row of emoji with them.", VerificationView.sender);
-                    }
-
-                    AnswerPair {
-                        refuse-text: @tr("Decline");
-                        refusing: VerificationView.activity == VerificationActivity.declining;
-                        agree-text: @tr("Accept");
-                        agreeing: VerificationView.activity == VerificationActivity.accepting;
-                        refused => {
-                            Actions.reject-verification();
-                        }
-                        agreed => {
-                            Actions.accept-verification();
-                        }
-                    }
-                }
-
-                if VerificationView.step == VerificationPhase.waiting: VerticalLayout {
-                    spacing: Space.xl;
-
-                    HorizontalLayout {
-                        alignment: center;
-
-                        DotPulse {
-                            tint: Palette.accent-background;
-                            dot-size: Space.md;
-                        }
-                    }
-
-                    DialogNote {
-                        text: VerificationView.is-self
-                            ? @tr("Open one of your other sessions and accept the request there. Then compare the emoji it shows with the ones that appear here.")
-                            : @tr("Waiting for {} to accept the request in your chat. Then compare the emoji their app shows with the ones that appear here.", VerificationView.sender);
-                    }
-
-                    AppButton {
-                        above-modal: true;
-                        text: @tr("Cancel");
-                        icon: IconSet.X;
-                        filled: false;
-                        enabled: !VerificationView.busy;
-                        clicked => {
-                            Actions.dismiss-verification();
-                        }
-                    }
-                }
-
-                if VerificationView.step == VerificationPhase.emojis: VerticalLayout {
-                    spacing: Space.xl;
-
-                    DialogNote {
-                        text: @tr("Check that the same emoji appear in the same order on both devices.");
-                    }
-
-                    EmojiGrid {
-                        available-width: root.card-width - AppStyle.card-inset;
-                    }
-
-                    AnswerPair {
-                        refuse-text: @tr("They don't match");
-                        refuse-tint: AppStyle.danger;
-                        refusing: VerificationView.activity == VerificationActivity.declining;
-                        agree-text: @tr("They match");
-                        agreeing: VerificationView.activity == VerificationActivity.confirming;
-                        refused => {
-                            Actions.reject-verification();
-                        }
-                        agreed => {
-                            Actions.confirm-verification();
-                        }
-                    }
-                }
-
-                if VerificationView.step == VerificationPhase.confirming: VerticalLayout {
-                    spacing: Space.xl;
-
-                    HorizontalLayout {
-                        alignment: center;
-
-                        DotPulse {
-                            tint: Palette.accent-background;
-                            dot-size: Space.md;
-                        }
-                    }
-
-                    DialogNote {
-                        text: @tr("Waiting for the other device to confirm...");
-                    }
-                }
-
-                if VerificationView.step == VerificationPhase.done: VerticalLayout {
-                    spacing: Space.xl;
-
-                    Verdict {
-                        icon: IconSet.ShieldCheck;
-                        tint: AppStyle.success;
-                        surface: AppStyle.success-background;
-                        title: VerificationView.is-self ? @tr("Session verified") : @tr("User verified");
-                    }
-
-                    DialogNote {
-                        text: VerificationView.is-self
-                            ? @tr("This session is trusted now, so encrypted messages can be read here.")
-                            : @tr("You verified {}. The sessions they verified themselves now show as verified, and you'll be warned if their identity changes.", VerificationView.sender);
-                    }
-
-                    AppButton {
-                        above-modal: true;
-                        text: @tr("Done");
-                        icon: IconSet.Check;
-                        clicked => {
-                            Actions.dismiss-verification();
-                        }
-                    }
-                }
-
-                if VerificationView.step == VerificationPhase.cancelled: VerticalLayout {
-                    spacing: Space.xl;
-
-                    Verdict {
-                        icon: IconSet.ShieldAlert;
-                        tint: AppStyle.danger;
-                        surface: AppStyle.danger-background;
-                        title: @tr("Verification stopped");
-                    }
-
-                    if VerificationView.error != UserMessageKind.none: DialogNote {
-                        text: UserMessages.text(VerificationView.error, VerificationView.error-detail);
-                    }
-
-                    AppButton {
-                        above-modal: true;
-                        text: @tr("Close");
-                        filled: false;
-                        clicked => {
-                            Actions.dismiss-verification();
-                        }
-                    }
-                }
-
-                if VerificationView.busy: BusyRow { }
-
-                if !VerificationView.busy
-                    && VerificationView.error != UserMessageKind.none
-                    && VerificationView.step != VerificationPhase.cancelled: ErrorBanner {
-                    messages: [{ kind: VerificationView.error, detail: VerificationView.error-detail }];
+                agreed => {
+                    Actions.accept-verification();
                 }
             }
+        }
+
+        if VerificationView.step == VerificationPhase.waiting: VerticalLayout {
+            spacing: Space.xl;
+
+            HorizontalLayout {
+                alignment: center;
+
+                DotPulse {
+                    tint: Palette.accent-background;
+                    dot-size: Space.md;
+                }
+            }
+
+            DialogNote {
+                text: VerificationView.is-self
+                    ? @tr("Open one of your other sessions and accept the request there. Then compare the emoji it shows with the ones that appear here.")
+                    : @tr("Waiting for {} to accept the request in your chat. Then compare the emoji their app shows with the ones that appear here.", VerificationView.sender);
+            }
+
+            AppButton {
+                above-modal: true;
+                text: @tr("Cancel");
+                icon: IconSet.X;
+                filled: false;
+                enabled: !VerificationView.busy;
+                clicked => {
+                    Actions.dismiss-verification();
+                }
+            }
+        }
+
+        if VerificationView.step == VerificationPhase.emojis: VerticalLayout {
+            spacing: Space.xl;
+
+            DialogNote {
+                text: @tr("Check that the same emoji appear in the same order on both devices.");
+            }
+
+            EmojiGrid {
+                available-width: card.card-width - AppStyle.card-inset;
+            }
+
+            AnswerPair {
+                refuse-text: @tr("They don't match");
+                refuse-tint: AppStyle.danger;
+                refusing: VerificationView.activity == VerificationActivity.declining;
+                agree-text: @tr("They match");
+                agreeing: VerificationView.activity == VerificationActivity.confirming;
+                refused => {
+                    Actions.reject-verification();
+                }
+                agreed => {
+                    Actions.confirm-verification();
+                }
+            }
+        }
+
+        if VerificationView.step == VerificationPhase.confirming: VerticalLayout {
+            spacing: Space.xl;
+
+            HorizontalLayout {
+                alignment: center;
+
+                DotPulse {
+                    tint: Palette.accent-background;
+                    dot-size: Space.md;
+                }
+            }
+
+            DialogNote {
+                text: @tr("Waiting for the other device to confirm...");
+            }
+        }
+
+        if VerificationView.step == VerificationPhase.done: VerticalLayout {
+            spacing: Space.xl;
+
+            Verdict {
+                icon: IconSet.ShieldCheck;
+                tint: AppStyle.success;
+                surface: AppStyle.success-background;
+                title: VerificationView.is-self ? @tr("Session verified") : @tr("User verified");
+            }
+
+            DialogNote {
+                text: VerificationView.is-self
+                    ? @tr("This session is trusted now, so encrypted messages can be read here.")
+                    : @tr("You verified {}. The sessions they verified themselves now show as verified, and you'll be warned if their identity changes.", VerificationView.sender);
+            }
+
+            AppButton {
+                above-modal: true;
+                text: @tr("Done");
+                icon: IconSet.Check;
+                clicked => {
+                    Actions.dismiss-verification();
+                }
+            }
+        }
+
+        if VerificationView.step == VerificationPhase.cancelled: VerticalLayout {
+            spacing: Space.xl;
+
+            Verdict {
+                icon: IconSet.ShieldAlert;
+                tint: AppStyle.danger;
+                surface: AppStyle.danger-background;
+                title: @tr("Verification stopped");
+            }
+
+            if VerificationView.error != UserMessageKind.none: DialogNote {
+                text: UserMessages.text(VerificationView.error, VerificationView.error-detail);
+            }
+
+            AppButton {
+                above-modal: true;
+                text: @tr("Close");
+                filled: false;
+                clicked => {
+                    Actions.dismiss-verification();
+                }
+            }
+        }
+
+        if VerificationView.busy: BusyRow { }
+
+        if !VerificationView.busy
+            && VerificationView.error != UserMessageKind.none
+            && VerificationView.step != VerificationPhase.cancelled: ErrorBanner {
+            messages: [{ kind: VerificationView.error, detail: VerificationView.error-detail }];
         }
     }
 }

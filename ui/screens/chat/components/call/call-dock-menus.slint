@@ -3,21 +3,14 @@ import { ModalHost, Placement } from "../../../../components/overlay.slint";
 import { CallMenuOpener, CallMode, CallPanel } from "../../../../local.slint";
 import { CallView } from "../../../../views.slint";
 import { Space } from "../../../../theme.slint";
+import { DockAnchors } from "./call-dock.slint";
 import { CallDevicesMenu } from "./call-devices-menu.slint";
 import { CallMoreMenu } from "./call-more-menu.slint";
 import { CallPeopleMenu } from "./call-people-menu.slint";
 import { CallReactionsMenu } from "./call-reactions-menu.slint";
 
 export component CallDockMenus {
-    in property <length> devices-x;
-    in property <length> devices-y;
-    in property <length> devices-size;
-    in property <length> react-x;
-    in property <length> react-y;
-    in property <length> react-size;
-    in property <length> more-x;
-    in property <length> more-y;
-    in property <length> more-size;
+    in property <DockAnchors> anchors;
     in property <bool> above-modal;
     in property <bool> beside-chat;
 
@@ -28,14 +21,14 @@ export component CallDockMenus {
     callback change-share(bool);
     callback mode(CallMode);
 
-    property <length> menu-room-above: root.devices-y - Space.xs - Space.md;
-    property <length> menu-room-below: root.height - root.devices-y - root.devices-size - Space.xs - Space.md;
+    property <length> menu-room-above: root.anchors.devices.y - Space.xs - Space.md;
+    property <length> menu-room-below: root.height - root.anchors.devices.y - root.anchors.devices.size - Space.xs - Space.md;
     property <bool> menu-above: root.menu-room-above >= root.menu-room-below;
-    property <length> react-room-above: root.react-y - Space.xs - Space.md;
-    property <length> react-room-below: root.height - root.react-y - root.react-size - Space.xs - Space.md;
+    property <length> react-room-above: root.anchors.react.y - Space.xs - Space.md;
+    property <length> react-room-below: root.height - root.anchors.react.y - root.anchors.react.size - Space.xs - Space.md;
     property <bool> react-above: root.react-room-above >= root.react-room-below;
-    property <length> more-room-above: root.more-y - Space.xs - Space.md;
-    property <length> more-room-below: root.height - root.more-y - root.more-size - Space.xs - Space.md;
+    property <length> more-room-above: root.anchors.more.y - Space.xs - Space.md;
+    property <length> more-room-below: root.height - root.anchors.more.y - root.anchors.more.size - Space.xs - Space.md;
     property <bool> more-above: root.more-room-above >= root.more-room-below;
     property <length> people-room-above: CallPanel.people-top - Space.xs - Space.md;
     property <length> people-room-below: root.height - CallPanel.people-bottom - Space.xs - Space.md;
@@ -57,10 +50,10 @@ export component CallDockMenus {
         }
 
         devices-menu := CallDevicesMenu {
-            x: Placement.fit(root.devices-x + root.devices-size - self.width, self.width, root.width, Space.md);
+            x: Placement.fit(root.anchors.devices.x + root.anchors.devices.size - self.width, self.width, root.width, Space.md);
             y: root.menu-above
-                ? root.devices-y - Space.xs - self.height
-                : root.devices-y + root.devices-size + Space.xs;
+                ? root.anchors.devices.y - Space.xs - self.height
+                : root.anchors.devices.y + root.anchors.devices.size + Space.xs;
             room: root.menu-above ? root.menu-room-above : root.menu-room-below;
             above-modal: root.above-modal;
             in-call: true;
@@ -86,10 +79,10 @@ export component CallDockMenus {
         }
 
         reactions-menu := CallReactionsMenu {
-            x: Placement.fit(root.react-x + root.react-size - self.width, self.width, root.width, Space.md);
+            x: Placement.fit(root.anchors.react.x + root.anchors.react.size - self.width, self.width, root.width, Space.md);
             y: root.react-above
-                ? root.react-y - Space.xs - self.height
-                : root.react-y + root.react-size + Space.xs;
+                ? root.anchors.react.y - Space.xs - self.height
+                : root.anchors.react.y + root.anchors.react.size + Space.xs;
             room: root.react-above ? root.react-room-above : root.react-room-below;
             above-modal: root.above-modal;
             sent => {
@@ -143,10 +136,10 @@ export component CallDockMenus {
         }
 
         more-menu := CallMoreMenu {
-            x: Placement.fit(root.more-x + root.more-size - self.width, self.width, root.width, Space.md);
+            x: Placement.fit(root.anchors.more.x + root.anchors.more.size - self.width, self.width, root.width, Space.md);
             y: root.more-above
-                ? root.more-y - Space.xs - self.height
-                : root.more-y + root.more-size + Space.xs;
+                ? root.anchors.more.y - Space.xs - self.height
+                : root.anchors.more.y + root.anchors.more.size + Space.xs;
             room: root.more-above ? root.more-room-above : root.more-room-below;
             above-modal: root.above-modal;
             beside-chat: root.beside-chat;
