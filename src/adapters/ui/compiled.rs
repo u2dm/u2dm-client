@@ -243,7 +243,8 @@ macro_rules! impl_enum_getter {
 
 macro_rules! bind_compiled_callbacks {
     ($actions:expr, $main:ident, $tx:ident;
-        $($on:ident $lit:literal $fn:ident $kind:ident $(($($arg:tt)*))? $cmd:ident;)*) => {
+        $($on:ident $lit:literal $fn:ident $kind:ident $(($($arg:tt)*))?
+            $cmd:ident $(:: $variant:ident)?;)*) => {
         $( bind_compiled_callbacks!(@one $actions, $main, $tx, $on $fn $kind $(($($arg)*))?); )*
     };
     (@one $actions:expr, $main:ident, $tx:ident, $on:ident $fn:ident plain) => {
@@ -266,6 +267,16 @@ macro_rules! bind_compiled_callbacks {
     };
     (@one $actions:expr, $main:ident, $tx:ident, $on:ident $fn:ident manual_string) => {
         bind_compiled_callbacks!(@string $actions, $tx, $on $fn)
+    };
+    (@one $actions:expr, $main:ident, $tx:ident, $on:ident $fn:ident event) => {
+        bind_compiled_callbacks!(@string $actions, $tx, $on $fn)
+    };
+    (@one $actions:expr, $main:ident, $tx:ident, $on:ident $fn:ident local) => {
+        bind_compiled_callbacks!(@string $actions, $tx, $on $fn)
+    };
+    (@one $actions:expr, $main:ident, $tx:ident, $on:ident $fn:ident
+        flag($field:ident $name:literal)) => {
+        bind_compiled_callbacks!(@one $actions, $main, $tx, $on $fn request($field $name flag))
     };
     (@one $actions:expr, $main:ident, $tx:ident, $on:ident $fn:ident room_key) => {{
         let tx = $tx.clone();
@@ -301,6 +312,10 @@ macro_rules! bind_compiled_callbacks {
     (@field $req:ident $field:ident flag) => { $req.$field };
     (@field $req:ident $field:ident list) => { $req.$field.iter().map(String::from).collect() };
     (@field $req:ident $field:ident variant) => { $req.$field.slint_name() };
+}
+
+fn bind_simple_callbacks(actions: &Actions<'_>, main: &AppWindow, tx: &CommandSender) {
+    simple_callbacks!(bind_compiled_callbacks actions, main, tx;);
 }
 
 fn bind_hooks(actions: &Actions<'_>, hooks: WindowHooks) {
@@ -808,7 +823,7 @@ impl UiBackend for CompiledBackend {
         mirror_enums(main, &window);
         attach_mirrored_models(&window, &Self::models());
         if let Some(tx) = call_window::commands() {
-            simple_callbacks!(bind_compiled_callbacks call_actions(&window), main, tx;);
+            bind_simple_callbacks(&call_actions(&window), main, &tx);
         }
         bind_hooks(&call_actions(&window), hooks);
         window.set_ready(true);
@@ -988,7 +1003,7 @@ impl SlintUiAdapter {
 
         let win = &self.window;
         call_window::install_commands(cmd_tx);
-        simple_callbacks!(bind_compiled_callbacks actions(win), win, cmd_tx;);
+        bind_simple_callbacks(&actions(win), win, cmd_tx);
 
         let tx = cmd_tx.clone();
         actions(win).on_move_space(move |from, to| {

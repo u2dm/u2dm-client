@@ -227,9 +227,7 @@ pub(super) fn command_allowed(phase: AppPhase, cmd: &UiCommand) -> bool {
         | UiCommand::CloseInvite
         | UiCommand::AcceptInvite(_)
         | UiCommand::DeclineInvite(_)
-        | UiCommand::OpenRemoval(_)
-        | UiCommand::CloseRemoval
-        | UiCommand::ForgetRoom(_)
+        | UiCommand::Departure(_)
         | UiCommand::JoinSuccessor(_)
         | UiCommand::JoinPredecessor(_)
         | UiCommand::OpenRoomLink(_)
@@ -258,9 +256,6 @@ pub(super) fn command_allowed(phase: AppPhase, cmd: &UiCommand) -> bool {
         | UiCommand::FilterRoomMembers(_)
         | UiCommand::SetRoomNotify { .. }
         | UiCommand::LeaveRoom(_)
-        | UiCommand::OpenLeaveSpace(_)
-        | UiCommand::CloseLeaveSpace
-        | UiCommand::LeaveSpace { .. }
         | UiCommand::OpenRoomMenu(_)
         | UiCommand::CloseRoomMenu
         | UiCommand::MarkRoomRead(_)
@@ -289,26 +284,9 @@ pub(super) fn command_allowed(phase: AppPhase, cmd: &UiCommand) -> bool {
         | UiCommand::SetUpRecovery
         | UiCommand::ChangeRecoveryKey
         | UiCommand::RetryEncryptionSetup
-        | UiCommand::StartIdentityReset
-        | UiCommand::ResetIdentity
-        | UiCommand::StartKeyExport
-        | UiCommand::ExportRoomKeys(_)
-        | UiCommand::StartKeyImport
-        | UiCommand::ImportRoomKeys(_)
-        | UiCommand::OpenAccount
-        | UiCommand::CloseAccount
-        | UiCommand::ShowAccountOverview
-        | UiCommand::RenameSession { .. }
-        | UiCommand::SignOutSession(_)
-        | UiCommand::OpenAccountPage(_)
-        | UiCommand::StartPasswordChange
-        | UiCommand::ChangePassword { .. }
-        | UiCommand::StartDeactivation
-        | UiCommand::DeactivateAccount { .. }
-        | UiCommand::AnswerAuthPassword(_)
-        | UiCommand::ContinueAuth
-        | UiCommand::ReopenAuthPage
-        | UiCommand::CancelAuth
+        | UiCommand::Keys(_)
+        | UiCommand::Account(_)
+        | UiCommand::Auth(_)
         | UiCommand::ConfirmLogout
         | UiCommand::CancelLogout
         | UiCommand::SendMessage { .. }
@@ -358,38 +336,7 @@ pub(super) fn command_allowed(phase: AppPhase, cmd: &UiCommand) -> bool {
         | UiCommand::AudioEnded { .. }
         | UiCommand::OpenLink { .. }
         | UiCommand::SaveFile { .. }
-        | UiCommand::DeclineCall(_)
-        | UiCommand::SilenceRing
-        | UiCommand::OpenCallSheet { .. }
-        | UiCommand::CloseCallSheet
-        | UiCommand::SheetCamera(_)
-        | UiCommand::TestCallDevice { .. }
-        | UiCommand::StartCall { .. }
-        | UiCommand::JoinCall { .. }
-        | UiCommand::AnswerCall { .. }
-        | UiCommand::LeaveCall
-        | UiCommand::RetryFailedCall
-        | UiCommand::DismissFailedCall
-        | UiCommand::AnnounceCallAgain
-        | UiCommand::SetMicrophone(_)
-        | UiCommand::SetCamera(_)
-        | UiCommand::ShareScreen(_)
-        | UiCommand::ChangeScreenShare
-        | UiCommand::UseCallDevice { .. }
-        | UiCommand::RefreshCallDevices
-        | UiCommand::FocusCallTile(_)
-        | UiCommand::UnpinCallTile
-        | UiCommand::RingDevices(_)
-        | UiCommand::ShowCallGallery
-        | UiCommand::ViewCallShare
-        | UiCommand::ShowSelfView(_)
-        | UiCommand::ShowSharePreview(_)
-        | UiCommand::FollowSpeaker(_)
-        | UiCommand::MuteForMe { .. }
-        | UiCommand::RaiseHand(_)
-        | UiCommand::SendCallReaction(_)
-        | UiCommand::WatchMicrophone(_)
-        | UiCommand::WatchConnections(_)
+        | UiCommand::Call(_)
         | UiCommand::DismissToast => phase == AppPhase::Syncing,
     }
 }

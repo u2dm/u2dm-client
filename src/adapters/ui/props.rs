@@ -38,8 +38,8 @@ use crate::domain::verification::VerificationEmoji as DomainVerificationEmoji;
 
 pub const SLINT_INFLIGHT: usize = 32;
 
-pub fn send_command(tx: &CommandSender, cmd: UiCommand) {
-    drop(tx.send(cmd));
+pub fn send_command(tx: &CommandSender, cmd: impl Into<UiCommand>) {
+    drop(tx.send(cmd.into()));
 }
 
 macro_rules! prop_enum {

@@ -212,79 +212,90 @@ macro_rules! simple_callbacks {
         on_retry_encryption_setup "retry-encryption-setup" retry_encryption_setup plain
             RetryEncryptionSetup;
         on_start_identity_reset "start-identity-reset" start_identity_reset plain
-            StartIdentityReset;
-        on_reset_identity "reset-identity" reset_identity plain ResetIdentity;
-        on_start_key_export "start-key-export" start_key_export plain StartKeyExport;
-        on_export_room_keys "export-room-keys" export_room_keys manual_string ExportRoomKeys;
-        on_start_key_import "start-key-import" start_key_import plain StartKeyImport;
-        on_import_room_keys "import-room-keys" import_room_keys manual_string ImportRoomKeys;
-        on_open_account "open-account" open_account plain OpenAccount;
-        on_close_account "close-account" close_account plain CloseAccount;
+            KeysCommand::StartIdentityReset;
+        on_reset_identity "reset-identity" reset_identity plain KeysCommand::ResetIdentity;
+        on_start_key_export "start-key-export" start_key_export plain KeysCommand::StartKeyExport;
+        on_export_room_keys "export-room-keys" export_room_keys manual_string
+            KeysCommand::ExportRoomKeys;
+        on_start_key_import "start-key-import" start_key_import plain KeysCommand::StartKeyImport;
+        on_import_room_keys "import-room-keys" import_room_keys manual_string
+            KeysCommand::ImportRoomKeys;
+        on_open_account "open-account" open_account plain AccountCommand::OpenAccount;
+        on_close_account "close-account" close_account plain AccountCommand::CloseAccount;
         on_show_account_overview "show-account-overview" show_account_overview plain
-            ShowAccountOverview;
+            AccountCommand::ShowAccountOverview;
         on_rename_session "rename-session" rename_session
-            request(device_id "device-id" text, name "name" text) RenameSession;
-        on_sign_out_session "sign-out-session" sign_out_session pass SignOutSession;
-        on_open_account_page "open-account-page" open_account_page manual OpenAccountPage;
-        on_open_sessions_page "open-sessions-page" open_sessions_page manual OpenAccountPage;
+            request(device_id "device-id" text, name "name" text) AccountCommand::RenameSession;
+        on_sign_out_session "sign-out-session" sign_out_session pass AccountCommand::SignOutSession;
+        on_open_account_page "open-account-page" open_account_page manual
+            AccountCommand::OpenAccountPage;
+        on_open_sessions_page "open-sessions-page" open_sessions_page manual
+            AccountCommand::OpenAccountPage;
         on_start_password_change "start-password-change" start_password_change plain
-            StartPasswordChange;
+            AccountCommand::StartPasswordChange;
         on_change_password "change-password" change_password
-            request(password "password" text, sign_out_others "sign-out-others" flag) ChangePassword;
-        on_start_deactivation "start-deactivation" start_deactivation plain StartDeactivation;
+            request(password "password" text, sign_out_others "sign-out-others" flag)
+            AccountCommand::ChangePassword;
+        on_start_deactivation "start-deactivation" start_deactivation plain
+            AccountCommand::StartDeactivation;
         on_deactivate_account "deactivate-account" deactivate_account
-            request(erase "erase" flag) DeactivateAccount;
+            request(erase "erase" flag) AccountCommand::DeactivateAccount;
         on_answer_auth_password "answer-auth-password" answer_auth_password manual_string
-            AnswerAuthPassword;
-        on_continue_auth "continue-auth" continue_auth plain ContinueAuth;
-        on_reopen_auth_page "reopen-auth-page" reopen_auth_page plain ReopenAuthPage;
-        on_cancel_auth "cancel-auth" cancel_auth plain CancelAuth;
+            AuthCommand::AnswerAuthPassword;
+        on_continue_auth "continue-auth" continue_auth plain AuthCommand::ContinueAuth;
+        on_reopen_auth_page "reopen-auth-page" reopen_auth_page plain AuthCommand::ReopenAuthPage;
+        on_cancel_auth "cancel-auth" cancel_auth plain AuthCommand::CancelAuth;
         on_confirm_logout "confirm-logout" confirm_logout plain ConfirmLogout;
         on_cancel_logout "cancel-logout" cancel_logout plain CancelLogout;
         on_retry_timeline "retry-timeline" retry_timeline plain RetryTimeline;
-        on_decline_call "decline-call" decline_call room DeclineCall;
-        on_silence_ring "silence-ring" silence_ring plain SilenceRing;
+        on_decline_call "decline-call" decline_call room CallCommand::DeclineCall;
+        on_silence_ring "silence-ring" silence_ring plain CallCommand::SilenceRing;
         on_open_call_sheet "open-call-sheet" open_call_sheet
-            request(room_id "room-id" text, video "video" flag) OpenCallSheet;
-        on_close_call_sheet "close-call-sheet" close_call_sheet plain CloseCallSheet;
-        on_sheet_camera "sheet-camera" sheet_camera request(on "on" flag) SheetCamera;
+            request(room_id "room-id" text, video "video" flag) CallCommand::OpenCallSheet;
+        on_close_call_sheet "close-call-sheet" close_call_sheet plain CallCommand::CloseCallSheet;
+        on_sheet_camera "sheet-camera" sheet_camera flag(on "on") CallCommand::SheetCamera;
         on_test_call_device "test-call-device" test_call_device
-            request(kind "kind" variant, on "on" flag) TestCallDevice;
+            request(kind "kind" variant, on "on" flag) CallCommand::TestCallDevice;
         on_start_call "start-call" start_call
             request(room_id "room-id" text, video "video" flag, microphone "microphone" flag,
-                camera "camera" flag, leaving "leaving" text) StartCall;
+                camera "camera" flag, leaving "leaving" text) CallCommand::StartCall;
         on_join_call "join-call" join_call
             request(room_id "room-id" text, microphone "microphone" flag, camera "camera" flag,
-                leaving "leaving" text) JoinCall;
+                leaving "leaving" text) CallCommand::JoinCall;
         on_answer_call "answer-call" answer_call
             request(room_id "room-id" text, camera "camera" flag, leaving "leaving" text)
-            AnswerCall;
-        on_leave_call "leave-call" leave_call plain LeaveCall;
-        on_retry_failed_call "retry-failed-call" retry_failed_call plain RetryFailedCall;
-        on_dismiss_failed_call "dismiss-failed-call" dismiss_failed_call plain DismissFailedCall;
-        on_announce_call_again "announce-call-again" announce_call_again plain AnnounceCallAgain;
-        on_set_microphone "set-microphone" set_microphone request(on "on" flag) SetMicrophone;
-        on_set_camera "set-camera" set_camera request(on "on" flag) SetCamera;
-        on_share_screen "share-screen" share_screen request(on "on" flag) ShareScreen;
-        on_change_screen_share "change-screen-share" change_screen_share plain ChangeScreenShare;
+            CallCommand::AnswerCall;
+        on_leave_call "leave-call" leave_call plain CallCommand::LeaveCall;
+        on_retry_failed_call "retry-failed-call" retry_failed_call plain
+            CallCommand::RetryFailedCall;
+        on_dismiss_failed_call "dismiss-failed-call" dismiss_failed_call plain
+            CallCommand::DismissFailedCall;
+        on_announce_call_again "announce-call-again" announce_call_again plain
+            CallCommand::AnnounceCallAgain;
+        on_set_microphone "set-microphone" set_microphone flag(on "on") CallCommand::SetMicrophone;
+        on_set_camera "set-camera" set_camera flag(on "on") CallCommand::SetCamera;
+        on_share_screen "share-screen" share_screen flag(on "on") CallCommand::ShareScreen;
+        on_change_screen_share "change-screen-share" change_screen_share plain
+            CallCommand::ChangeScreenShare;
         on_use_call_device "use-call-device" use_call_device
-            request(kind "kind" variant, key "key" text) UseCallDevice;
+            request(kind "kind" variant, key "key" text) CallCommand::UseCallDevice;
         on_refresh_call_devices "refresh-call-devices" refresh_call_devices plain
-            RefreshCallDevices;
-        on_focus_call_tile "focus-call-tile" focus_call_tile pass FocusCallTile;
-        on_unpin_call_tile "unpin-call-tile" unpin_call_tile plain UnpinCallTile;
-        on_ring_devices "ring-devices" ring_devices request(open "open" flag) RingDevices;
-        on_show_call_gallery "show-call-gallery" show_call_gallery plain ShowCallGallery;
-        on_view_call_share "view-call-share" view_call_share plain ViewCallShare;
-        on_show_self_view "show-self-view" show_self_view request(on "on" flag) ShowSelfView;
-        on_show_share_preview "show-share-preview" show_share_preview request(on "on" flag)
-            ShowSharePreview;
-        on_follow_speaker "follow-speaker" follow_speaker request(on "on" flag) FollowSpeaker;
+            CallCommand::RefreshCallDevices;
+        on_focus_call_tile "focus-call-tile" focus_call_tile pass CallCommand::FocusCallTile;
+        on_unpin_call_tile "unpin-call-tile" unpin_call_tile plain CallCommand::UnpinCallTile;
+        on_ring_devices "ring-devices" ring_devices flag(open "open") CallCommand::RingDevices;
+        on_show_call_gallery "show-call-gallery" show_call_gallery plain
+            CallCommand::ShowCallGallery;
+        on_view_call_share "view-call-share" view_call_share plain CallCommand::ViewCallShare;
+        on_show_self_view "show-self-view" show_self_view flag(on "on") CallCommand::ShowSelfView;
+        on_show_share_preview "show-share-preview" show_share_preview flag(on "on")
+            CallCommand::ShowSharePreview;
+        on_follow_speaker "follow-speaker" follow_speaker flag(on "on") CallCommand::FollowSpeaker;
         on_mute_for_me "mute-for-me" mute_for_me request(user_id "user-id" text, on "on" flag)
-            MuteForMe;
-        on_raise_hand "raise-hand" raise_hand request(on "on" flag) RaiseHand;
+            CallCommand::MuteForMe;
+        on_raise_hand "raise-hand" raise_hand flag(on "on") CallCommand::RaiseHand;
         on_send_call_reaction "send-call-reaction" send_call_reaction request(name "name" text)
-            SendCallReaction;
+            CallCommand::SendCallReaction;
         on_select_room "select-room" select_room room SelectRoom;
         on_open_notification "open-notification" open_notification room OpenNotification;
         on_select_space "select-space" select_space opt_room SelectSpace;
@@ -304,9 +315,9 @@ macro_rules! simple_callbacks {
         on_close_invite "close-invite" close_invite plain CloseInvite;
         on_accept_invite "accept-invite" accept_invite room AcceptInvite;
         on_decline_invite "decline-invite" decline_invite room DeclineInvite;
-        on_open_removal "open-removal" open_removal room OpenRemoval;
-        on_close_removal "close-removal" close_removal plain CloseRemoval;
-        on_forget_room "forget-room" forget_room room ForgetRoom;
+        on_open_removal "open-removal" open_removal room DepartureCommand::OpenRemoval;
+        on_close_removal "close-removal" close_removal plain DepartureCommand::CloseRemoval;
+        on_forget_room "forget-room" forget_room room DepartureCommand::ForgetRoom;
         on_join_successor "join-successor" join_successor room JoinSuccessor;
         on_join_predecessor "join-predecessor" join_predecessor room JoinPredecessor;
         on_open_room_finder "open-room-finder" open_room_finder plain OpenRoomFinder;
@@ -336,10 +347,13 @@ macro_rules! simple_callbacks {
         on_retry_room_members "retry-room-members" retry_room_members plain RetryRoomMembers;
         on_filter_room_members "filter-room-members" filter_room_members pass FilterRoomMembers;
         on_leave_room "leave-room" leave_room room LeaveRoom;
-        on_open_leave_space "open-leave-space" open_leave_space room OpenLeaveSpace;
-        on_close_leave_space "close-leave-space" close_leave_space plain CloseLeaveSpace;
+        on_open_leave_space "open-leave-space" open_leave_space room
+            DepartureCommand::OpenLeaveSpace;
+        on_close_leave_space "close-leave-space" close_leave_space plain
+            DepartureCommand::CloseLeaveSpace;
         on_leave_space "leave-space" leave_space
-            request(space_id "space-id" text, with_rooms "with-rooms" flag) LeaveSpace;
+            request(space_id "space-id" text, with_rooms "with-rooms" flag)
+            DepartureCommand::LeaveSpace;
         on_open_room_menu "open-room-menu" open_room_menu room OpenRoomMenu;
         on_close_room_menu "close-room-menu" close_room_menu plain CloseRoomMenu;
         on_mark_room_read "mark-room-read" mark_room_read room MarkRoomRead;
@@ -384,33 +398,33 @@ macro_rules! simple_callbacks {
                 multiple "multiple" flag, hide_results "hide-results" flag) EditPoll;
         on_vote_poll "vote-poll" vote_poll
             request(event_id "event-id" text, answer_id "answer-id" text) VotePoll;
-        on_end_poll "end-poll" end_poll manual_string EndPoll;
-        on_open_media "open-media" open_media manual_string OpenMedia;
-        on_open_video "open-video" open_video manual_string OpenVideo;
+        on_end_poll "end-poll" end_poll event EndPoll;
+        on_open_media "open-media" open_media event OpenMedia;
+        on_open_video "open-video" open_video event OpenVideo;
         on_close_video "close-video" close_video plain CloseVideo;
-        on_play_audio "play-audio" play_audio manual_string PlayAudio;
+        on_play_audio "play-audio" play_audio event PlayAudio;
         on_close_audio "close-audio" close_audio plain CloseAudio;
         on_open_link "open-link" open_link manual_string OpenLink;
         on_open_external_link "open-external-link" open_external_link manual_string OpenExternalLink;
-        on_jump_to_event "jump-to-event" jump_to_event manual_string JumpToEvent;
-        on_open_pinned "open-pinned" open_pinned manual_string OpenPinned;
-        on_previous_pinned "previous-pinned" previous_pinned manual_string PreviousPinned;
-        on_next_pinned "next-pinned" next_pinned manual_string NextPinned;
-        on_copy_message_link "copy-message-link" copy_message_link manual_string CopyMessageLink;
-        on_open_event_source "open-event-source" open_event_source manual_string OpenEventSource;
+        on_jump_to_event "jump-to-event" jump_to_event event JumpToEvent;
+        on_open_pinned "open-pinned" open_pinned event OpenPinned;
+        on_previous_pinned "previous-pinned" previous_pinned event PreviousPinned;
+        on_next_pinned "next-pinned" next_pinned event NextPinned;
+        on_copy_message_link "copy-message-link" copy_message_link event CopyMessageLink;
+        on_open_event_source "open-event-source" open_event_source event OpenEventSource;
         on_close_event_source "close-event-source" close_event_source plain CloseEventSource;
-        on_open_readers "open-readers" open_readers manual_string OpenReaders;
+        on_open_readers "open-readers" open_readers event OpenReaders;
         on_close_readers "close-readers" close_readers plain CloseReaders;
         on_page_readers "page-readers" page_readers plain PageReaders;
         on_end_mentions "end-mentions" end_mentions plain EndMentions;
-        on_pin_message "pin-message" pin_message manual_string PinMessage;
-        on_unpin_message "unpin-message" unpin_message manual_string UnpinMessage;
-        on_delete_message "delete-message" delete_message manual_string DeleteMessage;
+        on_pin_message "pin-message" pin_message event PinMessage;
+        on_unpin_message "unpin-message" unpin_message event UnpinMessage;
+        on_delete_message "delete-message" delete_message event DeleteMessage;
         on_pick_photo "pick-photo" pick_photo manual_string PickAttachment;
         on_pick_document "pick-document" pick_document manual_string PickAttachment;
         on_cancel_attachment "cancel-attachment" cancel_attachment plain CancelAttachment;
-        on_retry_send "retry-send" retry_send manual_string RetrySend;
-        on_discard_send "discard-send" discard_send manual_string DiscardSend;
+        on_retry_send "retry-send" retry_send local RetrySend;
+        on_discard_send "discard-send" discard_send local DiscardSend;
     } };
 }
 pub(crate) use simple_callbacks;

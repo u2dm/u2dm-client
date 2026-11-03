@@ -9,8 +9,9 @@ use super::{clipboard, emote, permalink};
 use crate::adapters::draft_size;
 use crate::app::input::CommandSender;
 use crate::commands::ui::{
-    ComposerActivity, MessageDraft, ReplyDraft, TimelineVisibility, UiCommand, UserActivity,
-    ViewportChanged, WindowAttention, WindowFocus,
+    AccountCommand, AuthCommand, CallCommand, ComposerActivity, DepartureCommand, KeysCommand,
+    MessageDraft, ReplyDraft, TimelineVisibility, UiCommand, UserActivity, ViewportChanged,
+    WindowAttention, WindowFocus,
 };
 use crate::domain::auth::LoginCredentials;
 use crate::domain::call::devices::{DeviceKey, DeviceKind};
@@ -71,49 +72,76 @@ fn optional_room(id: String) -> Option<RoomId> {
     (!id.is_empty()).then(|| RoomId::new(id))
 }
 
+macro_rules! command {
+    ([$variant:ident] $($payload:tt)*) => { UiCommand::$variant $($payload)* };
+    ([$group:ident :: $variant:ident] $($payload:tt)*) => { $group::$variant $($payload)* };
+}
+
 macro_rules! gen_router_fns {
-    ($($on:ident $lit:literal $fn:ident $kind:ident $(($($arg:tt)*))? $cmd:ident;)*) => {
-        $( gen_router_fns!(@one $fn $kind $cmd); )*
+    ($($on:ident $lit:literal $fn:ident $kind:ident $(($($arg:tt)*))?
+        $cmd:ident $(:: $variant:ident)?;)*) => {
+        $( gen_router_fns!(@one $fn $kind [$cmd $(:: $variant)?]); )*
     };
-    (@one $fn:ident plain $cmd:ident) => {
+    (@one $fn:ident plain $cmd:tt) => {
         pub fn $fn(tx: &Tx) {
-            send_command(tx, UiCommand::$cmd);
+            send_command(tx, command!($cmd));
         }
     };
-    (@one $fn:ident pass $cmd:ident) => {
+    (@one $fn:ident pass $cmd:tt) => {
         pub fn $fn(tx: &Tx, arg: String) {
-            send_command(tx, UiCommand::$cmd(arg));
+            send_command(tx, command!($cmd(arg)));
         }
     };
-    (@one $fn:ident room $cmd:ident) => {
+    (@one $fn:ident room $cmd:tt) => {
         pub fn $fn(tx: &Tx, arg: String) {
-            send_command(tx, UiCommand::$cmd(RoomId::new(arg)));
+            send_command(tx, command!($cmd(RoomId::new(arg))));
         }
     };
-    (@one $fn:ident opt_room $cmd:ident) => {
+    (@one $fn:ident opt_room $cmd:tt) => {
         pub fn $fn(tx: &Tx, arg: String) {
-            send_command(tx, UiCommand::$cmd(optional_room(arg)));
+            send_command(tx, command!($cmd(optional_room(arg))));
         }
     };
-    (@one $fn:ident user $cmd:ident) => {
+    (@one $fn:ident user $cmd:tt) => {
         pub fn $fn(tx: &Tx, arg: String) {
             if arg.is_empty() {
                 return;
             }
-            send_command(tx, UiCommand::$cmd(UserId::new(arg)));
+            send_command(tx, command!($cmd(UserId::new(arg))));
         }
     };
-    (@one $fn:ident room_key $cmd:ident) => {
+    (@one $fn:ident event $cmd:tt) => {
+        pub fn $fn(tx: &Tx, event_id: String) {
+            if event_id.is_empty() {
+                return;
+            }
+            send_command(tx, command!($cmd { event_id }));
+        }
+    };
+    (@one $fn:ident local $cmd:tt) => {
+        pub fn $fn(tx: &Tx, local_id: String) {
+            if local_id.is_empty() {
+                return;
+            }
+            send_command(tx, command!($cmd { local_id }));
+        }
+    };
+    (@one $fn:ident flag $cmd:tt) => {
+        pub fn $fn(tx: &Tx, on: bool) {
+            send_command(tx, command!($cmd(on)));
+        }
+    };
+    (@one $fn:ident room_key $cmd:tt) => {
         pub fn $fn(tx: &Tx, key: RoomKey) {
             if let Some((room_id, generation)) = key {
-                send_command(tx, UiCommand::$cmd { room_id, generation });
+                send_command(tx, command!($cmd { room_id, generation }));
             }
         }
     };
-    (@one $fn:ident manual $cmd:ident) => {};
-    (@one $fn:ident manual_string $cmd:ident) => {};
-    (@one $fn:ident request $cmd:ident) => {};
-    (@one $fn:ident verdict $cmd:ident) => {};
+    (@one $fn:ident manual $cmd:tt) => {};
+    (@one $fn:ident manual_string $cmd:tt) => {};
+    (@one $fn:ident request $cmd:tt) => {};
+    (@one $fn:ident verdict $cmd:tt) => {};
 }
 
 simple_callbacks!(gen_router_fns);
@@ -131,7 +159,7 @@ pub fn open_call_sheet(tx: &Tx, room_id: String, video: bool) {
     }
     send_command(
         tx,
-        UiCommand::OpenCallSheet {
+        CallCommand::OpenCallSheet {
             room_id: RoomId::new(room_id),
             video,
         },
@@ -151,7 +179,7 @@ pub fn start_call(
     }
     send_command(
         tx,
-        UiCommand::StartCall {
+        CallCommand::StartCall {
             room_id: RoomId::new(room_id),
             video,
             media: MediaChoice { microphone, camera },
@@ -166,7 +194,7 @@ pub fn join_call(tx: &Tx, room_id: String, microphone: bool, camera: bool, leavi
     }
     send_command(
         tx,
-        UiCommand::JoinCall {
+        CallCommand::JoinCall {
             room_id: RoomId::new(room_id),
             media: MediaChoice { microphone, camera },
             leaving: optional_room(leaving),
@@ -180,7 +208,7 @@ pub fn answer_call(tx: &Tx, room_id: String, camera: bool, leaving: String) {
     }
     send_command(
         tx,
-        UiCommand::AnswerCall {
+        CallCommand::AnswerCall {
             room_id: RoomId::new(room_id),
             camera,
             leaving: optional_room(leaving),
@@ -188,62 +216,26 @@ pub fn answer_call(tx: &Tx, room_id: String, camera: bool, leaving: String) {
     );
 }
 
-pub fn set_microphone(tx: &Tx, on: bool) {
-    send_command(tx, UiCommand::SetMicrophone(on));
-}
-
-pub fn set_camera(tx: &Tx, on: bool) {
-    send_command(tx, UiCommand::SetCamera(on));
-}
-
-pub fn sheet_camera(tx: &Tx, on: bool) {
-    send_command(tx, UiCommand::SheetCamera(on));
-}
-
-pub fn share_screen(tx: &Tx, on: bool) {
-    send_command(tx, UiCommand::ShareScreen(on));
-}
-
-pub fn show_self_view(tx: &Tx, on: bool) {
-    send_command(tx, UiCommand::ShowSelfView(on));
-}
-
-pub fn show_share_preview(tx: &Tx, on: bool) {
-    send_command(tx, UiCommand::ShowSharePreview(on));
-}
-
-pub fn follow_speaker(tx: &Tx, on: bool) {
-    send_command(tx, UiCommand::FollowSpeaker(on));
-}
-
 pub fn watch_connections(tx: &Tx, on: bool) {
-    send_command(tx, UiCommand::WatchConnections(on));
+    send_command(tx, CallCommand::WatchConnections(on));
 }
 
 pub fn watch_microphone(tx: &Tx, on: bool) {
-    send_command(tx, UiCommand::WatchMicrophone(on));
-}
-
-pub fn raise_hand(tx: &Tx, on: bool) {
-    send_command(tx, UiCommand::RaiseHand(on));
+    send_command(tx, CallCommand::WatchMicrophone(on));
 }
 
 pub fn send_call_reaction(tx: &Tx, name: String) {
     if name.is_empty() {
         return;
     }
-    send_command(tx, UiCommand::SendCallReaction(name));
+    send_command(tx, CallCommand::SendCallReaction(name));
 }
 
 pub fn mute_for_me(tx: &Tx, user_id: String, on: bool) {
     if user_id.is_empty() {
         return;
     }
-    send_command(tx, UiCommand::MuteForMe { user_id, on });
-}
-
-pub fn ring_devices(tx: &Tx, open: bool) {
-    send_command(tx, UiCommand::RingDevices(open));
+    send_command(tx, CallCommand::MuteForMe { user_id, on });
 }
 
 call_device_kinds!(variant_named call_device_kind_named DeviceKind;);
@@ -253,7 +245,7 @@ pub fn test_call_device(tx: &Tx, kind: &str, on: bool) {
         tracing::warn!(kind, "the call sheet asked to test an unknown kind");
         return;
     };
-    send_command(tx, UiCommand::TestCallDevice { kind, on });
+    send_command(tx, CallCommand::TestCallDevice { kind, on });
 }
 
 pub fn use_call_device(tx: &Tx, kind: &str, key: String) {
@@ -262,7 +254,7 @@ pub fn use_call_device(tx: &Tx, kind: &str, key: String) {
         return;
     };
     let key = (!key.is_empty()).then(|| DeviceKey::new(key));
-    send_command(tx, UiCommand::UseCallDevice { kind, key });
+    send_command(tx, CallCommand::UseCallDevice { kind, key });
 }
 
 pub fn use_recovery_key(tx: &Tx, key: String) {
@@ -278,7 +270,7 @@ pub fn export_room_keys(tx: &Tx, passphrase: String) {
     }
     send_command(
         tx,
-        UiCommand::ExportRoomKeys(KeyPassphrase::new(passphrase)),
+        KeysCommand::ExportRoomKeys(KeyPassphrase::new(passphrase)),
     );
 }
 
@@ -288,7 +280,7 @@ pub fn import_room_keys(tx: &Tx, passphrase: String) {
     }
     send_command(
         tx,
-        UiCommand::ImportRoomKeys(KeyPassphrase::new(passphrase)),
+        KeysCommand::ImportRoomKeys(KeyPassphrase::new(passphrase)),
     );
 }
 
@@ -324,7 +316,7 @@ pub fn leave_space(tx: &Tx, space_id: String, with_rooms: bool) {
     }
     send_command(
         tx,
-        UiCommand::LeaveSpace {
+        DepartureCommand::LeaveSpace {
             space_id: RoomId::new(space_id),
             with_rooms,
         },
@@ -335,15 +327,15 @@ pub fn rename_session(tx: &Tx, device_id: String, name: String) {
     if device_id.is_empty() || name.trim().is_empty() {
         return;
     }
-    send_command(tx, UiCommand::RenameSession { device_id, name });
+    send_command(tx, AccountCommand::RenameSession { device_id, name });
 }
 
 pub fn open_account_page(tx: &Tx) {
-    send_command(tx, UiCommand::OpenAccountPage(AccountPage::Account));
+    send_command(tx, AccountCommand::OpenAccountPage(AccountPage::Account));
 }
 
 pub fn open_sessions_page(tx: &Tx) {
-    send_command(tx, UiCommand::OpenAccountPage(AccountPage::Sessions));
+    send_command(tx, AccountCommand::OpenAccountPage(AccountPage::Sessions));
 }
 
 pub fn change_password(tx: &Tx, password: String, sign_out_others: bool) {
@@ -352,7 +344,7 @@ pub fn change_password(tx: &Tx, password: String, sign_out_others: bool) {
     }
     send_command(
         tx,
-        UiCommand::ChangePassword {
+        AccountCommand::ChangePassword {
             password: AccountPassword::new(password),
             sign_out_others,
         },
@@ -360,7 +352,7 @@ pub fn change_password(tx: &Tx, password: String, sign_out_others: bool) {
 }
 
 pub fn deactivate_account(tx: &Tx, erase: bool) {
-    send_command(tx, UiCommand::DeactivateAccount { erase });
+    send_command(tx, AccountCommand::DeactivateAccount { erase });
 }
 
 pub fn answer_auth_password(tx: &Tx, password: String) {
@@ -369,7 +361,7 @@ pub fn answer_auth_password(tx: &Tx, password: String) {
     }
     send_command(
         tx,
-        UiCommand::AnswerAuthPassword(AccountPassword::new(password)),
+        AuthCommand::AnswerAuthPassword(AccountPassword::new(password)),
     );
 }
 
@@ -671,27 +663,6 @@ pub fn edit_poll(
     })
 }
 
-pub fn open_media(tx: &Tx, event_id: String) {
-    if event_id.is_empty() {
-        return;
-    }
-    send_command(tx, UiCommand::OpenMedia { event_id });
-}
-
-pub fn open_video(tx: &Tx, event_id: String) {
-    if event_id.is_empty() {
-        return;
-    }
-    send_command(tx, UiCommand::OpenVideo { event_id });
-}
-
-pub fn play_audio(tx: &Tx, event_id: String) {
-    if event_id.is_empty() {
-        return;
-    }
-    send_command(tx, UiCommand::PlayAudio { event_id });
-}
-
 pub fn open_link(tx: &Tx, url: String) {
     let Some(command) = link_command(url) else {
         tracing::debug!("ignoring a message link U2DM does not open");
@@ -725,48 +696,6 @@ pub fn find_room(tx: &Tx, address: String) {
         tx,
         UiCommand::FindRoom(permalink::room_address_entry(address)),
     );
-}
-
-pub fn jump_to_event(tx: &Tx, event_id: String) {
-    if event_id.is_empty() {
-        return;
-    }
-    send_command(tx, UiCommand::JumpToEvent { event_id });
-}
-
-pub fn open_pinned(tx: &Tx, event_id: String) {
-    if event_id.is_empty() {
-        return;
-    }
-    send_command(tx, UiCommand::OpenPinned { event_id });
-}
-
-pub fn previous_pinned(tx: &Tx, event_id: String) {
-    if event_id.is_empty() {
-        return;
-    }
-    send_command(tx, UiCommand::PreviousPinned { event_id });
-}
-
-pub fn next_pinned(tx: &Tx, event_id: String) {
-    if event_id.is_empty() {
-        return;
-    }
-    send_command(tx, UiCommand::NextPinned { event_id });
-}
-
-pub fn retry_send(tx: &Tx, local_id: String) {
-    if local_id.is_empty() {
-        return;
-    }
-    send_command(tx, UiCommand::RetrySend { local_id });
-}
-
-pub fn discard_send(tx: &Tx, local_id: String) {
-    if local_id.is_empty() {
-        return;
-    }
-    send_command(tx, UiCommand::DiscardSend { local_id });
 }
 
 pub fn save_file(tx: &Tx, event_id: String, filename: String) {
@@ -821,55 +750,6 @@ pub fn vote_poll(tx: &Tx, event_id: String, answer_id: String) {
             answer_id,
         },
     );
-}
-
-pub fn copy_message_link(tx: &Tx, event_id: String) {
-    if event_id.is_empty() {
-        return;
-    }
-    send_command(tx, UiCommand::CopyMessageLink { event_id });
-}
-
-pub fn open_event_source(tx: &Tx, event_id: String) {
-    if event_id.is_empty() {
-        return;
-    }
-    send_command(tx, UiCommand::OpenEventSource { event_id });
-}
-
-pub fn open_readers(tx: &Tx, event_id: String) {
-    if event_id.is_empty() {
-        return;
-    }
-    send_command(tx, UiCommand::OpenReaders { event_id });
-}
-
-pub fn pin_message(tx: &Tx, event_id: String) {
-    if event_id.is_empty() {
-        return;
-    }
-    send_command(tx, UiCommand::PinMessage { event_id });
-}
-
-pub fn unpin_message(tx: &Tx, event_id: String) {
-    if event_id.is_empty() {
-        return;
-    }
-    send_command(tx, UiCommand::UnpinMessage { event_id });
-}
-
-pub fn delete_message(tx: &Tx, event_id: String) {
-    if event_id.is_empty() {
-        return;
-    }
-    send_command(tx, UiCommand::DeleteMessage { event_id });
-}
-
-pub fn end_poll(tx: &Tx, event_id: String) {
-    if event_id.is_empty() {
-        return;
-    }
-    send_command(tx, UiCommand::EndPoll { event_id });
 }
 
 pub fn scroll_position(

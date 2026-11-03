@@ -441,7 +441,8 @@ fn bind_action(
 
 macro_rules! bind_interpreted_callbacks {
     ($inst:expr, $main:expr, $tx:ident;
-        $($on:ident $lit:literal $fn:ident $kind:ident $(($($arg:tt)*))? $cmd:ident;)*) => {
+        $($on:ident $lit:literal $fn:ident $kind:ident $(($($arg:tt)*))?
+            $cmd:ident $(:: $variant:ident)?;)*) => {
         $( bind_interpreted_callbacks!(@one $inst, $main, $tx, $lit, $fn, $kind $(($($arg)*))?)?; )*
     };
     (@one $inst:expr, $main:expr, $tx:ident, $lit:literal, $fn:ident, plain) => {
@@ -464,6 +465,16 @@ macro_rules! bind_interpreted_callbacks {
     };
     (@one $inst:expr, $main:expr, $tx:ident, $lit:literal, $fn:ident, manual_string) => {
         bind_interpreted_callbacks!(@string $inst, $tx, $lit, $fn)
+    };
+    (@one $inst:expr, $main:expr, $tx:ident, $lit:literal, $fn:ident, event) => {
+        bind_interpreted_callbacks!(@string $inst, $tx, $lit, $fn)
+    };
+    (@one $inst:expr, $main:expr, $tx:ident, $lit:literal, $fn:ident, local) => {
+        bind_interpreted_callbacks!(@string $inst, $tx, $lit, $fn)
+    };
+    (@one $inst:expr, $main:expr, $tx:ident, $lit:literal, $fn:ident,
+        flag($field:ident $name:literal)) => {
+        bind_interpreted_callbacks!(@one $inst, $main, $tx, $lit, $fn, request($field $name flag))
     };
     (@one $inst:expr, $main:expr, $tx:ident, $lit:literal, $fn:ident, room_key) => {{
         let tx = $tx.clone();
@@ -1268,7 +1279,7 @@ impl SlintUiAdapter {
         setup_emoji_store(&self.instance)?;
 
         call_window::install_commands(cmd_tx);
-        simple_callbacks!(bind_interpreted_callbacks &self.instance, &self.instance, cmd_tx;);
+        bind_simple_callbacks(&self.instance, &self.instance, cmd_tx)?;
 
         let tx = cmd_tx.clone();
         bind_action(&self.instance, callback::MOVE_SPACE, move |args| {

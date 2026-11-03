@@ -65,11 +65,8 @@ pub enum UiCommand {
     AcceptInvite(RoomId),
     #[strum(to_string = "DeclineInvite({0})")]
     DeclineInvite(RoomId),
-    #[strum(to_string = "OpenRemoval({0})")]
-    OpenRemoval(RoomId),
-    CloseRemoval,
-    #[strum(to_string = "ForgetRoom({0})")]
-    ForgetRoom(RoomId),
+    #[strum(transparent)]
+    Departure(DepartureCommand),
     #[strum(to_string = "JoinSuccessor({0})")]
     JoinSuccessor(RoomId),
     #[strum(to_string = "JoinPredecessor({0})")]
@@ -118,14 +115,6 @@ pub enum UiCommand {
     },
     #[strum(to_string = "LeaveRoom({0})")]
     LeaveRoom(RoomId),
-    #[strum(to_string = "OpenLeaveSpace({0})")]
-    OpenLeaveSpace(RoomId),
-    CloseLeaveSpace,
-    #[strum(to_string = "LeaveSpace({space_id}, {with_rooms})")]
-    LeaveSpace {
-        space_id: RoomId,
-        with_rooms: bool,
-    },
     #[strum(to_string = "OpenRoomMenu({0})")]
     OpenRoomMenu(RoomId),
     CloseRoomMenu,
@@ -175,42 +164,12 @@ pub enum UiCommand {
     SetUpRecovery,
     ChangeRecoveryKey,
     RetryEncryptionSetup,
-    StartIdentityReset,
-    ResetIdentity,
-    StartKeyExport,
-    #[strum(to_string = "ExportRoomKeys(...)")]
-    ExportRoomKeys(KeyPassphrase),
-    StartKeyImport,
-    #[strum(to_string = "ImportRoomKeys(...)")]
-    ImportRoomKeys(KeyPassphrase),
-    OpenAccount,
-    CloseAccount,
-    ShowAccountOverview,
-    #[strum(to_string = "RenameSession({device_id})")]
-    RenameSession {
-        device_id: String,
-        name: String,
-    },
-    #[strum(to_string = "SignOutSession({0})")]
-    SignOutSession(String),
-    #[strum(to_string = "OpenAccountPage")]
-    OpenAccountPage(AccountPage),
-    StartPasswordChange,
-    #[strum(to_string = "ChangePassword(...)")]
-    ChangePassword {
-        password: AccountPassword,
-        sign_out_others: bool,
-    },
-    StartDeactivation,
-    #[strum(to_string = "DeactivateAccount({erase})")]
-    DeactivateAccount {
-        erase: bool,
-    },
-    #[strum(to_string = "AnswerAuthPassword(...)")]
-    AnswerAuthPassword(AccountPassword),
-    ContinueAuth,
-    ReopenAuthPage,
-    CancelAuth,
+    #[strum(transparent)]
+    Keys(KeysCommand),
+    #[strum(transparent)]
+    Account(AccountCommand),
+    #[strum(transparent)]
+    Auth(AuthCommand),
     #[strum(to_string = "SendMessage({room_id})")]
     SendMessage {
         room_id: RoomId,
@@ -387,6 +346,250 @@ pub enum UiCommand {
         event_id: String,
         filename: String,
     },
+    #[strum(transparent)]
+    Call(CallCommand),
+    DismissToast,
+    Logout,
+    ConfirmLogout,
+    CancelLogout,
+    Quit,
+}
+
+impl UiCommand {
+    #[allow(clippy::too_many_lines)]
+    pub fn room_id(&self) -> Option<&RoomId> {
+        match self {
+            Self::SelectRoom(room_id)
+            | Self::OpenNotification(room_id)
+            | Self::OpenSpace(room_id)
+            | Self::JoinSpaceChild(room_id)
+            | Self::OpenSpaceChild(room_id)
+            | Self::OpenInvite(room_id)
+            | Self::AcceptInvite(room_id)
+            | Self::DeclineInvite(room_id)
+            | Self::JoinSuccessor(room_id)
+            | Self::JoinPredecessor(room_id)
+            | Self::OpenRoomLink(RoomLink {
+                room: RoomAddress::Id(room_id),
+                ..
+            })
+            | Self::OpenRoomInfo(room_id)
+            | Self::OpenInvitePeople(room_id)
+            | Self::LeaveRoom(room_id)
+            | Self::OpenRoomMenu(room_id)
+            | Self::MarkRoomRead(room_id)
+            | Self::CopyRoomLink(room_id)
+            | Self::OpenRoomLog(room_id)
+            | Self::SetRoomNotify { room_id, .. }
+            | Self::SendMessage { room_id, .. }
+            | Self::EditMessage { room_id, .. }
+            | Self::PickAttachment { room_id, .. }
+            | Self::SendAttachment { room_id, .. }
+            | Self::SendPoll { room_id, .. }
+            | Self::SendSticker { room_id, .. }
+            | Self::PaginateBackwards { room_id, .. }
+            | Self::PaginateForwards { room_id, .. }
+            | Self::JumpToLatest { room_id, .. } => Some(room_id),
+            Self::Departure(command) => command.room_id(),
+            Self::Call(command) => command.room_id(),
+            Self::RestoreSession
+            | Self::CheckServer(_)
+            | Self::LoginPassword(_)
+            | Self::LoginOAuth
+            | Self::CancelOAuth
+            | Self::BackToHomeserver
+            | Self::ReauthPassword(_)
+            | Self::ReauthOAuth
+            | Self::SelectSpace(_)
+            | Self::SelectDirect
+            | Self::SelectSubspace(_)
+            | Self::MoveSpace { .. }
+            | Self::FilterRooms(_)
+            | Self::FoldInvites
+            | Self::UnfoldInvites
+            | Self::OpenSpaceIndex
+            | Self::CloseSpaceIndex
+            | Self::PageSpaceIndex
+            | Self::RetrySpaceIndex
+            | Self::CloseInvite
+            | Self::OpenRoomLink(_)
+            | Self::OpenExternalLink(_)
+            | Self::OpenRoomFinder
+            | Self::FindRoom(_)
+            | Self::JoinPreviewedRoom(_)
+            | Self::RetryRoomPreview
+            | Self::CloseRoomPreview
+            | Self::OpenCreateRoom
+            | Self::OpenCreateSpace
+            | Self::CloseCreateRoom
+            | Self::CreateRoom(_)
+            | Self::CloseInvitePeople
+            | Self::SearchPeople(_)
+            | Self::RetryPeopleSearch
+            | Self::PickInvitee(_)
+            | Self::UnpickInvitee(_)
+            | Self::SendInvites(_)
+            | Self::CloseRoomInfo
+            | Self::ShowRoomInfoPane
+            | Self::HideRoomInfoPane
+            | Self::PageRoomMembers
+            | Self::RetryRoomMembers
+            | Self::FilterRoomMembers(_)
+            | Self::CloseRoomMenu
+            | Self::CloseRoomLog
+            | Self::OpenUserInfo(_)
+            | Self::CloseUserInfo
+            | Self::RetryUserInfo
+            | Self::MessageUser(_)
+            | Self::VerifyUser(_)
+            | Self::IgnoreUser(_)
+            | Self::UnignoreUser(_)
+            | Self::KickUser { .. }
+            | Self::BanUser { .. }
+            | Self::UnbanUser(_)
+            | Self::AcceptIdentity(_)
+            | Self::WithdrawVerification(_)
+            | Self::AcknowledgeIdentityReset
+            | Self::OpenEncryption
+            | Self::CloseEncryption
+            | Self::ShowEncryptionOverview
+            | Self::EnterRecoveryKey
+            | Self::UseRecoveryKey(_)
+            | Self::VerifyWithOtherSession
+            | Self::SetUpRecovery
+            | Self::ChangeRecoveryKey
+            | Self::RetryEncryptionSetup
+            | Self::Keys(_)
+            | Self::Account(_)
+            | Self::Auth(_)
+            | Self::SuggestMentions { .. }
+            | Self::EndMentions
+            | Self::DismissUnsent { .. }
+            | Self::CancelAttachment
+            | Self::JumpToEvent { .. }
+            | Self::OpenPinned { .. }
+            | Self::PreviousPinned { .. }
+            | Self::NextPinned { .. }
+            | Self::CopyMessageLink { .. }
+            | Self::OpenEventSource { .. }
+            | Self::CloseEventSource
+            | Self::OpenReaders { .. }
+            | Self::CloseReaders
+            | Self::PageReaders
+            | Self::PinMessage { .. }
+            | Self::UnpinMessage { .. }
+            | Self::DeleteMessage { .. }
+            | Self::ToggleReaction { .. }
+            | Self::ReactWithEmote { .. }
+            | Self::SetPackGlobal { .. }
+            | Self::VotePoll { .. }
+            | Self::EndPoll { .. }
+            | Self::EditPoll { .. }
+            | Self::RetrySend { .. }
+            | Self::DiscardSend { .. }
+            | Self::RetryTimeline
+            | Self::AcceptVerification
+            | Self::RejectVerification
+            | Self::ConfirmVerification
+            | Self::DismissVerification
+            | Self::OpenMedia { .. }
+            | Self::OpenVideo { .. }
+            | Self::CloseVideo
+            | Self::PlayAudio { .. }
+            | Self::CloseAudio
+            | Self::AudioEnded { .. }
+            | Self::OpenLink { .. }
+            | Self::SaveFile { .. }
+            | Self::DismissToast
+            | Self::Logout
+            | Self::ConfirmLogout
+            | Self::CancelLogout
+            | Self::Quit => None,
+        }
+    }
+}
+
+#[derive(StrumDisplay)]
+pub enum DepartureCommand {
+    #[strum(to_string = "OpenRemoval({0})")]
+    OpenRemoval(RoomId),
+    CloseRemoval,
+    #[strum(to_string = "ForgetRoom({0})")]
+    ForgetRoom(RoomId),
+    #[strum(to_string = "OpenLeaveSpace({0})")]
+    OpenLeaveSpace(RoomId),
+    CloseLeaveSpace,
+    #[strum(to_string = "LeaveSpace({space_id}, {with_rooms})")]
+    LeaveSpace {
+        space_id: RoomId,
+        with_rooms: bool,
+    },
+}
+
+impl DepartureCommand {
+    pub fn room_id(&self) -> Option<&RoomId> {
+        match self {
+            Self::OpenRemoval(room_id)
+            | Self::ForgetRoom(room_id)
+            | Self::OpenLeaveSpace(room_id)
+            | Self::LeaveSpace {
+                space_id: room_id, ..
+            } => Some(room_id),
+            Self::CloseRemoval | Self::CloseLeaveSpace => None,
+        }
+    }
+}
+
+#[derive(StrumDisplay)]
+pub enum KeysCommand {
+    StartIdentityReset,
+    ResetIdentity,
+    StartKeyExport,
+    #[strum(to_string = "ExportRoomKeys(...)")]
+    ExportRoomKeys(KeyPassphrase),
+    StartKeyImport,
+    #[strum(to_string = "ImportRoomKeys(...)")]
+    ImportRoomKeys(KeyPassphrase),
+}
+
+#[derive(StrumDisplay)]
+pub enum AccountCommand {
+    OpenAccount,
+    CloseAccount,
+    ShowAccountOverview,
+    #[strum(to_string = "RenameSession({device_id})")]
+    RenameSession {
+        device_id: String,
+        name: String,
+    },
+    #[strum(to_string = "SignOutSession({0})")]
+    SignOutSession(String),
+    #[strum(to_string = "OpenAccountPage")]
+    OpenAccountPage(AccountPage),
+    StartPasswordChange,
+    #[strum(to_string = "ChangePassword(...)")]
+    ChangePassword {
+        password: AccountPassword,
+        sign_out_others: bool,
+    },
+    StartDeactivation,
+    #[strum(to_string = "DeactivateAccount({erase})")]
+    DeactivateAccount {
+        erase: bool,
+    },
+}
+
+#[derive(StrumDisplay)]
+pub enum AuthCommand {
+    #[strum(to_string = "AnswerAuthPassword(...)")]
+    AnswerAuthPassword(AccountPassword),
+    ContinueAuth,
+    ReopenAuthPage,
+    CancelAuth,
+}
+
+#[derive(StrumDisplay)]
+pub enum CallCommand {
     #[strum(to_string = "DeclineCall({0})")]
     DeclineCall(RoomId),
     SilenceRing,
@@ -465,187 +668,17 @@ pub enum UiCommand {
     RaiseHand(bool),
     #[strum(to_string = "SendCallReaction({0})")]
     SendCallReaction(String),
-    DismissToast,
-    Logout,
-    ConfirmLogout,
-    CancelLogout,
-    Quit,
 }
 
-impl UiCommand {
-    #[allow(clippy::too_many_lines)]
+impl CallCommand {
     pub fn room_id(&self) -> Option<&RoomId> {
         match self {
-            Self::SelectRoom(room_id)
-            | Self::OpenNotification(room_id)
-            | Self::OpenSpace(room_id)
-            | Self::JoinSpaceChild(room_id)
-            | Self::OpenSpaceChild(room_id)
-            | Self::OpenInvite(room_id)
-            | Self::AcceptInvite(room_id)
-            | Self::DeclineInvite(room_id)
-            | Self::OpenRemoval(room_id)
-            | Self::ForgetRoom(room_id)
-            | Self::JoinSuccessor(room_id)
-            | Self::JoinPredecessor(room_id)
-            | Self::OpenRoomLink(RoomLink {
-                room: RoomAddress::Id(room_id),
-                ..
-            })
-            | Self::OpenRoomInfo(room_id)
-            | Self::OpenInvitePeople(room_id)
-            | Self::LeaveRoom(room_id)
-            | Self::OpenLeaveSpace(room_id)
-            | Self::LeaveSpace {
-                space_id: room_id, ..
-            }
-            | Self::OpenRoomMenu(room_id)
-            | Self::MarkRoomRead(room_id)
-            | Self::CopyRoomLink(room_id)
-            | Self::OpenRoomLog(room_id)
-            | Self::SetRoomNotify { room_id, .. }
-            | Self::SendMessage { room_id, .. }
-            | Self::EditMessage { room_id, .. }
-            | Self::PickAttachment { room_id, .. }
-            | Self::SendAttachment { room_id, .. }
-            | Self::SendPoll { room_id, .. }
-            | Self::SendSticker { room_id, .. }
-            | Self::PaginateBackwards { room_id, .. }
-            | Self::PaginateForwards { room_id, .. }
-            | Self::JumpToLatest { room_id, .. }
-            | Self::DeclineCall(room_id)
+            Self::DeclineCall(room_id)
             | Self::OpenCallSheet { room_id, .. }
             | Self::StartCall { room_id, .. }
             | Self::JoinCall { room_id, .. }
             | Self::AnswerCall { room_id, .. } => Some(room_id),
-            Self::RestoreSession
-            | Self::CheckServer(_)
-            | Self::LoginPassword(_)
-            | Self::LoginOAuth
-            | Self::CancelOAuth
-            | Self::BackToHomeserver
-            | Self::ReauthPassword(_)
-            | Self::ReauthOAuth
-            | Self::SelectSpace(_)
-            | Self::SelectDirect
-            | Self::SelectSubspace(_)
-            | Self::MoveSpace { .. }
-            | Self::FilterRooms(_)
-            | Self::FoldInvites
-            | Self::UnfoldInvites
-            | Self::OpenSpaceIndex
-            | Self::CloseSpaceIndex
-            | Self::PageSpaceIndex
-            | Self::RetrySpaceIndex
-            | Self::CloseInvite
-            | Self::CloseRemoval
-            | Self::CloseLeaveSpace
-            | Self::OpenRoomLink(_)
-            | Self::OpenExternalLink(_)
-            | Self::OpenRoomFinder
-            | Self::FindRoom(_)
-            | Self::JoinPreviewedRoom(_)
-            | Self::RetryRoomPreview
-            | Self::CloseRoomPreview
-            | Self::OpenCreateRoom
-            | Self::OpenCreateSpace
-            | Self::CloseCreateRoom
-            | Self::CreateRoom(_)
-            | Self::CloseInvitePeople
-            | Self::SearchPeople(_)
-            | Self::RetryPeopleSearch
-            | Self::PickInvitee(_)
-            | Self::UnpickInvitee(_)
-            | Self::SendInvites(_)
-            | Self::CloseRoomInfo
-            | Self::ShowRoomInfoPane
-            | Self::HideRoomInfoPane
-            | Self::PageRoomMembers
-            | Self::RetryRoomMembers
-            | Self::FilterRoomMembers(_)
-            | Self::CloseRoomMenu
-            | Self::CloseRoomLog
-            | Self::OpenUserInfo(_)
-            | Self::CloseUserInfo
-            | Self::RetryUserInfo
-            | Self::MessageUser(_)
-            | Self::VerifyUser(_)
-            | Self::IgnoreUser(_)
-            | Self::UnignoreUser(_)
-            | Self::KickUser { .. }
-            | Self::BanUser { .. }
-            | Self::UnbanUser(_)
-            | Self::AcceptIdentity(_)
-            | Self::WithdrawVerification(_)
-            | Self::AcknowledgeIdentityReset
-            | Self::OpenEncryption
-            | Self::CloseEncryption
-            | Self::ShowEncryptionOverview
-            | Self::EnterRecoveryKey
-            | Self::UseRecoveryKey(_)
-            | Self::VerifyWithOtherSession
-            | Self::SetUpRecovery
-            | Self::ChangeRecoveryKey
-            | Self::RetryEncryptionSetup
-            | Self::StartIdentityReset
-            | Self::ResetIdentity
-            | Self::StartKeyExport
-            | Self::ExportRoomKeys(_)
-            | Self::StartKeyImport
-            | Self::ImportRoomKeys(_)
-            | Self::OpenAccount
-            | Self::CloseAccount
-            | Self::ShowAccountOverview
-            | Self::RenameSession { .. }
-            | Self::SignOutSession(_)
-            | Self::OpenAccountPage(_)
-            | Self::StartPasswordChange
-            | Self::ChangePassword { .. }
-            | Self::StartDeactivation
-            | Self::DeactivateAccount { .. }
-            | Self::AnswerAuthPassword(_)
-            | Self::ContinueAuth
-            | Self::ReopenAuthPage
-            | Self::CancelAuth
-            | Self::SuggestMentions { .. }
-            | Self::EndMentions
-            | Self::DismissUnsent { .. }
-            | Self::CancelAttachment
-            | Self::JumpToEvent { .. }
-            | Self::OpenPinned { .. }
-            | Self::PreviousPinned { .. }
-            | Self::NextPinned { .. }
-            | Self::CopyMessageLink { .. }
-            | Self::OpenEventSource { .. }
-            | Self::CloseEventSource
-            | Self::OpenReaders { .. }
-            | Self::CloseReaders
-            | Self::PageReaders
-            | Self::PinMessage { .. }
-            | Self::UnpinMessage { .. }
-            | Self::DeleteMessage { .. }
-            | Self::ToggleReaction { .. }
-            | Self::ReactWithEmote { .. }
-            | Self::SetPackGlobal { .. }
-            | Self::VotePoll { .. }
-            | Self::EndPoll { .. }
-            | Self::EditPoll { .. }
-            | Self::RetrySend { .. }
-            | Self::DiscardSend { .. }
-            | Self::RetryTimeline
-            | Self::AcceptVerification
-            | Self::RejectVerification
-            | Self::ConfirmVerification
-            | Self::DismissVerification
-            | Self::OpenMedia { .. }
-            | Self::OpenVideo { .. }
-            | Self::CloseVideo
-            | Self::PlayAudio { .. }
-            | Self::CloseAudio
-            | Self::AudioEnded { .. }
-            | Self::OpenLink { .. }
-            | Self::SaveFile { .. }
-            | Self::SilenceRing
+            Self::SilenceRing
             | Self::CloseCallSheet
             | Self::SheetCamera(_)
             | Self::TestCallDevice { .. }
@@ -671,14 +704,29 @@ impl UiCommand {
             | Self::RaiseHand(_)
             | Self::SendCallReaction(_)
             | Self::WatchMicrophone(_)
-            | Self::WatchConnections(_)
-            | Self::DismissToast
-            | Self::Logout
-            | Self::ConfirmLogout
-            | Self::CancelLogout
-            | Self::Quit => None,
+            | Self::WatchConnections(_) => None,
         }
     }
+}
+
+macro_rules! command_groups {
+    ($($variant:ident($group:ident),)*) => {
+        $(
+            impl From<$group> for UiCommand {
+                fn from(command: $group) -> Self {
+                    Self::$variant(command)
+                }
+            }
+        )*
+    };
+}
+
+command_groups! {
+    Departure(DepartureCommand),
+    Keys(KeysCommand),
+    Account(AccountCommand),
+    Auth(AuthCommand),
+    Call(CallCommand),
 }
 
 #[derive(Clone, PartialEq, Eq)]

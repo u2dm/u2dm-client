@@ -7,7 +7,10 @@ use super::names;
 use crate::adapters::demo::attachments;
 use crate::adapters::ui::dump::Poke;
 use crate::adapters::ui::{link_command, matrix_link, room_address_entry};
-use crate::commands::ui::{MessageDraft, ReplyDraft, UiCommand};
+use crate::commands::ui::{
+    AccountCommand, AuthCommand, CallCommand, DepartureCommand, KeysCommand, MessageDraft,
+    ReplyDraft, UiCommand,
+};
 use crate::domain::call::devices::{DeviceKey, DeviceKind};
 use crate::domain::call::media::MediaChoice;
 use crate::domain::capabilities::AccountPage;
@@ -694,26 +697,26 @@ fn room(explicit: Option<String>, selected: Selection<'_>) -> Result<RoomId, Rej
     Ok(target(explicit, None, selected)?.room_id)
 }
 
-fn in_room(
+fn in_room<C: Into<UiCommand>>(
     explicit: Option<String>,
     selected: Selection<'_>,
-    command: impl FnOnce(RoomId) -> UiCommand,
+    command: impl FnOnce(RoomId) -> C,
 ) -> Result<Driven, Rejected> {
-    Ok(Driven::Command(command(room(explicit, selected)?)))
+    Ok(Driven::Command(command(room(explicit, selected)?).into()))
 }
 
-fn in_space(
+fn in_space<C: Into<UiCommand>>(
     space_id: String,
-    command: impl FnOnce(RoomId) -> UiCommand,
+    command: impl FnOnce(RoomId) -> C,
 ) -> Result<Driven, Rejected> {
     if space_id.is_empty() {
         return Err(Rejected("an empty space_id names no space".to_owned()));
     }
-    Ok(Driven::Command(command(RoomId::new(space_id))))
+    Ok(Driven::Command(command(RoomId::new(space_id)).into()))
 }
 
-fn leave_space(with_rooms: bool) -> impl FnOnce(RoomId) -> UiCommand {
-    move |space_id| UiCommand::LeaveSpace {
+fn leave_space(with_rooms: bool) -> impl FnOnce(RoomId) -> DepartureCommand {
+    move |space_id| DepartureCommand::LeaveSpace {
         space_id,
         with_rooms,
     }
@@ -917,26 +920,32 @@ pub fn to_driven(command: ProbeCommand, selected: Selection<'_>) -> Result<Drive
         ProbeCommand::CloseInvite => UiCommand::CloseInvite,
         ProbeCommand::AcceptInvite { room_id } => UiCommand::AcceptInvite(RoomId::new(room_id)),
         ProbeCommand::DeclineInvite { room_id } => UiCommand::DeclineInvite(RoomId::new(room_id)),
-        ProbeCommand::OpenRemoval { room_id } => UiCommand::OpenRemoval(RoomId::new(room_id)),
-        ProbeCommand::CloseRemoval => UiCommand::CloseRemoval,
-        ProbeCommand::ForgetRoom { room_id } => UiCommand::ForgetRoom(RoomId::new(room_id)),
-        ProbeCommand::OpenLeaveSpace { space_id } => {
-            return in_space(space_id, UiCommand::OpenLeaveSpace);
+        ProbeCommand::OpenRemoval { room_id } => {
+            DepartureCommand::OpenRemoval(RoomId::new(room_id)).into()
         }
-        ProbeCommand::CloseLeaveSpace => UiCommand::CloseLeaveSpace,
+        ProbeCommand::CloseRemoval => DepartureCommand::CloseRemoval.into(),
+        ProbeCommand::ForgetRoom { room_id } => {
+            DepartureCommand::ForgetRoom(RoomId::new(room_id)).into()
+        }
+        ProbeCommand::OpenLeaveSpace { space_id } => {
+            return in_space(space_id, DepartureCommand::OpenLeaveSpace);
+        }
+        ProbeCommand::CloseLeaveSpace => DepartureCommand::CloseLeaveSpace.into(),
         ProbeCommand::LeaveSpace {
             space_id,
             with_rooms,
         } => return in_space(space_id, leave_space(with_rooms)),
-        ProbeCommand::DeclineCall { room_id } => UiCommand::DeclineCall(RoomId::new(room_id)),
-        ProbeCommand::SilenceRing => UiCommand::SilenceRing,
+        ProbeCommand::DeclineCall { room_id } => {
+            CallCommand::DeclineCall(RoomId::new(room_id)).into()
+        }
+        ProbeCommand::SilenceRing => CallCommand::SilenceRing.into(),
         ProbeCommand::OpenCallSheet { room_id, video } => {
-            return in_room(room_id, selected, |room_id| UiCommand::OpenCallSheet {
+            return in_room(room_id, selected, |room_id| CallCommand::OpenCallSheet {
                 room_id,
                 video,
             });
         }
-        ProbeCommand::CloseCallSheet => UiCommand::CloseCallSheet,
+        ProbeCommand::CloseCallSheet => CallCommand::CloseCallSheet.into(),
         ProbeCommand::StartCall {
             room_id,
             video,
@@ -944,7 +953,7 @@ pub fn to_driven(command: ProbeCommand, selected: Selection<'_>) -> Result<Drive
             camera,
             leaving,
         } => {
-            return in_room(room_id, selected, |room_id| UiCommand::StartCall {
+            return in_room(room_id, selected, |room_id| CallCommand::StartCall {
                 room_id,
                 video,
                 media: MediaChoice { microphone, camera },
@@ -957,7 +966,7 @@ pub fn to_driven(command: ProbeCommand, selected: Selection<'_>) -> Result<Drive
             camera,
             leaving,
         } => {
-            return in_room(room_id, selected, |room_id| UiCommand::JoinCall {
+            return in_room(room_id, selected, |room_id| CallCommand::JoinCall {
                 room_id,
                 media: MediaChoice { microphone, camera },
                 leaving: leaving.map(RoomId::new),
@@ -967,37 +976,39 @@ pub fn to_driven(command: ProbeCommand, selected: Selection<'_>) -> Result<Drive
             room_id,
             camera,
             leaving,
-        } => UiCommand::AnswerCall {
+        } => CallCommand::AnswerCall {
             room_id: RoomId::new(room_id),
             camera,
             leaving: leaving.map(RoomId::new),
-        },
-        ProbeCommand::LeaveCall => UiCommand::LeaveCall,
-        ProbeCommand::RetryFailedCall => UiCommand::RetryFailedCall,
-        ProbeCommand::DismissFailedCall => UiCommand::DismissFailedCall,
-        ProbeCommand::AnnounceCallAgain => UiCommand::AnnounceCallAgain,
-        ProbeCommand::SetMicrophone { on } => UiCommand::SetMicrophone(on),
-        ProbeCommand::SetCamera { on } => UiCommand::SetCamera(on),
-        ProbeCommand::ShareScreen { on } => UiCommand::ShareScreen(on),
-        ProbeCommand::ChangeScreenShare => UiCommand::ChangeScreenShare,
-        ProbeCommand::UseCallDevice { kind, key } => UiCommand::UseCallDevice {
+        }
+        .into(),
+        ProbeCommand::LeaveCall => CallCommand::LeaveCall.into(),
+        ProbeCommand::RetryFailedCall => CallCommand::RetryFailedCall.into(),
+        ProbeCommand::DismissFailedCall => CallCommand::DismissFailedCall.into(),
+        ProbeCommand::AnnounceCallAgain => CallCommand::AnnounceCallAgain.into(),
+        ProbeCommand::SetMicrophone { on } => CallCommand::SetMicrophone(on).into(),
+        ProbeCommand::SetCamera { on } => CallCommand::SetCamera(on).into(),
+        ProbeCommand::ShareScreen { on } => CallCommand::ShareScreen(on).into(),
+        ProbeCommand::ChangeScreenShare => CallCommand::ChangeScreenShare.into(),
+        ProbeCommand::UseCallDevice { kind, key } => CallCommand::UseCallDevice {
             kind,
             key: key.filter(|key| !key.is_empty()).map(DeviceKey::new),
-        },
-        ProbeCommand::RefreshCallDevices => UiCommand::RefreshCallDevices,
-        ProbeCommand::FocusCallTile { key } => UiCommand::FocusCallTile(key),
-        ProbeCommand::UnpinCallTile => UiCommand::UnpinCallTile,
-        ProbeCommand::RingDevices { open } => UiCommand::RingDevices(open),
-        ProbeCommand::MuteForMe { user_id, on } => UiCommand::MuteForMe { user_id, on },
-        ProbeCommand::RaiseHand { on } => UiCommand::RaiseHand(on),
-        ProbeCommand::SendCallReaction { name } => UiCommand::SendCallReaction(name),
-        ProbeCommand::WatchMicrophone { on } => UiCommand::WatchMicrophone(on),
-        ProbeCommand::WatchConnections { on } => UiCommand::WatchConnections(on),
-        ProbeCommand::ShowCallGallery => UiCommand::ShowCallGallery,
-        ProbeCommand::ViewCallShare => UiCommand::ViewCallShare,
-        ProbeCommand::ShowSelfView { on } => UiCommand::ShowSelfView(on),
-        ProbeCommand::ShowSharePreview { on } => UiCommand::ShowSharePreview(on),
-        ProbeCommand::FollowSpeaker { on } => UiCommand::FollowSpeaker(on),
+        }
+        .into(),
+        ProbeCommand::RefreshCallDevices => CallCommand::RefreshCallDevices.into(),
+        ProbeCommand::FocusCallTile { key } => CallCommand::FocusCallTile(key).into(),
+        ProbeCommand::UnpinCallTile => CallCommand::UnpinCallTile.into(),
+        ProbeCommand::RingDevices { open } => CallCommand::RingDevices(open).into(),
+        ProbeCommand::MuteForMe { user_id, on } => CallCommand::MuteForMe { user_id, on }.into(),
+        ProbeCommand::RaiseHand { on } => CallCommand::RaiseHand(on).into(),
+        ProbeCommand::SendCallReaction { name } => CallCommand::SendCallReaction(name).into(),
+        ProbeCommand::WatchMicrophone { on } => CallCommand::WatchMicrophone(on).into(),
+        ProbeCommand::WatchConnections { on } => CallCommand::WatchConnections(on).into(),
+        ProbeCommand::ShowCallGallery => CallCommand::ShowCallGallery.into(),
+        ProbeCommand::ViewCallShare => CallCommand::ViewCallShare.into(),
+        ProbeCommand::ShowSelfView { on } => CallCommand::ShowSelfView(on).into(),
+        ProbeCommand::ShowSharePreview { on } => CallCommand::ShowSharePreview(on).into(),
+        ProbeCommand::FollowSpeaker { on } => CallCommand::FollowSpeaker(on).into(),
         ProbeCommand::JoinSuccessor { room_id } => {
             return in_room(room_id, selected, UiCommand::JoinSuccessor);
         }
@@ -1114,41 +1125,50 @@ pub fn to_driven(command: ProbeCommand, selected: Selection<'_>) -> Result<Drive
         ProbeCommand::SetUpRecovery => UiCommand::SetUpRecovery,
         ProbeCommand::ChangeRecoveryKey => UiCommand::ChangeRecoveryKey,
         ProbeCommand::RetryEncryptionSetup => UiCommand::RetryEncryptionSetup,
-        ProbeCommand::StartIdentityReset => UiCommand::StartIdentityReset,
-        ProbeCommand::ResetIdentity => UiCommand::ResetIdentity,
-        ProbeCommand::StartKeyExport => UiCommand::StartKeyExport,
+        ProbeCommand::StartIdentityReset => KeysCommand::StartIdentityReset.into(),
+        ProbeCommand::ResetIdentity => KeysCommand::ResetIdentity.into(),
+        ProbeCommand::StartKeyExport => KeysCommand::StartKeyExport.into(),
         ProbeCommand::ExportRoomKeys { passphrase } => {
-            UiCommand::ExportRoomKeys(KeyPassphrase::new(passphrase))
+            KeysCommand::ExportRoomKeys(KeyPassphrase::new(passphrase)).into()
         }
-        ProbeCommand::StartKeyImport => UiCommand::StartKeyImport,
+        ProbeCommand::StartKeyImport => KeysCommand::StartKeyImport.into(),
         ProbeCommand::ImportRoomKeys { passphrase } => {
-            UiCommand::ImportRoomKeys(KeyPassphrase::new(passphrase))
+            KeysCommand::ImportRoomKeys(KeyPassphrase::new(passphrase)).into()
         }
-        ProbeCommand::OpenAccount => UiCommand::OpenAccount,
-        ProbeCommand::CloseAccount => UiCommand::CloseAccount,
-        ProbeCommand::ShowAccountOverview => UiCommand::ShowAccountOverview,
+        ProbeCommand::OpenAccount => AccountCommand::OpenAccount.into(),
+        ProbeCommand::CloseAccount => AccountCommand::CloseAccount.into(),
+        ProbeCommand::ShowAccountOverview => AccountCommand::ShowAccountOverview.into(),
         ProbeCommand::RenameSession { device_id, name } => {
-            UiCommand::RenameSession { device_id, name }
+            AccountCommand::RenameSession { device_id, name }.into()
         }
-        ProbeCommand::SignOutSession { device_id } => UiCommand::SignOutSession(device_id),
-        ProbeCommand::OpenAccountPage => UiCommand::OpenAccountPage(AccountPage::Account),
-        ProbeCommand::OpenSessionsPage => UiCommand::OpenAccountPage(AccountPage::Sessions),
-        ProbeCommand::StartPasswordChange => UiCommand::StartPasswordChange,
+        ProbeCommand::SignOutSession { device_id } => {
+            AccountCommand::SignOutSession(device_id).into()
+        }
+        ProbeCommand::OpenAccountPage => {
+            AccountCommand::OpenAccountPage(AccountPage::Account).into()
+        }
+        ProbeCommand::OpenSessionsPage => {
+            AccountCommand::OpenAccountPage(AccountPage::Sessions).into()
+        }
+        ProbeCommand::StartPasswordChange => AccountCommand::StartPasswordChange.into(),
         ProbeCommand::ChangePassword {
             password,
             sign_out_others,
-        } => UiCommand::ChangePassword {
+        } => AccountCommand::ChangePassword {
             password: AccountPassword::new(password),
             sign_out_others,
-        },
-        ProbeCommand::StartDeactivation => UiCommand::StartDeactivation,
-        ProbeCommand::DeactivateAccount { erase } => UiCommand::DeactivateAccount { erase },
-        ProbeCommand::AnswerAuthPassword { password } => {
-            UiCommand::AnswerAuthPassword(AccountPassword::new(password))
         }
-        ProbeCommand::ContinueAuth => UiCommand::ContinueAuth,
-        ProbeCommand::ReopenAuthPage => UiCommand::ReopenAuthPage,
-        ProbeCommand::CancelAuth => UiCommand::CancelAuth,
+        .into(),
+        ProbeCommand::StartDeactivation => AccountCommand::StartDeactivation.into(),
+        ProbeCommand::DeactivateAccount { erase } => {
+            AccountCommand::DeactivateAccount { erase }.into()
+        }
+        ProbeCommand::AnswerAuthPassword { password } => {
+            AuthCommand::AnswerAuthPassword(AccountPassword::new(password)).into()
+        }
+        ProbeCommand::ContinueAuth => AuthCommand::ContinueAuth.into(),
+        ProbeCommand::ReopenAuthPage => AuthCommand::ReopenAuthPage.into(),
+        ProbeCommand::CancelAuth => AuthCommand::CancelAuth.into(),
         ProbeCommand::ConfirmLogout => UiCommand::ConfirmLogout,
         ProbeCommand::CancelLogout => UiCommand::CancelLogout,
         ProbeCommand::SendMessage {

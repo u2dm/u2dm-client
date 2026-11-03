@@ -104,7 +104,8 @@ use crate::commands::effects::Effect;
 use crate::commands::messages::{UserMessage, UserMessageKind};
 use crate::commands::sync::DirectoryUpdate;
 use crate::commands::ui::{
-    ComposerActivity, MessageDraft, TimelineVisibility, UiCommand, ViewportChanged, WindowAttention,
+    AccountCommand, AuthCommand, CallCommand, ComposerActivity, DepartureCommand, KeysCommand,
+    MessageDraft, TimelineVisibility, UiCommand, ViewportChanged, WindowAttention,
 };
 use crate::commands::view::{AppViewState, LoginActivity, LoginStep, Toast};
 use crate::domain::account::AccountScope;
@@ -621,12 +622,7 @@ impl AppService {
             UiCommand::DeclineInvite(room_id) => {
                 self.answer_invite(&room_id, Answer::Decline);
             }
-            cmd @ (UiCommand::OpenRemoval(_)
-            | UiCommand::CloseRemoval
-            | UiCommand::ForgetRoom(_)
-            | UiCommand::OpenLeaveSpace(_)
-            | UiCommand::CloseLeaveSpace
-            | UiCommand::LeaveSpace { .. }) => self.handle_departure_command(cmd),
+            UiCommand::Departure(command) => self.handle_departure_command(command),
             UiCommand::JoinSuccessor(room_id) => {
                 self.join_upgrade_link(&room_id, Toward::Successor);
             }
@@ -748,26 +744,9 @@ impl AppService {
             UiCommand::SetUpRecovery => self.set_up_recovery(),
             UiCommand::ChangeRecoveryKey => self.change_recovery_key(),
             UiCommand::RetryEncryptionSetup => self.retry_encryption_setup(),
-            cmd @ (UiCommand::StartIdentityReset
-            | UiCommand::ResetIdentity
-            | UiCommand::StartKeyExport
-            | UiCommand::ExportRoomKeys(_)
-            | UiCommand::StartKeyImport
-            | UiCommand::ImportRoomKeys(_)) => self.handle_key_command(cmd),
-            cmd @ (UiCommand::OpenAccount
-            | UiCommand::CloseAccount
-            | UiCommand::ShowAccountOverview
-            | UiCommand::RenameSession { .. }
-            | UiCommand::SignOutSession(_)
-            | UiCommand::OpenAccountPage(_)
-            | UiCommand::StartPasswordChange
-            | UiCommand::ChangePassword { .. }
-            | UiCommand::StartDeactivation
-            | UiCommand::DeactivateAccount { .. }) => self.handle_account_command(cmd),
-            cmd @ (UiCommand::AnswerAuthPassword(_)
-            | UiCommand::ContinueAuth
-            | UiCommand::ReopenAuthPage
-            | UiCommand::CancelAuth) => self.handle_auth_command(cmd),
+            UiCommand::Keys(command) => self.handle_key_command(command),
+            UiCommand::Account(command) => self.handle_account_command(command),
+            UiCommand::Auth(command) => self.handle_auth_command(command),
             UiCommand::RetryTimeline => {
                 self.retry_timeline().await;
             }
@@ -926,40 +905,7 @@ impl AppService {
             UiCommand::SaveFile { event_id, filename } => {
                 self.save_file(event_id, filename);
             }
-            cmd @ (UiCommand::DeclineCall(_)
-            | UiCommand::SilenceRing
-            | UiCommand::OpenCallSheet { .. }
-            | UiCommand::CloseCallSheet
-            | UiCommand::SheetCamera(_)
-            | UiCommand::TestCallDevice { .. }
-            | UiCommand::StartCall { .. }
-            | UiCommand::JoinCall { .. }
-            | UiCommand::AnswerCall { .. }
-            | UiCommand::LeaveCall
-            | UiCommand::RetryFailedCall
-            | UiCommand::DismissFailedCall
-            | UiCommand::AnnounceCallAgain
-            | UiCommand::SetMicrophone(_)
-            | UiCommand::SetCamera(_)
-            | UiCommand::ShareScreen(_)
-            | UiCommand::ChangeScreenShare
-            | UiCommand::UseCallDevice { .. }
-            | UiCommand::RefreshCallDevices
-            | UiCommand::FocusCallTile(_)
-            | UiCommand::UnpinCallTile
-            | UiCommand::RingDevices(_)
-            | UiCommand::ShowCallGallery
-            | UiCommand::ViewCallShare
-            | UiCommand::ShowSelfView(_)
-            | UiCommand::ShowSharePreview(_)
-            | UiCommand::FollowSpeaker(_)
-            | UiCommand::MuteForMe { .. }
-            | UiCommand::RaiseHand(_)
-            | UiCommand::SendCallReaction(_)
-            | UiCommand::WatchMicrophone(_)
-            | UiCommand::WatchConnections(_)) => {
-                self.handle_call_command(cmd);
-            }
+            UiCommand::Call(command) => self.handle_call_command(command),
             UiCommand::DismissToast => {
                 show_toast(self.output.as_ref(), Toast::None);
             }
@@ -1704,27 +1650,27 @@ impl AppService {
         }
     }
 
-    fn handle_departure_command(&mut self, cmd: UiCommand) {
-        match cmd {
-            UiCommand::OpenRemoval(room_id) => {
+    fn handle_departure_command(&mut self, command: DepartureCommand) {
+        match command {
+            DepartureCommand::OpenRemoval(room_id) => {
                 self.removals.open(self.room_directory.removal(&room_id));
             }
-            UiCommand::CloseRemoval => self.removals.close(),
-            UiCommand::ForgetRoom(room_id) => {
+            DepartureCommand::CloseRemoval => self.removals.close(),
+            DepartureCommand::ForgetRoom(room_id) => {
                 if let Some(port) = self.port(|a| &a.leaves) {
                     self.removals
                         .forget(port, self.room_directory.removal(&room_id));
                 }
             }
-            UiCommand::OpenLeaveSpace(space_id) => {
+            DepartureCommand::OpenLeaveSpace(space_id) => {
                 if let Some(port) = self.port(|a| &a.leaves) {
                     let departure = self.room_directory.space_departure(&space_id);
                     self.space_leave
                         .open(port, self.room_directory.space(&space_id), departure);
                 }
             }
-            UiCommand::CloseLeaveSpace => self.space_leave.close(),
-            UiCommand::LeaveSpace {
+            DepartureCommand::CloseLeaveSpace => self.space_leave.close(),
+            DepartureCommand::LeaveSpace {
                 space_id,
                 with_rooms,
             } => {
@@ -1737,7 +1683,6 @@ impl AppService {
                     self.space_leave.leave(port, &space_id, with_rooms);
                 }
             }
-            other => tracing::debug!(command = %other, "not a departure command"),
         }
     }
 
@@ -1959,44 +1904,48 @@ impl AppService {
         }
     }
 
-    fn handle_key_command(&mut self, cmd: UiCommand) {
+    fn handle_key_command(&mut self, command: KeysCommand) {
         let Some(port) = self.port(|a| &a.encryption) else {
             return;
         };
-        match cmd {
-            UiCommand::StartIdentityReset => self.encryption.start_reset(),
-            UiCommand::ResetIdentity => self.encryption.reset_identity(port),
-            UiCommand::StartKeyExport => self.encryption.start_key_export(),
-            UiCommand::ExportRoomKeys(passphrase) => self.encryption.export_keys(port, passphrase),
-            UiCommand::StartKeyImport => self.encryption.start_key_import(),
-            UiCommand::ImportRoomKeys(passphrase) => self.encryption.import_keys(port, passphrase),
-            other => tracing::warn!(command = %other, "this command is not about room keys"),
+        match command {
+            KeysCommand::StartIdentityReset => self.encryption.start_reset(),
+            KeysCommand::ResetIdentity => self.encryption.reset_identity(port),
+            KeysCommand::StartKeyExport => self.encryption.start_key_export(),
+            KeysCommand::ExportRoomKeys(passphrase) => {
+                self.encryption.export_keys(port, passphrase);
+            }
+            KeysCommand::StartKeyImport => self.encryption.start_key_import(),
+            KeysCommand::ImportRoomKeys(passphrase) => {
+                self.encryption.import_keys(port, passphrase);
+            }
         }
     }
 
-    fn handle_account_command(&mut self, cmd: UiCommand) {
+    fn handle_account_command(&mut self, command: AccountCommand) {
         let Some(port) = self.port(|a| &a.account) else {
             return;
         };
-        match cmd {
-            UiCommand::OpenAccount => self.account.open(&port),
-            UiCommand::CloseAccount => self.account.close(),
-            UiCommand::ShowAccountOverview => self.account.show_overview(),
-            UiCommand::RenameSession { device_id, name } => {
+        match command {
+            AccountCommand::OpenAccount => self.account.open(&port),
+            AccountCommand::CloseAccount => self.account.close(),
+            AccountCommand::ShowAccountOverview => self.account.show_overview(),
+            AccountCommand::RenameSession { device_id, name } => {
                 self.account.rename_session(port, device_id, &name);
             }
-            UiCommand::SignOutSession(device_id) => self.account.sign_out_session(port, device_id),
-            UiCommand::OpenAccountPage(page) => self.account.open_account_page(port, page),
-            UiCommand::StartPasswordChange => self.account.start_password_change(),
-            UiCommand::ChangePassword {
+            AccountCommand::SignOutSession(device_id) => {
+                self.account.sign_out_session(port, device_id);
+            }
+            AccountCommand::OpenAccountPage(page) => self.account.open_account_page(port, page),
+            AccountCommand::StartPasswordChange => self.account.start_password_change(),
+            AccountCommand::ChangePassword {
                 password,
                 sign_out_others,
             } => self
                 .account
                 .change_password(port, password, sign_out_others),
-            UiCommand::StartDeactivation => self.account.start_deactivation(port),
-            UiCommand::DeactivateAccount { erase } => self.account.deactivate(port, erase),
-            other => tracing::warn!(command = %other, "this command is not about the account"),
+            AccountCommand::StartDeactivation => self.account.start_deactivation(port),
+            AccountCommand::DeactivateAccount { erase } => self.account.deactivate(port, erase),
         }
     }
 
@@ -2028,15 +1977,14 @@ impl AppService {
         }
     }
 
-    fn handle_auth_command(&mut self, cmd: UiCommand) {
-        match cmd {
-            UiCommand::AnswerAuthPassword(password) => {
+    fn handle_auth_command(&mut self, command: AuthCommand) {
+        match command {
+            AuthCommand::AnswerAuthPassword(password) => {
                 self.answer_auth(Reply::Password(password));
             }
-            UiCommand::ContinueAuth => self.answer_auth(Reply::Continue),
-            UiCommand::ReopenAuthPage => self.reopen_auth_page(),
-            UiCommand::CancelAuth => self.cancel_auth(),
-            other => tracing::warn!(command = %other, "this command is not about authentication"),
+            AuthCommand::ContinueAuth => self.answer_auth(Reply::Continue),
+            AuthCommand::ReopenAuthPage => self.reopen_auth_page(),
+            AuthCommand::CancelAuth => self.cancel_auth(),
         }
     }
 
@@ -3053,18 +3001,18 @@ impl AppService {
         }
     }
 
-    fn handle_call_command(&mut self, cmd: UiCommand) {
+    fn handle_call_command(&mut self, command: CallCommand) {
         let directory = &self.room_directory;
-        match cmd {
-            UiCommand::DeclineCall(room_id) => self.calls.decline(&room_id, directory),
-            UiCommand::SilenceRing => self.calls.silence(directory),
-            UiCommand::OpenCallSheet { room_id, video } => {
+        match command {
+            CallCommand::DeclineCall(room_id) => self.calls.decline(&room_id, directory),
+            CallCommand::SilenceRing => self.calls.silence(directory),
+            CallCommand::OpenCallSheet { room_id, video } => {
                 self.calls.open_sheet(&room_id, video, directory);
             }
-            UiCommand::CloseCallSheet => self.calls.close_sheet(directory),
-            UiCommand::SheetCamera(on) => self.calls.sheet_camera(on, directory),
-            UiCommand::TestCallDevice { kind, on } => self.calls.test_device(kind, on, directory),
-            UiCommand::StartCall {
+            CallCommand::CloseCallSheet => self.calls.close_sheet(directory),
+            CallCommand::SheetCamera(on) => self.calls.sheet_camera(on, directory),
+            CallCommand::TestCallDevice { kind, on } => self.calls.test_device(kind, on, directory),
+            CallCommand::StartCall {
                 room_id,
                 video,
                 media,
@@ -3072,44 +3020,43 @@ impl AppService {
             } => self
                 .calls
                 .start_call(room_id, video, media, leaving, directory),
-            UiCommand::JoinCall {
+            CallCommand::JoinCall {
                 room_id,
                 media,
                 leaving,
             } => self.calls.join_call(room_id, media, leaving, directory),
-            UiCommand::AnswerCall {
+            CallCommand::AnswerCall {
                 room_id,
                 camera,
                 leaving,
             } => self.calls.answer(room_id, camera, leaving, directory),
-            UiCommand::LeaveCall => self.calls.leave_call(directory),
-            UiCommand::RetryFailedCall => self.calls.retry_failed(directory),
-            UiCommand::DismissFailedCall => self.calls.dismiss_failed(directory),
-            UiCommand::AnnounceCallAgain => self.calls.announce_again(directory),
-            UiCommand::SetMicrophone(on) => self.calls.set_microphone(on, directory),
-            UiCommand::SetCamera(on) => self.calls.set_camera(on, directory),
-            UiCommand::ShareScreen(on) => self.calls.set_screen_share(on, directory),
-            UiCommand::ChangeScreenShare => self.calls.change_screen_share(directory),
-            UiCommand::UseCallDevice { kind, key } => {
+            CallCommand::LeaveCall => self.calls.leave_call(directory),
+            CallCommand::RetryFailedCall => self.calls.retry_failed(directory),
+            CallCommand::DismissFailedCall => self.calls.dismiss_failed(directory),
+            CallCommand::AnnounceCallAgain => self.calls.announce_again(directory),
+            CallCommand::SetMicrophone(on) => self.calls.set_microphone(on, directory),
+            CallCommand::SetCamera(on) => self.calls.set_camera(on, directory),
+            CallCommand::ShareScreen(on) => self.calls.set_screen_share(on, directory),
+            CallCommand::ChangeScreenShare => self.calls.change_screen_share(directory),
+            CallCommand::UseCallDevice { kind, key } => {
                 self.calls.use_device(kind, key.as_ref(), directory);
             }
-            UiCommand::RefreshCallDevices => self.calls.refresh_devices(),
-            UiCommand::FocusCallTile(key) => self.calls.focus_call_tile(&key, directory),
-            UiCommand::UnpinCallTile => self.calls.unpin_call_tile(directory),
-            UiCommand::RingDevices(open) => self.calls.ring_devices(open, directory),
-            UiCommand::ShowCallGallery => self.calls.show_call_gallery(directory),
-            UiCommand::ViewCallShare => self.calls.view_call_share(directory),
-            UiCommand::ShowSelfView(on) => self.calls.show_self_view(on, directory),
-            UiCommand::ShowSharePreview(on) => self.calls.show_share_preview(on, directory),
-            UiCommand::FollowSpeaker(on) => self.calls.follow_speaker(on, directory),
-            UiCommand::MuteForMe { user_id, on } => {
+            CallCommand::RefreshCallDevices => self.calls.refresh_devices(),
+            CallCommand::FocusCallTile(key) => self.calls.focus_call_tile(&key, directory),
+            CallCommand::UnpinCallTile => self.calls.unpin_call_tile(directory),
+            CallCommand::RingDevices(open) => self.calls.ring_devices(open, directory),
+            CallCommand::ShowCallGallery => self.calls.show_call_gallery(directory),
+            CallCommand::ViewCallShare => self.calls.view_call_share(directory),
+            CallCommand::ShowSelfView(on) => self.calls.show_self_view(on, directory),
+            CallCommand::ShowSharePreview(on) => self.calls.show_share_preview(on, directory),
+            CallCommand::FollowSpeaker(on) => self.calls.follow_speaker(on, directory),
+            CallCommand::MuteForMe { user_id, on } => {
                 self.calls.mute_for_me(&user_id, on, directory);
             }
-            UiCommand::WatchMicrophone(on) => self.calls.watch_microphone(on, directory),
-            UiCommand::WatchConnections(on) => self.calls.watch_connections(on, directory),
-            UiCommand::RaiseHand(on) => self.calls.raise_hand(on, directory),
-            UiCommand::SendCallReaction(name) => self.calls.send_reaction(&name, directory),
-            other => tracing::warn!(command = %other, "this command is not about calls"),
+            CallCommand::WatchMicrophone(on) => self.calls.watch_microphone(on, directory),
+            CallCommand::WatchConnections(on) => self.calls.watch_connections(on, directory),
+            CallCommand::RaiseHand(on) => self.calls.raise_hand(on, directory),
+            CallCommand::SendCallReaction(name) => self.calls.send_reaction(&name, directory),
         }
     }
 
