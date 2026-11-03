@@ -25,6 +25,41 @@ pub fn patch_rows_by_id<T: Clone + 'static>(
     }
 }
 
+pub fn patch_rows_where<T: Clone + 'static>(
+    model: &impl Model<Data = T>,
+    wanted: impl Fn(&T) -> bool,
+    apply: impl Fn(&mut T),
+) -> bool {
+    let mut patched = false;
+    for row in 0..model.row_count() {
+        let Some(mut entry) = model.row_data(row) else {
+            continue;
+        };
+        if wanted(&entry) {
+            apply(&mut entry);
+            model.set_row_data(row, entry);
+            patched = true;
+        }
+    }
+    patched
+}
+
+pub fn patch_first<T: Clone + 'static>(
+    model: &impl Model<Data = T>,
+    wanted: impl Fn(&T) -> bool,
+    apply: impl FnOnce(&mut T),
+) -> bool {
+    let Some(row) = model.iter().position(|entry| wanted(&entry)) else {
+        return false;
+    };
+    let Some(mut entry) = model.row_data(row) else {
+        return false;
+    };
+    apply(&mut entry);
+    model.set_row_data(row, entry);
+    true
+}
+
 pub fn locate_row<T: Clone + 'static>(
     model: &impl Model<Data = T>,
     entry_id: &dyn Fn(&T) -> &str,

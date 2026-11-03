@@ -33,14 +33,12 @@ fn refresh_room_labels<B: UiBackend>(media: &dyn MediaCache) {
     let Some(directory) = latest_directory() else {
         return;
     };
-    B::with_models(|_timeline, rooms_model, _spaces, _subspaces| {
-        apply_rooms::<B>(
-            rooms_model,
-            RoomListing::of(&directory),
-            RoomListing::default(),
-            media,
-        );
-    });
+    apply_rooms::<B>(
+        &B::models().rooms,
+        RoomListing::of(&directory),
+        RoomListing::default(),
+        media,
+    );
 }
 
 fn duration_until_next_local_midnight() -> Duration {

@@ -3,11 +3,12 @@ use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 
-use slint::{ComponentHandle, Image, Model, Rgba8Pixel, SharedPixelBuffer, VecModel};
+use slint::{ComponentHandle, Image, Rgba8Pixel, SharedPixelBuffer, VecModel};
 
 use super::backend::UiBackend;
 use super::fields::CallTileFields;
-use super::props::UiProps;
+use super::props::{ImageProp, UiProps};
+use super::rows::patch_rows_where;
 use super::touchpad_pinch;
 use crate::domain::call::video::{FeedId, FrameSize, Framing, LARGEST_SHOWN};
 use crate::ports::call::{CallVideoPort, FrameSink, VideoFrame};
@@ -203,7 +204,10 @@ pub fn preview_seen<B: UiBackend>(
 pub fn follow_preview<B: UiBackend>(window: &B::Window, feed: Option<&FeedId>) {
     tracing::debug!(feed = ?feed, "the call sheet previews a camera");
     settle_with::<B>(window, |state| state.preview.feed = feed.cloned());
-    window.apply_call_preview(feed.and_then(|feed| last_frame(feed.as_ref())));
+    window.set_image(
+        ImageProp::CallPreview,
+        feed.and_then(|feed| last_frame(feed.as_ref())),
+    );
 }
 
 pub fn media_shown<B: UiBackend>(window: &B::Window, host: Host, on: bool) {
@@ -368,7 +372,7 @@ fn show<B: UiBackend>(
         return;
     }
     if previewed {
-        window.apply_call_preview(Some(image.clone()));
+        window.set_image(ImageProp::CallPreview, Some(image.clone()));
     }
     let models = B::models();
     show_in::<B>(&models.call_stage, feed, &image, source);
@@ -381,16 +385,13 @@ fn show_in<B: UiBackend>(
     image: &Image,
     source: FrameSize,
 ) {
-    for row in 0..tiles.row_count() {
-        let Some(mut tile) = tiles.row_data(row) else {
-            continue;
-        };
-        if tile.feed() != feed.as_ref() {
-            continue;
-        }
-        tile.set_frame(image.clone());
-        tile.set_has_frame(true);
-        put_source::<B>(&mut tile, source);
-        tiles.set_row_data(row, tile);
-    }
+    patch_rows_where(
+        tiles,
+        |tile| tile.feed() == feed.as_ref(),
+        |tile| {
+            tile.set_frame(image.clone());
+            tile.set_has_frame(true);
+            put_source::<B>(tile, source);
+        },
+    );
 }

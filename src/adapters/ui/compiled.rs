@@ -9,50 +9,17 @@ use slint::{Rgb8Pixel, SharedPixelBuffer};
 use tokio::runtime::Runtime;
 use tokio::sync::{mpsc, watch};
 use u2dm_ui::{
-    AccountActivity as UiAccountActivity, AccountStep as UiAccountStep, AccountView, Actions,
-    AppWindow, AttachmentKind as UiAttachmentKind, AttachmentView, AudioKind as UiAudioKind,
-    AudioView, AuthStage as UiAuthStage, BodyLine, BodyPiece, CallCamera as UiCallCamera,
-    CallConnectionEntry, CallDeviceEntry, CallDeviceKind as UiCallDeviceKind,
-    CallDeviceStatus as UiCallDeviceStatus, CallDeviceTrouble as UiCallDeviceTrouble,
-    CallHand as UiCallHand, CallLinkState as UiCallLinkState, CallMic as UiCallMic,
-    CallNotice as UiCallNotice, CallOffer as UiCallOffer, CallPersonEntry,
-    CallPhase as UiCallPhase, CallPreviewTrouble as UiCallPreviewTrouble,
-    CallReaction as UiCallReaction, CallRefusal as UiCallRefusal, CallScreen as UiCallScreen,
-    CallScreenRefusal as UiCallScreenRefusal, CallSheetPreview as UiCallSheetPreview,
-    CallTestPhase as UiCallTestPhase, CallTileEntry, CallTileState as UiCallTileState, CallView,
-    CallWindow, ChildAccess as UiChildAccess, ComposerDraft, ConnectionState,
-    CreateRoomStatus as UiCreateRoomStatus, CreateRoomView,
-    DecryptionFailure as UiDecryptionFailure, Delivery as UiDelivery, DeviceTrust as UiDeviceTrust,
-    DirectChat as UiDirectChat, DirectoryView, DraftVerdict as UiDraftVerdict,
-    EmojiArt as UiEmojiArt, EmojiEntry, EmojiRow, EmojiStore,
-    EncryptionActivity as UiEncryptionActivity, EncryptionStanding as UiEncryptionStanding,
-    EncryptionStep as UiEncryptionStep, EncryptionView, IdentityAlertKind as UiIdentityAlertKind,
-    IdentityAlertView, IdentityTrust as UiIdentityTrust, InviteAnswer as UiInviteAnswer,
-    InviteKind as UiInviteKind, InvitePeopleView, InviteView, InviteeEntry,
-    InviteeState as UiInviteeState, LeaveSpaceView, LogLevel as UiLogLevel, LogLineEntry,
-    LoginActivity as UiLoginActivity, LoginMethodKind as UiLoginMethodKind, LoginPhase, LoginView,
-    LogoutView, MediaFailure as UiMediaFailure, MediaState as UiMediaState, MemberEntry,
-    MemberRole as UiMemberRole, MemberRowKind as UiMemberRowKind, MentionWord, MentionsView,
-    MessageEntry, MessageKind as UiMessageKind, Moderation as UiModeration, Motion,
-    NotificationText, NotifyMode as UiNotifyMode, PackCell, PackOrigin as UiPackOrigin, PackRow,
-    PackSurface as UiPackSurface, PackTabEntry, PackView,
-    PeopleSearchStatus as UiPeopleSearchStatus, PollAnswerEntry, PollPhase as UiPollPhase,
-    PresenceLine as UiPresenceLine, PresenceView, PreviewKind as UiPreviewKind, ReactionEntry,
-    ReactionSend as UiReactionSend, ReactorAvatar, ReadersStatus as UiReadersStatus, ReadersView,
-    RecoveryStatus as UiRecoveryStatus, RemovalKind as UiRemovalKind, RemovalView, ReplySwipe,
-    RoomAccess as UiRoomAccess, RoomCallMark as UiRoomCallMark, RoomEntry,
-    RoomInfoPlacement as UiRoomInfoPlacement, RoomInfoView, RoomKind as UiRoomKind, RoomLogView,
-    RoomMembership as UiRoomMembership, RoomMenuView, RoomPreviewStatus as UiRoomPreviewStatus,
-    RoomPreviewView, RoomRowKind as UiRoomRowKind, RoomScope as UiRoomScope, RoomView,
-    RosterStatus as UiRosterStatus, SendState as UiSendState, ServiceKind as UiServiceKind,
-    SessionView, Shield as UiShield, ShieldReason as UiShieldReason,
-    SourceEncryption as UiSourceEncryption, SourceStatus as UiSourceStatus, SourceView,
-    SpaceChildEntry, SpaceEntry, SpaceIndexStatus as UiSpaceIndexStatus, SpaceIndexView,
-    SpoilerCover, SpoilerState as UiSpoilerState, TextSplice, TimelineState, TouchpadView,
-    TypingView, UnsentView, UpgradeLink as UiUpgradeLink, UpgradeView, UserDeviceEntry,
-    UserInfoView, UserMessage as UiUserMessage, UserMessageKind as UiUserMessageKind,
-    VerificationActivity as UiVerificationActivity, VerificationEmoji, VerificationPhase,
-    VerificationView, VerifyOffer as UiVerifyOffer, VideoView, WindowView,
+    AccountView, Actions, AppWindow, AttachmentView, AudioView, BodyLine, BodyPiece,
+    CallConnectionEntry, CallDeviceEntry, CallPersonEntry, CallTileEntry, CallView, CallWindow,
+    ComposerDraft, CreateRoomView, DirectoryView, DraftVerdict as UiDraftVerdict, EmojiEntry,
+    EmojiRow, EmojiStore, EncryptionView, IdentityAlertView, InvitePeopleView, InviteView,
+    InviteeEntry, LeaveSpaceView, LogLineEntry, LoginView, LogoutView, MemberEntry, MentionWord,
+    MentionsView, MessageEntry, Motion, NotificationText, PackCell, PackRow, PackTabEntry,
+    PackView, PollAnswerEntry, PresenceView, ReactionEntry, ReactorAvatar, ReadersView,
+    RemovalView, ReplySwipe, RoomEntry, RoomInfoView, RoomLogView, RoomMenuView, RoomPreviewView,
+    RoomView, SessionView, SourceView, SpaceChildEntry, SpaceEntry, SpaceIndexView, SpoilerCover,
+    TextSplice, TouchpadView, TypingView, UnsentView, UpgradeView, UserDeviceEntry, UserInfoView,
+    UserMessage as UiUserMessage, VerificationEmoji, VerificationView, VideoView, WindowView,
 };
 #[cfg(feature = "demo")]
 use u2dm_ui::{Probe, RoomMenu, WindowTitle};
@@ -88,30 +55,15 @@ use super::present::{
 };
 #[cfg(feature = "demo")]
 use super::props::EnumProp;
-use super::props::{BoolProp, IntProp, StringProp, UiProps};
+use super::props::{BoolProp, ImageProp, IntProp, StringProp, UiProps};
 use super::router::{DraftVerdict, EditedRow, EditedText};
 use super::schema::{
-    account_activities, account_steps, attachment_kinds, audio_kinds, auth_stages,
-    body_line_fields, body_piece_fields, bool_props, call_cameras, call_connection_fields,
-    call_device_fields, call_device_kinds, call_device_statuses, call_device_troubles, call_hands,
-    call_link_states, call_mics, call_notices, call_offers, call_person_fields, call_phases,
-    call_reactions, call_refusals, call_screen_refusals, call_screens, call_tile_fields,
-    call_tile_marks, child_accesses, connection_states, create_room_statuses, decryption_failures,
-    deliveries, device_trusts, direct_chats, emoji_arts, encryption_activities,
-    encryption_standings, encryption_steps, enum_props, identity_alert_kinds, identity_trusts,
-    int_props, invite_answers, invite_kinds, invitee_fields, invitee_states, log_levels,
-    log_line_fields, login_activities, login_methods, login_phases, media_failures, media_states,
-    member_roles, member_row_fields, member_row_kinds, message_fields, message_kinds, model_props,
-    notify_modes, pack_cell_fields, pack_origins, pack_row_fields, pack_surfaces, pack_tab_fields,
-    pending_moderations, people_search_statuses, poll_answer_fields, poll_phases, presence_lines,
-    preview_kinds, preview_troubles, reaction_fields, reaction_sends, reactor_fields,
-    readers_statuses, recovery_statuses, removal_kinds, room_accesses, room_call_marks,
-    room_fields, room_info_placements, room_kinds, room_memberships, room_preview_statuses,
-    room_row_kinds, room_scopes, roster_statuses, send_states, service_kinds, sheet_previews,
-    shield_reasons, shields, simple_callbacks, source_encryptions, source_statuses,
-    space_child_fields, space_fields, space_index_statuses, spoiler_states, string_props,
-    test_phases, timeline_states, upgrade_links, user_device_fields, user_message_kinds,
-    verification_activities, verification_phases, verify_offers,
+    body_line_fields, body_piece_fields, bool_props, call_connection_fields, call_device_fields,
+    call_person_fields, call_tile_fields, enum_props, image_props, int_props, invitee_fields,
+    log_line_fields, member_row_fields, message_fields, model_props, pack_cell_fields,
+    pack_row_fields, pack_tab_fields, poll_answer_fields, reaction_fields, reactor_fields,
+    room_fields, simple_callbacks, slint_enums, space_child_fields, space_fields, string_props,
+    user_device_fields,
 };
 use super::session::active_models;
 use super::video::{self, millis_to_duration};
@@ -180,6 +132,24 @@ macro_rules! impl_prop_setter {
                 }
                 self.global::<$g>().$s(value)
             },)* }
+        }
+    };
+}
+
+macro_rules! impl_image_setter {
+    ($($v:ident $g:ident $gname:literal
+        $image:literal $set_image:ident $has:literal $set_has:ident;)*) => {
+        fn set_image(&self, prop: ImageProp, image: Option<Image>) {
+            match prop { $(ImageProp::$v => {
+                let view = self.global::<$g>();
+                match image {
+                    Some(image) => {
+                        view.$set_image(image);
+                        view.$set_has(true);
+                    }
+                    None => view.$set_has(false),
+                }
+            })* }
         }
     };
 }
@@ -365,118 +335,10 @@ impl UiProps for AppWindow {
         video.set_has_frame(false);
     }
 
-    fn apply_user_avatar(&self, avatar: Option<Image>) {
-        let session = self.global::<SessionView>();
-        match avatar {
-            Some(img) => {
-                session.set_user_avatar(img);
-                session.set_user_has_avatar(true);
-            }
-            None => session.set_user_has_avatar(false),
-        }
-    }
-
-    fn apply_attachment_preview(&self, preview: Option<Image>) {
-        let attachment = self.global::<AttachmentView>();
-        match preview {
-            Some(img) => {
-                attachment.set_preview(img);
-                attachment.set_has_preview(true);
-            }
-            None => attachment.set_has_preview(false),
-        }
-    }
-
-    fn apply_selected_room_avatar(&self, avatar: Option<Image>) {
-        let room = self.global::<RoomView>();
-        match avatar {
-            Some(img) => {
-                room.set_selected_room_avatar(img);
-                room.set_selected_room_has_avatar(true);
-            }
-            None => room.set_selected_room_has_avatar(false),
-        }
-    }
-
-    fn apply_room_info_avatar(&self, avatar: Option<Image>) {
-        let room_info = self.global::<RoomInfoView>();
-        match avatar {
-            Some(img) => {
-                room_info.set_avatar(img);
-                room_info.set_has_avatar(true);
-            }
-            None => room_info.set_has_avatar(false),
-        }
-    }
+    image_props!(impl_image_setter);
 
     fn apply_room_info_topic(&self, topic: StyledText) {
         self.global::<RoomInfoView>().set_topic_styled(topic);
-    }
-
-    fn apply_ring_avatar(&self, avatar: Option<Image>) {
-        let call = self.global::<CallView>();
-        match avatar {
-            Some(img) => {
-                call.set_ring_avatar(img);
-                call.set_ring_has_avatar(true);
-            }
-            None => call.set_ring_has_avatar(false),
-        }
-    }
-
-    fn apply_call_preview(&self, frame: Option<Image>) {
-        let call = self.global::<CallView>();
-        match frame {
-            Some(img) => {
-                call.set_sheet_preview_frame(img);
-                call.set_sheet_preview_has_frame(true);
-            }
-            None => call.set_sheet_preview_has_frame(false),
-        }
-    }
-
-    fn apply_user_info_avatar(&self, avatar: Option<Image>) {
-        let user_info = self.global::<UserInfoView>();
-        match avatar {
-            Some(img) => {
-                user_info.set_avatar(img);
-                user_info.set_has_avatar(true);
-            }
-            None => user_info.set_has_avatar(false),
-        }
-    }
-
-    fn apply_invite_avatar(&self, avatar: Option<Image>) {
-        let invite = self.global::<InviteView>();
-        match avatar {
-            Some(img) => {
-                invite.set_avatar(img);
-                invite.set_has_avatar(true);
-            }
-            None => invite.set_has_avatar(false),
-        }
-    }
-
-    fn apply_removal_avatar(&self, avatar: Option<Image>) {
-        let removal = self.global::<RemovalView>();
-        match avatar {
-            Some(img) => {
-                removal.set_avatar(img);
-                removal.set_has_avatar(true);
-            }
-            None => removal.set_has_avatar(false),
-        }
-    }
-
-    fn apply_room_preview_avatar(&self, avatar: Option<Image>) {
-        let preview = self.global::<RoomPreviewView>();
-        match avatar {
-            Some(img) => {
-                preview.set_avatar(img);
-                preview.set_has_avatar(true);
-            }
-            None => preview.set_has_avatar(false),
-        }
     }
 
     fn apply_login_messages(&self, messages: &[UserMessage]) {
@@ -527,103 +389,21 @@ macro_rules! impl_slint_enum {
     ($src:ident $dst:ident;
         $($rust:ident $(($($p:tt)*))? $({$($b:tt)*})? $ui:ident $lit:literal;)*) => {
         impl SlintEnum for $src {
-            type Slint = $dst;
-            fn slint(&self) -> $dst {
-                match self { $($src::$rust $(($($p)*))? $({$($b)*})? => $dst::$ui,)* }
+            type Slint = u2dm_ui::$dst;
+            fn slint(&self) -> u2dm_ui::$dst {
+                match self { $($src::$rust $(($($p)*))? $({$($b)*})? => u2dm_ui::$dst::$ui,)* }
             }
         }
 
-        impl SlintName for $dst {
+        impl SlintName for u2dm_ui::$dst {
             fn slint_name(&self) -> &'static str {
-                match self { $($dst::$ui => $lit,)* }
+                match self { $(u2dm_ui::$dst::$ui => $lit,)* }
             }
         }
     };
 }
 
-login_phases!(impl_slint_enum LoginStep LoginPhase;);
-login_activities!(impl_slint_enum LoginActivity UiLoginActivity;);
-login_methods!(impl_slint_enum LoginMethod UiLoginMethodKind;);
-connection_states!(impl_slint_enum ConnectionStatus ConnectionState;);
-timeline_states!(impl_slint_enum TimelineStatus TimelineState;);
-verification_phases!(impl_slint_enum VerifyStep VerificationPhase;);
-verification_activities!(impl_slint_enum VerificationActivity UiVerificationActivity;);
-user_message_kinds!(impl_slint_enum UserMessageKind UiUserMessageKind;);
-media_states!(impl_slint_enum MediaState UiMediaState;);
-send_states!(impl_slint_enum SendState UiSendState;);
-reaction_sends!(impl_slint_enum ReactionSend UiReactionSend;);
-emoji_arts!(impl_slint_enum EmojiArt UiEmojiArt;);
-spoiler_states!(impl_slint_enum SpoilerState UiSpoilerState;);
-deliveries!(impl_slint_enum Delivery UiDelivery;);
-shields!(impl_slint_enum Shield UiShield;);
-shield_reasons!(impl_slint_enum ShieldReason UiShieldReason;);
-decryption_failures!(impl_slint_enum DecryptionFailure UiDecryptionFailure;);
-media_failures!(impl_slint_enum MediaFailureKind UiMediaFailure;);
-message_kinds!(impl_slint_enum MessageKind UiMessageKind;);
-poll_phases!(impl_slint_enum PollPhase UiPollPhase;);
-attachment_kinds!(impl_slint_enum AttachmentKind UiAttachmentKind;);
-room_scopes!(impl_slint_enum RoomScope UiRoomScope;);
-space_index_statuses!(impl_slint_enum SpaceIndexStatus UiSpaceIndexStatus;);
-room_preview_statuses!(impl_slint_enum RoomPreviewSheet UiRoomPreviewStatus;);
-source_statuses!(impl_slint_enum SourceState UiSourceStatus;);
-readers_statuses!(impl_slint_enum ReadersStatus UiReadersStatus;);
-source_encryptions!(impl_slint_enum SourceEncryption UiSourceEncryption;);
-child_accesses!(impl_slint_enum ChildAccess UiChildAccess;);
-notify_modes!(impl_slint_enum NotifyMode UiNotifyMode;);
-member_roles!(impl_slint_enum MemberRole UiMemberRole;);
-member_row_kinds!(impl_slint_enum MemberRowKind UiMemberRowKind;);
-room_row_kinds!(impl_slint_enum RoomRowKind UiRoomRowKind;);
-room_call_marks!(impl_slint_enum RoomCallMark UiRoomCallMark;);
-call_offers!(impl_slint_enum CallOfferMark UiCallOffer;);
-sheet_previews!(impl_slint_enum SheetPreviewMark UiCallSheetPreview;);
-test_phases!(impl_slint_enum TestPhaseMark UiCallTestPhase;);
-preview_troubles!(impl_slint_enum PreviewTrouble UiCallPreviewTrouble;);
-call_refusals!(impl_slint_enum JoinRefusal UiCallRefusal;);
-call_phases!(impl_slint_enum CallPhase UiCallPhase;);
-call_link_states!(impl_slint_enum LinkView UiCallLinkState;);
-call_mics!(impl_slint_enum MicrophoneView UiCallMic;);
-call_cameras!(impl_slint_enum CameraView UiCallCamera;);
-call_screens!(impl_slint_enum CallScreenMark UiCallScreen;);
-call_hands!(impl_slint_enum HandView UiCallHand;);
-call_reactions!(impl_slint_enum ReactionView UiCallReaction;);
-call_screen_refusals!(impl_slint_enum ScreenRefusal UiCallScreenRefusal;);
-call_tile_marks!(impl_slint_enum CallTileMark UiCallTileState;);
-call_device_kinds!(impl_slint_enum DeviceKind UiCallDeviceKind;);
-call_device_statuses!(impl_slint_enum DeviceStatus UiCallDeviceStatus;);
-call_device_troubles!(impl_slint_enum DeviceTrouble UiCallDeviceTrouble;);
-call_notices!(impl_slint_enum CallNoticeMark UiCallNotice;);
-roster_statuses!(impl_slint_enum RosterStatus UiRosterStatus;);
-room_info_placements!(impl_slint_enum RoomInfoPlacement UiRoomInfoPlacement;);
-room_memberships!(impl_slint_enum RoomMembership UiRoomMembership;);
-direct_chats!(impl_slint_enum DirectChat UiDirectChat;);
-upgrade_links!(impl_slint_enum UpgradeLink UiUpgradeLink;);
-invite_kinds!(impl_slint_enum InviteKind UiInviteKind;);
-removal_kinds!(impl_slint_enum RemovalKind UiRemovalKind;);
-invite_answers!(impl_slint_enum PendingAnswer UiInviteAnswer;);
-pending_moderations!(impl_slint_enum PendingModeration UiModeration;);
-identity_trusts!(impl_slint_enum IdentityTrust UiIdentityTrust;);
-verify_offers!(impl_slint_enum VerifyOffer UiVerifyOffer;);
-device_trusts!(impl_slint_enum DeviceTrust UiDeviceTrust;);
-presence_lines!(impl_slint_enum PresenceLine UiPresenceLine;);
-identity_alert_kinds!(impl_slint_enum IdentityAlertKind UiIdentityAlertKind;);
-encryption_standings!(impl_slint_enum Standing UiEncryptionStanding;);
-recovery_statuses!(impl_slint_enum Recovery UiRecoveryStatus;);
-encryption_steps!(impl_slint_enum EncryptionStep UiEncryptionStep;);
-encryption_activities!(impl_slint_enum EncryptionActivity UiEncryptionActivity;);
-auth_stages!(impl_slint_enum AuthStage UiAuthStage;);
-account_steps!(impl_slint_enum AccountStep UiAccountStep;);
-account_activities!(impl_slint_enum AccountActivity UiAccountActivity;);
-preview_kinds!(impl_slint_enum MessagePreviewKind UiPreviewKind;);
-audio_kinds!(impl_slint_enum AudioKind UiAudioKind;);
-service_kinds!(impl_slint_enum ServiceKind UiServiceKind;);
-log_levels!(impl_slint_enum LogLevel UiLogLevel;);
-pack_surfaces!(impl_slint_enum PackSurface UiPackSurface;);
-pack_origins!(impl_slint_enum PackOrigin UiPackOrigin;);
-room_kinds!(impl_slint_enum RoomKind UiRoomKind;);
-room_accesses!(impl_slint_enum RoomAccess UiRoomAccess;);
-create_room_statuses!(impl_slint_enum CreateRoomStatus UiCreateRoomStatus;);
-people_search_statuses!(impl_slint_enum PeopleSearchStatus UiPeopleSearchStatus;);
-invitee_states!(impl_slint_enum InviteeState UiInviteeState;);
+slint_enums!(impl_slint_enum);
 
 fn string_model(items: Vec<SharedString>) -> ModelRc<SharedString> {
     ModelRc::new(VecModel::from(items))

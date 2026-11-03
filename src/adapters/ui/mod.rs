@@ -43,7 +43,10 @@ mod splice_model;
 mod spoilers;
 mod swipe;
 mod touchpad_pinch;
+mod typed_word;
 mod video;
+#[cfg(target_os = "linux")]
+mod wayland;
 mod window_events;
 
 pub use output::UiEventOutput;

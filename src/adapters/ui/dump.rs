@@ -532,23 +532,23 @@ fn call_view<B: UiBackend>(window: &B::Window) -> CallDump {
         .filter_map(|(prop, news)| window.get_bool(prop).then_some(news))
         .collect(),
         people: call_people::<B>(&B::models().call_people),
-        sheet_people: format!(
-            "{} | {} | +{}",
-            window.get_string(StringProp::SheetPeopleFirst),
-            window.get_string(StringProp::SheetPeopleSecond),
-            window.get_int(IntProp::SheetPeopleMore)
+        sheet_people: name_line(
+            window,
+            [StringProp::SheetPeopleFirst, StringProp::SheetPeopleSecond],
+            IntProp::SheetPeopleMore,
         ),
-        bridges: format!(
-            "{} | {} | +{}",
-            window.get_string(StringProp::BridgesFirst),
-            window.get_string(StringProp::BridgesSecond),
-            window.get_int(IntProp::BridgesMore)
+        bridges: name_line(
+            window,
+            [StringProp::BridgesFirst, StringProp::BridgesSecond],
+            IntProp::BridgesMore,
         ),
-        sheet_bridges: format!(
-            "{} | {} | +{}",
-            window.get_string(StringProp::SheetBridgesFirst),
-            window.get_string(StringProp::SheetBridgesSecond),
-            window.get_int(IntProp::SheetBridgesMore)
+        sheet_bridges: name_line(
+            window,
+            [
+                StringProp::SheetBridgesFirst,
+                StringProp::SheetBridgesSecond,
+            ],
+            IntProp::SheetBridgesMore,
         ),
         microphones: call_devices::<B>(&B::models().call_microphones),
         speakers: call_devices::<B>(&B::models().call_speakers),
@@ -557,6 +557,15 @@ fn call_view<B: UiBackend>(window: &B::Window) -> CallDump {
         device_news_name: window.get_string(StringProp::DeviceNewsName).to_string(),
         device_news_serial: window.get_int(IntProp::DeviceNewsSerial),
     }
+}
+
+fn name_line(window: &impl UiProps, [first, second]: [StringProp; 2], more: IntProp) -> String {
+    format!(
+        "{} | {} | +{}",
+        window.get_string(first),
+        window.get_string(second),
+        window.get_int(more)
+    )
 }
 
 fn call_devices<B: UiBackend>(rows: &impl Model<Data = B::CallDevice>) -> Vec<CallDeviceDump> {

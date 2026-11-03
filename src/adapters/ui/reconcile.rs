@@ -252,6 +252,13 @@ pub fn timeline_row_of(unique_id: &str) -> Option<usize> {
     with_session(|session| session.timeline_index.row_of.get(unique_id).copied())
 }
 
+struct TimelineOps<'a, T> {
+    convert: &'a dyn Fn(&TimelineMessage) -> T,
+    keep_shown: &'a dyn Fn(&T, &mut T),
+    enrich: &'a dyn Fn(&mut T, &EnrichmentDelta),
+    entry_id: &'a dyn Fn(&T) -> &str,
+}
+
 pub fn apply_timeline_patch<T: Clone + 'static>(
     model: &SpliceModel<T>,
     patch: TimelinePatch,
@@ -260,22 +267,35 @@ pub fn apply_timeline_patch<T: Clone + 'static>(
     enrich: &dyn Fn(&mut T, &EnrichmentDelta),
     entry_id: &dyn Fn(&T) -> &str,
 ) {
+    let ops = TimelineOps {
+        convert,
+        keep_shown,
+        enrich,
+        entry_id,
+    };
     let mut index = with_session(|session| mem::take(&mut session.timeline_index));
-    apply_patch(
-        model, patch, &mut index, convert, keep_shown, enrich, entry_id,
-    );
+    apply_patch(model, patch, &mut index, &ops);
     with_session(|session| session.timeline_index = index);
+}
+
+fn forget_row_caches() {
+    forget_all_media_needs();
+    forget_styled_bodies();
+    forget_spoiler_rows();
 }
 
 fn apply_patch<T: Clone + 'static>(
     model: &SpliceModel<T>,
     patch: TimelinePatch,
     index: &mut TimelineIndex,
-    convert: &dyn Fn(&TimelineMessage) -> T,
-    keep_shown: &dyn Fn(&T, &mut T),
-    enrich: &dyn Fn(&mut T, &EnrichmentDelta),
-    entry_id: &dyn Fn(&T) -> &str,
+    ops: &TimelineOps<'_, T>,
 ) {
+    let TimelineOps {
+        convert,
+        enrich,
+        entry_id,
+        ..
+    } = *ops;
     let before = model.row_count();
     tracing::debug!(
         patch = patch.label(),
@@ -284,9 +304,7 @@ fn apply_patch<T: Clone + 'static>(
     );
     match patch {
         TimelinePatch::Reset(messages) => {
-            forget_all_media_needs();
-            forget_styled_bodies();
-            forget_spoiler_rows();
+            forget_row_caches();
             index.reset(&messages);
             let entries: Vec<T> = messages.iter().map(convert).collect();
             model.set_vec(entries);
@@ -298,9 +316,7 @@ fn apply_patch<T: Clone + 'static>(
             splice_rows(model, at.min(before), &[message], index, convert);
         }
         TimelinePatch::Set { index: at, message } => {
-            set_row(
-                model, at, before, index, &message, convert, keep_shown, entry_id,
-            );
+            set_row(model, at, before, index, &message, ops);
         }
         TimelinePatch::Remove { index: at } => remove_row(model, at, before, index, entry_id),
         TimelinePatch::PopFront => remove_row(model, 0, before, index, entry_id),
@@ -309,15 +325,11 @@ fn apply_patch<T: Clone + 'static>(
         }
         TimelinePatch::Truncate { length } => truncate_rows(model, length, index),
         TimelinePatch::Clear => {
-            forget_all_media_needs();
-            forget_styled_bodies();
-            forget_spoiler_rows();
+            forget_row_caches();
             index.clear();
             model.set_vec(Vec::new());
         }
-        TimelinePatch::Batch(patches) => {
-            apply_batch(model, patches, index, convert, keep_shown, enrich, entry_id);
-        }
+        TimelinePatch::Batch(patches) => apply_batch(model, patches, index, ops),
         TimelinePatch::Enrich(delta) => enrich_target(model, &delta, index, enrich, entry_id),
     }
     tracing::debug!(
@@ -389,46 +401,38 @@ fn apply_batch<T: Clone + 'static>(
     model: &SpliceModel<T>,
     patches: Vec<TimelinePatch>,
     index: &mut TimelineIndex,
-    convert: &dyn Fn(&TimelineMessage) -> T,
-    keep_shown: &dyn Fn(&T, &mut T),
-    enrich: &dyn Fn(&mut T, &EnrichmentDelta),
-    entry_id: &dyn Fn(&T) -> &str,
+    ops: &TimelineOps<'_, T>,
 ) {
     let mut edges = EdgeInsertions::default();
     for patch in patches {
         if let Some(positional) = edges.absorb(patch) {
-            edges.flush(model, index, convert);
-            apply_patch(
-                model, positional, index, convert, keep_shown, enrich, entry_id,
-            );
+            edges.flush(model, index, ops.convert);
+            apply_patch(model, positional, index, ops);
         }
     }
-    edges.flush(model, index, convert);
+    edges.flush(model, index, ops.convert);
 }
 
-#[allow(clippy::too_many_arguments)]
 fn set_row<T: Clone + 'static>(
     model: &SpliceModel<T>,
     row: usize,
     row_count: usize,
     index: &mut TimelineIndex,
     message: &TimelineMessage,
-    convert: &dyn Fn(&TimelineMessage) -> T,
-    keep_shown: &dyn Fn(&T, &mut T),
-    entry_id: &dyn Fn(&T) -> &str,
+    ops: &TimelineOps<'_, T>,
 ) {
     if row >= row_count {
         return;
     }
     let shown = model.row_data(row);
-    let shown_id = shown.as_ref().map(|entry| entry_id(entry).to_owned());
+    let shown_id = shown.as_ref().map(|entry| (ops.entry_id)(entry).to_owned());
     let same_media = shown_id
         .as_deref()
         .is_some_and(|id| index.shows_same_media(id, message));
     index.replaced_at(row, shown_id.as_deref(), message);
-    let mut rebuilt = convert(message);
+    let mut rebuilt = (ops.convert)(message);
     if same_media && let Some(shown) = &shown {
-        keep_shown(shown, &mut rebuilt);
+        (ops.keep_shown)(shown, &mut rebuilt);
     }
     model.set_row_data(row, rebuilt);
 }
@@ -667,12 +671,8 @@ impl ListedRow<'_> {
 impl SameItem for ListedRow<'_> {
     fn same_item(&self, other: &Self) -> bool {
         match (self, other) {
-            (Self::Invite(invite), Self::Invite(other)) => {
-                Arc::ptr_eq(invite, other) || invite == other
-            }
-            (Self::Removal(removal), Self::Removal(other)) => {
-                Arc::ptr_eq(removal, other) || removal == other
-            }
+            (Self::Invite(invite), Self::Invite(other)) => invite.same_item(other),
+            (Self::Removal(removal), Self::Removal(other)) => removal.same_item(other),
             (Self::Room(room), Self::Room(other)) => room.same_item(other),
             (Self::Heading(heading), Self::Heading(other)) => heading == other,
             (Self::Space(space), Self::Space(other)) => space == other,
@@ -744,7 +744,7 @@ pub(super) trait SameItem {
     fn same_item(&self, other: &Self) -> bool;
 }
 
-impl SameItem for Arc<Room> {
+impl<T: PartialEq> SameItem for Arc<T> {
     fn same_item(&self, other: &Self) -> bool {
         Arc::ptr_eq(self, other) || **self == **other
     }
@@ -754,19 +754,6 @@ impl SameItem for Space {
     fn same_item(&self, other: &Self) -> bool {
         self == other
     }
-}
-
-pub fn apply_spaces<T: Clone + PartialEq + 'static>(
-    model: &VecModel<T>,
-    spaces: &[Space],
-    media: &dyn MediaCache,
-    convert: &dyn Fn(&Space) -> T,
-    get_id: &dyn Fn(&T) -> &str,
-) {
-    for space in spaces {
-        prefetch_space_avatar(space, media);
-    }
-    apply_reconcile(model, spaces, &[], &|s| s.id.as_str(), convert, get_id);
 }
 
 impl SameItem for SpaceIndexRow {
@@ -781,45 +768,109 @@ impl SameItem for RosterRow {
     }
 }
 
-pub fn apply_member_rows<T: Clone + PartialEq + 'static>(
-    model: &VecModel<T>,
-    rows: &[RosterRow],
-    previous: &[RosterRow],
-    media: &dyn MediaCache,
-    convert: &dyn Fn(&RosterRow) -> T,
-    get_id: &dyn Fn(&T) -> &str,
-) {
-    for row in rows {
-        request_member_avatar(row, media);
-    }
-    apply_reconcile(model, rows, previous, &roster_row_id, convert, get_id);
-}
-
-impl SameItem for Arc<Reader> {
+impl SameItem for InviteeRow {
     fn same_item(&self, other: &Self) -> bool {
-        Arc::ptr_eq(self, other) || **self == **other
+        self == other
     }
 }
 
-pub fn apply_reader_rows<T: Clone + PartialEq + 'static>(
+pub(super) trait RowItem: SameItem {
+    fn item_id(&self) -> &str;
+    fn request_avatar(&self, media: &dyn MediaCache);
+}
+
+impl RowItem for Space {
+    fn item_id(&self) -> &str {
+        self.id.as_str()
+    }
+
+    fn request_avatar(&self, media: &dyn MediaCache) {
+        prefetch_space_avatar(self, media);
+    }
+}
+
+impl RowItem for RosterRow {
+    fn item_id(&self) -> &str {
+        match self {
+            Self::Member(member) => &member.user_id,
+            Self::InvitedHeading => INVITED_HEADING_ROW,
+        }
+    }
+
+    fn request_avatar(&self, media: &dyn MediaCache) {
+        request_member_avatar(self, media);
+    }
+}
+
+impl RowItem for Arc<Reader> {
+    fn item_id(&self) -> &str {
+        self.user_id.as_str()
+    }
+
+    fn request_avatar(&self, media: &dyn MediaCache) {
+        request_reader_avatar(self, media);
+    }
+}
+
+impl RowItem for Arc<RosterMember> {
+    fn item_id(&self) -> &str {
+        self.user_id.as_str()
+    }
+
+    fn request_avatar(&self, media: &dyn MediaCache) {
+        request_mention_avatar(self, media);
+    }
+}
+
+impl RowItem for InviteeRow {
+    fn item_id(&self) -> &str {
+        self.person.user_id.as_ref()
+    }
+
+    fn request_avatar(&self, media: &dyn MediaCache) {
+        request_invitee_avatar(self, media);
+    }
+}
+
+impl RowItem for SpaceIndexRow {
+    fn item_id(&self) -> &str {
+        self.child.id.as_ref()
+    }
+
+    fn request_avatar(&self, media: &dyn MediaCache) {
+        request_space_child_avatar(self, media);
+    }
+}
+
+pub fn apply_rows<S: RowItem, T: Clone + PartialEq + 'static>(
     model: &VecModel<T>,
-    rows: &[Arc<Reader>],
-    previous: &[Arc<Reader>],
+    items: &[S],
+    previous: &[S],
     media: &dyn MediaCache,
-    convert: &dyn Fn(&Arc<Reader>) -> T,
+    convert: &dyn Fn(&S) -> T,
     get_id: &dyn Fn(&T) -> &str,
 ) {
-    for reader in rows {
-        request_reader_avatar(reader, media);
+    for item in items {
+        item.request_avatar(media);
     }
-    apply_reconcile(
-        model,
-        rows,
-        previous,
-        &|reader| reader.user_id.as_str(),
-        convert,
-        get_id,
-    );
+    apply_reconcile(model, items, previous, &S::item_id, convert, get_id);
+}
+
+pub fn rows_to_redo<'a, T>(
+    shown: Option<(&'a Arc<[T]>, usize)>,
+    rows: &Arc<[T]>,
+    avatars_ready: usize,
+) -> Option<&'a [T]> {
+    let rows_changed = shown.is_none_or(|(shown, _)| !Arc::ptr_eq(shown, rows));
+    let avatars_landed = shown.is_some_and(|(_, ready)| ready != avatars_ready);
+    if !rows_changed && !avatars_landed {
+        return None;
+    }
+    Some(
+        shown
+            .filter(|_| !avatars_landed)
+            .map_or(&[] as &[_], |(shown, _)| shown.as_ref()),
+    )
 }
 
 struct KeyedTile<'a> {
@@ -857,88 +908,6 @@ pub fn apply_call_tiles<T: Clone + PartialEq + 'static>(
         &|keyed| keyed.key.as_str(),
         &|keyed| convert(keyed.tile),
         get_key,
-    );
-}
-
-pub fn apply_mention_rows<T: Clone + PartialEq + 'static>(
-    model: &VecModel<T>,
-    rows: &[Arc<RosterMember>],
-    previous: &[Arc<RosterMember>],
-    media: &dyn MediaCache,
-    convert: &dyn Fn(&Arc<RosterMember>) -> T,
-    get_id: &dyn Fn(&T) -> &str,
-) {
-    for member in rows {
-        request_mention_avatar(member, media);
-    }
-    apply_reconcile(
-        model,
-        rows,
-        previous,
-        &|member| member.user_id.as_str(),
-        convert,
-        get_id,
-    );
-}
-
-pub fn apply_invitee_rows<T: Clone + PartialEq + 'static>(
-    model: &VecModel<T>,
-    rows: &[InviteeRow],
-    previous: &[InviteeRow],
-    media: &dyn MediaCache,
-    convert: &dyn Fn(&InviteeRow) -> T,
-    get_id: &dyn Fn(&T) -> &str,
-) {
-    for row in rows {
-        request_invitee_avatar(row, media);
-    }
-    apply_reconcile(
-        model,
-        rows,
-        previous,
-        &|row| row.person.user_id.as_ref(),
-        convert,
-        get_id,
-    );
-}
-
-impl SameItem for InviteeRow {
-    fn same_item(&self, other: &Self) -> bool {
-        self == other
-    }
-}
-
-impl SameItem for Arc<RosterMember> {
-    fn same_item(&self, other: &Self) -> bool {
-        Arc::ptr_eq(self, other) || **self == **other
-    }
-}
-
-fn roster_row_id(row: &RosterRow) -> &str {
-    match row {
-        RosterRow::Member(member) => &member.user_id,
-        RosterRow::InvitedHeading => INVITED_HEADING_ROW,
-    }
-}
-
-pub fn apply_space_children<T: Clone + PartialEq + 'static>(
-    model: &VecModel<T>,
-    rows: &[SpaceIndexRow],
-    previous: &[SpaceIndexRow],
-    media: &dyn MediaCache,
-    convert: &dyn Fn(&SpaceIndexRow) -> T,
-    get_id: &dyn Fn(&T) -> &str,
-) {
-    for row in rows {
-        request_space_child_avatar(row, media);
-    }
-    apply_reconcile(
-        model,
-        rows,
-        previous,
-        &|row| row.child.id.as_ref(),
-        convert,
-        get_id,
     );
 }
 

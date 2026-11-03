@@ -48,30 +48,15 @@ use super::present::{
 };
 #[cfg(feature = "demo")]
 use super::props::EnumProp;
-use super::props::{BoolProp, IntProp, StringProp, UiProps};
+use super::props::{BoolProp, ImageProp, IntProp, StringProp, UiProps};
 use super::router::{DraftVerdict, EditedRow, EditedText};
 use super::schema::{
-    account_activities, account_steps, attachment_kinds, audio_kinds, auth_stages,
-    body_line_fields, body_piece_fields, bool_props, call_cameras, call_connection_fields,
-    call_device_fields, call_device_kinds, call_device_statuses, call_device_troubles, call_hands,
-    call_link_states, call_mics, call_notices, call_offers, call_person_fields, call_phases,
-    call_reactions, call_refusals, call_screen_refusals, call_screens, call_tile_fields,
-    call_tile_marks, child_accesses, connection_states, create_room_statuses, decryption_failures,
-    deliveries, device_trusts, direct_chats, emoji_arts, encryption_activities,
-    encryption_standings, encryption_steps, enum_props, identity_alert_kinds, identity_trusts,
-    int_props, invite_answers, invite_kinds, invitee_fields, invitee_states, log_levels,
-    log_line_fields, login_activities, login_methods, login_phases, media_failures, media_states,
-    member_roles, member_row_fields, member_row_kinds, message_fields, message_kinds, model_props,
-    notify_modes, pack_cell_fields, pack_origins, pack_row_fields, pack_surfaces, pack_tab_fields,
-    pending_moderations, people_search_statuses, poll_answer_fields, poll_phases, presence_lines,
-    preview_kinds, preview_troubles, reaction_fields, reaction_sends, reactor_fields,
-    readers_statuses, recovery_statuses, removal_kinds, room_accesses, room_call_marks,
-    room_fields, room_info_placements, room_kinds, room_memberships, room_preview_statuses,
-    room_row_kinds, room_scopes, roster_statuses, send_states, service_kinds, sheet_previews,
-    shield_reasons, shields, simple_callbacks, source_encryptions, source_statuses,
-    space_child_fields, space_fields, space_index_statuses, spoiler_states, string_props,
-    test_phases, timeline_states, upgrade_links, user_device_fields, user_message_kinds,
-    verification_activities, verification_phases, verify_offers,
+    body_line_fields, body_piece_fields, bool_props, call_connection_fields, call_device_fields,
+    call_person_fields, call_tile_fields, enum_props, image_props, int_props, invitee_fields,
+    log_line_fields, member_row_fields, message_fields, model_props, pack_cell_fields,
+    pack_row_fields, pack_tab_fields, poll_answer_fields, reaction_fields, reactor_fields,
+    room_fields, simple_callbacks, slint_enums, space_child_fields, space_fields, string_props,
+    user_device_fields,
 };
 use super::session::active_models;
 use super::video::{self, millis_to_duration};
@@ -248,116 +233,24 @@ fn enum_value(value: &impl SlintEnum) -> Value {
 }
 
 macro_rules! impl_slint_enum {
-    ($src:ident $name:literal;
+    ($src:ident $dst:ident;
         $($rust:ident $(($($p:tt)*))? $({$($b:tt)*})? $ui:ident $lit:literal;)*) => {
         impl SlintEnum for $src {
             fn slint(&self) -> (&'static str, &'static str) {
-                ($name, match self { $($src::$rust $(($($p)*))? $({$($b)*})? => $lit,)* })
+                (stringify!($dst), match self { $($src::$rust $(($($p)*))? $({$($b)*})? => $lit,)* })
             }
         }
     };
 }
 
-login_phases!(impl_slint_enum LoginStep "LoginPhase";);
-login_activities!(impl_slint_enum LoginActivity "LoginActivity";);
-login_methods!(impl_slint_enum LoginMethod "LoginMethodKind";);
-connection_states!(impl_slint_enum ConnectionStatus "ConnectionState";);
-timeline_states!(impl_slint_enum TimelineStatus "TimelineState";);
-verification_phases!(impl_slint_enum VerifyStep "VerificationPhase";);
-verification_activities!(impl_slint_enum VerificationActivity "VerificationActivity";);
-user_message_kinds!(impl_slint_enum UserMessageKind "UserMessageKind";);
-media_states!(impl_slint_enum MediaState "MediaState";);
-send_states!(impl_slint_enum SendState "SendState";);
-reaction_sends!(impl_slint_enum ReactionSend "ReactionSend";);
-emoji_arts!(impl_slint_enum EmojiArt "EmojiArt";);
-spoiler_states!(impl_slint_enum SpoilerState "SpoilerState";);
-deliveries!(impl_slint_enum Delivery "Delivery";);
-shields!(impl_slint_enum Shield "Shield";);
-shield_reasons!(impl_slint_enum ShieldReason "ShieldReason";);
-decryption_failures!(impl_slint_enum DecryptionFailure "DecryptionFailure";);
-media_failures!(impl_slint_enum MediaFailureKind "MediaFailure";);
-message_kinds!(impl_slint_enum MessageKind "MessageKind";);
-poll_phases!(impl_slint_enum PollPhase "PollPhase";);
-attachment_kinds!(impl_slint_enum AttachmentKind "AttachmentKind";);
-room_scopes!(impl_slint_enum RoomScope "RoomScope";);
-space_index_statuses!(impl_slint_enum SpaceIndexStatus "SpaceIndexStatus";);
-room_preview_statuses!(impl_slint_enum RoomPreviewSheet "RoomPreviewStatus";);
-source_statuses!(impl_slint_enum SourceState "SourceStatus";);
-readers_statuses!(impl_slint_enum ReadersStatus "ReadersStatus";);
-source_encryptions!(impl_slint_enum SourceEncryption "SourceEncryption";);
-child_accesses!(impl_slint_enum ChildAccess "ChildAccess";);
-notify_modes!(impl_slint_enum NotifyMode "NotifyMode";);
-member_roles!(impl_slint_enum MemberRole "MemberRole";);
-member_row_kinds!(impl_slint_enum MemberRowKind "MemberRowKind";);
-room_row_kinds!(impl_slint_enum RoomRowKind "RoomRowKind";);
-room_call_marks!(impl_slint_enum RoomCallMark "RoomCallMark";);
-call_offers!(impl_slint_enum CallOfferMark "CallOffer";);
-sheet_previews!(impl_slint_enum SheetPreviewMark "CallSheetPreview";);
-test_phases!(impl_slint_enum TestPhaseMark "CallTestPhase";);
-preview_troubles!(impl_slint_enum PreviewTrouble "CallPreviewTrouble";);
-call_refusals!(impl_slint_enum JoinRefusal "CallRefusal";);
-call_phases!(impl_slint_enum CallPhase "CallPhase";);
-call_link_states!(impl_slint_enum LinkView "CallLinkState";);
-call_mics!(impl_slint_enum MicrophoneView "CallMic";);
-call_cameras!(impl_slint_enum CameraView "CallCamera";);
-call_screens!(impl_slint_enum CallScreenMark "CallScreen";);
-call_hands!(impl_slint_enum HandView "CallHand";);
-call_reactions!(impl_slint_enum ReactionView "CallReaction";);
-call_screen_refusals!(impl_slint_enum ScreenRefusal "CallScreenRefusal";);
-call_tile_marks!(impl_slint_enum CallTileMark "CallTileState";);
-call_device_kinds!(impl_slint_enum DeviceKind "CallDeviceKind";);
-call_device_statuses!(impl_slint_enum DeviceStatus "CallDeviceStatus";);
-call_device_troubles!(impl_slint_enum DeviceTrouble "CallDeviceTrouble";);
-call_notices!(impl_slint_enum CallNoticeMark "CallNotice";);
-roster_statuses!(impl_slint_enum RosterStatus "RosterStatus";);
-room_info_placements!(impl_slint_enum RoomInfoPlacement "RoomInfoPlacement";);
-pack_surfaces!(impl_slint_enum PackSurface "PackSurface";);
-pack_origins!(impl_slint_enum PackOrigin "PackOrigin";);
-room_memberships!(impl_slint_enum RoomMembership "RoomMembership";);
-direct_chats!(impl_slint_enum DirectChat "DirectChat";);
-upgrade_links!(impl_slint_enum UpgradeLink "UpgradeLink";);
-invite_kinds!(impl_slint_enum InviteKind "InviteKind";);
-removal_kinds!(impl_slint_enum RemovalKind "RemovalKind";);
-invite_answers!(impl_slint_enum PendingAnswer "InviteAnswer";);
-pending_moderations!(impl_slint_enum PendingModeration "Moderation";);
-identity_trusts!(impl_slint_enum IdentityTrust "IdentityTrust";);
-verify_offers!(impl_slint_enum VerifyOffer "VerifyOffer";);
-device_trusts!(impl_slint_enum DeviceTrust "DeviceTrust";);
-presence_lines!(impl_slint_enum PresenceLine "PresenceLine";);
-identity_alert_kinds!(impl_slint_enum IdentityAlertKind "IdentityAlertKind";);
-encryption_standings!(impl_slint_enum Standing "EncryptionStanding";);
-recovery_statuses!(impl_slint_enum Recovery "RecoveryStatus";);
-encryption_steps!(impl_slint_enum EncryptionStep "EncryptionStep";);
-encryption_activities!(impl_slint_enum EncryptionActivity "EncryptionActivity";);
-auth_stages!(impl_slint_enum AuthStage "AuthStage";);
-account_steps!(impl_slint_enum AccountStep "AccountStep";);
-account_activities!(impl_slint_enum AccountActivity "AccountActivity";);
-preview_kinds!(impl_slint_enum MessagePreviewKind "PreviewKind";);
-audio_kinds!(impl_slint_enum AudioKind "AudioKind";);
-service_kinds!(impl_slint_enum ServiceKind "ServiceKind";);
-log_levels!(impl_slint_enum LogLevel "LogLevel";);
-room_kinds!(impl_slint_enum RoomKind "RoomKind";);
-room_accesses!(impl_slint_enum RoomAccess "RoomAccess";);
-create_room_statuses!(impl_slint_enum CreateRoomStatus "CreateRoomStatus";);
-people_search_statuses!(impl_slint_enum PeopleSearchStatus "PeopleSearchStatus";);
-invitee_states!(impl_slint_enum InviteeState "InviteeState";);
+slint_enums!(impl_slint_enum);
 
 fn string_arg(args: &[Value], index: usize) -> String {
-    args.get(index)
-        .and_then(|v| match v {
-            Value::String(s) => Some(s.to_string()),
-            _ => None,
-        })
-        .unwrap_or_default()
+    text_of(args.get(index)).to_owned()
 }
 
 fn bool_arg(args: &[Value], index: usize) -> bool {
-    args.get(index)
-        .and_then(|v| match v {
-            Value::Bool(b) => Some(*b),
-            _ => None,
-        })
-        .unwrap_or_default()
+    flag_of(args.get(index))
 }
 
 fn usize_arg(args: &[Value], index: usize) -> Option<usize> {
@@ -393,12 +286,7 @@ fn struct_arg(args: &[Value], index: usize) -> Option<&Struct> {
 }
 
 fn flag(s: &Struct, name: &str) -> bool {
-    s.get_field(name)
-        .and_then(|v| match v {
-            Value::Bool(b) => Some(*b),
-            _ => None,
-        })
-        .unwrap_or_default()
+    flag_of(s.get_field(name))
 }
 
 fn strings(s: &Struct, name: &str) -> Vec<String> {
@@ -409,12 +297,7 @@ fn strings(s: &Struct, name: &str) -> Vec<String> {
 }
 
 fn field(s: &Struct, name: &str) -> String {
-    s.get_field(name)
-        .and_then(|v| match v {
-            Value::String(s) => Some(s.to_string()),
-            _ => None,
-        })
-        .unwrap_or_default()
+    text_of(s.get_field(name)).to_owned()
 }
 
 fn number(s: &Struct, name: &str) -> i32 {
@@ -437,6 +320,26 @@ fn bind_action(
     handler: impl Fn(&[Value]) -> Value + 'static,
 ) -> Result<()> {
     bind(inst, callback::GLOBAL, name, handler)
+}
+
+fn bind_void(
+    inst: &ComponentInstance,
+    name: &str,
+    handler: impl Fn(&[Value]) + 'static,
+) -> Result<()> {
+    bind_action(inst, name, move |args| {
+        handler(args);
+        Value::Void
+    })
+}
+
+fn seen_args(args: &[Value]) -> (String, i32, i32, bool) {
+    (
+        string_arg(args, 0),
+        int_arg(args, 1).unwrap_or_default(),
+        int_arg(args, 2).unwrap_or_default(),
+        bool_arg(args, 3),
+    )
 }
 
 macro_rules! bind_interpreted_callbacks {
@@ -479,10 +382,7 @@ macro_rules! bind_interpreted_callbacks {
     (@one $inst:expr, $main:expr, $tx:ident, $lit:literal, $fn:ident, room_key) => {{
         let tx = $tx.clone();
         let weak = $main.as_weak();
-        bind_action($inst, $lit, move |_args| {
-            router::$fn(&tx, selected_room_key::<InterpretedBackend>(&weak));
-            Value::Void
-        })
+        bind_void($inst, $lit, move |_args| router::$fn(&tx, selected_room_key::<InterpretedBackend>(&weak)))
     }};
     (@one $inst:expr, $main:expr, $tx:ident, $lit:literal, $fn:ident,
         request($($field:ident $name:literal $field_kind:ident),*)) => {{
@@ -509,14 +409,11 @@ macro_rules! bind_interpreted_callbacks {
     }};
     (@unit $inst:expr, $tx:ident, $lit:literal, $fn:ident) => {{
         let tx = $tx.clone();
-        bind_action($inst, $lit, move |_args| { router::$fn(&tx); Value::Void })
+        bind_void($inst, $lit, move |_args| router::$fn(&tx))
     }};
     (@string $inst:expr, $tx:ident, $lit:literal, $fn:ident) => {{
         let tx = $tx.clone();
-        bind_action($inst, $lit, move |args| {
-            router::$fn(&tx, string_arg(args, 0));
-            Value::Void
-        })
+        bind_void($inst, $lit, move |args| router::$fn(&tx, string_arg(args, 0)))
     }};
     (@field $s:ident $name:literal text) => { field($s, $name) };
     (@field $s:ident $name:literal flag) => { flag($s, $name) };
@@ -527,6 +424,22 @@ macro_rules! bind_interpreted_callbacks {
 macro_rules! impl_enum_setters {
     ($($v:ident $fn:ident($ty:ty) $g:ident $gname:literal $lit:literal $s:ident $get:ident;)*) => {
         $( fn $fn(&self, value: $ty) { set_view(self, $gname, $lit, enum_value(&value)); } )*
+    };
+}
+
+macro_rules! impl_image_setter {
+    ($($v:ident $g:ident $gname:literal
+        $image:literal $set_image:ident $has:literal $set_has:ident;)*) => {
+        fn set_image(&self, prop: ImageProp, image: Option<Image>) {
+            let (global, shown, has) = match prop { $(ImageProp::$v => ($gname, $image, $has),)* };
+            match image {
+                Some(image) => {
+                    set_global(self, global, shown, Value::Image(image));
+                    set_global(self, global, has, Value::Bool(true));
+                }
+                None => set_global(self, global, has, Value::Bool(false)),
+            }
+        }
     };
 }
 
@@ -631,85 +544,7 @@ impl UiProps for ComponentInstance {
         variant_of(value.as_ref()).into()
     }
 
-    fn apply_user_avatar(&self, avatar: Option<slint::Image>) {
-        match avatar {
-            Some(img) => {
-                set_global(self, "SessionView", "user-avatar", Value::Image(img));
-                set_global(self, "SessionView", "user-has-avatar", Value::Bool(true));
-            }
-            None => set_global(self, "SessionView", "user-has-avatar", Value::Bool(false)),
-        }
-    }
-
-    fn apply_attachment_preview(&self, preview: Option<slint::Image>) {
-        match preview {
-            Some(img) => {
-                set_global(self, "AttachmentView", "preview", Value::Image(img));
-                set_global(self, "AttachmentView", "has-preview", Value::Bool(true));
-            }
-            None => set_global(self, "AttachmentView", "has-preview", Value::Bool(false)),
-        }
-    }
-
-    fn apply_selected_room_avatar(&self, avatar: Option<slint::Image>) {
-        match avatar {
-            Some(img) => {
-                set_global(self, "RoomView", "selected-room-avatar", Value::Image(img));
-                set_global(
-                    self,
-                    "RoomView",
-                    "selected-room-has-avatar",
-                    Value::Bool(true),
-                );
-            }
-            None => set_global(
-                self,
-                "RoomView",
-                "selected-room-has-avatar",
-                Value::Bool(false),
-            ),
-        }
-    }
-
-    fn apply_room_info_avatar(&self, avatar: Option<slint::Image>) {
-        match avatar {
-            Some(img) => {
-                set_global(self, "RoomInfoView", "avatar", Value::Image(img));
-                set_global(self, "RoomInfoView", "has-avatar", Value::Bool(true));
-            }
-            None => set_global(self, "RoomInfoView", "has-avatar", Value::Bool(false)),
-        }
-    }
-
-    fn apply_ring_avatar(&self, avatar: Option<slint::Image>) {
-        match avatar {
-            Some(img) => {
-                set_global(self, "CallView", "ring-avatar", Value::Image(img));
-                set_global(self, "CallView", "ring-has-avatar", Value::Bool(true));
-            }
-            None => set_global(self, "CallView", "ring-has-avatar", Value::Bool(false)),
-        }
-    }
-
-    fn apply_call_preview(&self, frame: Option<slint::Image>) {
-        match frame {
-            Some(img) => {
-                set_global(self, "CallView", "sheet-preview-frame", Value::Image(img));
-                set_global(
-                    self,
-                    "CallView",
-                    "sheet-preview-has-frame",
-                    Value::Bool(true),
-                );
-            }
-            None => set_global(
-                self,
-                "CallView",
-                "sheet-preview-has-frame",
-                Value::Bool(false),
-            ),
-        }
-    }
+    image_props!(impl_image_setter);
 
     fn apply_room_info_topic(&self, topic: StyledText) {
         set_global(
@@ -718,46 +553,6 @@ impl UiProps for ComponentInstance {
             "topic-styled",
             Value::StyledText(topic),
         );
-    }
-
-    fn apply_user_info_avatar(&self, avatar: Option<slint::Image>) {
-        match avatar {
-            Some(img) => {
-                set_global(self, "UserInfoView", "avatar", Value::Image(img));
-                set_global(self, "UserInfoView", "has-avatar", Value::Bool(true));
-            }
-            None => set_global(self, "UserInfoView", "has-avatar", Value::Bool(false)),
-        }
-    }
-
-    fn apply_invite_avatar(&self, avatar: Option<slint::Image>) {
-        match avatar {
-            Some(img) => {
-                set_global(self, "InviteView", "avatar", Value::Image(img));
-                set_global(self, "InviteView", "has-avatar", Value::Bool(true));
-            }
-            None => set_global(self, "InviteView", "has-avatar", Value::Bool(false)),
-        }
-    }
-
-    fn apply_removal_avatar(&self, avatar: Option<slint::Image>) {
-        match avatar {
-            Some(img) => {
-                set_global(self, "RemovalView", "avatar", Value::Image(img));
-                set_global(self, "RemovalView", "has-avatar", Value::Bool(true));
-            }
-            None => set_global(self, "RemovalView", "has-avatar", Value::Bool(false)),
-        }
-    }
-
-    fn apply_room_preview_avatar(&self, avatar: Option<slint::Image>) {
-        match avatar {
-            Some(img) => {
-                set_global(self, "RoomPreviewView", "avatar", Value::Image(img));
-                set_global(self, "RoomPreviewView", "has-avatar", Value::Bool(true));
-            }
-            None => set_global(self, "RoomPreviewView", "has-avatar", Value::Bool(false)),
-        }
     }
 
     fn apply_login_messages(&self, messages: &[UserMessage]) {
@@ -871,42 +666,28 @@ fn bind_hooks(window: &ComponentInstance, hooks: WindowHooks) -> Result<()> {
         show_call_chat,
         show_main_window,
     } = hooks;
-    bind_action(window, callback::CALL_TILE_SEEN, move |args| {
-        call_tile_seen(
-            &string_arg(args, 0),
-            int_arg(args, 1).unwrap_or_default(),
-            int_arg(args, 2).unwrap_or_default(),
-            bool_arg(args, 3),
-        );
-        Value::Void
+    bind_void(window, callback::CALL_TILE_SEEN, move |args| {
+        let (feed, width, height, shown) = seen_args(args);
+        call_tile_seen(&feed, width, height, shown);
     })?;
-    bind_action(window, callback::CALL_MEDIA_SHOWN, move |args| {
+    bind_void(window, callback::CALL_MEDIA_SHOWN, move |args| {
         call_media_shown(bool_arg(args, 0));
-        Value::Void
     })?;
-    bind_action(window, callback::WATCH_MICROPHONE, move |args| {
+    bind_void(window, callback::WATCH_MICROPHONE, move |args| {
         watch_microphone(struct_arg(args, 0).is_some_and(|s| flag(s, "on")));
-        Value::Void
     })?;
-    bind_action(window, callback::WATCH_CONNECTIONS, move |args| {
+    bind_void(window, callback::WATCH_CONNECTIONS, move |args| {
         watch_connections(struct_arg(args, 0).is_some_and(|s| flag(s, "on")));
-        Value::Void
     })?;
-    bind_action(window, callback::SHOW_CALL_WINDOW, move |_| {
+    bind_void(window, callback::SHOW_CALL_WINDOW, move |_| {
         show_call_window();
-        Value::Void
     })?;
-    bind_action(window, callback::CLOSE_CALL_WINDOW, move |_| {
+    bind_void(window, callback::CLOSE_CALL_WINDOW, move |_| {
         close_call_window();
-        Value::Void
     })?;
-    bind_action(window, callback::SHOW_CALL_CHAT, move |_| {
-        show_call_chat();
-        Value::Void
-    })?;
-    bind_action(window, callback::SHOW_MAIN_WINDOW, move |_| {
+    bind_void(window, callback::SHOW_CALL_CHAT, move |_| show_call_chat())?;
+    bind_void(window, callback::SHOW_MAIN_WINDOW, move |_| {
         show_main_window();
-        Value::Void
     })
 }
 
@@ -949,7 +730,7 @@ impl UiBackend for InterpretedBackend {
         window: &ComponentInstance,
         browse: impl Fn(PackSurface, &str, i32) + 'static,
     ) {
-        let bound = bind_action(window, callback::BROWSE_PACKS, move |args| {
+        let bound = bind_void(window, callback::BROWSE_PACKS, move |args| {
             if let Some(surface) = pack_surface_named(variant_of(args.first())) {
                 browse(
                     surface,
@@ -957,7 +738,6 @@ impl UiBackend for InterpretedBackend {
                     int_arg(args, 2).unwrap_or_default(),
                 );
             }
-            Value::Void
         });
         if let Err(e) = bound {
             tracing::warn!("failed to bind the pack browsing callback: {e}");
@@ -965,9 +745,8 @@ impl UiBackend for InterpretedBackend {
     }
 
     fn bind_reveal_spoilers(window: &ComponentInstance, reveal: impl Fn(&str) + 'static) {
-        let bound = bind_action(window, callback::REVEAL_SPOILERS, move |args| {
+        let bound = bind_void(window, callback::REVEAL_SPOILERS, move |args| {
             reveal(&string_arg(args, 0));
-            Value::Void
         });
         if let Err(e) = bound {
             tracing::warn!("failed to bind the spoiler reveal callback: {e}");
@@ -984,14 +763,9 @@ impl UiBackend for InterpretedBackend {
         window: &ComponentInstance,
         seen: impl Fn(&str, i32, i32, bool) + 'static,
     ) {
-        let bound = bind_action(window, callback::CALL_PREVIEW_SEEN, move |args| {
-            seen(
-                &string_arg(args, 0),
-                int_arg(args, 1).unwrap_or_default(),
-                int_arg(args, 2).unwrap_or_default(),
-                bool_arg(args, 3),
-            );
-            Value::Void
+        let bound = bind_void(window, callback::CALL_PREVIEW_SEEN, move |args| {
+            let (feed, width, height, shown) = seen_args(args);
+            seen(&feed, width, height, shown);
         });
         if let Err(e) = bound {
             tracing::warn!("failed to bind the camera preview callback: {e}");
@@ -1104,19 +878,17 @@ impl SlintUiAdapter {
         audio::install_commands(cmd_tx);
 
         let weak = self.instance.as_weak();
-        bind_action(&self.instance, callback::TOGGLE_AUDIO, move |_| {
+        bind_void(&self.instance, callback::TOGGLE_AUDIO, move |_| {
             if let Some(window) = weak.upgrade() {
                 audio::toggle(&window);
             }
-            Value::Void
         })?;
 
         let weak = self.instance.as_weak();
-        bind_action(&self.instance, callback::SEEK_AUDIO, move |args| {
+        bind_void(&self.instance, callback::SEEK_AUDIO, move |args| {
             if let Some(window) = weak.upgrade() {
                 audio::seek(&window, millis_to_duration(usize_arg(args, 0)));
             }
-            Value::Void
         })
     }
 
@@ -1162,11 +934,10 @@ impl SlintUiAdapter {
     }
 
     fn bind_draft_callbacks(&self) -> Result<()> {
-        bind_action(&self.instance, callback::KEEP_DRAFT, |args| {
+        bind_void(&self.instance, callback::KEEP_DRAFT, |args| {
             if let (Some(fields), Some(draft)) = (struct_arg(args, 0), args.first()) {
                 drafts::keep(field(fields, composer_draft::ROOM_ID), draft.clone());
             }
-            Value::Void
         })?;
 
         bind_action(&self.instance, callback::TAKE_DRAFT, |args| {
@@ -1177,14 +948,13 @@ impl SlintUiAdapter {
     fn bind_mention_callbacks(&self, cmd_tx: &CommandSender) -> Result<()> {
         let tx = cmd_tx.clone();
         let weak = self.instance.as_weak();
-        bind_action(&self.instance, callback::SUGGEST_MENTIONS, move |args| {
+        bind_void(&self.instance, callback::SUGGEST_MENTIONS, move |args| {
             router::suggest_mentions(
                 &tx,
                 selected_room_key::<InterpretedBackend>(&weak),
                 string_arg(args, 0),
                 recent_speakers::<InterpretedBackend>(RECENT_SPEAKERS),
             );
-            Value::Void
         })?;
 
         bind_action(&self.instance, callback::MENTION_AT, |args| {
@@ -1219,52 +989,43 @@ impl SlintUiAdapter {
     }
 
     fn bind_decode_requests(&self) -> Result<()> {
-        bind_action(&self.instance, callback::REQUEST_MEDIA, move |args| {
+        bind_void(&self.instance, callback::REQUEST_MEDIA, move |args| {
             request_media(&string_arg(args, 0));
-            Value::Void
         })?;
 
-        bind_action(&self.instance, callback::REQUEST_ROOM_AVATAR, move |args| {
+        bind_void(&self.instance, callback::REQUEST_ROOM_AVATAR, move |args| {
             request_avatar(&AvatarSlot::Room(string_arg(args, 0)));
-            Value::Void
         })?;
 
-        bind_action(&self.instance, callback::REQUEST_PACK_CELL, move |args| {
+        bind_void(&self.instance, callback::REQUEST_PACK_CELL, move |args| {
             request_pack_cell(&string_arg(args, 0));
-            Value::Void
         })?;
 
-        bind_action(
+        bind_void(
             &self.instance,
             callback::REQUEST_CUSTOM_EMOJI,
-            move |args| {
-                request_custom_emoji(&string_arg(args, 0));
-                Value::Void
-            },
+            move |args| request_custom_emoji(&string_arg(args, 0)),
         )?;
 
         let weak = self.instance.as_weak();
-        bind_action(&self.instance, callback::TOGGLE_VIDEO, move |_| {
+        bind_void(&self.instance, callback::TOGGLE_VIDEO, move |_| {
             if let Some(window) = weak.upgrade() {
                 video::toggle(&window);
             }
-            Value::Void
         })?;
 
         let weak = self.instance.as_weak();
-        bind_action(&self.instance, callback::TOGGLE_VIDEO_MUTED, move |_| {
+        bind_void(&self.instance, callback::TOGGLE_VIDEO_MUTED, move |_| {
             if let Some(window) = weak.upgrade() {
                 video::toggle_muted(&window);
             }
-            Value::Void
         })?;
 
         let weak = self.instance.as_weak();
-        bind_action(&self.instance, callback::SEEK_VIDEO, move |args| {
+        bind_void(&self.instance, callback::SEEK_VIDEO, move |args| {
             if let Some(window) = weak.upgrade() {
                 video::seek(&window, millis_to_duration(usize_arg(args, 0)));
             }
-            Value::Void
         })
     }
 
@@ -1282,25 +1043,22 @@ impl SlintUiAdapter {
         bind_simple_callbacks(&self.instance, &self.instance, cmd_tx)?;
 
         let tx = cmd_tx.clone();
-        bind_action(&self.instance, callback::MOVE_SPACE, move |args| {
+        bind_void(&self.instance, callback::MOVE_SPACE, move |args| {
             if let (Some(from), Some(to)) = (usize_arg(args, 0), usize_arg(args, 1)) {
                 router::move_space(&tx, from, to, reorder_spaces::<InterpretedBackend>);
             }
-            Value::Void
         })?;
 
         let tx = cmd_tx.clone();
-        bind_action(&self.instance, callback::DISMISS_UNSENT, move |args| {
+        bind_void(&self.instance, callback::DISMISS_UNSENT, move |args| {
             if let Some(submission) = int_arg(args, 0) {
                 router::dismiss_unsent(&tx, submission);
             }
-            Value::Void
         })?;
 
         let tx = cmd_tx.clone();
-        bind_action(&self.instance, callback::SET_ROOM_NOTIFY, move |args| {
+        bind_void(&self.instance, callback::SET_ROOM_NOTIFY, move |args| {
             router::set_room_notify(&tx, string_arg(args, 0), variant_of(args.get(1)));
-            Value::Void
         })?;
 
         let tx = cmd_tx.clone();
@@ -1325,26 +1083,23 @@ impl SlintUiAdapter {
         })?;
 
         let tx = cmd_tx.clone();
-        bind_action(&self.instance, callback::TOGGLE_REACTION, move |args| {
+        bind_void(&self.instance, callback::TOGGLE_REACTION, move |args| {
             router::toggle_reaction(&tx, string_arg(args, 0), string_arg(args, 1));
-            Value::Void
         })?;
 
         let tx = cmd_tx.clone();
-        bind_action(&self.instance, callback::REACT_WITH_EMOTE, move |args| {
+        bind_void(&self.instance, callback::REACT_WITH_EMOTE, move |args| {
             router::react_with_emote(
                 &tx,
                 string_arg(args, 0),
                 string_arg(args, 1),
                 string_arg(args, 2),
             );
-            Value::Void
         })?;
 
         let tx = cmd_tx.clone();
-        bind_action(&self.instance, callback::SET_PACK_GLOBAL, move |args| {
+        bind_void(&self.instance, callback::SET_PACK_GLOBAL, move |args| {
             router::set_pack_global(&tx, string_arg(args, 0), bool_arg(args, 1));
-            Value::Void
         })?;
 
         self.bind_edit_callbacks(cmd_tx)?;
@@ -1355,7 +1110,7 @@ impl SlintUiAdapter {
 
         let scroll_tx = scroll_tx.clone();
         let weak = self.instance.as_weak();
-        bind_action(
+        bind_void(
             &self.instance,
             callback::SCROLL_POSITION_CHANGED,
             move |args| {
@@ -1367,7 +1122,6 @@ impl SlintUiAdapter {
                     bool_arg(args, 0),
                     unread_below::<InterpretedBackend>(int_arg(args, 1).unwrap_or_default()),
                 );
-                Value::Void
             },
         )?;
 
@@ -1381,44 +1135,34 @@ impl SlintUiAdapter {
         attention_tx: &watch::Sender<WindowAttention>,
     ) -> Result<()> {
         let visibility_tx = visibility_tx.clone();
-        bind_action(
+        bind_void(
             &self.instance,
             callback::TIMELINE_VISIBILITY_CHANGED,
-            move |args| {
-                router::timeline_visibility(&visibility_tx, bool_arg(args, 0));
-                Value::Void
-            },
+            move |args| router::timeline_visibility(&visibility_tx, bool_arg(args, 0)),
         )?;
 
         let composer_tx = composer_tx.clone();
-        bind_action(&self.instance, callback::COMPOSER_CHANGED, move |args| {
+        bind_void(&self.instance, callback::COMPOSER_CHANGED, move |args| {
             router::composer_changed(
                 &composer_tx,
                 string_arg(args, 0),
                 bool_arg(args, 1),
                 int_arg(args, 2).unwrap_or_default(),
             );
-            Value::Void
         })?;
 
         let focus_tx = attention_tx.clone();
-        bind_action(
+        bind_void(
             &self.instance,
             callback::WINDOW_FOCUS_CHANGED,
-            move |args| {
-                router::window_focus(&focus_tx, bool_arg(args, 0));
-                Value::Void
-            },
+            move |args| router::window_focus(&focus_tx, bool_arg(args, 0)),
         )?;
 
         let activity_tx = attention_tx.clone();
-        bind_action(
+        bind_void(
             &self.instance,
             callback::USER_ACTIVITY_CHANGED,
-            move |args| {
-                router::user_activity(&activity_tx, bool_arg(args, 0));
-                Value::Void
-            },
+            move |args| router::user_activity(&activity_tx, bool_arg(args, 0)),
         )
     }
 
@@ -1532,86 +1276,57 @@ fn setup_emoji_store(inst: &ComponentInstance) -> Result<()> {
 
     let weak = inst.as_weak();
     let layout_columns = Rc::clone(&columns);
-    inst.set_global_callback(
-        emoji_store::NAME,
-        emoji_store::LAYOUT,
-        move |args: &[Value]| {
-            let count = int_arg(args, 0)
-                .and_then(|count| usize::try_from(count).ok())
-                .unwrap_or(1)
-                .max(1);
-            layout_columns.set(count);
-            let (rows, header_rows) = laid_out
-                .borrow_mut()
-                .entry(count)
-                .or_insert_with(|| {
-                    let laid = emoji::rows(count);
-                    (
-                        emoji_rows_to_value(&laid.rows),
-                        header_rows_to_value(&laid.header_rows),
-                    )
-                })
-                .clone();
-            if let Some(inst) = weak.upgrade() {
-                set_global(&inst, emoji_store::NAME, emoji_store::ROWS, rows);
-                set_global(
-                    &inst,
-                    emoji_store::NAME,
-                    emoji_store::HEADER_ROWS,
-                    header_rows,
-                );
-            }
-            Value::Void
-        },
-    )
-    .map_err(|e| AppError::Ui(format!("{e:?}")))?;
+    bind(inst, emoji_store::NAME, emoji_store::LAYOUT, move |args| {
+        let count = int_arg(args, 0)
+            .and_then(|count| usize::try_from(count).ok())
+            .unwrap_or(1)
+            .max(1);
+        layout_columns.set(count);
+        let (rows, header_rows) = laid_out
+            .borrow_mut()
+            .entry(count)
+            .or_insert_with(|| {
+                let laid = emoji::rows(count);
+                (
+                    emoji_rows_to_value(&laid.rows),
+                    header_rows_to_value(&laid.header_rows),
+                )
+            })
+            .clone();
+        if let Some(inst) = weak.upgrade() {
+            set_global(&inst, emoji_store::NAME, emoji_store::ROWS, rows);
+            set_global(
+                &inst,
+                emoji_store::NAME,
+                emoji_store::HEADER_ROWS,
+                header_rows,
+            );
+        }
+        Value::Void
+    })?;
 
     let weak = inst.as_weak();
-    inst.set_global_callback(
-        emoji_store::NAME,
-        emoji_store::SEARCH,
-        move |args: &[Value]| {
-            let rows = emoji::result_rows(&string_arg(args, 0), columns.get());
-            if let Some(inst) = weak.upgrade() {
-                set_global(
-                    &inst,
-                    emoji_store::NAME,
-                    emoji_store::RESULT_ROWS,
-                    emoji_rows_to_value(&rows),
-                );
-            }
-            Value::Void
-        },
-    )
-    .map_err(|e| AppError::Ui(format!("{e:?}")))?;
+    bind(inst, emoji_store::NAME, emoji_store::SEARCH, move |args| {
+        let rows = emoji::result_rows(&string_arg(args, 0), columns.get());
+        if let Some(inst) = weak.upgrade() {
+            set_global(
+                &inst,
+                emoji_store::NAME,
+                emoji_store::RESULT_ROWS,
+                emoji_rows_to_value(&rows),
+            );
+        }
+        Value::Void
+    })?;
 
-    inst.set_global_callback(
-        emoji_store::NAME,
-        emoji_store::INSERT,
-        move |args: &[Value]| {
-            let text = string_arg(args, 0);
-            let offset = args
-                .get(1)
-                .and_then(|v| match v {
-                    Value::Number(n)
-                        if n.is_finite()
-                            && n.fract() == 0.0
-                            && *n >= f64::from(i32::MIN)
-                            && *n <= f64::from(i32::MAX) =>
-                    {
-                        n.to_string().parse().ok()
-                    }
-                    _ => None,
-                })
-                .unwrap_or_default();
-            let glyph = string_arg(args, 2);
-            let (inserted, caret) = emoji::insert_at(&text, offset, &glyph);
-            text_splice_value(inserted, caret)
-        },
-    )
-    .map_err(|e| AppError::Ui(format!("{e:?}")))?;
-
-    Ok(())
+    bind(inst, emoji_store::NAME, emoji_store::INSERT, |args| {
+        let (inserted, caret) = emoji::insert_at(
+            &string_arg(args, 0),
+            int_arg(args, 1).unwrap_or_default(),
+            &string_arg(args, 2),
+        );
+        text_splice_value(inserted, caret)
+    })
 }
 
 fn draft_verdict_value(verdict: &DraftVerdict) -> Value {

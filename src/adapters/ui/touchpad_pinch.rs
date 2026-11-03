@@ -9,11 +9,7 @@ use std::time::Duration;
 
 use slint::ComponentHandle;
 #[cfg(target_os = "linux")]
-use slint::winit_030::WinitWindowAccessor;
-#[cfg(target_os = "linux")]
-use slint::winit_030::winit::raw_window_handle::{HasDisplayHandle, RawDisplayHandle};
-#[cfg(target_os = "linux")]
-use slint::{Timer, TimerMode, Weak, Window};
+use slint::{Timer, TimerMode, Weak};
 #[cfg(target_os = "linux")]
 use wayland_client::backend::Backend;
 #[cfg(target_os = "linux")]
@@ -35,6 +31,8 @@ use wayland_protocols::wp::pointer_gestures::zv1::client::zwp_pointer_gestures_v
 
 use super::backend::UiBackend;
 use super::props::{IntProp, UiProps};
+#[cfg(target_os = "linux")]
+use super::wayland::wayland_display;
 
 #[cfg(target_os = "linux")]
 const GESTURES_VERSION: u32 = 1;
@@ -226,21 +224,6 @@ fn open(display: *mut c_void) -> Watch {
         poll: Timer::default(),
         published: 0,
     })))
-}
-
-#[cfg(target_os = "linux")]
-fn wayland_display(window: &Window) -> Option<*mut c_void> {
-    let handle = window.with_winit_window(|winit| {
-        winit
-            .display_handle()
-            .ok()
-            .map(|handle| handle.as_raw())
-            .and_then(|handle| match handle {
-                RawDisplayHandle::Wayland(wayland) => Some(wayland.display.as_ptr()),
-                _ => None,
-            })
-    })??;
-    Some(handle)
 }
 
 #[cfg(target_os = "linux")]

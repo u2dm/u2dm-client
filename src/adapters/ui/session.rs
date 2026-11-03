@@ -68,6 +68,10 @@ pub fn with_session<R>(f: impl FnOnce(&mut UiSession<ActiveBackend>) -> R) -> R 
     SESSION.with_borrow_mut(f)
 }
 
+pub fn from_snapshot<T>(read: impl FnOnce(&AppViewState) -> T) -> Option<T> {
+    with_session(|session| session.snapshot.as_deref().map(read))
+}
+
 pub fn active_generation() -> i32 {
     with_session(|session| session.room.active_generation())
 }

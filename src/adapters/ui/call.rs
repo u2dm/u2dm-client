@@ -3,7 +3,7 @@ use std::collections::HashSet;
 use std::slice;
 use std::time::Duration;
 
-use slint::{ComponentHandle, Image, Model, SharedString, Timer, TimerMode, VecModel};
+use slint::{ComponentHandle, Image, SharedString, Timer, TimerMode, VecModel};
 
 use super::backend::{Models, UiBackend, UiEventContext};
 use super::decode::{AvatarSlot, load_avatar_async, peek_avatar};
@@ -14,9 +14,10 @@ use super::dto::{
 use super::fields::{CallPersonFields, CallTileFields};
 use super::notices::NoticeWords;
 use super::present::{avatar_color_index, avatar_initials};
-use super::props::{BoolProp, IntProp, StringProp, UiProps};
+use super::props::{BoolProp, ImageProp, IntProp, StringProp, UiProps};
 use super::reconcile::apply_call_tiles;
 use super::ringtone::{self, Tone};
+use super::rows::patch_rows_where;
 use super::{audio, call_video, call_window, video};
 use crate::commands::messages::UserMessageKind;
 use crate::commands::view::{
@@ -615,30 +616,24 @@ pub fn show_faces<B: UiBackend>(users: &HashSet<&str>, face: &Image) {
     }
     let models = B::models();
     for rows in [&models.call_stage, &models.call_tiles, &models.call_self] {
-        for row in 0..rows.row_count() {
-            let Some(mut entry) = rows.row_data(row) else {
-                continue;
-            };
-            if entry.screen() || entry.has_avatar() || !users.contains(entry.user_id()) {
-                continue;
-            }
-            entry.set_avatar(face.clone());
-            entry.set_has_avatar(true);
-            rows.set_row_data(row, entry);
-        }
+        patch_rows_where(
+            &**rows,
+            |entry| !entry.screen() && !entry.has_avatar() && users.contains(entry.user_id()),
+            |entry| {
+                entry.set_avatar(face.clone());
+                entry.set_has_avatar(true);
+            },
+        );
     }
     for people in [&models.call_people, &models.call_here_faces] {
-        for row in 0..people.row_count() {
-            let Some(mut entry) = people.row_data(row) else {
-                continue;
-            };
-            if entry.has_avatar() || !users.contains(entry.user_id()) {
-                continue;
-            }
-            entry.set_avatar(face.clone());
-            entry.set_has_avatar(true);
-            people.set_row_data(row, entry);
-        }
+        patch_rows_where(
+            &**people,
+            |entry| !entry.has_avatar() && users.contains(entry.user_id()),
+            |entry| {
+                entry.set_avatar(face.clone());
+                entry.set_has_avatar(true);
+            },
+        );
     }
 }
 
@@ -811,7 +806,10 @@ fn show_ring_avatar(w: &impl UiProps, ring: &RingView, media: &dyn MediaCache) {
         .room_avatar_mxc
         .as_deref()
         .and_then(|mxc| media.room_avatar_path(mxc));
-    w.apply_ring_avatar(load_avatar_async(path.as_deref(), AvatarSlot::Ring));
+    w.set_image(
+        ImageProp::RingAvatar,
+        load_avatar_async(path.as_deref(), AvatarSlot::Ring),
+    );
 }
 
 fn compose_ring<B: UiBackend>(w: &B::Window, ring: &RingView, in_call: bool) -> RingNotice {

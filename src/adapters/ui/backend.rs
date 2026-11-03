@@ -34,16 +34,16 @@ use super::handoff::follow_handoffs;
 use super::multiplex::spawn_event_multiplexer;
 use super::notices::{NoticeWords, follow_activations};
 use super::present::room_log_text;
-use super::props::{IntProp, StringProp, UiProps};
+use super::props::{ImageProp, IntProp, StringProp, UiProps};
 use super::reconcile::{
     forget_pack_avatar, pack_cell_row, pack_tab_row, reorder_rows, shows_pack_avatar,
     timeline_row_of,
 };
 use super::reduce::{dispatch_effect, is_latest_adoption, set_pack_browse};
 use super::router::EditedRow;
-use super::rows::{locate_row, patch_rows_by_id};
+use super::rows::{locate_row, patch_first, patch_rows_by_id, patch_rows_where};
 use super::schema::model_props;
-use super::session::{begin_session, with_session};
+use super::session::{begin_session, from_snapshot};
 use super::splice_model::SpliceModel;
 use super::spoilers::reveal_row;
 use super::window_events::install_window_events;
@@ -188,32 +188,8 @@ pub trait UiBackend: Sized + 'static {
         own_session_to_dto(session).into()
     }
 
-    fn with_models<R>(
-        f: impl FnOnce(
-            &SpliceModel<Self::Message>,
-            &VecModel<Self::Room>,
-            &VecModel<Self::Space>,
-            &VecModel<Self::Space>,
-        ) -> R,
-    ) -> R {
-        let models = Self::models();
-        f(
-            &models.timeline,
-            &models.rooms,
-            &models.spaces,
-            &models.subspaces,
-        )
-    }
-
     fn with_timeline<R>(f: impl FnOnce(&SpliceModel<Self::Message>) -> R) -> R {
         f(&Self::models().timeline)
-    }
-
-    fn with_pack_grid<R>(
-        f: impl FnOnce(&SpliceModel<Self::PackRow>, &VecModel<Self::PackTab>) -> R,
-    ) -> R {
-        let models = Self::models();
-        f(&models.pack_rows, &models.pack_tabs)
     }
 }
 
@@ -289,7 +265,7 @@ pub fn spawn_event_handler<B: UiBackend>(
 }
 
 pub fn reorder_spaces<B: UiBackend>(from: usize, to: usize) {
-    B::with_models(|_timeline, _rooms, spaces, _subspaces| reorder_rows(spaces, from, to));
+    reorder_rows(&B::models().spaces, from, to);
 }
 
 pub struct UiEventContext<'a, B: UiBackend> {
@@ -403,14 +379,10 @@ pub fn row_of_message<B: UiBackend>(event_id: &str, local_id: &str) -> i32 {
 }
 
 pub fn shown_room_log_text() -> String {
-    with_session(|session| {
-        session
-            .snapshot
-            .as_ref()
-            .and_then(|view| view.room_log.clone())
-    })
-    .map(|shown| room_log_text(&shown))
-    .unwrap_or_default()
+    from_snapshot(|view| view.room_log.clone())
+        .flatten()
+        .map(|shown| room_log_text(&shown))
+        .unwrap_or_default()
 }
 
 pub fn current_edited_row<B: UiBackend>(
@@ -556,24 +528,17 @@ fn patch_body_emoji<B: UiBackend>(
 ) -> bool {
     let mut patched = false;
     for line in lines.iter() {
-        let pieces = line.pieces();
-        for index in 0..pieces.row_count() {
-            let Some(mut piece) = pieces.row_data(index) else {
-                continue;
-            };
-            if piece.key() != mxc {
-                continue;
-            }
-            match art {
+        patched |= patch_rows_where(
+            &line.pieces(),
+            |piece| piece.key() == mxc,
+            |piece| match art {
                 Ok(image) => {
                     piece.set_image(image.clone());
                     piece.set_art(EmojiArt::Ready);
                 }
                 Err(_) => piece.set_art(EmojiArt::Failed),
-            }
-            pieces.set_row_data(index, piece);
-            patched = true;
-        }
+            },
+        );
     }
     patched
 }
@@ -583,64 +548,52 @@ fn patch_reaction_art<B: UiBackend>(
     key: &str,
     art: Result<&Image, DecodeFailure>,
 ) -> bool {
-    let Some(index) = reactions.iter().position(|reaction| reaction.key() == key) else {
-        return false;
-    };
-    let Some(mut reaction) = reactions.row_data(index) else {
-        return false;
-    };
-    match art {
-        Ok(image) => {
-            reaction.set_image(image.clone());
-            reaction.set_art(EmojiArt::Ready);
-        }
-        Err(_) => reaction.set_art(EmojiArt::Failed),
-    }
-    reactions.set_row_data(index, reaction);
-    true
+    patch_first(
+        reactions,
+        |reaction| reaction.key() == key,
+        |reaction| match art {
+            Ok(image) => {
+                reaction.set_image(image.clone());
+                reaction.set_art(EmojiArt::Ready);
+            }
+            Err(_) => reaction.set_art(EmojiArt::Failed),
+        },
+    )
 }
 
 fn place_pack_cell<B: UiBackend>(key: &str, art: Option<&Image>) -> Option<usize> {
     let row = pack_cell_row(key)?;
-    B::with_pack_grid(|rows, _| {
-        let entry = rows.row_data(row)?;
-        patch_pack_cell::<B>(&entry, key, art).then_some(row)
-    })
+    let entry = B::models().pack_rows.row_data(row)?;
+    patch_pack_cell::<B>(&entry, key, art).then_some(row)
 }
 
 fn patch_pack_cell<B: UiBackend>(row: &B::PackRow, key: &str, art: Option<&Image>) -> bool {
-    let cells = row.cells();
-    let Some(index) = cells.iter().position(|cell| cell.key() == key) else {
-        return false;
-    };
-    let Some(mut cell) = cells.row_data(index) else {
-        return false;
-    };
-    match art {
-        Some(art) => {
-            cell.set_image(art.clone());
-            cell.set_media_state(MediaState::Ready);
-        }
-        None => cell.set_media_state(MediaState::Failed),
-    }
-    cells.set_row_data(index, cell);
-    true
+    patch_first(
+        &row.cells(),
+        |cell| cell.key() == key,
+        |cell| match art {
+            Some(art) => {
+                cell.set_image(art.clone());
+                cell.set_media_state(MediaState::Ready);
+            }
+            None => cell.set_media_state(MediaState::Failed),
+        },
+    )
 }
 
 fn adopt_pack_icon<B: UiBackend>(pack_id: &str, image: &Image) {
     let Some(row) = pack_tab_row(pack_id) else {
         return;
     };
-    B::with_pack_grid(|_, packs| {
-        let Some(updated) = packs
-            .row_data(row)
-            .and_then(|tab| pack_with_icon::<B>(&tab, pack_id, image))
-        else {
-            return;
-        };
-        packs.remove(row);
-        packs.insert(row, updated);
-    });
+    let packs = &B::models().pack_tabs;
+    let Some(updated) = packs
+        .row_data(row)
+        .and_then(|tab| pack_with_icon::<B>(&tab, pack_id, image))
+    else {
+        return;
+    };
+    packs.remove(row);
+    packs.insert(row, updated);
 }
 
 fn pack_with_icon<B: UiBackend>(
@@ -717,19 +670,6 @@ fn apply_pack_avatars<B: UiBackend>(slots: &[AvatarSlot], art: Option<&Image>) {
     }
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, Hash)]
-enum SingleAvatar {
-    SelectedRoom,
-    RoomInfo,
-    UserInfo,
-    Invite,
-    Removal,
-    RoomPreview,
-    Ring,
-    User,
-    AttachmentPreview,
-}
-
 #[derive(Default)]
 struct AvatarTargets<'a> {
     messages: HashSet<&'a str>,
@@ -742,7 +682,7 @@ struct AvatarTargets<'a> {
     mentions: HashSet<&'a str>,
     invitees: HashSet<&'a str>,
     call_faces: HashSet<&'a str>,
-    singles: HashSet<SingleAvatar>,
+    singles: HashSet<ImageProp>,
 }
 
 fn group_slots(slots: &[AvatarSlot]) -> AvatarTargets<'_> {
@@ -781,34 +721,34 @@ fn group_slots(slots: &[AvatarSlot]) -> AvatarTargets<'_> {
                 targets.invitees.insert(user_id.as_str());
             }
             AvatarSlot::SelectedRoom => {
-                targets.singles.insert(SingleAvatar::SelectedRoom);
+                targets.singles.insert(ImageProp::SelectedRoomAvatar);
             }
             AvatarSlot::RoomInfo => {
-                targets.singles.insert(SingleAvatar::RoomInfo);
+                targets.singles.insert(ImageProp::RoomInfoAvatar);
             }
             AvatarSlot::UserInfo => {
-                targets.singles.insert(SingleAvatar::UserInfo);
+                targets.singles.insert(ImageProp::UserInfoAvatar);
             }
             AvatarSlot::Invite => {
-                targets.singles.insert(SingleAvatar::Invite);
+                targets.singles.insert(ImageProp::InviteAvatar);
             }
             AvatarSlot::Removal => {
-                targets.singles.insert(SingleAvatar::Removal);
+                targets.singles.insert(ImageProp::RemovalAvatar);
             }
             AvatarSlot::RoomPreview => {
-                targets.singles.insert(SingleAvatar::RoomPreview);
+                targets.singles.insert(ImageProp::RoomPreviewAvatar);
             }
             AvatarSlot::Ring => {
-                targets.singles.insert(SingleAvatar::Ring);
+                targets.singles.insert(ImageProp::RingAvatar);
             }
             AvatarSlot::CallFace(user_id) => {
                 targets.call_faces.insert(user_id.as_str());
             }
             AvatarSlot::User => {
-                targets.singles.insert(SingleAvatar::User);
+                targets.singles.insert(ImageProp::UserAvatar);
             }
             AvatarSlot::AttachmentPreview { .. } => {
-                targets.singles.insert(SingleAvatar::AttachmentPreview);
+                targets.singles.insert(ImageProp::AttachmentPreview);
             }
             AvatarSlot::Pack(_) => {}
         }
@@ -865,19 +805,14 @@ fn patch_reactor_avatars<B: UiBackend>(
 
 fn patch_reactor_avatar<B: UiBackend>(entry: &B::Message, user_id: &str, image: &Image) {
     for reaction in entry.reactions().iter() {
-        let faces = reaction.avatars();
-        let Some(index) = faces
-            .iter()
-            .position(|face| face.user_id() == user_id && !face.has_avatar())
-        else {
-            continue;
-        };
-        let Some(mut face) = faces.row_data(index) else {
-            continue;
-        };
-        face.set_avatar(image.clone());
-        face.set_has_avatar(true);
-        faces.set_row_data(index, face);
+        patch_first(
+            &reaction.avatars(),
+            |face| face.user_id() == user_id && !face.has_avatar(),
+            |face| {
+                face.set_avatar(image.clone());
+                face.set_has_avatar(true);
+            },
+        );
     }
 }
 
@@ -900,42 +835,25 @@ fn apply_avatar_ready<B: UiBackend>(
         && let Some(w) = weak.upgrade()
     {
         for single in &targets.singles {
-            let avatar = Some(image.clone());
-            match single {
-                SingleAvatar::User => w.apply_user_avatar(avatar),
-                SingleAvatar::AttachmentPreview => w.apply_attachment_preview(avatar),
-                SingleAvatar::SelectedRoom => w.apply_selected_room_avatar(avatar),
-                SingleAvatar::RoomInfo => w.apply_room_info_avatar(avatar),
-                SingleAvatar::UserInfo => w.apply_user_info_avatar(avatar),
-                SingleAvatar::Invite => w.apply_invite_avatar(avatar),
-                SingleAvatar::Removal => w.apply_removal_avatar(avatar),
-                SingleAvatar::RoomPreview => w.apply_room_preview_avatar(avatar),
-                SingleAvatar::Ring => w.apply_ring_avatar(avatar),
-            }
+            w.set_image(*single, Some(image.clone()));
         }
     }
-    B::with_models(|timeline, rooms, spaces, subspaces| {
-        patch_message_avatars::<B>(timeline, &targets.messages, image);
-        patch_reactor_avatars::<B>(timeline, &targets.reactors_by_message, image);
-        patch_rows_by_id(rooms, &targets.rooms, &B::Room::id, |entry| {
+    let models = B::models();
+    patch_message_avatars::<B>(&models.timeline, &targets.messages, image);
+    patch_reactor_avatars::<B>(&models.timeline, &targets.reactors_by_message, image);
+    let show_room = |entry: &mut B::Room| {
+        entry.set_avatar(image.clone());
+        entry.set_has_avatar(true);
+    };
+    patch_rows_by_id(&*models.rooms, &targets.rooms, &B::Room::id, show_room);
+    patch_rows_by_id(&*models.rooms, &targets.spaces, &B::Room::id, show_room);
+    for spaces in [&models.spaces, &models.subspaces] {
+        patch_rows_by_id(&**spaces, &targets.spaces, &B::Space::id, |entry| {
             entry.set_avatar(image.clone());
             entry.set_has_avatar(true);
         });
-        patch_rows_by_id(rooms, &targets.spaces, &B::Room::id, |entry| {
-            entry.set_avatar(image.clone());
-            entry.set_has_avatar(true);
-        });
-        patch_rows_by_id(spaces, &targets.spaces, &B::Space::id, |entry| {
-            entry.set_avatar(image.clone());
-            entry.set_has_avatar(true);
-        });
-        patch_rows_by_id(subspaces, &targets.spaces, &B::Space::id, |entry| {
-            entry.set_avatar(image.clone());
-            entry.set_has_avatar(true);
-        });
-    });
+    }
     if !targets.space_children.is_empty() {
-        let models = B::models();
         patch_rows_by_id(
             &*models.space_children,
             &targets.space_children,

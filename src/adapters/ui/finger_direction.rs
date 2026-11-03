@@ -2,16 +2,10 @@ use std::cell::Cell;
 #[cfg(target_os = "linux")]
 use std::cell::RefCell;
 #[cfg(target_os = "linux")]
-use std::ffi::c_void;
-#[cfg(target_os = "linux")]
 use std::mem::ManuallyDrop;
 use std::rc::Rc;
 
 use slint::Window;
-#[cfg(target_os = "linux")]
-use slint::winit_030::WinitWindowAccessor;
-#[cfg(target_os = "linux")]
-use slint::winit_030::winit::raw_window_handle::{HasDisplayHandle, RawDisplayHandle};
 #[cfg(target_os = "linux")]
 use wayland_client::backend::{Backend, ObjectId};
 #[cfg(target_os = "linux")]
@@ -22,6 +16,9 @@ use wayland_client::protocol::wl_registry::{self, WlRegistry};
 use wayland_client::protocol::wl_seat::{self, Capability, WlSeat};
 #[cfg(target_os = "linux")]
 use wayland_client::{Connection, Dispatch, EventQueue, Proxy, QueueHandle, WEnum};
+
+#[cfg(target_os = "linux")]
+use super::wayland::wayland_display;
 
 #[cfg(target_os = "linux")]
 const AXIS_DIRECTION_SINCE: u32 = 9;
@@ -123,21 +120,6 @@ fn open(window: &Window, inverted: &Rc<Cell<bool>>) -> Watch {
         pointers,
         connection,
     })))
-}
-
-#[cfg(target_os = "linux")]
-fn wayland_display(window: &Window) -> Option<*mut c_void> {
-    let handle = window.with_winit_window(|winit| {
-        winit
-            .display_handle()
-            .ok()
-            .map(|handle| handle.as_raw())
-            .and_then(|handle| match handle {
-                RawDisplayHandle::Wayland(wayland) => Some(wayland.display.as_ptr()),
-                _ => None,
-            })
-    })??;
-    Some(handle)
 }
 
 #[cfg(target_os = "linux")]

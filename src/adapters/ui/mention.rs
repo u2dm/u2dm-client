@@ -1,41 +1,23 @@
+use super::typed_word::{MAX_QUERY_BYTES, SPACER, TypedWord, clamped, located, sigil_word};
 use crate::domain::mention::ends_tag;
 use crate::util::saturating_i32;
 
-pub const NO_WORD: i32 = -1;
-
 const SIGIL: char = '@';
-const SPACER: &str = " ";
-const MAX_QUERY_BYTES: usize = 255;
 const ID_PUNCTUATION: &[char] = &['.', '_', '=', '-', '/', '+', ':'];
 
-pub struct MentionWord {
-    pub start: usize,
-    pub query: String,
-}
-
-pub fn mention_word(text: &str, caret: i32) -> Option<MentionWord> {
-    let caret = clamped(text, caret);
-    let before = text.get(..caret)?;
-    let start = before
-        .char_indices()
-        .rev()
-        .find(|(_, ch)| ch.is_whitespace())
-        .map_or(0, |(index, ch)| index + ch.len_utf8());
-    let query = before.get(start..)?.strip_prefix(SIGIL)?;
+pub fn mention_word(text: &str, caret: i32) -> Option<TypedWord> {
+    let (start, query) = sigil_word(text, caret, SIGIL)?;
     if query.contains(SIGIL) || query.len() > MAX_QUERY_BYTES {
         return None;
     }
-    Some(MentionWord {
+    Some(TypedWord {
         start,
         query: query.to_owned(),
     })
 }
 
 pub fn word_at(text: &str, caret: i32) -> (i32, String) {
-    match mention_word(text, caret) {
-        Some(word) => (i32::try_from(word.start).unwrap_or(NO_WORD), word.query),
-        None => (NO_WORD, String::new()),
-    }
+    located(mention_word(text, caret))
 }
 
 pub fn complete(text: &str, caret: i32, insert: &str) -> (String, i32) {
@@ -65,13 +47,5 @@ pub fn complete(text: &str, caret: i32, insert: &str) -> (String, i32) {
 
 fn is_id_char(ch: char) -> bool {
     ch.is_ascii_alphanumeric() || ID_PUNCTUATION.contains(&ch)
-}
-
-fn clamped(text: &str, caret: i32) -> usize {
-    let mut caret = usize::try_from(caret).unwrap_or(0).min(text.len());
-    while caret > 0 && !text.is_char_boundary(caret) {
-        caret -= 1;
-    }
-    caret
 }
 

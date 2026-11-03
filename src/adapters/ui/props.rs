@@ -6,7 +6,7 @@ use super::dto::{
     CallNoticeMark, CallOfferMark, CallScreenMark, PackSurface, SheetPreviewMark, TestPhaseMark,
 };
 use super::present::{IdentityAlertKind, ServiceKind, VerifyStep};
-use super::schema::{bool_props, enum_props, int_props, string_props};
+use super::schema::{bool_props, enum_props, image_props, int_props, message_props, string_props};
 use crate::app::input::CommandSender;
 use crate::commands::effects::VerificationActivity;
 use crate::commands::messages::{UserMessage, UserMessageKind};
@@ -67,9 +67,40 @@ macro_rules! enum_prop_enum {
     };
 }
 
+macro_rules! image_prop_enum {
+    ($($v:ident $g:ident $gname:literal
+        $image:literal $set_image:ident $has:literal $set_has:ident;)*) => {
+        #[derive(Clone, Copy, PartialEq, Eq, Hash)]
+        pub enum ImageProp { $($v,)* }
+    };
+}
+
+macro_rules! message_prop_enum {
+    ($($v:ident $set_kind:ident $detail:ident;)*) => {
+        #[derive(Clone, Copy)]
+        pub enum MessageProp { $($v,)* }
+    };
+}
+
+macro_rules! declare_message_setter {
+    ($($v:ident $set_kind:ident $detail:ident;)*) => {
+        fn set_message(&self, prop: MessageProp, message: &UserMessage) {
+            let detail = match prop {
+                $(MessageProp::$v => {
+                    self.$set_kind(message.kind);
+                    StringProp::$detail
+                })*
+            };
+            self.set_string(detail, SharedString::from(&message.detail));
+        }
+    };
+}
+
 string_props!(prop_enum StringProp;);
 bool_props!(prop_enum BoolProp;);
 int_props!(prop_enum IntProp;);
+image_props!(image_prop_enum);
+message_props!(message_prop_enum);
 #[cfg(feature = "demo")]
 enum_props!(enum_prop_enum);
 
@@ -92,17 +123,9 @@ pub trait UiProps {
     fn get_bool(&self, prop: BoolProp) -> bool;
     #[cfg(feature = "demo")]
     fn get_enum(&self, prop: EnumProp) -> SharedString;
-    fn apply_user_avatar(&self, avatar: Option<Image>);
-    fn apply_selected_room_avatar(&self, avatar: Option<Image>);
-    fn apply_attachment_preview(&self, preview: Option<Image>);
-    fn apply_room_info_avatar(&self, avatar: Option<Image>);
+    fn set_image(&self, prop: ImageProp, image: Option<Image>);
+    message_props!(declare_message_setter);
     fn apply_room_info_topic(&self, topic: StyledText);
-    fn apply_user_info_avatar(&self, avatar: Option<Image>);
-    fn apply_invite_avatar(&self, avatar: Option<Image>);
-    fn apply_removal_avatar(&self, avatar: Option<Image>);
-    fn apply_room_preview_avatar(&self, avatar: Option<Image>);
-    fn apply_ring_avatar(&self, avatar: Option<Image>);
-    fn apply_call_preview(&self, frame: Option<Image>);
     fn apply_login_messages(&self, messages: &[UserMessage]);
     fn apply_emoji_model(&self, emojis: &[DomainVerificationEmoji]);
     fn clear_emoji_model(&self);

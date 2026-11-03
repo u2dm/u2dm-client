@@ -3,11 +3,10 @@ use std::mem;
 use std::sync::Arc;
 
 use super::session::with_session;
+use super::typed_word::{MAX_QUERY_BYTES, SPACER, TypedWord, clamped, located, sigil_word};
 use crate::domain::emote::Emote;
 use crate::domain::image_pack::{ImagePack, PackId, PackImage, PackTitle};
 use crate::util::saturating_i32;
-
-pub const NO_WORD: i32 = -1;
 
 const MAX_EMOTE_BINDINGS: usize = 256;
 const TOKEN_DELIMITER: char = ':';
@@ -16,8 +15,6 @@ const SLUG_SEPARATOR: char = '-';
 const PERSONAL_SLUG: &str = "personal";
 const UNNAMED_SLUG: &str = "pack";
 const MIN_EMOTE_QUERY: usize = 2;
-const MAX_QUERY_BYTES: usize = 255;
-const SPACER: &str = " ";
 const EMOTE_HEIGHT: &str = "32";
 
 #[derive(Default)]
@@ -185,37 +182,22 @@ pub fn slug(pack: &ImagePack) -> String {
     }
 }
 
-pub struct EmoteWord {
-    pub start: usize,
-    pub query: String,
-}
-
-pub fn emote_word(text: &str, caret: i32) -> Option<EmoteWord> {
-    let caret = clamped(text, caret);
-    let before = text.get(..caret)?;
-    let start = before
-        .char_indices()
-        .rev()
-        .find(|(_, ch)| ch.is_whitespace())
-        .map_or(0, |(index, ch)| index + ch.len_utf8());
-    let query = before.get(start..)?.strip_prefix(TOKEN_DELIMITER)?;
+pub fn emote_word(text: &str, caret: i32) -> Option<TypedWord> {
+    let (start, query) = sigil_word(text, caret, TOKEN_DELIMITER)?;
     if query.len() < MIN_EMOTE_QUERY
         || query.len() > MAX_QUERY_BYTES
         || !query.chars().all(is_query_char)
     {
         return None;
     }
-    Some(EmoteWord {
+    Some(TypedWord {
         start,
         query: query.to_owned(),
     })
 }
 
 pub fn word_at(text: &str, caret: i32) -> (i32, String) {
-    match emote_word(text, caret) {
-        Some(word) => (i32::try_from(word.start).unwrap_or(NO_WORD), word.query),
-        None => (NO_WORD, String::new()),
-    }
+    located(emote_word(text, caret))
 }
 
 pub fn place(text: &str, caret: i32, token: &str, replaces_word: bool) -> (String, i32) {
@@ -252,13 +234,5 @@ pub fn place(text: &str, caret: i32, token: &str, replaces_word: bool) -> (Strin
 
 fn is_query_char(ch: char) -> bool {
     ch.is_ascii_alphanumeric() || matches!(ch, '_' | '-' | PACK_DELIMITER)
-}
-
-fn clamped(text: &str, caret: i32) -> usize {
-    let mut caret = usize::try_from(caret).unwrap_or(0).min(text.len());
-    while caret > 0 && !text.is_char_boundary(caret) {
-        caret -= 1;
-    }
-    caret
 }
 

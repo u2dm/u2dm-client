@@ -33,14 +33,14 @@ use crate::commands::view::{
 };
 use crate::domain::call::reactions::Reaction as CallReaction;
 use crate::domain::call::ring::RingKind;
-use crate::domain::call::video::VideoKind;
+use crate::domain::call::video::{FrameSize, VideoKind};
 use crate::domain::departure::{Removal, RemovalKind};
 use crate::domain::image_pack::{ImagePack, ImageUsage, PackId, PackImage, PackOrigin, PackTitle};
 use crate::domain::invite::{Invite, InviteKind};
 use crate::domain::media::{
     AudioKind, AudioMeta, ContentKey, FileMeta, MediaFailure, ThumbnailOutcome,
 };
-use crate::domain::member_name::{MemberName, isolated};
+use crate::domain::member_name::{MemberName, NamedUser, isolated};
 use crate::domain::message::{
     CustomEmoji, DecryptionFailure, MessageBody, MessagePreviewKind, Reaction, ReactionSend,
     Reactor, RichText, SendState, ServiceEvent, Shield, TimelineMessage,
@@ -897,8 +897,11 @@ fn apply_audio(dto: &mut MessageDto, meta: &AudioMeta, media: &dyn MediaCache) {
     if let Some(duration) = meta.duration {
         dto.duration = SharedString::from(&duration_label(duration));
     }
-    (dto.media_state, dto.media_failure) = audio_media_state(&meta.file, media);
-    dto.waveform = voice_bars(meta, media.audio_waveform(&meta.file).as_ref());
+    AudioRowUpdate {
+        media_state: dto.media_state,
+        media_failure: dto.media_failure,
+        waveform: dto.waveform,
+    } = audio_row_update(meta, media);
 }
 
 fn poll_answer_dto(
@@ -1434,9 +1437,12 @@ pub fn enrich_to_update(delta: &EnrichmentDelta, media: &dyn MediaCache) -> Enri
 }
 
 pub fn room_to_dto(r: &Room, media: &dyn MediaCache) -> RoomDto {
-    let mut dto = RoomDto {
-        id: SharedString::from(r.id.as_ref()),
-        kind: RoomRowKind::Room,
+    let avatar = r
+        .avatar_mxc
+        .as_deref()
+        .and_then(|mxc| media.room_avatar_path(mxc))
+        .and_then(|path| peek_avatar(&path));
+    RoomDto {
         name: SharedString::from(&r.display_name),
         initial: SharedString::from(avatar_initials(&r.display_name)),
         color_index: avatar_color_index(r.id.as_ref()),
@@ -1469,28 +1475,11 @@ pub fn room_to_dto(r: &Room, media: &dyn MediaCache) -> RoomDto {
         last_message_is_own: r.last_message_is_own,
         last_message_edited: r.last_message_edited,
         last_message_time: SharedString::from(&room_activity_label(r.last_activity_ts)),
-        space_rooms: 0,
-        space_parent: SharedString::new(),
-        invite_count: 0,
-        invite_kind: InviteKind::Room,
-        inviter: SharedString::new(),
-        inviter_id: SharedString::new(),
-        removal: RemovalKind::Kicked,
-        removed_by: SharedString::new(),
         call: call_mark(r),
-        avatar: None,
-        has_avatar: false,
-    };
-
-    if let Some(mxc) = &r.avatar_mxc
-        && let Some(avatar_path) = media.room_avatar_path(mxc)
-        && let Some(img) = peek_avatar(&avatar_path)
-    {
-        dto.avatar = Some(img);
-        dto.has_avatar = true;
+        has_avatar: avatar.is_some(),
+        avatar,
+        ..bare_row_dto(r.id.as_ref(), RoomRowKind::Room)
     }
-
-    dto
 }
 
 fn call_mark(room: &Room) -> RoomCallMark {
@@ -1542,8 +1531,16 @@ pub fn invite_to_dto(invite: &Invite, media: &dyn MediaCache) -> RoomDto {
 }
 
 pub fn invite_avatar_path(invite: &Invite, media: &dyn MediaCache) -> Option<PathBuf> {
-    let mxc = invite.avatar_mxc.as_deref()?;
-    if invite.is_space() {
+    room_or_space_avatar(invite.avatar_mxc.as_deref(), invite.is_space(), media)
+}
+
+fn room_or_space_avatar(
+    mxc: Option<&str>,
+    is_space: bool,
+    media: &dyn MediaCache,
+) -> Option<PathBuf> {
+    let mxc = mxc?;
+    if is_space {
         media.space_avatar_path(mxc)
     } else {
         media.room_avatar_path(mxc)
@@ -1571,12 +1568,7 @@ pub fn removal_shape(removal: &Removal) -> InviteKind {
 }
 
 pub fn removal_avatar_path(removal: &Removal, media: &dyn MediaCache) -> Option<PathBuf> {
-    let mxc = removal.avatar_mxc.as_deref()?;
-    if removal.is_space {
-        media.space_avatar_path(mxc)
-    } else {
-        media.room_avatar_path(mxc)
-    }
+    room_or_space_avatar(removal.avatar_mxc.as_deref(), removal.is_space, media)
 }
 
 pub fn record_removal_avatar_need(removal: &Removal, media: &dyn MediaCache) -> ShownAvatar {
@@ -1588,12 +1580,7 @@ pub fn record_removal_avatar_need(removal: &Removal, media: &dyn MediaCache) -> 
 }
 
 pub fn room_preview_avatar_path(room: &RoomPreview, media: &dyn MediaCache) -> Option<PathBuf> {
-    let mxc = room.avatar_mxc.as_deref()?;
-    if room.is_space {
-        media.space_avatar_path(mxc)
-    } else {
-        media.room_avatar_path(mxc)
-    }
+    room_or_space_avatar(room.avatar_mxc.as_deref(), room.is_space, media)
 }
 
 pub fn record_invite_avatar_need(invite: &Invite, media: &dyn MediaCache) -> ShownAvatar {
@@ -1668,26 +1655,21 @@ fn space_match_avatar_path(m: &SpaceMatch, media: &dyn MediaCache) -> Option<Pat
 }
 
 pub fn space_to_dto(s: &Space, media: &dyn MediaCache) -> SpaceDto {
-    let mut dto = SpaceDto {
+    let avatar = s
+        .avatar_mxc
+        .as_deref()
+        .and_then(|mxc| media.space_avatar_path(mxc))
+        .and_then(|path| peek_avatar(&path));
+    SpaceDto {
         id: SharedString::from(&s.id),
         name: SharedString::from(&s.name),
         alert: s.alert,
         mention: s.mention,
         hint: s.hint,
         initial: SharedString::from(sender_initial(&s.name)),
-        avatar: None,
-        has_avatar: false,
-    };
-
-    if let Some(mxc) = &s.avatar_mxc
-        && let Some(avatar_path) = media.space_avatar_path(mxc)
-        && let Some(img) = peek_avatar(&avatar_path)
-    {
-        dto.avatar = Some(img);
-        dto.has_avatar = true;
+        has_avatar: avatar.is_some(),
+        avatar,
     }
-
-    dto
 }
 
 pub fn prefetch_space_avatar(s: &Space, media: &dyn MediaCache) {
@@ -1969,41 +1951,38 @@ pub fn call_connection_rows(servers: &[ServerDetails]) -> Vec<CallConnectionDto>
             name: SharedString::new(),
         });
         for (kind, size) in &server.sent_video {
-            rows.push(CallConnectionDto {
-                video: true,
-                you: true,
-                screen: *kind == VideoKind::Screen,
-                host: SharedString::from(&server.host),
-                publishing: server.publishing,
-                state: server.state,
-                sent_kbps: -1,
-                received_kbps: -1,
-                loss_permille: -1,
-                round_trip_ms: -1,
-                width: saturating_i32(size.width),
-                height: saturating_i32(size.height),
-                name: SharedString::new(),
-            });
+            rows.push(video_row(server, *kind, *size, None));
         }
         for (name, kind, size) in &server.received_video {
-            rows.push(CallConnectionDto {
-                video: true,
-                you: false,
-                screen: *kind == VideoKind::Screen,
-                host: SharedString::from(&server.host),
-                publishing: server.publishing,
-                state: server.state,
-                sent_kbps: -1,
-                received_kbps: -1,
-                loss_permille: -1,
-                round_trip_ms: -1,
-                width: saturating_i32(size.width),
-                height: saturating_i32(size.height),
-                name: SharedString::from(name.shown()),
-            });
+            rows.push(video_row(server, *kind, *size, Some(name)));
         }
     }
     rows
+}
+
+fn video_row(
+    server: &ServerDetails,
+    kind: VideoKind,
+    size: FrameSize,
+    sender: Option<&NamedUser>,
+) -> CallConnectionDto {
+    CallConnectionDto {
+        video: true,
+        you: sender.is_none(),
+        screen: kind == VideoKind::Screen,
+        host: SharedString::from(&server.host),
+        publishing: server.publishing,
+        state: server.state,
+        sent_kbps: -1,
+        received_kbps: -1,
+        loss_permille: -1,
+        round_trip_ms: -1,
+        width: saturating_i32(size.width),
+        height: saturating_i32(size.height),
+        name: sender.map_or_else(SharedString::new, |sender| {
+            SharedString::from(sender.shown())
+        }),
+    }
 }
 
 pub fn call_device_to_dto(option: &DeviceOption) -> CallDeviceDto {
@@ -2166,11 +2145,11 @@ pub fn user_info_pronouns(profile: &UserProfile) -> SharedString {
 }
 
 fn space_child_avatar_path(child: &SpaceChild, media: &dyn MediaCache) -> Option<PathBuf> {
-    let mxc = child.avatar_mxc.as_deref()?;
-    match child.kind {
-        ChildKind::Room => media.room_avatar_path(mxc),
-        ChildKind::Space { .. } => media.space_avatar_path(mxc),
-    }
+    let is_space = match child.kind {
+        ChildKind::Room => false,
+        ChildKind::Space { .. } => true,
+    };
+    room_or_space_avatar(child.avatar_mxc.as_deref(), is_space, media)
 }
 
 fn space_child_detail(child: &SpaceChild) -> &str {

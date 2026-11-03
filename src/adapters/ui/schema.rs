@@ -859,6 +859,30 @@ macro_rules! model_props {
 }
 pub(crate) use model_props;
 
+macro_rules! image_props {
+    ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
+        UserAvatar SessionView "SessionView"
+            "user-avatar" set_user_avatar "user-has-avatar" set_user_has_avatar;
+        AttachmentPreview AttachmentView "AttachmentView"
+            "preview" set_preview "has-preview" set_has_preview;
+        SelectedRoomAvatar RoomView "RoomView"
+            "selected-room-avatar" set_selected_room_avatar
+            "selected-room-has-avatar" set_selected_room_has_avatar;
+        RoomInfoAvatar RoomInfoView "RoomInfoView" "avatar" set_avatar "has-avatar" set_has_avatar;
+        RingAvatar CallView "CallView"
+            "ring-avatar" set_ring_avatar "ring-has-avatar" set_ring_has_avatar;
+        CallPreview CallView "CallView"
+            "sheet-preview-frame" set_sheet_preview_frame
+            "sheet-preview-has-frame" set_sheet_preview_has_frame;
+        UserInfoAvatar UserInfoView "UserInfoView" "avatar" set_avatar "has-avatar" set_has_avatar;
+        InviteAvatar InviteView "InviteView" "avatar" set_avatar "has-avatar" set_has_avatar;
+        RemovalAvatar RemovalView "RemovalView" "avatar" set_avatar "has-avatar" set_has_avatar;
+        RoomPreviewAvatar RoomPreviewView "RoomPreviewView"
+            "avatar" set_avatar "has-avatar" set_has_avatar;
+    } };
+}
+pub(crate) use image_props;
+
 macro_rules! define_ui_enum {
     ($name:ident; $($rust:ident $ui:ident $lit:literal;)*) => {
         #[derive(Clone, Copy, PartialEq, Eq)]
@@ -877,6 +901,120 @@ macro_rules! define_ui_names {
     };
 }
 pub(crate) use define_ui_names;
+
+macro_rules! message_props {
+    ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
+        InviteError set_invite_error InviteErrorDetail;
+        RemovalError set_removal_error RemovalErrorDetail;
+        LeaveSpaceError set_leave_space_error LeaveSpaceErrorDetail;
+        CreateRoomError set_create_room_error CreateRoomErrorDetail;
+        InvitePeopleError set_invite_people_error InvitePeopleErrorDetail;
+        RoomPreviewError set_room_preview_error RoomPreviewErrorDetail;
+        RoomInfoError set_room_info_error RoomInfoErrorDetail;
+        UserInfoError set_user_info_error UserInfoErrorDetail;
+        EncryptionError set_encryption_error EncryptionErrorDetail;
+        EncryptionAuthError set_encryption_auth_error EncryptionAuthErrorDetail;
+        AccountError set_account_error AccountErrorDetail;
+        AccountNotice set_account_notice AccountNoticeDetail;
+        AccountAuthError set_account_auth_error AccountAuthErrorDetail;
+        VerificationError set_verification_error VerificationErrorDetail;
+    } };
+}
+pub(crate) use message_props;
+
+macro_rules! slint_enums {
+    ($cb:ident) => {
+        $crate::adapters::ui::schema::slint_enums!(@rows $cb;
+            login_phases LoginStep LoginPhase;
+            login_activities LoginActivity LoginActivity;
+            login_methods LoginMethod LoginMethodKind;
+            connection_states ConnectionStatus ConnectionState;
+            timeline_states TimelineStatus TimelineState;
+            verification_phases VerifyStep VerificationPhase;
+            verification_activities VerificationActivity VerificationActivity;
+            user_message_kinds UserMessageKind UserMessageKind;
+            media_states MediaState MediaState;
+            send_states SendState SendState;
+            reaction_sends ReactionSend ReactionSend;
+            emoji_arts EmojiArt EmojiArt;
+            spoiler_states SpoilerState SpoilerState;
+            deliveries Delivery Delivery;
+            shields Shield Shield;
+            shield_reasons ShieldReason ShieldReason;
+            decryption_failures DecryptionFailure DecryptionFailure;
+            media_failures MediaFailureKind MediaFailure;
+            message_kinds MessageKind MessageKind;
+            poll_phases PollPhase PollPhase;
+            attachment_kinds AttachmentKind AttachmentKind;
+            room_scopes RoomScope RoomScope;
+            space_index_statuses SpaceIndexStatus SpaceIndexStatus;
+            room_preview_statuses RoomPreviewSheet RoomPreviewStatus;
+            source_statuses SourceState SourceStatus;
+            readers_statuses ReadersStatus ReadersStatus;
+            source_encryptions SourceEncryption SourceEncryption;
+            child_accesses ChildAccess ChildAccess;
+            notify_modes NotifyMode NotifyMode;
+            member_roles MemberRole MemberRole;
+            member_row_kinds MemberRowKind MemberRowKind;
+            room_row_kinds RoomRowKind RoomRowKind;
+            room_call_marks RoomCallMark RoomCallMark;
+            call_offers CallOfferMark CallOffer;
+            sheet_previews SheetPreviewMark CallSheetPreview;
+            test_phases TestPhaseMark CallTestPhase;
+            preview_troubles PreviewTrouble CallPreviewTrouble;
+            call_refusals JoinRefusal CallRefusal;
+            call_phases CallPhase CallPhase;
+            call_link_states LinkView CallLinkState;
+            call_mics MicrophoneView CallMic;
+            call_cameras CameraView CallCamera;
+            call_screens CallScreenMark CallScreen;
+            call_hands HandView CallHand;
+            call_reactions ReactionView CallReaction;
+            call_screen_refusals ScreenRefusal CallScreenRefusal;
+            call_tile_marks CallTileMark CallTileState;
+            call_device_kinds DeviceKind CallDeviceKind;
+            call_device_statuses DeviceStatus CallDeviceStatus;
+            call_device_troubles DeviceTrouble CallDeviceTrouble;
+            call_notices CallNoticeMark CallNotice;
+            roster_statuses RosterStatus RosterStatus;
+            room_info_placements RoomInfoPlacement RoomInfoPlacement;
+            room_memberships RoomMembership RoomMembership;
+            direct_chats DirectChat DirectChat;
+            upgrade_links UpgradeLink UpgradeLink;
+            invite_kinds InviteKind InviteKind;
+            removal_kinds RemovalKind RemovalKind;
+            invite_answers PendingAnswer InviteAnswer;
+            pending_moderations PendingModeration Moderation;
+            identity_trusts IdentityTrust IdentityTrust;
+            verify_offers VerifyOffer VerifyOffer;
+            device_trusts DeviceTrust DeviceTrust;
+            presence_lines PresenceLine PresenceLine;
+            identity_alert_kinds IdentityAlertKind IdentityAlertKind;
+            encryption_standings Standing EncryptionStanding;
+            recovery_statuses Recovery RecoveryStatus;
+            encryption_steps EncryptionStep EncryptionStep;
+            encryption_activities EncryptionActivity EncryptionActivity;
+            auth_stages AuthStage AuthStage;
+            account_steps AccountStep AccountStep;
+            account_activities AccountActivity AccountActivity;
+            preview_kinds MessagePreviewKind PreviewKind;
+            audio_kinds AudioKind AudioKind;
+            service_kinds ServiceKind ServiceKind;
+            log_levels LogLevel LogLevel;
+            pack_surfaces PackSurface PackSurface;
+            pack_origins PackOrigin PackOrigin;
+            room_kinds RoomKind RoomKind;
+            room_accesses RoomAccess RoomAccess;
+            create_room_statuses CreateRoomStatus CreateRoomStatus;
+            people_search_statuses PeopleSearchStatus PeopleSearchStatus;
+            invitee_states InviteeState InviteeState;
+        );
+    };
+    (@rows $cb:ident; $($table:ident $rust:ident $ui:ident;)*) => {
+        $( $crate::adapters::ui::schema::$table!($cb $rust $ui;); )*
+    };
+}
+pub(crate) use slint_enums;
 
 macro_rules! login_phases {
     ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*

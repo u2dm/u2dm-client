@@ -23,15 +23,17 @@ use super::present::{
     VerifyStep, avatar_color_index, avatar_initials, duration_label, file_extension,
     identity_banner, message_sent_at_label, name_initials, user_initial, verification_cancellation,
 };
-use super::props::{BoolProp, IntProp, StringProp, UiProps};
+use super::props::{BoolProp, ImageProp, IntProp, MessageProp, StringProp, UiProps};
 use super::reconcile::{
-    RoomListing, RowReplacements, apply_invitee_rows, apply_member_rows, apply_mention_rows,
-    apply_reader_rows, apply_rooms, apply_space_children, apply_spaces, apply_timeline_patch,
+    RoomListing, RowReplacements, apply_rooms, apply_rows, apply_timeline_patch,
     downloading_pack_avatars, index_pack_grid, pack_avatar_downloaded, retain_awaited_downloads,
+    rows_to_redo,
 };
 use super::richtext::recognise_own_user;
 use super::rows::patch_rows_by_id;
-use super::session::{active_generation, begin_session, with_session};
+use super::session::{
+    ActiveBackend, UiSession, active_generation, begin_session, from_snapshot, with_session,
+};
 use super::splice_model::SpliceModel;
 use super::{audio, call_window, emote, sending, video};
 use crate::commands::effects::{Effect, VerificationActivity, VerificationUpdate};
@@ -170,7 +172,7 @@ fn publish_room_cursor(w: &impl UiProps) {
 }
 
 pub(super) fn latest_directory() -> Option<DirectoryView> {
-    with_session(|session| session.snapshot.as_ref().map(|view| view.directory.clone()))
+    from_snapshot(|view| view.directory.clone())
 }
 
 pub(super) fn set_pack_browse<B: UiBackend>(
@@ -234,13 +236,8 @@ pub fn dispatch_effect<B: UiBackend>(w: &B::Window, event: Effect, ctx: &UiEvent
             w.set_bool(BoolProp::SelectedRoomReadableByAnyone, readable_by_anyone);
             apply_poll_permissions(w, polls);
             apply_message_permissions(w, messages);
-            let (pagination, pinned) = with_session(|session| {
-                session
-                    .snapshot
-                    .as_ref()
-                    .map(|view| (view.pagination, view.pinned.clone()))
-            })
-            .unwrap_or_default();
+            let (pagination, pinned) =
+                from_snapshot(|view| (view.pagination, view.pinned.clone())).unwrap_or_default();
             sync_timeline_chrome(w, &pagination);
             apply_pinned(w, &pinned);
         }
@@ -336,13 +333,7 @@ fn apply_timeline<B: UiBackend>(
     }
 
     let anchor_row_moved = patch.shifts_rows() || replaces_loaded_window;
-    let pinned_ids = with_session(|session| {
-        session
-            .snapshot
-            .as_ref()
-            .map(|view| Arc::clone(&view.pinned.pinned_ids))
-    })
-    .unwrap_or_default();
+    let pinned_ids = from_snapshot(|view| Arc::clone(&view.pinned.pinned_ids)).unwrap_or_default();
     apply_timeline_patch(
         &ctx.models.timeline,
         *patch,
@@ -630,13 +621,9 @@ fn apply_readers<B: UiBackend>(
         w.set_int(IntProp::ReadersPagesLanded, *pages_landed);
         run_change_handlers_next_frame(w);
     }
-    let rows_changed = last.is_none_or(|l| !Arc::ptr_eq(&l.rows, rows));
-    let avatars_landed = last.is_some_and(|l| l.avatars_ready != *avatars_ready);
-    if rows_changed || avatars_landed {
-        let previous = last
-            .filter(|_| !avatars_landed)
-            .map_or(&[] as &[_], |l| l.rows.as_ref());
-        apply_reader_rows(
+    let shown = last.map(|l| (&l.rows, l.avatars_ready));
+    if let Some(previous) = rows_to_redo(shown, rows, *avatars_ready) {
+        apply_rows(
             &ctx.models.readers,
             rows.as_ref(),
             previous,
@@ -675,13 +662,9 @@ fn apply_mentions<B: UiBackend>(
     if last.is_none_or(|l| l.offers_room != *offers_room) {
         w.set_bool(BoolProp::MentionsOfferRoom, *offers_room);
     }
-    let rows_changed = last.is_none_or(|l| !Arc::ptr_eq(&l.rows, rows));
-    let avatars_landed = last.is_some_and(|l| l.avatars_ready != *avatars_ready);
-    if rows_changed || avatars_landed {
-        let previous = last
-            .filter(|_| !avatars_landed)
-            .map_or(&[] as &[_], |l| l.rows.as_ref());
-        apply_mention_rows(
+    let shown = last.map(|l| (&l.rows, l.avatars_ready));
+    if let Some(previous) = rows_to_redo(shown, rows, *avatars_ready) {
+        apply_rows(
             &ctx.models.mentions,
             rows.as_ref(),
             previous,
@@ -716,25 +699,26 @@ fn apply_copied_links(
     room_link: &CopiedLink,
 ) {
     if last.is_none_or(|l| l.message_link != *message_link) {
-        apply_message_link(w, message_link);
+        apply_copied_link(
+            w,
+            message_link,
+            StringProp::MessageLink,
+            IntProp::MessageLinkSerial,
+        );
     }
     if last.is_none_or(|l| l.room_link != *room_link) {
-        apply_room_link(w, room_link);
+        apply_copied_link(w, room_link, StringProp::RoomLink, IntProp::RoomLinkSerial);
     }
 }
 
-fn apply_message_link(w: &(impl UiProps + ComponentHandle), link: &CopiedLink) {
-    w.set_string(
-        StringProp::MessageLink,
-        SharedString::from(link.url.as_str()),
-    );
-    w.set_int(IntProp::MessageLinkSerial, link.serial);
-    run_change_handlers_next_frame(w);
-}
-
-fn apply_room_link(w: &(impl UiProps + ComponentHandle), link: &CopiedLink) {
-    w.set_string(StringProp::RoomLink, SharedString::from(link.url.as_str()));
-    w.set_int(IntProp::RoomLinkSerial, link.serial);
+fn apply_copied_link(
+    w: &(impl UiProps + ComponentHandle),
+    link: &CopiedLink,
+    url: StringProp,
+    serial: IntProp,
+) {
+    w.set_string(url, SharedString::from(link.url.as_str()));
+    w.set_int(serial, link.serial);
     run_change_handlers_next_frame(w);
 }
 
@@ -800,23 +784,20 @@ fn apply_directory<B: UiBackend>(
         refresh_selected_room_avatar(w, ctx.media);
         publish_selected_room_row(w, RoomListing::of(directory));
     }
-    if last.is_none_or(|l| !Arc::ptr_eq(&l.spaces, spaces)) {
-        apply_spaces(
-            &ctx.models.spaces,
-            spaces.as_ref(),
-            ctx.media,
-            &|space| B::convert_space(space, ctx.media),
-            &|entry| entry.id(),
-        );
-    }
-    if last.is_none_or(|l| !Arc::ptr_eq(&l.subspaces, subspaces)) {
-        apply_spaces(
-            &ctx.models.subspaces,
-            subspaces.as_ref(),
-            ctx.media,
-            &|space| B::convert_space(space, ctx.media),
-            &|entry| entry.id(),
-        );
+    for (model, listed, shown) in [
+        (&ctx.models.spaces, spaces, last.map(|l| &l.spaces)),
+        (&ctx.models.subspaces, subspaces, last.map(|l| &l.subspaces)),
+    ] {
+        if shown.is_none_or(|shown| !Arc::ptr_eq(shown, listed)) {
+            apply_rows(
+                model,
+                listed.as_ref(),
+                &[],
+                ctx.media,
+                &|space| B::convert_space(space, ctx.media),
+                &|entry| entry.id(),
+            );
+        }
     }
     if last.is_none_or(|l| l.scope != *scope) {
         w.set_room_scope(*scope);
@@ -890,11 +871,7 @@ fn apply_invite(
         w.set_invite_answer(*answer);
     }
     if last.is_none_or(|l| l.error != *error) {
-        w.set_invite_error(error.kind);
-        w.set_string(
-            StringProp::InviteErrorDetail,
-            SharedString::from(&error.detail),
-        );
+        w.set_message(MessageProp::InviteError, error);
     }
     if last.is_none_or(|l| l.invite != *invite) {
         apply_invite_card(w, invite.as_deref());
@@ -947,14 +924,13 @@ fn show_invite_avatar(w: &impl UiProps, invite: Option<&Invite>, media: &dyn Med
             .unwrap_or_default(),
         path: invite.and_then(|invite| invite_avatar_path(invite, media)),
     };
-    let previous = with_session(|session| mem::replace(&mut session.invite_avatar, next.clone()));
-    if previous == next {
-        return;
-    }
-    let image = load_avatar_async(next.path.as_deref(), AvatarSlot::Invite);
-    if image.is_some() || previous.room_id != next.room_id {
-        w.apply_invite_avatar(image);
-    }
+    show_sheet_avatar(
+        w,
+        &next,
+        |session| &mut session.invite_avatar,
+        AvatarSlot::Invite,
+        ImageProp::InviteAvatar,
+    );
 }
 
 fn apply_removal(
@@ -975,11 +951,7 @@ fn apply_removal(
         w.set_bool(BoolProp::RemovalForgetting, *forgetting);
     }
     if last.is_none_or(|l| l.error != *error) {
-        w.set_removal_error(error.kind);
-        w.set_string(
-            StringProp::RemovalErrorDetail,
-            SharedString::from(&error.detail),
-        );
+        w.set_message(MessageProp::RemovalError, error);
     }
     if last.is_none_or(|l| l.removal != *removal) {
         apply_removal_card(w, removal.as_deref());
@@ -1027,14 +999,13 @@ fn show_removal_avatar(w: &impl UiProps, removal: Option<&Removal>, media: &dyn 
             .unwrap_or_default(),
         path: removal.and_then(|removal| removal_avatar_path(removal, media)),
     };
-    let previous = with_session(|session| mem::replace(&mut session.removal_avatar, next.clone()));
-    if previous == next {
-        return;
-    }
-    let image = load_avatar_async(next.path.as_deref(), AvatarSlot::Removal);
-    if image.is_some() || previous.room_id != next.room_id {
-        w.apply_removal_avatar(image);
-    }
+    show_sheet_avatar(
+        w,
+        &next,
+        |session| &mut session.removal_avatar,
+        AvatarSlot::Removal,
+        ImageProp::RemovalAvatar,
+    );
 }
 
 fn apply_leave_space(w: &impl UiProps, last: Option<&LeaveSpaceView>, view: &LeaveSpaceView) {
@@ -1052,11 +1023,7 @@ fn apply_leave_space(w: &impl UiProps, last: Option<&LeaveSpaceView>, view: &Lea
         BoolProp::LeaveSpaceOnlyAdmin,
         *standing == Some(AdminStanding::OnlyAdmin),
     );
-    w.set_leave_space_error(error.kind);
-    w.set_string(
-        StringProp::LeaveSpaceErrorDetail,
-        SharedString::from(&error.detail),
-    );
+    w.set_message(MessageProp::LeaveSpaceError, error);
     let Some(space) = space else {
         w.set_bool(BoolProp::LeaveSpaceVisible, false);
         return;
@@ -1084,11 +1051,7 @@ fn apply_create_room(w: &impl UiProps, last: Option<&CreateRoomView>, view: &Cre
         StringProp::CreateRoomServerName,
         SharedString::from(&view.server_name),
     );
-    w.set_create_room_error(view.error.kind);
-    w.set_string(
-        StringProp::CreateRoomErrorDetail,
-        SharedString::from(&view.error.detail),
-    );
+    w.set_message(MessageProp::CreateRoomError, &view.error);
     w.set_create_room_status(view.status);
 }
 
@@ -1135,11 +1098,7 @@ fn apply_invite_people<B: UiBackend>(
         w.set_bool(BoolProp::InvitePeopleSending, *sending);
     }
     if last.is_none_or(|l| l.error != *error) {
-        w.set_invite_people_error(error.kind);
-        w.set_string(
-            StringProp::InvitePeopleErrorDetail,
-            SharedString::from(&error.detail),
-        );
+        w.set_message(MessageProp::InvitePeopleError, error);
     }
     let avatars_landed = last.is_some_and(|l| l.avatars_ready != *avatars_ready);
     for (model, rows, previous) in [
@@ -1151,7 +1110,7 @@ fn apply_invite_people<B: UiBackend>(
         (&ctx.models.invitee_picks, picked, last.map(|l| &l.picked)),
     ] {
         if avatars_landed || previous != Some(rows) {
-            apply_invitee_rows(
+            apply_rows(
                 model,
                 rows,
                 previous
@@ -1201,11 +1160,7 @@ fn apply_room_preview(
     w.set_string(StringProp::RoomPreviewAddress, SharedString::from(address));
     w.set_bool(BoolProp::RoomPreviewEntry, *entry);
     w.set_room_preview_access(*access);
-    w.set_room_preview_error(error.kind);
-    w.set_string(
-        StringProp::RoomPreviewErrorDetail,
-        SharedString::from(&error.detail),
-    );
+    w.set_message(MessageProp::RoomPreviewError, error);
     w.set_room_preview_status(sheet);
 }
 
@@ -1245,14 +1200,29 @@ fn show_room_preview_avatar(w: &impl UiProps, room: Option<&RoomPreview>, media:
         room_id: room.map(|room| room.id.to_string()).unwrap_or_default(),
         path: room.and_then(|room| room_preview_avatar_path(room, media)),
     };
-    let previous =
-        with_session(|session| mem::replace(&mut session.room_preview_avatar, next.clone()));
-    if previous == next {
+    show_sheet_avatar(
+        w,
+        &next,
+        |session| &mut session.room_preview_avatar,
+        AvatarSlot::RoomPreview,
+        ImageProp::RoomPreviewAvatar,
+    );
+}
+
+fn show_sheet_avatar(
+    w: &impl UiProps,
+    next: &SheetAvatar,
+    shown: impl FnOnce(&mut UiSession<ActiveBackend>) -> &mut SheetAvatar,
+    slot: AvatarSlot,
+    prop: ImageProp,
+) {
+    let previous = with_session(|session| mem::replace(shown(session), next.clone()));
+    if previous == *next {
         return;
     }
-    let image = load_avatar_async(next.path.as_deref(), AvatarSlot::RoomPreview);
+    let image = load_avatar_async(next.path.as_deref(), slot);
     if image.is_some() || previous.room_id != next.room_id {
-        w.apply_room_preview_avatar(image);
+        w.set_image(prop, image);
     }
 }
 
@@ -1280,22 +1250,17 @@ fn apply_space_index<B: UiBackend>(
         w.set_int(IntProp::SpaceIndexPagesLanded, *pages_landed);
         run_change_handlers_next_frame(w);
     }
-    let rows_changed = last.is_none_or(|l| !Arc::ptr_eq(&l.rows, rows));
-    let avatars_landed = last.is_some_and(|l| l.avatars_ready != *avatars_ready);
-    if !rows_changed && !avatars_landed {
-        return;
+    let shown = last.map(|l| (&l.rows, l.avatars_ready));
+    if let Some(previous) = rows_to_redo(shown, rows, *avatars_ready) {
+        apply_rows(
+            &ctx.models.space_children,
+            rows.as_ref(),
+            previous,
+            ctx.media,
+            &|row| B::convert_space_child(row, ctx.media),
+            &|entry| entry.id(),
+        );
     }
-    let previous = last
-        .filter(|_| !avatars_landed)
-        .map_or(&[] as &[_], |l| l.rows.as_ref());
-    apply_space_children(
-        &ctx.models.space_children,
-        rows.as_ref(),
-        previous,
-        ctx.media,
-        &|row| B::convert_space_child(row, ctx.media),
-        &|entry| entry.id(),
-    );
 }
 
 fn apply_room_info<B: UiBackend>(
@@ -1354,37 +1319,28 @@ fn apply_room_info<B: UiBackend>(
         w.set_bool(BoolProp::RoomInfoLeaving, *leaving);
     }
     if last.is_none_or(|l| l.error != *error) {
-        w.set_room_info_error(error.kind);
-        w.set_string(
-            StringProp::RoomInfoErrorDetail,
-            SharedString::from(&error.detail),
-        );
+        w.set_message(MessageProp::RoomInfoError, error);
     }
     if last.is_none_or(|l| l.pages_landed != *pages_landed) {
         w.set_int(IntProp::RoomInfoPagesLanded, *pages_landed);
         run_change_handlers_next_frame(w);
     }
-    let rows_changed = last.is_none_or(|l| !Arc::ptr_eq(&l.rows, rows));
-    let avatars_landed = last.is_some_and(|l| l.avatars_ready != *avatars_ready);
-    if !rows_changed && !avatars_landed {
-        return;
+    let shown = last.map(|l| (&l.rows, l.avatars_ready));
+    if let Some(previous) = rows_to_redo(shown, rows, *avatars_ready) {
+        apply_rows(
+            &ctx.models.room_members,
+            rows.as_ref(),
+            previous,
+            ctx.media,
+            &|row| B::convert_member_row(row, ctx.media),
+            &|entry| entry.user_id(),
+        );
     }
-    let previous = last
-        .filter(|_| !avatars_landed)
-        .map_or(&[] as &[_], |l| l.rows.as_ref());
-    apply_member_rows(
-        &ctx.models.room_members,
-        rows.as_ref(),
-        previous,
-        ctx.media,
-        &|row| B::convert_member_row(row, ctx.media),
-        &|entry| entry.user_id(),
-    );
 }
 
 fn apply_room_card(w: &impl UiProps, card: Option<&RoomCard>, media: &dyn MediaCache) {
     let Some(card) = card else {
-        w.apply_room_info_avatar(None);
+        w.set_image(ImageProp::RoomInfoAvatar, None);
         return;
     };
     w.set_string(
@@ -1405,7 +1361,10 @@ fn apply_room_card(w: &impl UiProps, card: Option<&RoomCard>, media: &dyn MediaC
         StringProp::RoomInfoAlias,
         SharedString::from(card.alias.as_deref().unwrap_or_default()),
     );
-    w.apply_room_info_avatar(load_room_info_avatar(card, media));
+    w.set_image(
+        ImageProp::RoomInfoAvatar,
+        load_room_info_avatar(card, media),
+    );
 }
 
 fn apply_room_topic(w: &impl UiProps, card: Option<&RoomCard>, about: Option<&RoomAbout>) {
@@ -1474,21 +1433,17 @@ fn apply_user_info<B: UiBackend>(
         let avatar = card
             .as_ref()
             .and_then(|card| load_user_info_avatar(&card.profile, media));
-        w.apply_user_info_avatar(avatar);
+        w.set_image(ImageProp::UserInfoAvatar, avatar);
     }
     if last.is_none_or(|l| l.error != *error) {
-        w.set_user_info_error(error.kind);
-        w.set_string(
-            StringProp::UserInfoErrorDetail,
-            SharedString::from(&error.detail),
-        );
+        w.set_message(MessageProp::UserInfoError, error);
     }
 }
 
 fn apply_user_card(w: &impl UiProps, card: Option<&UserCard>, media: &dyn MediaCache) {
     let Some(card) = card else {
         w.set_bool(BoolProp::UserInfoVisible, false);
-        w.apply_user_info_avatar(None);
+        w.set_image(ImageProp::UserInfoAvatar, None);
         return;
     };
     let profile = &card.profile;
@@ -1529,7 +1484,10 @@ fn apply_user_card(w: &impl UiProps, card: Option<&UserCard>, media: &dyn MediaC
         BoolProp::UserInfoRetrying,
         card.status == CardStatus::Retrying,
     );
-    w.apply_user_info_avatar(load_user_info_avatar(profile, media));
+    w.set_image(
+        ImageProp::UserInfoAvatar,
+        load_user_info_avatar(profile, media),
+    );
     w.set_bool(BoolProp::UserInfoVisible, true);
 }
 
@@ -1572,15 +1530,14 @@ fn rebuild_pack_grid<B: UiBackend>(w: &B::Window, packs: &PackView, media: &dyn 
 
     let replacements = index_pack_grid(&grid);
     let missing_icons = packs_missing_icons(&grid.packs);
-    B::with_pack_grid(|rows, packs| {
-        replace_reshaped_rows::<B>(rows, grid.rows, &replacements);
-        packs.set_vec(
-            grid.packs
-                .into_iter()
-                .map(B::PackTab::from)
-                .collect::<Vec<_>>(),
-        );
-    });
+    let models = B::models();
+    replace_reshaped_rows::<B>(&models.pack_rows, grid.rows, &replacements);
+    models.pack_tabs.set_vec(
+        grid.packs
+            .into_iter()
+            .map(B::PackTab::from)
+            .collect::<Vec<_>>(),
+    );
     for icon_cell_key in &missing_icons {
         request_pack_cell(icon_cell_key);
     }
@@ -1737,7 +1694,7 @@ fn apply_lifecycle(w: &impl UiProps, last: Option<&LifecycleView>, next: &Lifecy
     }
     if last.is_none_or(|l| l.avatar_path != *avatar_path) {
         let avatar = load_avatar_async(avatar_path.as_deref(), AvatarSlot::User);
-        w.apply_user_avatar(avatar);
+        w.set_image(ImageProp::UserAvatar, avatar);
     }
 }
 
@@ -1790,7 +1747,7 @@ fn apply_attachment(w: &impl UiProps, last: Option<&AttachmentView>, attachment:
         SharedString::from(error_detail),
     );
     let preview = load_attachment_preview(*pick, preview_path.as_deref());
-    w.apply_attachment_preview(preview);
+    w.set_image(ImageProp::AttachmentPreview, preview);
 }
 
 fn apply_video<B: UiBackend>(w: &B::Window, view: &VideoView) {
@@ -2058,11 +2015,7 @@ fn apply_encryption(w: &impl UiProps, last: Option<&EncryptionView>, view: &Encr
     w.set_bool(BoolProp::EncryptionVisible, view.dialog.is_some());
     w.set_encryption_step(&dialog.step);
     w.set_encryption_activity(dialog.activity);
-    w.set_encryption_error(dialog.error.kind);
-    w.set_string(
-        StringProp::EncryptionErrorDetail,
-        SharedString::from(&dialog.error.detail),
-    );
+    w.set_message(MessageProp::EncryptionError, &dialog.error);
     let shown_key = if let EncryptionStep::ShowingKey(key) = &dialog.step {
         key.expose()
     } else {
@@ -2090,11 +2043,7 @@ fn apply_encryption(w: &impl UiProps, last: Option<&EncryptionView>, view: &Encr
         _ => &closed_prompt,
     };
     w.set_encryption_auth_stage(prompt.stage);
-    w.set_encryption_auth_error(prompt.error.kind);
-    w.set_string(
-        StringProp::EncryptionAuthErrorDetail,
-        SharedString::from(&prompt.error.detail),
-    );
+    w.set_message(MessageProp::EncryptionAuthError, &prompt.error);
 }
 
 fn apply_account<B: UiBackend>(
@@ -2119,27 +2068,15 @@ fn apply_account<B: UiBackend>(
             .as_deref()
             .map_or_else(SharedString::new, SharedString::from),
     );
-    w.set_account_error(dialog.error.kind);
-    w.set_string(
-        StringProp::AccountErrorDetail,
-        SharedString::from(&dialog.error.detail),
-    );
-    w.set_account_notice(dialog.notice.kind);
-    w.set_string(
-        StringProp::AccountNoticeDetail,
-        SharedString::from(&dialog.notice.detail),
-    );
+    w.set_message(MessageProp::AccountError, &dialog.error);
+    w.set_message(MessageProp::AccountNotice, &dialog.notice);
     let closed_auth = AccountAuth::default();
     let auth = match &dialog.step {
         AccountStep::Authenticating(auth) => auth,
         _ => &closed_auth,
     };
     w.set_account_auth_stage(auth.prompt.stage);
-    w.set_account_auth_error(auth.prompt.error.kind);
-    w.set_string(
-        StringProp::AccountAuthErrorDetail,
-        SharedString::from(&auth.prompt.error.detail),
-    );
+    w.set_message(MessageProp::AccountAuthError, &auth.prompt.error);
     w.set_account_auth_for(auth.guarding);
     w.set_string(
         StringProp::AccountAuthSubject,
@@ -2304,7 +2241,7 @@ fn apply_verification(w: &impl UiProps, update: &VerificationUpdate) {
         VerificationUpdate::Busy(activity) => w.set_verification_activity(*activity),
         VerificationUpdate::Failed(message) => {
             w.set_verification_activity(VerificationActivity::None);
-            set_verification_error(w, message);
+            w.set_message(MessageProp::VerificationError, message);
         }
         VerificationUpdate::Dismissed => reset_verification(w),
     }
@@ -2331,7 +2268,10 @@ fn apply_verification_flow(w: &impl UiProps, event: &DomainVerificationEvent) {
         }
         DomainVerificationEvent::Cancelled(reason) => {
             w.set_verification_phase(VerifyStep::Cancelled);
-            set_verification_error(w, &verification_cancellation(reason));
+            w.set_message(
+                MessageProp::VerificationError,
+                &verification_cancellation(reason),
+            );
         }
     }
 }
@@ -2341,7 +2281,7 @@ fn open_verification(w: &impl UiProps, step: VerifyStep, sender: &str, is_self: 
     w.set_verification_phase(step);
     w.set_string(StringProp::VerificationSender, SharedString::from(sender));
     w.set_bool(BoolProp::VerificationIsSelf, is_self);
-    set_verification_error(w, &UserMessage::default());
+    w.set_message(MessageProp::VerificationError, &UserMessage::default());
 }
 
 fn reset_verification(w: &impl UiProps) {
@@ -2350,16 +2290,8 @@ fn reset_verification(w: &impl UiProps) {
     w.set_verification_phase(VerifyStep::None);
     w.set_string(StringProp::VerificationSender, SharedString::default());
     w.set_bool(BoolProp::VerificationIsSelf, false);
-    set_verification_error(w, &UserMessage::default());
+    w.set_message(MessageProp::VerificationError, &UserMessage::default());
     w.clear_emoji_model();
-}
-
-fn set_verification_error(w: &impl UiProps, message: &UserMessage) {
-    w.set_verification_error(message.kind);
-    w.set_string(
-        StringProp::VerificationErrorDetail,
-        SharedString::from(&message.detail),
-    );
 }
 
 fn show_selected_room_avatar(
@@ -2379,7 +2311,7 @@ fn show_selected_room_avatar(
     }
     let image = load_avatar_async(next.path.as_deref(), AvatarSlot::SelectedRoom);
     if image.is_some() || !previous.same_source(&next) {
-        w.apply_selected_room_avatar(image);
+        w.set_image(ImageProp::SelectedRoomAvatar, image);
     }
 }
 
@@ -2407,7 +2339,7 @@ fn clear_selected_room(w: &impl UiProps) {
     w.set_string(StringProp::SelectedRoomName, SharedString::default());
     w.set_string(StringProp::SelectedRoomInitial, SharedString::default());
     w.set_int(IntProp::SelectedRoomColorIndex, 0);
-    w.apply_selected_room_avatar(None);
+    w.set_image(ImageProp::SelectedRoomAvatar, None);
     w.set_int(IntProp::SelectedRoomRow, NO_SELECTED_ROW);
     w.set_int(IntProp::SelectedRoomHeadings, 0);
     w.set_int(IntProp::SelectedRoomMembers, 0);
