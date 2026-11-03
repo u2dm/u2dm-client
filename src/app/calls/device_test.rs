@@ -1,11 +1,12 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use tokio::sync::{OwnedSemaphorePermit, Semaphore, mpsc, oneshot};
+use tokio::sync::{Semaphore, mpsc, oneshot};
 use tokio::time::{Instant, interval_at, sleep};
 use tokio_util::sync::CancellationToken;
 
 use super::media::DEVICE_POLL;
+use super::take_turn;
 use crate::app::event::{AppEvent, CallEvent};
 use crate::app::input::EventSender;
 use crate::domain::call::device_test::{DeviceTest, TestNews};
@@ -86,7 +87,7 @@ pub(super) fn level_percent(loudness: f32) -> u8 {
 
 impl TestTask {
     async fn run(self, mut stopped: oneshot::Receiver<()>, token: CancellationToken) {
-        let Some(turn) = self.take_turn(&mut stopped, &token).await else {
+        let Some(turn) = take_turn(&self.turn, &mut stopped, &token, "device test").await else {
             return;
         };
         let (news_tx, news_rx) = mpsc::unbounded_channel();
@@ -96,21 +97,6 @@ impl TestTask {
             tracing::debug!(test = self.serial, "the device test let go of its device");
         }
         drop(turn);
-    }
-
-    async fn take_turn(
-        &self,
-        stopped: &mut oneshot::Receiver<()>,
-        token: &CancellationToken,
-    ) -> Option<OwnedSemaphorePermit> {
-        tokio::select! {
-            biased;
-            _ = stopped => None,
-            () = token.cancelled() => None,
-            turn = Arc::clone(&self.turn).acquire_owned() => turn
-                .inspect_err(|e| tracing::debug!("the device test cannot take its turn: {e}"))
-                .ok(),
-        }
     }
 
     async fn open(&self, news: mpsc::UnboundedSender<TestNews>) -> Option<Box<dyn RunningTest>> {

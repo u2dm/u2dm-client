@@ -14,8 +14,9 @@ use std::fmt;
 use std::sync::Arc;
 use std::time::Duration;
 
-use tokio::sync::{Semaphore, mpsc, oneshot, watch};
+use tokio::sync::{OwnedSemaphorePermit, Semaphore, mpsc, oneshot, watch};
 use tokio::time::{sleep, sleep_until, timeout};
+use tokio_util::sync::CancellationToken;
 use tracing::{Instrument, Span};
 
 use self::device_test::{TestOutcome, TestState, TestTask, Testing, level_percent};
@@ -262,19 +263,13 @@ impl Calls {
         user: UserId,
         device: DeviceId,
     ) {
-        let events = self.events.clone();
-        let token = background.token();
         let follower = Arc::clone(&port);
-        background.spawn(async move {
-            let (signals_tx, signals_rx) = mpsc::channel(SIGNAL_CHANNEL_CAP);
-            let follow = async {
-                tokio::join!(
-                    follow_signals(follower.as_ref(), signals_tx),
-                    forward_signals(&events, session, signals_rx),
-                )
-            };
-            token.run_until_cancelled(follow).await;
-        });
+        background.spawn_follow(
+            &self.events,
+            SIGNAL_CHANNEL_CAP,
+            move |signals_tx| async move { follow_signals(follower.as_ref(), signals_tx).await },
+            move |signal| AppEvent::Call(CallEvent::Signal { session, signal }),
+        );
         self.own = Some(Own {
             port,
             rtc,
@@ -1287,43 +1282,19 @@ impl Calls {
     }
 
     pub(super) fn set_microphone(&mut self, on: bool, directory: &RoomDirectory) {
-        let Some(joined) = self.joined.as_mut() else {
-            return;
-        };
-        let span = joined.span.clone();
-        let _in_call = span.enter();
-        joined.set_microphone(on);
-        self.publish(directory);
+        self.change_joined(directory, |joined| joined.set_microphone(on));
     }
 
     pub(super) fn set_camera(&mut self, on: bool, directory: &RoomDirectory) {
-        let Some(joined) = self.joined.as_mut() else {
-            return;
-        };
-        let span = joined.span.clone();
-        let _in_call = span.enter();
-        joined.set_camera(on);
-        self.publish(directory);
+        self.change_joined(directory, |joined| joined.set_camera(on));
     }
 
     pub(super) fn set_screen_share(&mut self, on: bool, directory: &RoomDirectory) {
-        let Some(joined) = self.joined.as_mut() else {
-            return;
-        };
-        let span = joined.span.clone();
-        let _in_call = span.enter();
-        joined.set_screen_share(on);
-        self.publish(directory);
+        self.change_joined(directory, |joined| joined.set_screen_share(on));
     }
 
     pub(super) fn change_screen_share(&mut self, directory: &RoomDirectory) {
-        let Some(joined) = self.joined.as_mut() else {
-            return;
-        };
-        let span = joined.span.clone();
-        let _in_call = span.enter();
-        joined.change_screen_share();
-        self.publish(directory);
+        self.change_joined(directory, Joined::change_screen_share);
     }
 
     pub(super) fn use_device(
@@ -1491,25 +1462,11 @@ impl Calls {
     }
 
     pub(super) fn raise_hand(&mut self, on: bool, directory: &RoomDirectory) {
-        let Some(joined) = self.joined.as_mut() else {
-            return;
-        };
-        let span = joined.span.clone();
-        let _in_call = span.enter();
-        let effects = joined.raise_hand(on);
-        self.run_effects(effects);
-        self.publish(directory);
+        self.change_joined_effects(directory, |joined| joined.raise_hand(on));
     }
 
     pub(super) fn send_reaction(&mut self, name: &str, directory: &RoomDirectory) {
-        let Some(joined) = self.joined.as_mut() else {
-            return;
-        };
-        let span = joined.span.clone();
-        let _in_call = span.enter();
-        let effects = joined.send_reaction(name);
-        self.run_effects(effects);
-        self.publish(directory);
+        self.change_joined_effects(directory, |joined| joined.send_reaction(name));
     }
 
     fn change_joined(&mut self, directory: &RoomDirectory, change: impl FnOnce(&mut Joined)) {
@@ -1519,6 +1476,21 @@ impl Calls {
         let span = joined.span.clone();
         let _in_call = span.enter();
         change(joined);
+        self.publish(directory);
+    }
+
+    fn change_joined_effects(
+        &mut self,
+        directory: &RoomDirectory,
+        change: impl FnOnce(&mut Joined) -> Vec<Effect>,
+    ) {
+        let Some(joined) = self.joined.as_mut() else {
+            return;
+        };
+        let span = joined.span.clone();
+        let _in_call = span.enter();
+        let effects = change(joined);
+        self.run_effects(effects);
         self.publish(directory);
     }
 
@@ -1767,15 +1739,7 @@ impl Calls {
                     .instrument(span),
                 );
             }
-            Effect::WakeKeys(at) => {
-                let wake = joined.wake_at(at);
-                let token = self.key_tasks.token();
-                self.key_tasks.spawn(async move {
-                    if token.run_until_cancelled(sleep_until(wake)).await.is_some() {
-                        send(&events, CallEvent::KeyWake { call });
-                    }
-                });
-            }
+            Effect::WakeKeys(at) => self.wake_at(at, |call| CallEvent::KeyWake { call }),
             Effect::Grant(request) => {
                 let rtc = Arc::clone(&own.rtc);
                 self.actions.spawn(
@@ -2298,6 +2262,22 @@ fn keys_sent(report: &KeySendReport) {
     );
 }
 
+async fn take_turn(
+    turn: &Arc<Semaphore>,
+    stopped: &mut oneshot::Receiver<()>,
+    token: &CancellationToken,
+    what: &str,
+) -> Option<OwnedSemaphorePermit> {
+    tokio::select! {
+        biased;
+        _ = stopped => None,
+        () = token.cancelled() => None,
+        turn = Arc::clone(turn).acquire_owned() => turn
+            .inspect_err(|e| tracing::debug!("the {what} cannot take its turn: {e}"))
+            .ok(),
+    }
+}
+
 fn send(events: &EventSender, event: CallEvent) {
     if events.send(AppEvent::Call(event)).is_err() {
         tracing::debug!("the app stopped before hearing from a call task");
@@ -2310,17 +2290,3 @@ async fn follow_signals(port: &dyn CallSignalPort, signals_tx: mpsc::Sender<Call
     }
 }
 
-async fn forward_signals(
-    events: &EventSender,
-    session: u64,
-    mut signals_rx: mpsc::Receiver<CallSignal>,
-) {
-    while let Some(signal) = signals_rx.recv().await {
-        if events
-            .send(AppEvent::Call(CallEvent::Signal { session, signal }))
-            .is_err()
-        {
-            return;
-        }
-    }
-}

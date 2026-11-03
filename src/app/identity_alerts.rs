@@ -4,6 +4,7 @@ use tokio::sync::mpsc;
 
 use super::event::{AppEvent, IdentityEvent};
 use super::input::EventSender;
+use super::session_requests::SessionRequests;
 use super::show_toast;
 use super::task_group::TaskGroup;
 use crate::commands::messages::{UserMessage, UserMessageKind};
@@ -66,8 +67,7 @@ pub(super) struct IdentityAlerts {
     follow: TaskGroup,
     actions: TaskGroup,
     watch: u64,
-    requests: u64,
-    first_request_of_session: u64,
+    requests: SessionRequests,
     room_id: Option<RoomId>,
     room: Vec<RoomAlert>,
     own: OwnIdentity,
@@ -83,8 +83,7 @@ impl IdentityAlerts {
             follow: TaskGroup::new("identity-follow"),
             actions: TaskGroup::new("identity-actions"),
             watch: 0,
-            requests: 0,
-            first_request_of_session: 1,
+            requests: SessionRequests::default(),
             room_id: None,
             room: Vec::new(),
             own: OwnIdentity::Unchanged,
@@ -105,18 +104,12 @@ impl IdentityAlerts {
         tracing::debug!(%room_id, watch = self.watch, "following the room's identity alerts");
 
         let watch = self.watch;
-        let events = self.events.clone();
-        let token = self.follow.token();
-        self.follow.spawn(async move {
-            let (alerts_tx, alerts_rx) = mpsc::channel(ALERT_CHANNEL_CAP);
-            let follow = async {
-                tokio::join!(
-                    follow_room(port.as_ref(), &room_id, alerts_tx),
-                    forward_room_alerts(&events, watch, alerts_rx),
-                )
-            };
-            token.run_until_cancelled(follow).await;
-        });
+        self.follow.spawn_follow(
+            &self.events,
+            ALERT_CHANNEL_CAP,
+            move |alerts_tx| async move { follow_room(port.as_ref(), &room_id, alerts_tx).await },
+            move |alerts| AppEvent::Identity(IdentityEvent::RoomAlerts { watch, alerts }),
+        );
     }
 
     pub(super) fn clear(&mut self) {
@@ -135,18 +128,12 @@ impl IdentityAlerts {
         session: u64,
     ) {
         self.own = OwnIdentity::Unchanged;
-        let events = self.events.clone();
-        let token = group.token();
-        group.spawn(async move {
-            let (own_tx, own_rx) = mpsc::channel(ALERT_CHANNEL_CAP);
-            let follow = async {
-                tokio::join!(
-                    follow_own(port.as_ref(), own_tx),
-                    forward_own_identity(&events, session, own_rx),
-                )
-            };
-            token.run_until_cancelled(follow).await;
-        });
+        group.spawn_follow(
+            &self.events,
+            ALERT_CHANNEL_CAP,
+            move |own_tx| async move { follow_own(port.as_ref(), own_tx).await },
+            move |own| AppEvent::Identity(IdentityEvent::OwnIdentity { session, own }),
+        );
     }
 
     pub(super) fn room_alerts_changed(&mut self, watch: u64, alerts: Vec<RoomAlert>) {
@@ -192,8 +179,7 @@ impl IdentityAlerts {
             tracing::debug!("the identity alert is already being resolved");
             return;
         }
-        self.requests = self.requests.wrapping_add(1);
-        let request = self.requests;
+        let request = self.requests.issue();
         let failure = resolution.failure(&alert);
         self.pending = Some(Pending {
             alert,
@@ -218,7 +204,7 @@ impl IdentityAlerts {
     }
 
     pub(super) fn settled(&mut self, request: u64, failure: Option<UserMessage>) {
-        if request < self.first_request_of_session {
+        if self.requests.predates_session(request) {
             tracing::debug!(
                 request,
                 "dropping an identity resolution of a session that ended"
@@ -245,7 +231,7 @@ impl IdentityAlerts {
 
     pub(super) async fn restart(&mut self) {
         tokio::join!(self.follow.restart(), self.actions.restart());
-        self.first_request_of_session = self.requests.wrapping_add(1);
+        self.requests.end_session();
         self.watch = self.watch.wrapping_add(1);
         self.room_id = None;
         self.room.clear();
@@ -319,18 +305,6 @@ async fn follow_room(
     }
 }
 
-async fn forward_room_alerts(
-    events: &EventSender,
-    watch: u64,
-    mut alerts_rx: mpsc::Receiver<Vec<RoomAlert>>,
-) {
-    while let Some(alerts) = alerts_rx.recv().await {
-        let event = AppEvent::Identity(IdentityEvent::RoomAlerts { watch, alerts });
-        if events.send(event).is_err() {
-            return;
-        }
-    }
-}
 
 async fn follow_own(port: &dyn IdentityPort, own_tx: mpsc::Sender<OwnIdentity>) {
     if let Err(e) = port.follow_own(own_tx).await {
@@ -338,15 +312,3 @@ async fn follow_own(port: &dyn IdentityPort, own_tx: mpsc::Sender<OwnIdentity>) 
     }
 }
 
-async fn forward_own_identity(
-    events: &EventSender,
-    session: u64,
-    mut own_rx: mpsc::Receiver<OwnIdentity>,
-) {
-    while let Some(own) = own_rx.recv().await {
-        let event = AppEvent::Identity(IdentityEvent::OwnIdentity { session, own });
-        if events.send(event).is_err() {
-            return;
-        }
-    }
-}

@@ -1,4 +1,3 @@
-use std::future::Future;
 use std::sync::Arc;
 
 use tokio::sync::mpsc;
@@ -12,6 +11,41 @@ use crate::domain::verification::VerificationEvent;
 use crate::error::Result;
 use crate::ports::matrix::VerificationPort;
 use crate::ports::output::AppOutputPort;
+
+#[derive(Clone, Copy)]
+pub(super) enum VerificationAction {
+    Accept,
+    Reject,
+    Confirm,
+    Cancel,
+}
+
+impl VerificationAction {
+    fn activity(self) -> VerificationActivity {
+        match self {
+            Self::Accept => VerificationActivity::Accepting,
+            Self::Reject | Self::Cancel => VerificationActivity::Declining,
+            Self::Confirm => VerificationActivity::Confirming,
+        }
+    }
+
+    fn failure(self) -> UserMessageKind {
+        match self {
+            Self::Accept => UserMessageKind::VerificationAcceptFailed,
+            Self::Reject | Self::Cancel => UserMessageKind::VerificationRejectFailed,
+            Self::Confirm => UserMessageKind::VerificationConfirmFailed,
+        }
+    }
+
+    async fn run(self, port: &dyn VerificationPort) -> Result<()> {
+        match self {
+            Self::Accept => port.accept_verification().await,
+            Self::Reject => port.reject_verification().await,
+            Self::Confirm => port.confirm_verification().await,
+            Self::Cancel => port.cancel_verification().await,
+        }
+    }
+}
 
 #[derive(Clone, Copy, Default, PartialEq, Eq)]
 enum FlowState {
@@ -100,51 +134,6 @@ impl VerificationController {
             .await;
     }
 
-    pub(super) async fn accept(
-        &self,
-        group: &mut TaskGroup,
-        verification: Arc<dyn VerificationPort>,
-    ) {
-        self.act(
-            group,
-            verification,
-            VerificationActivity::Accepting,
-            UserMessageKind::VerificationAcceptFailed,
-            |v| async move { v.accept_verification().await },
-        )
-        .await;
-    }
-
-    pub(super) async fn reject(
-        &self,
-        group: &mut TaskGroup,
-        verification: Arc<dyn VerificationPort>,
-    ) {
-        self.act(
-            group,
-            verification,
-            VerificationActivity::Declining,
-            UserMessageKind::VerificationRejectFailed,
-            |v| async move { v.reject_verification().await },
-        )
-        .await;
-    }
-
-    pub(super) async fn confirm(
-        &self,
-        group: &mut TaskGroup,
-        verification: Arc<dyn VerificationPort>,
-    ) {
-        self.act(
-            group,
-            verification,
-            VerificationActivity::Confirming,
-            UserMessageKind::VerificationConfirmFailed,
-            |v| async move { v.confirm_verification().await },
-        )
-        .await;
-    }
-
     pub(super) async fn dismiss(
         &mut self,
         group: &mut TaskGroup,
@@ -154,44 +143,30 @@ impl VerificationController {
             && let Some(verification) = verification
         {
             tracing::info!("dismissing a live verification; cancelling it first");
-            self.cancel(group, verification).await;
+            self.act(group, verification, VerificationAction::Cancel)
+                .await;
             return;
         }
         self.flow = FlowState::Idle;
         self.emit(VerificationUpdate::Dismissed).await;
     }
 
-    async fn cancel(&self, group: &mut TaskGroup, verification: Arc<dyn VerificationPort>) {
-        self.act(
-            group,
-            verification,
-            VerificationActivity::Declining,
-            UserMessageKind::VerificationRejectFailed,
-            |v| async move { v.cancel_verification().await },
-        )
-        .await;
-    }
-
     pub(super) fn reset(&mut self) {
         self.flow = FlowState::Idle;
     }
 
-    async fn act<F, Fut>(
+    pub(super) async fn act(
         &self,
         group: &mut TaskGroup,
         verification: Arc<dyn VerificationPort>,
-        activity: VerificationActivity,
-        failure: UserMessageKind,
-        action: F,
-    ) where
-        F: FnOnce(Arc<dyn VerificationPort>) -> Fut + Send + 'static,
-        Fut: Future<Output = Result<()>> + Send,
-    {
-        self.emit(VerificationUpdate::Busy(activity)).await;
+        action: VerificationAction,
+    ) {
+        self.emit(VerificationUpdate::Busy(action.activity())).await;
         let events = self.events.clone();
         let session = self.session;
+        let failure = action.failure();
         group.spawn(async move {
-            if let Err(e) = action(verification).await {
+            if let Err(e) = action.run(verification.as_ref()).await {
                 tracing::warn!("verification action failed: {e}");
                 if events
                     .send(AppEvent::VerificationActionFailed { session, failure })

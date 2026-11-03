@@ -3,9 +3,8 @@ use std::sync::Arc;
 
 use tokio::sync::mpsc;
 
-use super::event::{AppEvent, MessageActionEvent};
+use super::event::{ActionOutcome, AppEvent, MessageActionEvent};
 use super::input::EventSender;
-use super::room_info::ActionOutcome;
 use super::send_lanes::SendLanes;
 use super::show_toast;
 use super::task_group::TaskGroup;
@@ -90,18 +89,12 @@ impl PinnedMessages {
         tracing::debug!(%room_id, watch = self.watch, "following the pinned messages");
 
         let watch = self.watch;
-        let events = self.events.clone();
-        let token = self.tasks.token();
-        self.tasks.spawn(async move {
-            let (pinned_tx, pinned_rx) = mpsc::channel(PINNED_CHANNEL_CAP);
-            let follow = async {
-                tokio::join!(
-                    subscribe(port.as_ref(), &room_id, pinned_tx),
-                    forward(&events, watch, pinned_rx),
-                )
-            };
-            token.run_until_cancelled(follow).await;
-        });
+        self.tasks.spawn_follow(
+            &self.events,
+            PINNED_CHANNEL_CAP,
+            move |pinned_tx| async move { subscribe(port.as_ref(), &room_id, pinned_tx).await },
+            move |messages| AppEvent::PinnedChanged { watch, messages },
+        );
     }
 
     pub(super) fn changed(&mut self, watch: u64, messages: Vec<PinnedMessage>) {
@@ -337,17 +330,3 @@ async fn subscribe(
     }
 }
 
-async fn forward(
-    events: &EventSender,
-    watch: u64,
-    mut pinned_rx: mpsc::Receiver<Vec<PinnedMessage>>,
-) {
-    while let Some(messages) = pinned_rx.recv().await {
-        if events
-            .send(AppEvent::PinnedChanged { watch, messages })
-            .is_err()
-        {
-            return;
-        }
-    }
-}

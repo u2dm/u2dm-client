@@ -130,17 +130,9 @@ impl RoomCreation {
         self.pending.insert(creation, Stage::Requested(labels));
         self.publish();
 
-        let events = self.events.clone();
-        let cancel = self.creations.token();
-        self.creations.spawn(async move {
-            let outcome = tokio::select! {
-                () = cancel.cancelled() => return,
-                outcome = port.create_room(&blueprint) => outcome,
-            };
-            drop(events.send(AppEvent::RoomCreation(CreationSettled {
-                creation,
-                outcome,
-            })));
+        self.creations.spawn_reporting(&self.events, async move {
+            let outcome = port.create_room(&blueprint).await;
+            AppEvent::RoomCreation(CreationSettled { creation, outcome })
         });
     }
 

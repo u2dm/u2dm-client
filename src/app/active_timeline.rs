@@ -656,48 +656,36 @@ impl Forwarder {
             }
             TimelineUpdate::DeleteFailed => report_delete_failure(self.output.as_ref()),
             TimelineUpdate::AudioLocated { request, track } => {
-                let located = TimelineEvent::AudioLocated {
-                    room_id: self.room_id.clone(),
-                    generation: self.generation,
+                return self.tell(|room_id, generation| TimelineEvent::AudioLocated {
+                    room_id,
+                    generation,
                     request,
                     track,
-                };
-                if self.events.send(AppEvent::Timeline(located)).is_err() {
-                    return false;
-                }
+                });
             }
             TimelineUpdate::SourceLocated { request, source } => {
-                let located = TimelineEvent::SourceLocated {
-                    room_id: self.room_id.clone(),
-                    generation: self.generation,
+                return self.tell(|room_id, generation| TimelineEvent::SourceLocated {
+                    room_id,
+                    generation,
                     request,
                     source,
-                };
-                if self.events.send(AppEvent::Timeline(located)).is_err() {
-                    return false;
-                }
+                });
             }
             TimelineUpdate::ReadersLocated { request, readers } => {
-                let located = TimelineEvent::ReadersLocated {
-                    room_id: self.room_id.clone(),
-                    generation: self.generation,
+                return self.tell(|room_id, generation| TimelineEvent::ReadersLocated {
+                    room_id,
+                    generation,
                     request,
                     readers,
-                };
-                if self.events.send(AppEvent::Timeline(located)).is_err() {
-                    return false;
-                }
+                });
             }
             TimelineUpdate::Pagination { direction, outcome } => {
-                let settled = TimelineEvent::PaginationCompleted {
-                    room_id: self.room_id.clone(),
-                    generation: self.generation,
+                return self.tell(|room_id, generation| TimelineEvent::PaginationCompleted {
+                    room_id,
+                    generation,
                     direction,
                     outcome,
-                };
-                if self.events.send(AppEvent::Timeline(settled)).is_err() {
-                    return false;
-                }
+                });
             }
         }
         true
@@ -745,13 +733,17 @@ impl Forwarder {
             .await;
     }
 
+    fn tell(&self, event: impl FnOnce(RoomId, i32) -> TimelineEvent) -> bool {
+        let event = event(self.room_id.clone(), self.generation);
+        self.events.send(AppEvent::Timeline(event)).is_ok()
+    }
+
     fn send_advance(&self, advance: TimelineAdvance) {
-        let advanced = TimelineEvent::Advanced {
-            room_id: self.room_id.clone(),
-            generation: self.generation,
+        self.tell(|room_id, generation| TimelineEvent::Advanced {
+            room_id,
+            generation,
             advance,
-        };
-        drop(self.events.send(AppEvent::Timeline(advanced)));
+        });
     }
 
     async fn emit_status(&self, status: TimelineStatus) {
@@ -785,12 +777,11 @@ impl Forwarder {
     }
 
     fn refocus(&self, focus: TimelineFocus) {
-        let refocus = TimelineEvent::Refocus {
-            room_id: self.room_id.clone(),
-            generation: self.generation,
+        self.tell(|room_id, generation| TimelineEvent::Refocus {
+            room_id,
+            generation,
             focus,
-        };
-        drop(self.events.send(AppEvent::Timeline(refocus)));
+        });
     }
 }
 

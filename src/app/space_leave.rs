@@ -3,8 +3,8 @@ use std::sync::Arc;
 
 use super::event::{AppEvent, DepartureEvent};
 use super::input::EventSender;
-use super::show_toast;
 use super::task_group::TaskGroup;
+use super::{report_in, show_toast};
 use crate::commands::messages::{UserMessage, UserMessageKind};
 use crate::commands::view::{LeaveSpaceView, SpaceToLeave, Toast};
 use crate::domain::departure::{AdminStanding, SpaceDeparture};
@@ -84,20 +84,15 @@ impl SpaceLeave {
         });
         self.publish();
 
-        let events = self.events.clone();
-        let cancel = self.tasks.token();
-        self.tasks.spawn(async move {
-            let standing = tokio::select! {
-                () = cancel.cancelled() => return,
-                standing = port.admin_standing(&space_id) => standing
+        self.tasks.spawn_reporting(&self.events, async move {
+            let standing = port.admin_standing(&space_id).await
                     .inspect_err(|e| tracing::debug!(space = %space_id, "could not tell who else manages the space: {e}"))
-                    .ok(),
-            };
+                    .ok();
             let read = DepartureEvent::StandingRead {
                 generation,
                 standing,
             };
-            drop(events.send(AppEvent::Departure(read)));
+            AppEvent::Departure(read)
         });
     }
 
@@ -162,19 +157,14 @@ impl SpaceLeave {
         self.publish();
 
         let space_id = space_id.clone();
-        let events = self.events.clone();
-        let cancel = self.actions.token();
-        self.actions.spawn(async move {
-            let outcome = tokio::select! {
-                () = cancel.cancelled() => return,
-                outcome = leave_in_order(port.as_ref(), &first, &space_id) => outcome,
-            };
+        self.actions.spawn_reporting(&self.events, async move {
+            let outcome = leave_in_order(port.as_ref(), &first, &space_id).await;
             let left = DepartureEvent::SpaceLeft {
                 space_id,
                 name,
                 outcome,
             };
-            drop(events.send(AppEvent::Departure(left)));
+            AppEvent::Departure(left)
         });
     }
 
@@ -202,10 +192,12 @@ impl SpaceLeave {
             }
             SpaceLeaveOutcome::Failed => {
                 let message = UserMessage::about(UserMessageKind::LeaveRoomFailed, &name);
-                match self.open.as_mut().filter(|open| open.space_id == *space_id) {
-                    Some(open) => open.error = message,
-                    None => show_toast(self.output.as_ref(), Toast::Error(message)),
-                }
+                let shown = self.open.as_mut().filter(|open| open.space_id == *space_id);
+                report_in(
+                    self.output.as_ref(),
+                    shown.map(|open| &mut open.error),
+                    message,
+                );
             }
         }
         self.publish();

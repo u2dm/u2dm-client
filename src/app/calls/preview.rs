@@ -1,8 +1,9 @@
 use std::sync::Arc;
 
-use tokio::sync::{OwnedSemaphorePermit, Semaphore, oneshot};
+use tokio::sync::{Semaphore, oneshot};
 use tokio_util::sync::CancellationToken;
 
+use super::take_turn;
 use crate::app::event::{AppEvent, CallEvent};
 use crate::app::input::EventSender;
 use crate::commands::view::PreviewTrouble;
@@ -70,7 +71,7 @@ impl Preview {
 
 impl PreviewTask {
     async fn run(self, mut stopped: oneshot::Receiver<()>, token: CancellationToken) {
-        let Some(turn) = self.take_turn(&mut stopped, &token).await else {
+        let Some(turn) = take_turn(&self.turn, &mut stopped, &token, "camera preview").await else {
             return;
         };
         let (lost_tx, lost_rx) = oneshot::channel();
@@ -83,21 +84,6 @@ impl PreviewTask {
             );
         }
         drop(turn);
-    }
-
-    async fn take_turn(
-        &self,
-        stopped: &mut oneshot::Receiver<()>,
-        token: &CancellationToken,
-    ) -> Option<OwnedSemaphorePermit> {
-        tokio::select! {
-            biased;
-            _ = stopped => None,
-            () = token.cancelled() => None,
-            turn = Arc::clone(&self.turn).acquire_owned() => turn
-                .inspect_err(|e| tracing::debug!("the camera preview cannot take its turn: {e}"))
-                .ok(),
-        }
     }
 
     async fn open(&self, lost: oneshot::Sender<String>) -> Option<Box<dyn CameraPreview>> {

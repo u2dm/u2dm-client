@@ -5,13 +5,12 @@ use tokio::sync::mpsc;
 
 use super::event::{AppEvent, EncryptionEvent};
 use super::input::EventSender;
-use super::show_toast;
+use super::report_in;
+use super::session_requests::SessionRequests;
 use super::task_group::TaskGroup;
 use super::uia::{AuthRound, Next, Reply};
 use crate::commands::messages::{UserMessage, UserMessageKind};
-use crate::commands::view::{
-    EncryptionActivity, EncryptionDialog, EncryptionStep, EncryptionView, Toast,
-};
+use crate::commands::view::{EncryptionActivity, EncryptionDialog, EncryptionStep, EncryptionView};
 use crate::domain::encryption::{
     AccountEncryption, IdentityOutcome, IdentitySetup, KeyImport, KeyPassphrase, Recovery,
     RecoveryAttempt, RecoveryKey, RecoverySetup, Standing,
@@ -119,8 +118,7 @@ pub(super) struct Encryption {
     files: Arc<dyn MediaFilePort>,
     browser: Arc<dyn BrowserPort>,
     actions: TaskGroup,
-    requests: u64,
-    first_request_of_session: u64,
+    requests: SessionRequests,
     state: AccountEncryption,
     setup: IdentitySetup,
     dialog: Option<Dialog>,
@@ -140,8 +138,7 @@ impl Encryption {
             files,
             browser,
             actions: TaskGroup::new("encryption-actions"),
-            requests: 0,
-            first_request_of_session: 1,
+            requests: SessionRequests::default(),
             state: AccountEncryption::default(),
             setup: IdentitySetup::Running,
             dialog: None,
@@ -160,18 +157,12 @@ impl Encryption {
         self.publish();
 
         let follow_port = Arc::clone(port);
-        let events = self.events.clone();
-        let token = group.token();
-        group.spawn(async move {
-            let (state_tx, state_rx) = mpsc::channel(STATE_CHANNEL_CAP);
-            let follow = async {
-                tokio::join!(
-                    follow(follow_port.as_ref(), state_tx),
-                    forward_states(&events, session, state_rx),
-                )
-            };
-            token.run_until_cancelled(follow).await;
-        });
+        group.spawn_follow(
+            &self.events,
+            STATE_CHANNEL_CAP,
+            move |state_tx| async move { follow(follow_port.as_ref(), state_tx).await },
+            move |state| AppEvent::Encryption(EncryptionEvent::Changed { session, state }),
+        );
 
         let setup_port = Arc::clone(port);
         let events = self.events.clone();
@@ -527,7 +518,7 @@ impl Encryption {
         request: u64,
         outcome: EncryptionOutcome,
     ) {
-        if request < self.first_request_of_session {
+        if self.requests.predates_session(request) {
             tracing::debug!(
                 request,
                 "dropping an encryption action of a session that ended"
@@ -560,7 +551,7 @@ impl Encryption {
 
     pub(super) async fn restart(&mut self) {
         self.actions.restart().await;
-        self.first_request_of_session = self.requests.wrapping_add(1);
+        self.requests.end_session();
         self.state = AccountEncryption::default();
         self.setup = IdentitySetup::Running;
         self.dialog = None;
@@ -787,10 +778,8 @@ impl Encryption {
     }
 
     fn report(&mut self, kind: UserMessageKind) {
-        match self.dialog.as_mut() {
-            Some(dialog) => dialog.error = UserMessage::new(kind),
-            None => show_toast(self.output.as_ref(), Toast::Error(UserMessage::new(kind))),
-        }
+        let shown = self.dialog.as_mut().map(|dialog| &mut dialog.error);
+        report_in(self.output.as_ref(), shown, UserMessage::new(kind));
     }
 
     fn set_step(&mut self, step: Step) {
@@ -832,8 +821,7 @@ impl Encryption {
             tracing::debug!(running = ?pending.action, ?action, "an encryption action is already running");
             return;
         }
-        self.requests = self.requests.wrapping_add(1);
-        let request = self.requests;
+        let request = self.requests.issue();
         self.pending = Some(Pending { request, action });
         if let Some(dialog) = self.dialog.as_mut() {
             dialog.error = UserMessage::default();
@@ -922,15 +910,3 @@ async fn follow(port: &dyn EncryptionPort, state_tx: mpsc::Sender<AccountEncrypt
     }
 }
 
-async fn forward_states(
-    events: &EventSender,
-    session: u64,
-    mut state_rx: mpsc::Receiver<AccountEncryption>,
-) {
-    while let Some(state) = state_rx.recv().await {
-        let event = AppEvent::Encryption(EncryptionEvent::Changed { session, state });
-        if events.send(event).is_err() {
-            return;
-        }
-    }
-}

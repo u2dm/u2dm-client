@@ -3,11 +3,11 @@ use std::sync::Arc;
 
 use super::event::{AppEvent, PreviewEvent};
 use super::input::EventSender;
+use super::report_in;
 use super::room_directory::Membership;
-use super::show_toast;
 use super::task_group::TaskGroup;
 use crate::commands::messages::{UserMessage, UserMessageKind};
-use crate::commands::view::{ChildAccess, RoomPreviewSheet, RoomPreviewView, ShownPreview, Toast};
+use crate::commands::view::{ChildAccess, RoomPreviewSheet, RoomPreviewView, ShownPreview};
 use crate::domain::matrix_link::{MatrixLink, RoomAddress, RoomLink};
 use crate::domain::room::RoomId;
 use crate::domain::room_preview::{PreviewFailure, PreviewMembership, RoomPreview};
@@ -251,24 +251,19 @@ impl RoomPreviews {
         self.rederive(membership);
         self.publish();
 
-        let events = self.events.clone();
-        let cancel = self.joins.token();
-        self.joins.spawn(async move {
-            let outcome = tokio::select! {
-                () = cancel.cancelled() => return,
-                joined = port.join(&target.room, known.as_ref(), &target.via) => match joined {
-                    Ok(room_id) => JoinedRoom::Joined(room_id),
-                    Err(e) => {
-                        tracing::warn!(room = %target.room, "failed to join a linked room: {e}");
-                        JoinedRoom::Failed
-                    }
-                },
+        self.joins.spawn_reporting(&self.events, async move {
+            let outcome = match port.join(&target.room, known.as_ref(), &target.via).await {
+                Ok(room_id) => JoinedRoom::Joined(room_id),
+                Err(e) => {
+                    tracing::warn!(room = %target.room, "failed to join a linked room: {e}");
+                    JoinedRoom::Failed
+                }
             };
-            drop(events.send(AppEvent::Preview(PreviewEvent::JoinSettled {
+            AppEvent::Preview(PreviewEvent::JoinSettled {
                 room: target.room,
                 name,
                 outcome,
-            })));
+            })
         });
     }
 
@@ -389,34 +384,21 @@ impl RoomPreviews {
         via: Vec<String>,
     ) {
         let generation = self.generation;
-        let events = self.events.clone();
-        let cancel = self.tasks.token();
-        self.tasks.spawn(async move {
-            let outcome = tokio::select! {
-                () = cancel.cancelled() => return,
-                previewed = port.preview(&room, &via) => previewed,
-            };
-            drop(events.send(AppEvent::Preview(PreviewEvent::Landed {
+        self.tasks.spawn_reporting(&self.events, async move {
+            let outcome = port.preview(&room, &via).await;
+            AppEvent::Preview(PreviewEvent::Landed {
                 generation,
                 outcome: outcome.map(Box::new),
-            })));
+            })
         });
     }
 
     fn spawn_avatar(&mut self, port: Arc<dyn RoomPreviewPort>, mxc: String) {
         let generation = self.generation;
-        let events = self.events.clone();
-        let cancel = self.tasks.token();
-        self.tasks.spawn(async move {
+        self.tasks.spawn_reporting(&self.events, async move {
             let mxcs = [mxc];
-            let ready = tokio::select! {
-                () = cancel.cancelled() => return,
-                ready = port.fetch_avatars(&mxcs) => ready,
-            };
-            drop(events.send(AppEvent::Preview(PreviewEvent::AvatarsReady {
-                generation,
-                ready,
-            })));
+            let ready = port.fetch_avatars(&mxcs).await;
+            AppEvent::Preview(PreviewEvent::AvatarsReady { generation, ready })
         });
     }
 
@@ -447,10 +429,12 @@ impl RoomPreviews {
     }
 
     fn report(&mut self, room: &RoomAddress, message: UserMessage) {
-        match self.open.as_mut().filter(|open| open.shows(room)) {
-            Some(open) => open.error = message,
-            None => show_toast(self.output.as_ref(), Toast::Error(message)),
-        }
+        let shown = self.open.as_mut().filter(|open| open.shows(room));
+        report_in(
+            self.output.as_ref(),
+            shown.map(|open| &mut open.error),
+            message,
+        );
     }
 
     fn publish(&self) {

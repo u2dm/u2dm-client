@@ -2,6 +2,7 @@ mod account;
 mod active_timeline;
 mod attachments;
 mod audio;
+mod avatars;
 mod calls;
 mod conclude;
 mod credentials;
@@ -34,6 +35,7 @@ mod room_preview;
 mod selection;
 mod send_lanes;
 mod session;
+mod session_requests;
 mod space_index;
 mod space_leave;
 mod space_order;
@@ -57,9 +59,10 @@ use calls::Calls;
 use encryption::Encryption;
 use establish::{EstablishedSession, Rollback};
 use event::{
-    AccountEvent, AppEvent, CallEvent, CreationSettled, DepartureEvent, EncryptionEvent, EndReason,
-    IdentityEvent, InvitePeopleEvent, MentionsEvent, MessageActionEvent, PacksEvent, PresenceEvent,
-    PreviewEvent, ReadersEvent, RoomActionEvent, SessionEvent, TimelineEvent, UserInfoEvent,
+    AccountEvent, ActionOutcome, AppEvent, CallEvent, CreationSettled, DepartureEvent,
+    EncryptionEvent, EndReason, IdentityEvent, InvitePeopleEvent, MentionsEvent,
+    MessageActionEvent, PacksEvent, PresenceEvent, PreviewEvent, ReadersEvent, RoomActionEvent,
+    SessionEvent, TimelineEvent, UserInfoEvent,
 };
 use event_source::EventSourceViewer;
 use identity_alerts::{IdentityAlerts, Resolution};
@@ -79,7 +82,7 @@ use recover::Recovery;
 use removals::Removals;
 use room_creation::{Created, RoomCreation};
 use room_directory::{InvitesFold, RoomDirectory, RoomMeta};
-use room_info::{ActionOutcome, RoomInfo, RosterOutcome};
+use room_info::{RoomInfo, RosterOutcome};
 use room_log::RoomLogViewer;
 use room_preview::RoomPreviews;
 use selection::Selection;
@@ -94,7 +97,7 @@ use typing::Typing;
 use uia::Reply;
 use upgrades::{RoomUpgrades, Toward, UpgradeJoined};
 use user_info::{ChatReady, UserInfo};
-use verification::VerificationController;
+use verification::{VerificationAction, VerificationController};
 use video::VideoController;
 
 use crate::commands::effects::Effect;
@@ -126,7 +129,7 @@ use crate::domain::user_info::{IgnoreChange, Moderation, UserId, server_part};
 use crate::domain::verification::VerificationEvent;
 use crate::ports::browser::BrowserPort;
 use crate::ports::call::CallMediaPort;
-use crate::ports::matrix::{AuthPort, AuthenticatedSession, CleanupReport, MediaPort};
+use crate::ports::matrix::{AuthPort, AuthenticatedSession, CleanupReport};
 use crate::ports::media::MediaFilePort;
 use crate::ports::output::AppOutputPort;
 use crate::ports::room_log::RoomLogPort;
@@ -156,6 +159,17 @@ fn log_command(cmd: &UiCommand) {
 
 pub(super) fn show_toast(output: &dyn AppOutputPort, toast: Toast) {
     output.publish(Box::new(move |view| view.toast = toast));
+}
+
+pub(super) fn report_in(
+    output: &dyn AppOutputPort,
+    shown: Option<&mut UserMessage>,
+    message: UserMessage,
+) {
+    match shown {
+        Some(error) => *error = message,
+        None => show_toast(output, Toast::Error(message)),
+    }
 }
 
 enum Reauth {
@@ -228,6 +242,39 @@ async fn say_goodbye_then_stop_syncing(
 ) {
     tokio::join!(presence.shutdown(), calls.shutdown());
     background.shutdown().await;
+}
+
+macro_rules! wind_controllers {
+    ($service:ident, $first:expr, $wind:ident, $media:ident) => {
+        tokio::join!(
+            $first,
+            $service.active_timeline.shutdown(),
+            $service.pinned.$wind(),
+            $service.identity_alerts.$wind(),
+            $service.encryption.$wind(),
+            $service.account.$wind(),
+            $service.operations.$wind(),
+            $service.send_lanes.$wind(),
+            $service.media.$media(),
+            $service.audio.$wind(),
+            $service.video.$wind(),
+            $service.packs.$wind(),
+            $service.space_index.$wind(),
+            $service.invites.$wind(),
+            $service.removals.$wind(),
+            $service.space_leave.$wind(),
+            $service.upgrades.$wind(),
+            $service.room_previews.$wind(),
+            $service.room_creation.$wind(),
+            $service.invite_people.$wind(),
+            $service.typing.$wind(),
+            $service.room_info.$wind(),
+            $service.user_info.$wind(),
+            $service.readers.$wind(),
+            $service.mentions.$wind(),
+            $service.room_log.$wind(),
+        )
+    };
 }
 
 pub struct AppService {
@@ -917,13 +964,13 @@ impl AppService {
                 show_toast(self.output.as_ref(), Toast::None);
             }
             UiCommand::AcceptVerification => {
-                self.accept_verification().await;
+                self.act_on_verification(VerificationAction::Accept).await;
             }
             UiCommand::RejectVerification => {
-                self.reject_verification().await;
+                self.act_on_verification(VerificationAction::Reject).await;
             }
             UiCommand::ConfirmVerification => {
-                self.confirm_verification().await;
+                self.act_on_verification(VerificationAction::Confirm).await;
             }
             UiCommand::DismissVerification => {
                 self.dismiss_verification().await;
@@ -2635,10 +2682,7 @@ impl AppService {
     }
 
     fn resolve_failed_send(&mut self, local_id: String, action: FailedSend) {
-        let Some(timeline) = self.port(|a| &a.timeline) else {
-            return;
-        };
-        let Some(room_id) = self.active_timeline.room_id().cloned() else {
+        let Some((timeline, room_id)) = self.in_active_room(|a| &a.timeline) else {
             return;
         };
         self.active_timeline.spawn_resolve_failed_send(
@@ -2712,10 +2756,13 @@ impl AppService {
         }
     }
 
-    fn media_in_active_room(&self) -> Option<(Arc<dyn MediaPort>, RoomId)> {
-        let media = self.port(|a| &a.media)?;
+    fn in_active_room<P: ?Sized>(
+        &self,
+        pick: impl FnOnce(&AuthenticatedSession) -> &Arc<P>,
+    ) -> Option<(Arc<P>, RoomId)> {
+        let port = self.port(pick)?;
         let room_id = self.active_timeline.room_id()?.clone();
-        Some((media, room_id))
+        Some((port, room_id))
     }
 
     fn set_pack_global(&mut self, pack: PackId, global: bool) {
@@ -2734,10 +2781,7 @@ impl AppService {
     }
 
     fn delete_message(&mut self, event_id: String) {
-        let Some(port) = self.port(|a| &a.timeline) else {
-            return;
-        };
-        let Some(room_id) = self.active_timeline.room_id().cloned() else {
+        let Some((port, room_id)) = self.in_active_room(|a| &a.timeline) else {
             return;
         };
         self.message_actions
@@ -2745,20 +2789,14 @@ impl AppService {
     }
 
     fn change_pin(&mut self, event_id: String, change: PinChange) {
-        let Some(port) = self.port(|a| &a.pinned) else {
-            return;
-        };
-        let Some(room_id) = self.active_timeline.room_id().cloned() else {
+        let Some((port, room_id)) = self.in_active_room(|a| &a.pinned) else {
             return;
         };
         self.pinned.change(port, room_id, event_id, change);
     }
 
     fn copy_message_link(&mut self, event_id: String) {
-        let Some(port) = self.port(|a| &a.room_info) else {
-            return;
-        };
-        let Some(room_id) = self.active_timeline.room_id().cloned() else {
+        let Some((port, room_id)) = self.in_active_room(|a| &a.room_info) else {
             return;
         };
         self.message_actions
@@ -2766,13 +2804,13 @@ impl AppService {
     }
 
     fn open_media(&mut self, event_id: String) {
-        if let Some((media, room_id)) = self.media_in_active_room() {
+        if let Some((media, room_id)) = self.in_active_room(|a| &a.media) {
             self.media.open_media(media, room_id, event_id);
         }
     }
 
     fn open_video(&mut self, event_id: String) {
-        let Some((media, room_id)) = self.media_in_active_room() else {
+        let Some((media, room_id)) = self.in_active_room(|a| &a.media) else {
             return;
         };
         if cfg!(feature = "video") {
@@ -2785,7 +2823,7 @@ impl AppService {
     fn play_audio(&mut self, event_id: String) {
         if cfg!(feature = "video") {
             self.audio.play(&self.active_timeline, event_id);
-        } else if let Some((media, room_id)) = self.media_in_active_room() {
+        } else if let Some((media, room_id)) = self.in_active_room(|a| &a.media) {
             self.media.play_audio_externally(media, room_id, event_id);
         }
     }
@@ -2807,7 +2845,7 @@ impl AppService {
     }
 
     fn save_file(&mut self, event_id: String, filename: String) {
-        if let Some((media, room_id)) = self.media_in_active_room() {
+        if let Some((media, room_id)) = self.in_active_room(|a| &a.media) {
             self.media.save_file(media, room_id, event_id, filename);
         }
     }
@@ -2828,26 +2866,10 @@ impl AppService {
         }
     }
 
-    async fn accept_verification(&mut self) {
+    async fn act_on_verification(&mut self, action: VerificationAction) {
         if let Some(verification) = self.port(|a| &a.verification) {
             self.verification
-                .accept(&mut self.operations, verification)
-                .await;
-        }
-    }
-
-    async fn reject_verification(&mut self) {
-        if let Some(verification) = self.port(|a| &a.verification) {
-            self.verification
-                .reject(&mut self.operations, verification)
-                .await;
-        }
-    }
-
-    async fn confirm_verification(&mut self) {
-        if let Some(verification) = self.port(|a| &a.verification) {
-            self.verification
-                .confirm(&mut self.operations, verification)
+                .act(&mut self.operations, verification, action)
                 .await;
         }
     }
@@ -3321,34 +3343,7 @@ impl AppService {
 
     async fn shutdown_all_tasks(&mut self) {
         tokio::join!(self.presence.restart(), self.calls.restart());
-        tokio::join!(
-            self.background.shutdown(),
-            self.active_timeline.shutdown(),
-            self.pinned.restart(),
-            self.identity_alerts.restart(),
-            self.encryption.restart(),
-            self.account.restart(),
-            self.operations.restart(),
-            self.send_lanes.restart(),
-            self.media.cancel_and_drain(),
-            self.audio.restart(),
-            self.video.restart(),
-            self.packs.restart(),
-            self.space_index.restart(),
-            self.invites.restart(),
-            self.removals.restart(),
-            self.space_leave.restart(),
-            self.upgrades.restart(),
-            self.room_previews.restart(),
-            self.room_creation.restart(),
-            self.invite_people.restart(),
-            self.typing.restart(),
-            self.room_info.restart(),
-            self.user_info.restart(),
-            self.readers.restart(),
-            self.mentions.restart(),
-            self.room_log.restart(),
-        );
+        wind_controllers!(self, self.background.shutdown(), restart, cancel_and_drain);
     }
 
     async fn end_session(&mut self, reason: EndReason) {
@@ -3452,37 +3447,11 @@ impl AppService {
 
     async fn handle_quit(&mut self) {
         self.presence.sign_off();
-        tokio::join!(
-            Box::pin(say_goodbye_then_stop_syncing(
-                &mut self.presence,
-                &mut self.calls,
-                &mut self.background
-            )),
-            self.active_timeline.shutdown(),
-            self.pinned.shutdown(),
-            self.identity_alerts.shutdown(),
-            self.encryption.shutdown(),
-            self.account.shutdown(),
-            self.operations.shutdown(),
-            self.send_lanes.shutdown(),
-            self.media.drain(),
-            self.audio.shutdown(),
-            self.video.shutdown(),
-            self.packs.shutdown(),
-            self.space_index.shutdown(),
-            self.invites.shutdown(),
-            self.removals.shutdown(),
-            self.space_leave.shutdown(),
-            self.upgrades.shutdown(),
-            self.room_previews.shutdown(),
-            self.room_creation.shutdown(),
-            self.invite_people.shutdown(),
-            self.typing.shutdown(),
-            self.room_info.shutdown(),
-            self.user_info.shutdown(),
-            self.readers.shutdown(),
-            self.mentions.shutdown(),
-            self.room_log.shutdown(),
-        );
+        let farewell = Box::pin(say_goodbye_then_stop_syncing(
+            &mut self.presence,
+            &mut self.calls,
+            &mut self.background,
+        ));
+        wind_controllers!(self, farewell, shutdown, drain);
     }
 }

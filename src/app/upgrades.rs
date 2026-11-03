@@ -1,10 +1,9 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use super::event::AppEvent;
+use super::event::{ActionOutcome, AppEvent};
 use super::input::EventSender;
 use super::room_directory::Membership;
-use super::room_info::ActionOutcome;
 use super::show_toast;
 use super::task_group::TaskGroup;
 use crate::commands::messages::{UserMessage, UserMessageKind};
@@ -141,31 +140,22 @@ impl RoomUpgrades {
     ) {
         let from = room.id.clone();
         let name = room.display_name.clone();
-        let events = self.events.clone();
-        let cancel = self.joins.token();
-        self.joins.spawn(async move {
-            let outcome = tokio::select! {
-                () = cancel.cancelled() => return,
-                joined = toward.join(port.as_ref(), &from) => match joined {
-                    Ok(()) => ActionOutcome::Done,
-                    Err(e) => {
-                        tracing::warn!(
-                            %from,
-                            %target,
-                            ?toward,
-                            "failed to join the other end of a room upgrade: {e}"
-                        );
-                        ActionOutcome::Failed
-                    }
-                },
-            };
-            drop(events.send(AppEvent::UpgradeJoinSettled(UpgradeJoined {
+        self.joins.spawn_reporting(&self.events, async move {
+            let outcome = ActionOutcome::of(toward.join(port.as_ref(), &from).await, |e| {
+                tracing::warn!(
+                    %from,
+                    %target,
+                    ?toward,
+                    "failed to join the other end of a room upgrade: {e}"
+                );
+            });
+            AppEvent::UpgradeJoinSettled(UpgradeJoined {
                 from,
                 target,
                 toward,
                 name,
                 outcome,
-            })));
+            })
         });
     }
 

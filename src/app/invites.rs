@@ -1,14 +1,13 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use super::event::AppEvent;
+use super::event::{ActionOutcome, AppEvent};
 use super::input::EventSender;
+use super::report_in;
 use super::room_directory::Membership;
-use super::room_info::ActionOutcome;
-use super::show_toast;
 use super::task_group::TaskGroup;
 use crate::commands::messages::{UserMessage, UserMessageKind};
-use crate::commands::view::{InviteView, PendingAnswer, Toast};
+use crate::commands::view::{InviteView, PendingAnswer};
 use crate::domain::invite::Invite;
 use crate::domain::room::RoomId;
 use crate::error::Result;
@@ -141,25 +140,17 @@ impl Invites {
         self.publish();
 
         let name = invite.name.clone();
-        let events = self.events.clone();
-        let cancel = self.actions.token();
-        self.actions.spawn(async move {
-            let outcome = tokio::select! {
-                () = cancel.cancelled() => return,
-                answered = answer.send(port.as_ref(), &room_id) => match answered {
-                    Ok(()) => ActionOutcome::Done,
-                    Err(e) => {
-                        tracing::warn!(%room_id, ?answer, "failed to answer the invite: {e}");
-                        ActionOutcome::Failed
-                    }
-                },
-            };
-            drop(events.send(AppEvent::InviteAnswered {
+        self.actions.spawn_reporting(&self.events, async move {
+            let outcome = ActionOutcome::of(
+                answer.send(port.as_ref(), &room_id).await,
+                |e| tracing::warn!(%room_id, ?answer, "failed to answer the invite: {e}"),
+            );
+            AppEvent::InviteAnswered {
                 room_id,
                 name,
                 answer,
                 outcome,
-            }));
+            }
         });
     }
 
@@ -272,10 +263,12 @@ impl Invites {
     }
 
     fn report(&mut self, room_id: &RoomId, message: UserMessage) {
-        match self.open.as_mut().filter(|open| open.invite.id == *room_id) {
-            Some(open) => open.error = message,
-            None => show_toast(self.output.as_ref(), Toast::Error(message)),
-        }
+        let shown = self.open.as_mut().filter(|open| open.invite.id == *room_id);
+        report_in(
+            self.output.as_ref(),
+            shown.map(|open| &mut open.error),
+            message,
+        );
     }
 
     fn publish(&self) {

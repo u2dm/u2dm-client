@@ -1,9 +1,9 @@
 use std::collections::HashSet;
 use std::sync::Arc;
 
+use super::avatars::spawn_avatar_batches;
 use super::event::{AppEvent, MentionsEvent};
 use super::input::EventSender;
-use super::space_index::AVATAR_BATCH;
 use super::task_group::TaskGroup;
 use crate::commands::view::MentionsView;
 use crate::domain::mention::{MentionCandidate, MentionQuery, is_user_tag, rank};
@@ -179,19 +179,14 @@ impl MentionSuggestions {
     fn fetch(&mut self, port: Arc<dyn RoomInfoPort>, room_id: RoomId, joined_count: u64) {
         self.roster.fetching = Some(joined_count);
         let request = self.requests;
-        let events = self.events.clone();
-        let cancel = self.tasks.token();
-        self.tasks.spawn(async move {
-            let roster = tokio::select! {
-                () = cancel.cancelled() => return,
-                roster = port.roster(&room_id) => roster,
-            };
+        self.tasks.spawn_reporting(&self.events, async move {
+            let roster = port.roster(&room_id).await;
             let loaded = MentionsEvent::RosterLoaded {
                 request,
                 joined_count,
                 roster,
             };
-            drop(events.send(AppEvent::Mentions(loaded)));
+            AppEvent::Mentions(loaded)
         });
     }
 
@@ -228,23 +223,9 @@ impl MentionSuggestions {
     }
 
     fn fetch_avatars(&mut self, port: Arc<dyn RoomInfoPort>, mxcs: Vec<String>) {
-        if mxcs.is_empty() {
-            return;
-        }
         let request = self.requests;
-        let events = self.events.clone();
-        let cancel = self.tasks.token();
-        self.tasks.spawn(async move {
-            for batch in mxcs.chunks(AVATAR_BATCH) {
-                let ready = tokio::select! {
-                    () = cancel.cancelled() => return,
-                    ready = port.fetch_avatars(batch) => ready,
-                };
-                if ready > 0 {
-                    let landed = MentionsEvent::AvatarsReady { request, ready };
-                    drop(events.send(AppEvent::Mentions(landed)));
-                }
-            }
+        spawn_avatar_batches(&mut self.tasks, &self.events, port, mxcs, move |ready| {
+            AppEvent::Mentions(MentionsEvent::AvatarsReady { request, ready })
         });
     }
 }

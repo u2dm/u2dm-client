@@ -1,9 +1,13 @@
 use std::future::Future;
 use std::time::Duration;
 
+use tokio::sync::mpsc;
 use tokio::task::{JoinError, JoinSet};
 use tokio::time::sleep;
 use tokio_util::sync::CancellationToken;
+
+use super::event::AppEvent;
+use super::input::EventSender;
 
 pub(super) const SHUTDOWN_GRACE: Duration = Duration::from_secs(3);
 
@@ -99,10 +103,52 @@ impl TaskGroup {
         self.tasks.spawn(future);
     }
 
+    pub(super) fn spawn_reporting<W>(&mut self, events: &EventSender, work: W)
+    where
+        W: Future + Send + 'static,
+        W::Output: Into<Option<AppEvent>>,
+    {
+        let token = self.token();
+        let events = events.clone();
+        self.spawn(async move {
+            if let Some(event) = token.run_until_cancelled(work).await.and_then(Into::into) {
+                drop(events.send(event));
+            }
+        });
+    }
+
+    pub(super) fn spawn_follow<T, Follow, Following>(
+        &mut self,
+        events: &EventSender,
+        capacity: usize,
+        follow: Follow,
+        wrap: impl Fn(T) -> AppEvent + Send + 'static,
+    ) where
+        T: Send + 'static,
+        Follow: FnOnce(mpsc::Sender<T>) -> Following + Send + 'static,
+        Following: Future<Output = ()> + Send,
+    {
+        let token = self.token();
+        let events = events.clone();
+        self.spawn(async move {
+            let (tx, rx) = mpsc::channel(capacity);
+            let both = async { tokio::join!(follow(tx), forward(&events, rx, wrap)) };
+            token.run_until_cancelled(both).await;
+        });
+    }
+
     fn reap_finished(&mut self) {
         let name = self.name;
         while let Some(result) = self.tasks.try_join_next() {
             record_join(name, result);
+        }
+    }
+}
+
+async fn forward<T>(events: &EventSender, mut rx: mpsc::Receiver<T>, wrap: impl Fn(T) -> AppEvent) {
+    while let Some(item) = rx.recv().await {
+        if events.send(wrap(item)).is_err() {
+            return;
         }
     }
 }

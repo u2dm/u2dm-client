@@ -2,9 +2,9 @@ use std::collections::HashSet;
 use std::sync::Arc;
 
 use super::active_timeline::ActiveTimeline;
+use super::avatars::spawn_avatar_batches;
 use super::event::{AppEvent, ReadersEvent};
 use super::input::EventSender;
-use super::space_index::AVATAR_BATCH;
 use super::task_group::TaskGroup;
 use crate::commands::view::{ReadersStatus, ReadersView};
 use crate::domain::message::TimelineMessage;
@@ -272,38 +272,19 @@ impl ReaderList {
         request: u64,
         user_ids: Vec<String>,
     ) {
-        let events = self.events.clone();
-        let cancel = self.tasks.token();
-        self.tasks.spawn(async move {
-            let named = tokio::select! {
-                () = cancel.cancelled() => return,
-                named = port.readers(&room_id, &user_ids) => named,
-            };
+        self.tasks.spawn_reporting(&self.events, async move {
+            let named = port.readers(&room_id, &user_ids).await;
             let readers = named.unwrap_or_else(|e| {
                 tracing::warn!(%room_id, "failed to read who the readers are: {e}");
                 user_ids.into_iter().map(Reader::unknown).collect()
             });
-            drop(events.send(AppEvent::Readers(ReadersEvent::Named { request, readers })));
+            AppEvent::Readers(ReadersEvent::Named { request, readers })
         });
     }
 
     fn spawn_avatars(&mut self, port: Arc<dyn RoomInfoPort>, request: u64, mxcs: Vec<String>) {
-        if mxcs.is_empty() {
-            return;
-        }
-        let events = self.events.clone();
-        let cancel = self.tasks.token();
-        self.tasks.spawn(async move {
-            for batch in mxcs.chunks(AVATAR_BATCH) {
-                let ready = tokio::select! {
-                    () = cancel.cancelled() => return,
-                    ready = port.fetch_avatars(batch) => ready,
-                };
-                if ready > 0 {
-                    let landed = ReadersEvent::AvatarsReady { request, ready };
-                    drop(events.send(AppEvent::Readers(landed)));
-                }
-            }
+        spawn_avatar_batches(&mut self.tasks, &self.events, port, mxcs, move |ready| {
+            AppEvent::Readers(ReadersEvent::AvatarsReady { request, ready })
         });
     }
 

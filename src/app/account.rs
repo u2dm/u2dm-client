@@ -4,13 +4,12 @@ use tokio::sync::mpsc;
 
 use super::event::{AccountEvent, AppEvent};
 use super::input::EventSender;
-use super::show_toast;
+use super::report_in;
+use super::session_requests::SessionRequests;
 use super::task_group::TaskGroup;
 use super::uia::{AuthRound, Next, Reply};
 use crate::commands::messages::{UserMessage, UserMessageKind};
-use crate::commands::view::{
-    AccountActivity, AccountAuth, AccountDialog, AccountStep, LogoutView, Toast,
-};
+use crate::commands::view::{AccountActivity, AccountAuth, AccountDialog, AccountStep, LogoutView};
 use crate::domain::capabilities::{AccountApi, AccountFacts, AccountPage};
 use crate::domain::link::LauncherSafeUrl;
 use crate::domain::sessions::{LogoutRisks, OwnSessions};
@@ -154,8 +153,7 @@ pub(super) struct Account {
     tasks: TaskGroup,
     actions: TaskGroup,
     generations: u64,
-    requests: u64,
-    first_request_of_session: u64,
+    requests: SessionRequests,
     dialog: Option<Dialog>,
     pending: Option<Pending>,
     logout_check: Option<u64>,
@@ -175,8 +173,7 @@ impl Account {
             tasks: TaskGroup::new("account-follow"),
             actions: TaskGroup::new("account-actions"),
             generations: 0,
-            requests: 0,
-            first_request_of_session: 1,
+            requests: SessionRequests::default(),
             dialog: None,
             pending: None,
             logout_check: None,
@@ -429,7 +426,7 @@ impl Account {
         request: u64,
         outcome: AccountOutcome,
     ) -> Settled {
-        if request < self.first_request_of_session {
+        if self.requests.predates_session(request) {
             tracing::debug!(
                 request,
                 "dropping an account action of a session that ended"
@@ -462,8 +459,7 @@ impl Account {
             tracing::debug!("the logout is already being checked or waits for an answer");
             return;
         }
-        self.requests = self.requests.wrapping_add(1);
-        let request = self.requests;
+        let request = self.requests.issue();
         self.logout_check = Some(request);
         let events = self.events.clone();
         self.actions.spawn(async move {
@@ -509,7 +505,7 @@ impl Account {
 
     pub(super) async fn restart(&mut self) {
         tokio::join!(self.tasks.restart(), self.actions.restart());
-        self.first_request_of_session = self.requests.wrapping_add(1);
+        self.requests.end_session();
         self.dialog = None;
         self.pending = None;
         self.logout_check = None;
@@ -535,18 +531,12 @@ impl Account {
         });
 
         let follow_port = Arc::clone(port);
-        let events = self.events.clone();
-        let token = self.tasks.token();
-        self.tasks.spawn(async move {
-            let (sessions_tx, sessions_rx) = mpsc::channel(SESSIONS_CHANNEL_CAP);
-            let follow = async {
-                tokio::join!(
-                    follow_sessions(follow_port.as_ref(), sessions_tx),
-                    forward_sessions(&events, generation, sessions_rx),
-                )
-            };
-            token.run_until_cancelled(follow).await;
-        });
+        self.tasks.spawn_follow(
+            &self.events,
+            SESSIONS_CHANNEL_CAP,
+            move |sessions_tx| async move { follow_sessions(follow_port.as_ref(), sessions_tx).await },
+            move |sessions| AppEvent::Account(AccountEvent::SessionsChanged { generation, sessions }),
+        );
     }
 
     fn start(
@@ -723,8 +713,7 @@ impl Account {
             tracing::debug!("an account action is already running");
             return;
         }
-        self.requests = self.requests.wrapping_add(1);
-        let request = self.requests;
+        let request = self.requests.issue();
         self.pending = Some(Pending { request, work });
         self.publish();
         let events = self.events.clone();
@@ -773,10 +762,8 @@ impl Account {
     }
 
     fn report(&mut self, message: UserMessage) {
-        match self.dialog.as_mut() {
-            Some(dialog) => dialog.error = message,
-            None => show_toast(self.output.as_ref(), Toast::Error(message)),
-        }
+        let shown = self.dialog.as_mut().map(|dialog| &mut dialog.error);
+        report_in(self.output.as_ref(), shown, message);
     }
 
     fn publish(&self) {
@@ -840,18 +827,3 @@ async fn follow_sessions(port: &dyn AccountPort, sessions_tx: mpsc::Sender<OwnSe
     }
 }
 
-async fn forward_sessions(
-    events: &EventSender,
-    generation: u64,
-    mut sessions_rx: mpsc::Receiver<OwnSessions>,
-) {
-    while let Some(sessions) = sessions_rx.recv().await {
-        let event = AppEvent::Account(AccountEvent::SessionsChanged {
-            generation,
-            sessions,
-        });
-        if events.send(event).is_err() {
-            return;
-        }
-    }
-}

@@ -1,6 +1,7 @@
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
+use super::avatars::spawn_avatar_batches;
 use super::event::AppEvent;
 use super::input::EventSender;
 use super::room_directory::Membership;
@@ -12,8 +13,6 @@ use crate::domain::room::RoomId;
 use crate::domain::space_index::{HierarchyPage, SpaceChild};
 use crate::ports::matrix::SpaceIndexPort;
 use crate::ports::output::AppOutputPort;
-
-pub(super) const AVATAR_BATCH: usize = 8;
 
 #[derive(Clone)]
 pub(super) struct ListedSpace {
@@ -288,26 +287,21 @@ impl SpaceIndex {
             self.publish();
         }
 
-        let events = self.events.clone();
-        let cancel = self.joins.token();
         let name = child.name.clone();
         let via = child.via.clone();
-        self.joins.spawn(async move {
-            let outcome = tokio::select! {
-                () = cancel.cancelled() => return,
-                joined = port.join(&room_id, &via) => match joined {
-                    Ok(()) => JoinOutcome::Joined,
-                    Err(e) => {
-                        tracing::warn!(%room_id, "failed to join a room from the space index: {e}");
-                        JoinOutcome::Failed
-                    }
-                },
+        self.joins.spawn_reporting(&self.events, async move {
+            let outcome = match port.join(&room_id, &via).await {
+                Ok(()) => JoinOutcome::Joined,
+                Err(e) => {
+                    tracing::warn!(%room_id, "failed to join a room from the space index: {e}");
+                    JoinOutcome::Failed
+                }
             };
-            drop(events.send(AppEvent::SpaceChildJoinSettled {
+            AppEvent::SpaceChildJoinSettled {
                 room_id,
                 name,
                 outcome,
-            }));
+            }
         });
     }
 
@@ -431,47 +425,30 @@ impl SpaceIndex {
     }
 
     fn spawn_page(&mut self, port: Arc<dyn SpaceIndexPort>, request: PageRequest) {
-        let events = self.events.clone();
-        let cancel = self.tasks.token();
-        self.tasks.spawn(async move {
+        self.tasks.spawn_reporting(&self.events, async move {
             let PageRequest {
                 space,
                 from,
                 generation,
             } = request;
-            let outcome = tokio::select! {
-                () = cancel.cancelled() => return,
-                page = port.hierarchy_page(&space, from.as_deref()) => match page {
-                    Ok(page) => PageOutcome::Loaded(Box::new(page)),
-                    Err(e) => {
-                        tracing::warn!(%space, "failed to load the space index: {e}");
-                        PageOutcome::Failed
-                    }
-                },
+            let page = port.hierarchy_page(&space, from.as_deref()).await;
+            let outcome = match page {
+                Ok(page) => PageOutcome::Loaded(Box::new(page)),
+                Err(e) => {
+                    tracing::warn!(%space, "failed to load the space index: {e}");
+                    PageOutcome::Failed
+                }
             };
-            drop(events.send(AppEvent::SpaceIndexPaged {
+            AppEvent::SpaceIndexPaged {
                 generation,
                 outcome,
-            }));
+            }
         });
     }
 
     fn spawn_avatars(&mut self, port: Arc<dyn SpaceIndexPort>, generation: u64, mxcs: Vec<String>) {
-        if mxcs.is_empty() {
-            return;
-        }
-        let events = self.events.clone();
-        let cancel = self.tasks.token();
-        self.tasks.spawn(async move {
-            for batch in mxcs.chunks(AVATAR_BATCH) {
-                let ready = tokio::select! {
-                    () = cancel.cancelled() => return,
-                    ready = port.fetch_avatars(batch) => ready,
-                };
-                if ready > 0 {
-                    drop(events.send(AppEvent::SpaceIndexAvatarsReady { generation, ready }));
-                }
-            }
+        spawn_avatar_batches(&mut self.tasks, &self.events, port, mxcs, move |ready| {
+            AppEvent::SpaceIndexAvatarsReady { generation, ready }
         });
     }
 

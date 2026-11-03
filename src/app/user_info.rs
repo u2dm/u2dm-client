@@ -1,16 +1,13 @@
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
-use tokio::sync::mpsc;
-
-use super::event::{AppEvent, UserInfoEvent};
+use super::event::{ActionOutcome, AppEvent, UserInfoEvent};
 use super::input::EventSender;
-use super::room_info::ActionOutcome;
-use super::show_toast;
+use super::report_in;
 use super::task_group::TaskGroup;
 use crate::commands::messages::{UserMessage, UserMessageKind};
 use crate::commands::view::{
-    CardStatus, DirectChat, PendingModeration, Toast, UserCard, UserInfoView, VerifyOffer,
+    CardStatus, DirectChat, PendingModeration, UserCard, UserInfoView, VerifyOffer,
 };
 use crate::domain::room::{Room, RoomId};
 use crate::domain::user_info::{
@@ -457,12 +454,8 @@ impl UserInfo {
         self.clear_error(&user_id);
         self.publish();
 
-        let events = self.events.clone();
-        let cancel = self.actions.token();
-        self.actions.spawn(async move {
-            let outcome = tokio::select! {
-                () = cancel.cancelled() => return,
-                sent = port.verify_user(&user_id) => match sent {
+        self.actions.spawn_reporting(&self.events, async move {
+            let outcome = match port.verify_user(&user_id).await {
                     Ok(()) => VerifyOutcome::Sent,
                     Err(AppError::PartnerLeftChat) => {
                         tracing::warn!(%user_id, "the person left the direct chat; not asking them to verify");
@@ -472,14 +465,13 @@ impl UserInfo {
                         tracing::warn!(%user_id, "failed to ask the person to verify: {e}");
                         VerifyOutcome::Failed
                     }
-                },
-            };
+                };
             let settled = UserInfoEvent::VerifySettled {
                 user_id,
                 name,
                 outcome,
             };
-            drop(events.send(AppEvent::UserInfo(settled)));
+            AppEvent::UserInfo(settled)
         });
     }
 
@@ -599,26 +591,18 @@ impl UserInfo {
         self.publish();
 
         let user_id = user_id.clone();
-        let events = self.events.clone();
-        let cancel = self.actions.token();
-        self.actions.spawn(async move {
-            let outcome = tokio::select! {
-                () = cancel.cancelled() => return,
-                changed = port.set_ignored(&user_id, change) => match changed {
-                    Ok(()) => ActionOutcome::Done,
-                    Err(e) => {
-                        tracing::warn!(%user_id, ?change, "failed to change the ignore list: {e}");
-                        ActionOutcome::Failed
-                    }
-                },
-            };
+        self.actions.spawn_reporting(&self.events, async move {
+            let outcome = ActionOutcome::of(
+                port.set_ignored(&user_id, change).await,
+                |e| tracing::warn!(%user_id, ?change, "failed to change the ignore list: {e}"),
+            );
             let settled = UserInfoEvent::IgnoreSettled {
                 user_id,
                 name,
                 change,
                 outcome,
             };
-            drop(events.send(AppEvent::UserInfo(settled)));
+            AppEvent::UserInfo(settled)
         });
     }
 
@@ -680,20 +664,13 @@ impl UserInfo {
         self.clear_error(user_id);
         self.publish();
 
-        let events = self.events.clone();
-        let cancel = self.actions.token();
-        self.actions.spawn(async move {
+        self.actions.spawn_reporting(&self.events, async move {
             let (room_id, user_id) = seat;
-            let outcome = tokio::select! {
-                () = cancel.cancelled() => return,
-                done = port.moderate(&room_id, &user_id, action, reason.as_deref()) => match done {
-                    Ok(()) => ActionOutcome::Done,
-                    Err(e) => {
-                        tracing::warn!(%user_id, room = %room_id, ?action, "failed to moderate: {e}");
-                        ActionOutcome::Failed
-                    }
-                },
-            };
+            let outcome = ActionOutcome::of(
+                port.moderate(&room_id, &user_id, action, reason.as_deref())
+                    .await,
+                |e| tracing::warn!(%user_id, room = %room_id, ?action, "failed to moderate: {e}"),
+            );
             let settled = UserInfoEvent::ModerationSettled {
                 room_id,
                 user_id,
@@ -701,7 +678,7 @@ impl UserInfo {
                 action,
                 outcome,
             };
-            drop(events.send(AppEvent::UserInfo(settled)));
+            AppEvent::UserInfo(settled)
         });
     }
 
@@ -819,10 +796,12 @@ impl UserInfo {
     }
 
     fn report(&mut self, user_id: &UserId, message: UserMessage) {
-        match self.open.as_mut().filter(|open| open.user_id == *user_id) {
-            Some(open) => open.error = message,
-            None => show_toast(self.output.as_ref(), Toast::Error(message)),
-        }
+        let shown = self.open.as_mut().filter(|open| open.user_id == *user_id);
+        report_in(
+            self.output.as_ref(),
+            shown.map(|open| &mut open.error),
+            message,
+        );
     }
 
     fn loaded_mut(&mut self, generation: u64) -> Option<&mut UserProfile> {
@@ -843,25 +822,20 @@ impl UserInfo {
             .insert(user_id.clone(), DmStart::Requested(then));
         self.clear_error(&user_id);
         self.publish();
-        let events = self.events.clone();
-        let cancel = self.actions.token();
-        self.actions.spawn(async move {
-            let outcome = tokio::select! {
-                () = cancel.cancelled() => return,
-                started = port.start_dm(&user_id) => match started {
-                    Ok(room_id) => DmOutcome::Started(room_id),
-                    Err(e) => {
-                        tracing::warn!(%user_id, "failed to start a chat: {e}");
-                        DmOutcome::Failed
-                    }
-                },
+        self.actions.spawn_reporting(&self.events, async move {
+            let outcome = match port.start_dm(&user_id).await {
+                Ok(room_id) => DmOutcome::Started(room_id),
+                Err(e) => {
+                    tracing::warn!(%user_id, "failed to start a chat: {e}");
+                    DmOutcome::Failed
+                }
             };
             let started = UserInfoEvent::DmStarted {
                 user_id,
                 name,
                 outcome,
             };
-            drop(events.send(AppEvent::UserInfo(started)));
+            AppEvent::UserInfo(started)
         });
     }
 
@@ -872,40 +846,28 @@ impl UserInfo {
         user_id: UserId,
         generation: u64,
     ) {
-        let events = self.events.clone();
-        let cancel = self.tasks.token();
-        self.tasks.spawn(async move {
-            let outcome = tokio::select! {
-                () = cancel.cancelled() => return,
-                read = port.profile(&room_id, &user_id) => match read {
+        self.tasks.spawn_reporting(&self.events, async move {
+            let outcome = match port.profile(&room_id, &user_id).await {
                     Ok(profile) => ReadOutcome::Loaded(Box::new(profile)),
                     Err(e) => {
                         tracing::warn!(%user_id, room = %room_id, "failed to read the user's profile: {e}");
                         ReadOutcome::Failed
                     }
-                },
-            };
-            drop(events.send(AppEvent::UserInfo(UserInfoEvent::Read {
+                };
+            AppEvent::UserInfo(UserInfoEvent::Read {
                 generation,
                 outcome,
-            })));
+            })
         });
     }
 
     fn spawn_pronouns(&mut self, port: Arc<dyn UserInfoPort>, user_id: UserId, generation: u64) {
-        let events = self.events.clone();
-        let cancel = self.tasks.token();
-        self.tasks.spawn(async move {
-            let pronouns = tokio::select! {
-                () = cancel.cancelled() => return,
-                pronouns = port.pronouns(&user_id) => pronouns,
-            };
-            drop(
-                events.send(AppEvent::UserInfo(UserInfoEvent::PronounsFetched {
-                    generation,
-                    pronouns,
-                })),
-            );
+        self.tasks.spawn_reporting(&self.events, async move {
+            let pronouns = port.pronouns(&user_id).await;
+            AppEvent::UserInfo(UserInfoEvent::PronounsFetched {
+                generation,
+                pronouns,
+            })
         });
     }
 
@@ -915,19 +877,18 @@ impl UserInfo {
         user_id: UserId,
         generation: u64,
     ) {
-        let events = self.events.clone();
-        let cancel = self.tasks.token();
-        self.tasks.spawn(async move {
-            let profile = tokio::select! {
-                () = cancel.cancelled() => return,
-                profile = port.global_profile(&user_id) => profile
-                    .inspect_err(|e| tracing::debug!(%user_id, "could not fetch the global profile: {e}"))
-                    .ok(),
-            };
-            drop(events.send(AppEvent::UserInfo(UserInfoEvent::ProfileFetched {
+        self.tasks.spawn_reporting(&self.events, async move {
+            let profile = port
+                .global_profile(&user_id)
+                .await
+                .inspect_err(
+                    |e| tracing::debug!(%user_id, "could not fetch the global profile: {e}"),
+                )
+                .ok();
+            AppEvent::UserInfo(UserInfoEvent::ProfileFetched {
                 generation,
                 profile,
-            })));
+            })
         });
     }
 
@@ -937,43 +898,24 @@ impl UserInfo {
         user_id: UserId,
         generation: u64,
     ) {
-        let events = self.events.clone();
-        let cancel = self.tasks.token();
-        self.tasks.spawn(async move {
-            let (trust_tx, mut trust_rx) = mpsc::channel(TRUST_CHANNEL_CAP);
-            let follow = async {
+        self.tasks.spawn_follow(
+            &self.events,
+            TRUST_CHANNEL_CAP,
+            move |trust_tx| async move {
                 if let Err(e) = port.follow_trust(&user_id, trust_tx).await {
                     tracing::debug!(%user_id, "stopped following the user's sessions: {e}");
                 }
-            };
-            let forward = async {
-                while let Some(trust) = trust_rx.recv().await {
-                    let changed = UserInfoEvent::TrustChanged { generation, trust };
-                    if events.send(AppEvent::UserInfo(changed)).is_err() {
-                        break;
-                    }
-                }
-            };
-            cancel
-                .run_until_cancelled(async { tokio::join!(follow, forward) })
-                .await;
-        });
+            },
+            move |trust| AppEvent::UserInfo(UserInfoEvent::TrustChanged { generation, trust }),
+        );
     }
 
     fn spawn_avatar(&mut self, port: Arc<dyn UserInfoPort>, mxc: String, generation: u64) {
-        let events = self.events.clone();
-        let cancel = self.tasks.token();
-        self.tasks.spawn(async move {
-            let mxcs = [mxc];
-            let ready = tokio::select! {
-                () = cancel.cancelled() => return,
-                ready = port.fetch_avatars(&mxcs) => ready,
-            };
-            if ready > 0 {
-                drop(events.send(AppEvent::UserInfo(UserInfoEvent::AvatarReady {
-                    generation,
-                })));
-            }
+        self.tasks.spawn_reporting(&self.events, async move {
+            let ready = port.fetch_avatars(&[mxc]).await;
+            (ready > 0).then_some(AppEvent::UserInfo(UserInfoEvent::AvatarReady {
+                generation,
+            }))
         });
     }
 

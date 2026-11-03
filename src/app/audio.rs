@@ -129,17 +129,15 @@ impl AudioController {
         need: WaveformNeed,
     ) {
         self.tasks.cancel_and_detach();
-        let events = self.events.clone();
-        let cancel = self.tasks.token();
-        self.tasks.spawn(async move {
-            let outcome = tokio::select! {
-                () = cancel.cancelled() => return,
-                fetched = media.materialize_audio(&room_id, &event_id, need) => fetched.map_err(|e| {
+        self.tasks.spawn_reporting(&self.events, async move {
+            let outcome = media
+                .materialize_audio(&room_id, &event_id, need)
+                .await
+                .map_err(|e| {
                     tracing::warn!("failed to download audio: {e}");
                     UserMessageKind::MediaDownloadFailed
-                }),
-            };
-            drop(events.send(AppEvent::AudioFetched { request, outcome }));
+                });
+            AppEvent::AudioFetched { request, outcome }
         });
     }
 

@@ -1,11 +1,11 @@
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
-use super::event::{AppEvent, RoomActionEvent};
+use super::avatars::spawn_avatar_batches;
+use super::event::{ActionOutcome, AppEvent, RoomActionEvent};
 use super::input::EventSender;
 use super::link_requests::LinkRequests;
 use super::show_toast;
-use super::space_index::AVATAR_BATCH;
 use super::task_group::TaskGroup;
 use crate::commands::messages::{UserMessage, UserMessageKind};
 use crate::commands::view::{
@@ -23,12 +23,6 @@ type Members = Arc<[Arc<RosterMember>]>;
 
 pub(super) enum RosterOutcome {
     Loaded(Members),
-    Failed,
-}
-
-#[derive(Clone, Copy, PartialEq, Eq)]
-pub(super) enum ActionOutcome {
-    Done,
     Failed,
 }
 
@@ -378,26 +372,18 @@ impl RoomInfo {
         let name = room.display_name.clone();
         self.publish();
 
-        let events = self.events.clone();
-        let cancel = self.actions.token();
-        self.actions.spawn(async move {
-            let outcome = tokio::select! {
-                () = cancel.cancelled() => return,
-                written = port.set_notify(&room_id, mode) => match written {
-                    Ok(()) => ActionOutcome::Done,
-                    Err(e) => {
-                        tracing::warn!(%room_id, "failed to change the room's notifications: {e}");
-                        ActionOutcome::Failed
-                    }
-                },
-            };
+        self.actions.spawn_reporting(&self.events, async move {
+            let outcome = ActionOutcome::of(
+                port.set_notify(&room_id, mode).await,
+                |e| tracing::warn!(%room_id, "failed to change the room's notifications: {e}"),
+            );
             let settled = RoomActionEvent::NotifySettled {
                 request,
                 room_id,
                 name,
                 outcome,
             };
-            drop(events.send(AppEvent::RoomAction(settled)));
+            AppEvent::RoomAction(settled)
         });
     }
 
@@ -453,25 +439,17 @@ impl RoomInfo {
         let name = room.display_name.clone();
         self.publish();
 
-        let events = self.events.clone();
-        let cancel = self.actions.token();
-        self.actions.spawn(async move {
-            let outcome = tokio::select! {
-                () = cancel.cancelled() => return,
-                left = port.leave(&room_id) => match left {
-                    Ok(()) => ActionOutcome::Done,
-                    Err(e) => {
-                        tracing::warn!(%room_id, "failed to leave the room: {e}");
-                        ActionOutcome::Failed
-                    }
-                },
-            };
+        self.actions.spawn_reporting(&self.events, async move {
+            let outcome = ActionOutcome::of(
+                port.leave(&room_id).await,
+                |e| tracing::warn!(%room_id, "failed to leave the room: {e}"),
+            );
             let settled = RoomActionEvent::LeaveSettled {
                 room_id,
                 name,
                 outcome,
             };
-            drop(events.send(AppEvent::RoomAction(settled)));
+            AppEvent::RoomAction(settled)
         });
     }
 
@@ -511,25 +489,17 @@ impl RoomInfo {
             return;
         }
         let name = room.display_name.clone();
-        let events = self.events.clone();
-        let cancel = self.actions.token();
-        self.actions.spawn(async move {
-            let outcome = tokio::select! {
-                () = cancel.cancelled() => return,
-                marked = port.mark_read(&room_id) => match marked {
-                    Ok(()) => ActionOutcome::Done,
-                    Err(e) => {
-                        tracing::warn!(%room_id, "failed to mark the room as read: {e}");
-                        ActionOutcome::Failed
-                    }
-                },
-            };
+        self.actions.spawn_reporting(&self.events, async move {
+            let outcome = ActionOutcome::of(
+                port.mark_read(&room_id).await,
+                |e| tracing::warn!(%room_id, "failed to mark the room as read: {e}"),
+            );
             let settled = RoomActionEvent::ReadSettled {
                 room_id,
                 name,
                 outcome,
             };
-            drop(events.send(AppEvent::RoomAction(settled)));
+            AppEvent::RoomAction(settled)
         });
     }
 
@@ -559,21 +529,18 @@ impl RoomInfo {
         };
         let room_id = room_id.clone();
         let request = self.links.issue();
-        let events = self.events.clone();
-        let cancel = self.actions.token();
-        self.actions.spawn(async move {
-            let link = tokio::select! {
-                () = cancel.cancelled() => return,
-                link = port.room_link(&room_id) => link
-                    .inspect_err(|e| tracing::warn!(%room_id, "failed to link the room: {e}"))
-                    .ok(),
-            };
+        self.actions.spawn_reporting(&self.events, async move {
+            let link = port
+                .room_link(&room_id)
+                .await
+                .inspect_err(|e| tracing::warn!(%room_id, "failed to link the room: {e}"))
+                .ok();
             let resolved = RoomActionEvent::LinkResolved {
                 request,
                 name,
                 link,
             };
-            drop(events.send(AppEvent::RoomAction(resolved)));
+            AppEvent::RoomAction(resolved)
         });
     }
 
@@ -756,56 +723,35 @@ impl RoomInfo {
     }
 
     fn spawn_roster(&mut self, port: Arc<dyn RoomInfoPort>, room_id: RoomId, generation: u64) {
-        let events = self.events.clone();
-        let cancel = self.tasks.token();
-        self.tasks.spawn(async move {
-            let outcome = tokio::select! {
-                () = cancel.cancelled() => return,
-                roster = port.roster(&room_id) => match roster {
-                    Ok(members) => RosterOutcome::Loaded(members.into_iter().map(Arc::new).collect()),
-                    Err(e) => {
-                        tracing::warn!(%room_id, "failed to load the member list: {e}");
-                        RosterOutcome::Failed
-                    }
-                },
+        self.tasks.spawn_reporting(&self.events, async move {
+            let outcome = match port.roster(&room_id).await {
+                Ok(members) => RosterOutcome::Loaded(members.into_iter().map(Arc::new).collect()),
+                Err(e) => {
+                    tracing::warn!(%room_id, "failed to load the member list: {e}");
+                    RosterOutcome::Failed
+                }
             };
-            drop(events.send(AppEvent::RoomRosterFetched {
+            AppEvent::RoomRosterFetched {
                 generation,
                 outcome,
-            }));
+            }
         });
     }
 
     fn spawn_about(&mut self, port: Arc<dyn RoomInfoPort>, room_id: RoomId, generation: u64) {
-        let events = self.events.clone();
-        let cancel = self.tasks.token();
-        self.tasks.spawn(async move {
-            let about = tokio::select! {
-                () = cancel.cancelled() => return,
-                about = port.about(&room_id) => about
-                    .inspect_err(|e| tracing::warn!(%room_id, "failed to read the room's details: {e}"))
-                    .ok(),
-            };
-            drop(events.send(AppEvent::RoomAboutFetched { generation, about }));
+        self.tasks.spawn_reporting(&self.events, async move {
+            let about = port
+                .about(&room_id)
+                .await
+                .inspect_err(|e| tracing::warn!(%room_id, "failed to read the room's details: {e}"))
+                .ok();
+            AppEvent::RoomAboutFetched { generation, about }
         });
     }
 
     fn spawn_avatars(&mut self, port: Arc<dyn RoomInfoPort>, generation: u64, mxcs: Vec<String>) {
-        if mxcs.is_empty() {
-            return;
-        }
-        let events = self.events.clone();
-        let cancel = self.tasks.token();
-        self.tasks.spawn(async move {
-            for batch in mxcs.chunks(AVATAR_BATCH) {
-                let ready = tokio::select! {
-                    () = cancel.cancelled() => return,
-                    ready = port.fetch_avatars(batch) => ready,
-                };
-                if ready > 0 {
-                    drop(events.send(AppEvent::RoomInfoAvatarsReady { generation, ready }));
-                }
-            }
+        spawn_avatar_batches(&mut self.tasks, &self.events, port, mxcs, move |ready| {
+            AppEvent::RoomInfoAvatarsReady { generation, ready }
         });
     }
 

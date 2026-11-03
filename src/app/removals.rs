@@ -1,13 +1,12 @@
 use std::collections::HashSet;
 use std::sync::Arc;
 
-use super::event::{AppEvent, DepartureEvent};
+use super::event::{ActionOutcome, AppEvent, DepartureEvent};
 use super::input::EventSender;
-use super::room_info::ActionOutcome;
-use super::show_toast;
+use super::report_in;
 use super::task_group::TaskGroup;
 use crate::commands::messages::{UserMessage, UserMessageKind};
-use crate::commands::view::{RemovalView, Toast};
+use crate::commands::view::RemovalView;
 use crate::domain::departure::Removal;
 use crate::domain::room::RoomId;
 use crate::ports::matrix::LeavePort;
@@ -73,25 +72,17 @@ impl Removals {
         self.publish();
 
         let name = removal.name.clone();
-        let events = self.events.clone();
-        let cancel = self.actions.token();
-        self.actions.spawn(async move {
-            let outcome = tokio::select! {
-                () = cancel.cancelled() => return,
-                forgot = port.forget(&room_id) => match forgot {
-                    Ok(()) => ActionOutcome::Done,
-                    Err(e) => {
-                        tracing::warn!(%room_id, "failed to forget the room: {e}");
-                        ActionOutcome::Failed
-                    }
-                },
-            };
+        self.actions.spawn_reporting(&self.events, async move {
+            let outcome = ActionOutcome::of(
+                port.forget(&room_id).await,
+                |e| tracing::warn!(%room_id, "failed to forget the room: {e}"),
+            );
             let forgotten = DepartureEvent::RemovalForgotten {
                 room_id,
                 name,
                 outcome,
             };
-            drop(events.send(AppEvent::Departure(forgotten)));
+            AppEvent::Departure(forgotten)
         });
     }
 
@@ -171,14 +162,15 @@ impl Removals {
     }
 
     fn report(&mut self, room_id: &RoomId, message: UserMessage) {
-        match self
+        let shown = self
             .open
             .as_mut()
-            .filter(|open| open.removal.id == *room_id)
-        {
-            Some(open) => open.error = message,
-            None => show_toast(self.output.as_ref(), Toast::Error(message)),
-        }
+            .filter(|open| open.removal.id == *room_id);
+        report_in(
+            self.output.as_ref(),
+            shown.map(|open| &mut open.error),
+            message,
+        );
     }
 
     fn publish(&self) {

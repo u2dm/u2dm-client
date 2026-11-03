@@ -118,12 +118,16 @@ impl Lifecycle {
 
     pub(super) fn promote_to_syncing(&mut self, attempt: u64) -> Option<u64> {
         if self.phase == AppPhase::Authenticating && self.attempt == attempt {
-            self.phase = AppPhase::Syncing;
-            self.session = self.session.saturating_add(1);
-            Some(self.session)
+            Some(self.start_session())
         } else {
             None
         }
+    }
+
+    fn start_session(&mut self) -> u64 {
+        self.phase = AppPhase::Syncing;
+        self.session = self.session.saturating_add(1);
+        self.session
     }
 
     pub(super) fn suspend(&mut self) -> bool {
@@ -136,9 +140,7 @@ impl Lifecycle {
 
     pub(super) fn resume_syncing(&mut self, attempt: u64) -> Option<u64> {
         if self.phase == AppPhase::Reauthenticating && self.attempt == attempt {
-            self.phase = AppPhase::Syncing;
-            self.session = self.session.saturating_add(1);
-            Some(self.session)
+            Some(self.start_session())
         } else {
             None
         }
@@ -146,9 +148,7 @@ impl Lifecycle {
 
     pub(super) fn restore_succeeded(&mut self) -> Option<u64> {
         if self.phase == AppPhase::Restoring {
-            self.phase = AppPhase::Syncing;
-            self.session = self.session.saturating_add(1);
-            Some(self.session)
+            Some(self.start_session())
         } else {
             None
         }

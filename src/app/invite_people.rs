@@ -4,11 +4,11 @@ use std::time::Duration;
 
 use tokio::time::sleep;
 
+use super::avatars::spawn_avatar_batches;
 use super::event::{AppEvent, InvitePeopleEvent};
 use super::input::EventSender;
 use super::room_directory::Membership;
 use super::show_toast;
-use super::space_index::AVATAR_BATCH;
 use super::task_group::TaskGroup;
 use crate::commands::messages::{UserMessage, UserMessageKind};
 use crate::commands::view::{
@@ -322,9 +322,7 @@ impl InvitePeople {
         );
         self.publish();
 
-        let events = self.events.clone();
-        let cancel = self.actions.token();
-        self.actions.spawn(async move {
+        self.actions.spawn_reporting(&self.events, async move {
             let mut outcomes = Vec::with_capacity(people.len());
             let mut throttled = false;
             for person in people {
@@ -333,17 +331,11 @@ impl InvitePeople {
                     outcomes.push((user_id, Err(InviteFailure::RateLimited)));
                     continue;
                 }
-                let outcome = tokio::select! {
-                    () = cancel.cancelled() => return,
-                    outcome = port.invite(&room_id, &user_id, reason.as_deref()) => outcome,
-                };
+                let outcome = port.invite(&room_id, &user_id, reason.as_deref()).await;
                 throttled = outcome == Err(InviteFailure::RateLimited);
                 outcomes.push((user_id, outcome));
             }
-            drop(events.send(AppEvent::InvitePeople(InvitePeopleEvent::Sent {
-                batch,
-                outcomes,
-            })));
+            AppEvent::InvitePeople(InvitePeopleEvent::Sent { batch, outcomes })
         });
     }
 
@@ -408,44 +400,20 @@ impl InvitePeople {
         pause: Duration,
     ) {
         let generation = self.generation;
-        let events = self.events.clone();
-        let cancel = self.tasks.token();
-        self.tasks.spawn(async move {
-            let outcome = tokio::select! {
-                () = cancel.cancelled() => return,
-                outcome = async {
-                    sleep(pause).await;
-                    port.search_people(&room_id, &term).await
-                } => outcome,
-            };
-            drop(
-                events.send(AppEvent::InvitePeople(InvitePeopleEvent::Found {
-                    generation,
-                    outcome,
-                })),
-            );
+        self.tasks.spawn_reporting(&self.events, async move {
+            sleep(pause).await;
+            let outcome = port.search_people(&room_id, &term).await;
+            AppEvent::InvitePeople(InvitePeopleEvent::Found {
+                generation,
+                outcome,
+            })
         });
     }
 
     fn spawn_avatars(&mut self, port: Arc<dyn InvitePeoplePort>, mxcs: Vec<String>) {
         let generation = self.generation;
-        let events = self.events.clone();
-        let cancel = self.tasks.token();
-        self.tasks.spawn(async move {
-            for batch in mxcs.chunks(AVATAR_BATCH) {
-                let ready = tokio::select! {
-                    () = cancel.cancelled() => return,
-                    ready = port.fetch_avatars(batch) => ready,
-                };
-                if ready > 0 {
-                    drop(
-                        events.send(AppEvent::InvitePeople(InvitePeopleEvent::AvatarsReady {
-                            generation,
-                            ready,
-                        })),
-                    );
-                }
-            }
+        spawn_avatar_batches(&mut self.tasks, &self.events, port, mxcs, move |ready| {
+            AppEvent::InvitePeople(InvitePeopleEvent::AvatarsReady { generation, ready })
         });
     }
 

@@ -50,18 +50,15 @@ impl DesktopNotifications {
         port: Arc<dyn PushPort>,
         session: u64,
     ) {
-        let events = self.events.clone();
-        let token = group.token();
-        group.spawn(async move {
-            let (notices_tx, notices_rx) = mpsc::channel(NOTICE_CHANNEL_CAP);
-            let follow = async {
-                tokio::join!(
-                    follow_notices(port.as_ref(), notices_tx),
-                    forward_notices(&events, session, notices_rx),
-                )
-            };
-            token.run_until_cancelled(follow).await;
-        });
+        group.spawn_follow(
+            &self.events,
+            NOTICE_CHANNEL_CAP,
+            move |notices_tx| async move { follow_notices(port.as_ref(), notices_tx).await },
+            move |notice| AppEvent::Notified {
+                session,
+                notice: Box::new(notice),
+            },
+        );
     }
 
     pub(super) fn arrived(&mut self, notice: PushNotice, directory: &RoomDirectory) {
@@ -192,18 +189,3 @@ async fn follow_notices(port: &dyn PushPort, notices_tx: mpsc::Sender<PushNotice
     }
 }
 
-async fn forward_notices(
-    events: &EventSender,
-    session: u64,
-    mut notices_rx: mpsc::Receiver<PushNotice>,
-) {
-    while let Some(notice) = notices_rx.recv().await {
-        let event = AppEvent::Notified {
-            session,
-            notice: Box::new(notice),
-        };
-        if events.send(event).is_err() {
-            return;
-        }
-    }
-}

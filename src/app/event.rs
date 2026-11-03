@@ -7,7 +7,7 @@ use super::calls::preview::PreviewOutcome;
 use super::encryption::EncryptionOutcome;
 use super::establish::EstablishedSession;
 use super::invites::Answer;
-use super::room_info::{ActionOutcome, RosterOutcome};
+use super::room_info::RosterOutcome;
 use super::room_preview::JoinedRoom;
 use super::space_index::{JoinOutcome, PageOutcome};
 use super::space_leave::SpaceLeaveOutcome;
@@ -50,6 +50,24 @@ use crate::domain::user_info::{GlobalProfile, IgnoreChange, Moderation, UserId, 
 use crate::domain::verification::VerificationEvent;
 use crate::error::AppError;
 use crate::ports::matrix::{AuthenticatedSession, CleanupReport, PackCatalog};
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(super) enum ActionOutcome {
+    Done,
+    Failed,
+}
+
+impl ActionOutcome {
+    pub(super) fn of<T>(result: Result<T, AppError>, on_failure: impl FnOnce(&AppError)) -> Self {
+        match result {
+            Ok(_) => Self::Done,
+            Err(e) => {
+                on_failure(&e);
+                Self::Failed
+            }
+        }
+    }
+}
 
 #[derive(Clone, Copy)]
 pub(super) enum EndReason {

@@ -75,18 +75,12 @@ impl Typing {
         tracing::debug!(%room_id, watch = self.watch, "following who is typing");
 
         let watch = self.watch;
-        let events = self.events.clone();
-        let token = self.follow.token();
-        self.follow.spawn(async move {
-            let (typists_tx, typists_rx) = mpsc::channel(TYPISTS_CHANNEL_CAP);
-            let follow = async {
-                tokio::join!(
-                    follow_typists(port.as_ref(), &room_id, typists_tx),
-                    forward_typists(&events, watch, typists_rx),
-                )
-            };
-            token.run_until_cancelled(follow).await;
-        });
+        self.follow.spawn_follow(
+            &self.events,
+            TYPISTS_CHANNEL_CAP,
+            move |typists_tx| async move { follow_typists(port.as_ref(), &room_id, typists_tx).await },
+            move |typists| AppEvent::TypistsChanged { watch, typists },
+        );
     }
 
     pub(super) fn clear(&mut self) {
@@ -220,17 +214,3 @@ async fn follow_typists(
     }
 }
 
-async fn forward_typists(
-    events: &EventSender,
-    watch: u64,
-    mut typists_rx: mpsc::Receiver<Vec<NamedUser>>,
-) {
-    while let Some(typists) = typists_rx.recv().await {
-        if events
-            .send(AppEvent::TypistsChanged { watch, typists })
-            .is_err()
-        {
-            return;
-        }
-    }
-}

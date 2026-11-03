@@ -59,10 +59,7 @@ impl Packs {
         let cancel = self.tasks.token();
         self.tasks.spawn(async move {
             let work = load_catalog(port, events, room_id, generation);
-            tokio::select! {
-                () = cancel.cancelled() => {}
-                () = work => {}
-            }
+            cancel.run_until_cancelled(work).await;
         });
     }
 
@@ -137,18 +134,14 @@ impl Packs {
         self.last_global_op = self.last_global_op.wrapping_add(1);
         let op = self.last_global_op;
         self.global_ops.insert(pack.clone(), op);
-        let events = self.events.clone();
-        let cancel = self.global_writes.token();
-        self.global_writes.spawn(async move {
-            let written = tokio::select! {
-                () = cancel.cancelled() => return,
-                written = port.set_global(&pack, global) => written,
-            };
-            if let Err(e) = written {
-                tracing::warn!(%pack, global, "failed to change where a pack is used: {e}");
-                report(&events, PacksEvent::GlobalFailed { op, pack });
-            }
-        });
+        self.global_writes
+            .spawn_reporting(&self.events, async move {
+                let written = port.set_global(&pack, global).await;
+                written.err().map(|e| {
+                    tracing::warn!(%pack, global, "failed to change where a pack is used: {e}");
+                    AppEvent::Packs(PacksEvent::GlobalFailed { op, pack })
+                })
+            });
     }
 
     pub(super) fn global_failed(&mut self, port: Arc<dyn ImagePackPort>, op: u64, pack: &PackId) {

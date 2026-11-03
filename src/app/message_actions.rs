@@ -2,10 +2,9 @@ use std::collections::HashSet;
 use std::sync::Arc;
 
 use super::active_timeline::report_delete_failure;
-use super::event::{AppEvent, MessageActionEvent};
+use super::event::{ActionOutcome, AppEvent, MessageActionEvent};
 use super::input::EventSender;
 use super::link_requests::LinkRequests;
-use super::room_info::ActionOutcome;
 use super::send_lanes::SendLanes;
 use super::show_toast;
 use super::task_group::TaskGroup;
@@ -74,17 +73,15 @@ impl MessageActions {
         event_id: String,
     ) {
         let request = self.links.issue();
-        let events = self.events.clone();
-        let cancel = group.token();
-        group.spawn(async move {
-            let link = tokio::select! {
-                () = cancel.cancelled() => return,
-                link = port.event_link(&room_id, &event_id) => link
-                    .inspect_err(|e| tracing::warn!(%room_id, event_id, "failed to link a message: {e}"))
-                    .ok(),
-            };
-            let resolved = MessageActionEvent::LinkResolved { request, link };
-            drop(events.send(AppEvent::MessageAction(resolved)));
+        group.spawn_reporting(&self.events, async move {
+            let link = port
+                .event_link(&room_id, &event_id)
+                .await
+                .inspect_err(
+                    |e| tracing::warn!(%room_id, event_id, "failed to link a message: {e}"),
+                )
+                .ok();
+            AppEvent::MessageAction(MessageActionEvent::LinkResolved { request, link })
         });
     }
 

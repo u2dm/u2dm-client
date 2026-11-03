@@ -39,17 +39,15 @@ impl VideoController {
             loading: true,
             ..VideoView::default()
         });
-        let events = self.events.clone();
-        let cancel = self.tasks.token();
-        self.tasks.spawn(async move {
-            let outcome = tokio::select! {
-                () = cancel.cancelled() => return,
-                fetched = media.materialize_video(&room_id, &event_id) => fetched.map_err(|e| {
+        self.tasks.spawn_reporting(&self.events, async move {
+            let outcome = media
+                .materialize_video(&room_id, &event_id)
+                .await
+                .map_err(|e| {
                     tracing::warn!("failed to materialize video: {e}");
                     UserMessageKind::MediaDownloadFailed
-                }),
-            };
-            drop(events.send(AppEvent::VideoFetched { request, outcome }));
+                });
+            AppEvent::VideoFetched { request, outcome }
         });
     }
 
