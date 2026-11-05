@@ -1,3 +1,4 @@
+mod commands;
 pub(super) mod device_test;
 mod devices;
 mod in_call;

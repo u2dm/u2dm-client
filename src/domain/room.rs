@@ -1,6 +1,5 @@
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
-use std::{fmt, ops};
 
 use crate::domain::call::RoomCall;
 use crate::domain::event_size::EventIds;
@@ -10,34 +9,12 @@ use crate::domain::poll::PollPermissions;
 use crate::domain::room_state::HistoryVisibility;
 use crate::domain::user_info::UserId;
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct RoomId(String);
-
-impl RoomId {
-    pub fn new(id: impl Into<String>) -> Self {
-        Self(id.into())
-    }
+string_id! {
+    #[derive(Debug, Clone, PartialEq, Eq, Hash)]
+    pub struct RoomId(String);
 }
 
-impl ops::Deref for RoomId {
-    type Target = str;
-
-    fn deref(&self) -> &str {
-        &self.0
-    }
-}
-
-impl AsRef<str> for RoomId {
-    fn as_ref(&self) -> &str {
-        &self.0
-    }
-}
-
-impl fmt::Display for RoomId {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(&self.0)
-    }
-}
+derefs_to_str!(RoomId);
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum NotifyMode {

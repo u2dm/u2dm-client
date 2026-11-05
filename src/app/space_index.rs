@@ -2,7 +2,7 @@ use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 use super::avatars::spawn_avatar_batches;
-use super::event::AppEvent;
+use super::event::{AppEvent, SpaceIndexEvent};
 use super::input::EventSender;
 use super::room_directory::Membership;
 use super::show_toast;
@@ -207,9 +207,8 @@ impl SpaceIndex {
         membership: &Membership<'_>,
     ) {
         let Some(open) = self
-            .open
-            .as_mut()
-            .filter(|open| open.generation == generation && open.fetch.in_flight())
+            .current(generation)
+            .filter(|open| open.fetch.in_flight())
         else {
             tracing::debug!(generation, "dropping a superseded space index page");
             return;
@@ -255,11 +254,7 @@ impl SpaceIndex {
     }
 
     pub(super) fn avatars_ready(&mut self, generation: u64, ready: usize) {
-        let Some(open) = self
-            .open
-            .as_mut()
-            .filter(|open| open.generation == generation)
-        else {
+        let Some(open) = self.current(generation) else {
             return;
         };
         open.avatars_ready = open.avatars_ready.saturating_add(ready);
@@ -297,11 +292,11 @@ impl SpaceIndex {
                     JoinOutcome::Failed
                 }
             };
-            AppEvent::SpaceChildJoinSettled {
+            AppEvent::SpaceIndex(SpaceIndexEvent::ChildJoinSettled {
                 room_id,
                 name,
                 outcome,
-            }
+            })
         });
     }
 
@@ -439,17 +434,23 @@ impl SpaceIndex {
                     PageOutcome::Failed
                 }
             };
-            AppEvent::SpaceIndexPaged {
+            AppEvent::SpaceIndex(SpaceIndexEvent::Paged {
                 generation,
                 outcome,
-            }
+            })
         });
     }
 
     fn spawn_avatars(&mut self, port: Arc<dyn SpaceIndexPort>, generation: u64, mxcs: Vec<String>) {
         spawn_avatar_batches(&mut self.tasks, &self.events, port, mxcs, move |ready| {
-            AppEvent::SpaceIndexAvatarsReady { generation, ready }
+            AppEvent::SpaceIndex(SpaceIndexEvent::AvatarsReady { generation, ready })
         });
+    }
+
+    fn current(&mut self, generation: u64) -> Option<&mut OpenIndex> {
+        self.open
+            .as_mut()
+            .filter(|open| open.generation == generation)
     }
 
     fn publish(&self) {

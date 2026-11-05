@@ -29,9 +29,10 @@ use crate::util::random_hex;
 const OAUTH_CALLBACK_TIMEOUT: Duration = Duration::from_mins(5);
 const PERSIST_RETRY_FLOOR: Duration = Duration::from_secs(1);
 const PERSIST_RETRY_CEILING: Duration = Duration::from_mins(1);
+const PASSPHRASE_BYTES: usize = 32;
 
 fn generate_passphrase() -> String {
-    random_hex(32)
+    random_hex(PASSPHRASE_BYTES)
 }
 
 pub(super) fn cleanup_problem(report: &CleanupReport) -> Option<UserMessage> {
@@ -311,56 +312,18 @@ impl SessionController {
         lifecycle_port: Arc<dyn SessionPort>,
         session: u64,
     ) {
-        let mut persister = SessionPersister::new(
+        let persister = SessionPersister::new(
             Arc::clone(&self.tasks.storage),
             self.tasks.events.clone(),
             session,
         );
         let token = group.token();
         group.spawn(async move {
-            let (session_tx, mut session_rx) = mpsc::unbounded_channel::<Session>();
-
-            let listen = async move {
-                tokio::select! {
-                    result = lifecycle_port.subscribe_session_changes(session_tx) => {
-                        match result {
-                            Ok(()) => tracing::debug!("session change listener ended"),
-                            Err(e) => tracing::warn!("session change listener failed: {e}"),
-                        }
-                    }
-                    () = token.cancelled() => {
-                        tracing::debug!("session change listener cancelled");
-                    }
-                }
-            };
-
-            let persist = async move {
-                let mut dirty: Option<Session> = None;
-                let mut retry_in = None;
-
-                loop {
-                    match next_persist_step(&mut session_rx, retry_in).await {
-                        PersistStep::Refreshed(session) => dirty = Some(session),
-                        PersistStep::Retry => {}
-                        PersistStep::Closed => break,
-                    }
-                    let Some(session) = dirty.as_ref() else {
-                        continue;
-                    };
-                    retry_in = persister.store(session).await;
-                    if retry_in.is_none() {
-                        dirty = None;
-                    } else {
-                        persister.report_failure_once();
-                    }
-                }
-
-                if let Some(session) = dirty {
-                    persister.flush(&session).await;
-                }
-            };
-
-            tokio::join!(listen, persist);
+            let (session_tx, session_rx) = mpsc::unbounded_channel::<Session>();
+            tokio::join!(
+                listen_for_session_changes(lifecycle_port, session_tx, token),
+                persister.run(session_rx),
+            );
         });
     }
 
@@ -639,7 +602,7 @@ impl SessionTasks {
         passphrase: Option<String>,
         attempt: u64,
     ) -> Establishing<Option<EstablishedSession>> {
-        let Some(session) = self.cancellable_browser_sign_in(cancel, attempt).await? else {
+        let Some(session) = unless_cancelled(cancel, self.browser_sign_in(attempt)).await? else {
             return Ok(None);
         };
         self.send(SessionEvent::AuthActivity {
@@ -649,26 +612,28 @@ impl SessionTasks {
         self.establish_session(session, passphrase).await.map(Some)
     }
 
-    async fn cancellable_browser_sign_in(
-        &self,
-        cancel: &CancellationToken,
-        attempt: u64,
-    ) -> Result<Option<Session>> {
-        tokio::select! {
-            biased;
-            () = cancel.cancelled() => Ok(None),
-            result = self.browser_sign_in(attempt) => result.map(Some),
-        }
-    }
-
     async fn browser_sign_in(&self, attempt: u64) -> Result<Session> {
         let oauth_data = self.auth.login_oauth_start().await?;
-        self.browser.open_url(&oauth_data.auth_url).await?;
+        self.await_browser(
+            attempt,
+            &oauth_data.auth_url,
+            self.auth.login_oauth_finish(),
+        )
+        .await
+    }
+
+    async fn await_browser<T: Send>(
+        &self,
+        attempt: u64,
+        auth_url: &LauncherSafeUrl,
+        finish: impl Future<Output = Result<T>> + Send,
+    ) -> Result<T> {
+        self.browser.open_url(auth_url).await?;
         self.send(SessionEvent::AuthActivity {
             attempt,
             activity: LoginActivity::WaitingAuth,
         });
-        timeout(OAUTH_CALLBACK_TIMEOUT, self.auth.login_oauth_finish())
+        timeout(OAUTH_CALLBACK_TIMEOUT, finish)
             .await
             .map_err(|_| AppError::Other("Timed out waiting for browser sign-in.".into()))?
     }
@@ -744,9 +709,11 @@ impl SessionTasks {
         let Some(passphrase) = self.preserved_passphrase(&account, attempt).await else {
             return;
         };
-        let result = self
-            .cancellable_reauth_sign_in(&prior, &passphrase, &cancel, attempt)
-            .await;
+        let result = unless_cancelled(
+            &cancel,
+            self.reauth_browser_sign_in(&prior, &passphrase, attempt),
+        )
+        .await;
         self.auth.cancel_oauth().await;
         match result {
             Ok(Some(capability)) => self.report_resumed(attempt, capability).await,
@@ -761,20 +728,6 @@ impl SessionTasks {
         }
     }
 
-    async fn cancellable_reauth_sign_in(
-        &self,
-        prior: &Session,
-        passphrase: &str,
-        cancel: &CancellationToken,
-        attempt: u64,
-    ) -> Result<Option<AuthenticatedSession>> {
-        tokio::select! {
-            biased;
-            () = cancel.cancelled() => Ok(None),
-            result = self.reauth_browser_sign_in(prior, passphrase, attempt) => result.map(Some),
-        }
-    }
-
     async fn reauth_browser_sign_in(
         &self,
         prior: &Session,
@@ -782,14 +735,9 @@ impl SessionTasks {
         attempt: u64,
     ) -> Result<AuthenticatedSession> {
         let oauth_data = self.auth.reauth_oauth_start(prior, passphrase).await?;
-        self.browser.open_url(&oauth_data.auth_url).await?;
-        self.send(SessionEvent::AuthActivity {
-            attempt,
-            activity: LoginActivity::WaitingAuth,
-        });
-        timeout(OAUTH_CALLBACK_TIMEOUT, self.auth.reauth_oauth_finish(prior))
+        let finish = self.auth.reauth_oauth_finish(prior);
+        self.await_browser(attempt, &oauth_data.auth_url, finish)
             .await
-            .map_err(|_| AppError::Other("Timed out waiting for browser sign-in.".into()))?
     }
 
     async fn report_resumed(&self, attempt: u64, capability: AuthenticatedSession) {
@@ -867,6 +815,32 @@ impl SessionPersister {
         }
     }
 
+    async fn run(mut self, mut session_rx: mpsc::UnboundedReceiver<Session>) {
+        let mut dirty: Option<Session> = None;
+        let mut retry_in = None;
+
+        loop {
+            match next_persist_step(&mut session_rx, retry_in).await {
+                PersistStep::Refreshed(session) => dirty = Some(session),
+                PersistStep::Retry => {}
+                PersistStep::Closed => break,
+            }
+            let Some(session) = dirty.as_ref() else {
+                continue;
+            };
+            retry_in = self.store(session).await;
+            if retry_in.is_none() {
+                dirty = None;
+            } else {
+                self.report_failure_once();
+            }
+        }
+
+        if let Some(session) = dirty {
+            self.flush(&session).await;
+        }
+    }
+
     async fn store(&mut self, session: &Session) -> Option<Duration> {
         match self.storage.save_session(session).await {
             Ok(()) => {
@@ -915,6 +889,32 @@ enum PersistStep {
     Refreshed(Session),
     Retry,
     Closed,
+}
+
+async fn listen_for_session_changes(
+    port: Arc<dyn SessionPort>,
+    session_tx: mpsc::UnboundedSender<Session>,
+    token: CancellationToken,
+) {
+    let listened = token
+        .run_until_cancelled(port.subscribe_session_changes(session_tx))
+        .await;
+    match listened {
+        Some(Ok(())) => tracing::debug!("session change listener ended"),
+        Some(Err(e)) => tracing::warn!("session change listener failed: {e}"),
+        None => tracing::debug!("session change listener cancelled"),
+    }
+}
+
+async fn unless_cancelled<T: Send>(
+    cancel: &CancellationToken,
+    work: impl Future<Output = Result<T>> + Send,
+) -> Result<Option<T>> {
+    tokio::select! {
+        biased;
+        () = cancel.cancelled() => Ok(None),
+        result = work => result.map(Some),
+    }
 }
 
 async fn next_persist_step(

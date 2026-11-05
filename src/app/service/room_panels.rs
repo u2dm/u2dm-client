@@ -1,7 +1,6 @@
 use super::AppService;
-use crate::app::event::RoomActionEvent;
-use crate::app::room_info::RosterOutcome;
-use crate::app::space_index::{ChildTarget, JoinOutcome, PageOutcome};
+use crate::app::event::{RoomActionEvent, RoomInfoEvent, SpaceIndexEvent};
+use crate::app::space_index::ChildTarget;
 use crate::domain::room::{NotifyMode, RoomId};
 
 impl AppService {
@@ -41,13 +40,32 @@ impl AppService {
         self.space_index.membership_changed(&membership);
     }
 
-    pub(super) fn settle_space_index_page(&mut self, generation: u64, outcome: PageOutcome) {
-        let Some(port) = self.port(|a| &a.space_index) else {
-            return;
-        };
-        let membership = self.room_directory.membership(&self.selection);
-        self.space_index
-            .fetched(port, generation, outcome, &membership);
+    pub(super) fn handle_space_index(&mut self, event: SpaceIndexEvent) {
+        match event {
+            SpaceIndexEvent::Paged {
+                generation,
+                outcome,
+            } => {
+                let Some(port) = self.port(|a| &a.space_index) else {
+                    return;
+                };
+                let membership = self.room_directory.membership(&self.selection);
+                self.space_index
+                    .fetched(port, generation, outcome, &membership);
+            }
+            SpaceIndexEvent::AvatarsReady { generation, ready } => {
+                self.space_index.avatars_ready(generation, ready);
+            }
+            SpaceIndexEvent::ChildJoinSettled {
+                room_id,
+                name,
+                outcome,
+            } => {
+                let membership = self.room_directory.membership(&self.selection);
+                self.space_index
+                    .join_settled(room_id, &name, outcome, &membership);
+            }
+        }
     }
 
     pub(super) fn join_space_child(&mut self, room_id: RoomId) {
@@ -56,17 +74,6 @@ impl AppService {
         };
         let membership = self.room_directory.membership(&self.selection);
         self.space_index.join(port, room_id, &membership);
-    }
-
-    pub(super) fn settle_space_child_join(
-        &mut self,
-        room_id: RoomId,
-        name: &str,
-        outcome: JoinOutcome,
-    ) {
-        let membership = self.room_directory.membership(&self.selection);
-        self.space_index
-            .join_settled(room_id, name, outcome, &membership);
     }
 
     pub(super) async fn open_space_child(&mut self, room_id: RoomId) {
@@ -174,9 +181,22 @@ impl AppService {
         }
     }
 
-    pub(super) fn settle_room_roster(&mut self, generation: u64, outcome: RosterOutcome) {
-        if let Some(port) = self.port(|a| &a.room_info) {
-            self.room_info.roster_fetched(port, generation, outcome);
+    pub(super) fn handle_room_info(&mut self, event: RoomInfoEvent) {
+        match event {
+            RoomInfoEvent::RosterFetched {
+                generation,
+                outcome,
+            } => {
+                if let Some(port) = self.port(|a| &a.room_info) {
+                    self.room_info.roster_fetched(port, generation, outcome);
+                }
+            }
+            RoomInfoEvent::AboutFetched { generation, about } => {
+                self.room_info.about_fetched(generation, about);
+            }
+            RoomInfoEvent::AvatarsReady { generation, ready } => {
+                self.room_info.avatars_ready(generation, ready);
+            }
         }
     }
 

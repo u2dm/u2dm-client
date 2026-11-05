@@ -19,19 +19,10 @@ pub struct LogLine {
     pub text: String,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct RoomLog {
     pub lines: Arc<[Arc<LogLine>]>,
     pub dropped: u64,
-}
-
-impl Default for RoomLog {
-    fn default() -> Self {
-        Self {
-            lines: Arc::from(Vec::new()),
-            dropped: 0,
-        }
-    }
 }
 
 impl RoomLog {

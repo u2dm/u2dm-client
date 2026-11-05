@@ -14,8 +14,6 @@ use crate::domain::call::devices::DeviceChoice;
 use crate::ports::call::{CallMediaPort, RunningTest};
 
 const TEST_LIMIT: Duration = Duration::from_secs(30);
-const LEVEL_STEPS: f32 = 20.0;
-pub(super) const PERCENT: f32 = 100.0;
 
 pub(super) struct Testing {
     pub(super) serial: u64,
@@ -78,11 +76,6 @@ impl Testing {
             tracing::debug!(test = self.serial, "the device test had already ended");
         }
     }
-}
-
-#[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
-pub(super) fn level_percent(loudness: f32) -> u8 {
-    ((loudness.clamp(0.0, 1.0) * LEVEL_STEPS).round() * PERCENT / LEVEL_STEPS) as u8
 }
 
 impl TestTask {

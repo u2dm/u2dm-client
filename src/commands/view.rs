@@ -736,17 +736,9 @@ pub struct ShownNotice {
     pub notice: PushNotice,
 }
 
-#[derive(Clone, PartialEq, Eq)]
+#[derive(Clone, Default, PartialEq, Eq)]
 pub struct NotificationsView {
     pub shown: Arc<[ShownNotice]>,
-}
-
-impl Default for NotificationsView {
-    fn default() -> Self {
-        Self {
-            shown: Arc::from(Vec::new()),
-        }
-    }
 }
 
 #[derive(Clone, Default, PartialEq, Eq)]
@@ -1037,7 +1029,7 @@ pub struct SpaceMatch {
     pub flags: UnreadFlags,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Default)]
 pub struct DirectoryView {
     pub rooms: RoomList,
     pub invites: InviteList,
@@ -1054,28 +1046,6 @@ pub struct DirectoryView {
     pub direct_flags: UnreadFlags,
     pub invites_pending: bool,
     pub attention: usize,
-}
-
-impl Default for DirectoryView {
-    fn default() -> Self {
-        Self {
-            rooms: Arc::from(Vec::new()),
-            invites: Arc::from(Vec::new()),
-            invites_section: InvitesSection::default(),
-            removals: Arc::from(Vec::new()),
-            space_matches: Arc::from(Vec::new()),
-            spaces: Arc::from(Vec::new()),
-            subspaces: Arc::from(Vec::new()),
-            scope: RoomScope::default(),
-            space_id: String::new(),
-            space_name: String::new(),
-            subspace_id: String::new(),
-            listed_space: SpaceHeading::default(),
-            direct_flags: UnreadFlags::default(),
-            invites_pending: false,
-            attention: 0,
-        }
-    }
 }
 
 #[derive(Clone, Copy, Default, PartialEq, Eq, Debug)]
@@ -1251,25 +1221,13 @@ pub struct SpaceIndexRow {
     pub access: ChildAccess,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Default)]
 pub struct SpaceIndexView {
     pub status: SpaceIndexStatus,
     pub space_name: String,
     pub rows: Arc<[SpaceIndexRow]>,
     pub avatars_ready: usize,
     pub pages_landed: i32,
-}
-
-impl Default for SpaceIndexView {
-    fn default() -> Self {
-        Self {
-            status: SpaceIndexStatus::default(),
-            space_name: String::new(),
-            rows: Arc::from(Vec::new()),
-            avatars_ready: 0,
-            pages_landed: 0,
-        }
-    }
 }
 
 #[derive(Clone, PartialEq, Eq)]

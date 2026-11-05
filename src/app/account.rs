@@ -7,11 +7,10 @@ use super::input::EventSender;
 use super::report_in;
 use super::session_requests::SessionRequests;
 use super::task_group::TaskGroup;
-use super::uia::{AuthRound, Next, Reply};
+use super::uia::{AuthRound, Next, Reply, open_auth_page};
 use crate::commands::messages::{UserMessage, UserMessageKind};
 use crate::commands::view::{AccountActivity, AccountAuth, AccountDialog, AccountStep, LogoutView};
 use crate::domain::capabilities::{AccountApi, AccountFacts, AccountPage};
-use crate::domain::link::LauncherSafeUrl;
 use crate::domain::sessions::{LogoutRisks, OwnSessions};
 use crate::domain::uia::{AccountPassword, AuthAnswer, AuthChallenge, Guarded, is_complex_enough};
 use crate::error::{AppError, Result as AppResult};
@@ -146,6 +145,13 @@ pub(super) enum LogoutDecision {
     Proceed,
 }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Logout {
+    Idle,
+    Checking(u64),
+    Warning(LogoutRisks),
+}
+
 pub(super) struct Account {
     output: Arc<dyn AppOutputPort>,
     events: EventSender,
@@ -156,8 +162,7 @@ pub(super) struct Account {
     requests: SessionRequests,
     dialog: Option<Dialog>,
     pending: Option<Pending>,
-    logout_check: Option<u64>,
-    logout_warning: Option<LogoutRisks>,
+    logout: Logout,
 }
 
 impl Account {
@@ -176,8 +181,7 @@ impl Account {
             requests: SessionRequests::default(),
             dialog: None,
             pending: None,
-            logout_check: None,
-            logout_warning: None,
+            logout: Logout::Idle,
         }
     }
 
@@ -399,7 +403,7 @@ impl Account {
             return;
         };
         if let Some(page) = round.page().cloned() {
-            self.launch(page);
+            open_auth_page(&mut self.actions, &self.browser, page);
         }
     }
 
@@ -455,12 +459,12 @@ impl Account {
     }
 
     pub(super) fn check_logout(&mut self, port: Arc<dyn AccountPort>) {
-        if self.logout_check.is_some() || self.logout_warning.is_some() {
+        if self.logout != Logout::Idle {
             tracing::debug!("the logout is already being checked or waits for an answer");
             return;
         }
         let request = self.requests.issue();
-        self.logout_check = Some(request);
+        self.logout = Logout::Checking(request);
         let events = self.events.clone();
         self.actions.spawn(async move {
             let risks = port.logout_risks().await;
@@ -472,10 +476,10 @@ impl Account {
     }
 
     pub(super) fn logout_checked(&mut self, request: u64, risks: LogoutRisks) -> LogoutDecision {
-        if self.logout_check != Some(request) {
+        if self.logout != Logout::Checking(request) {
             return LogoutDecision::Wait;
         }
-        self.logout_check = None;
+        self.logout = Logout::Idle;
         tracing::info!(
             keys_at_risk = risks.keys_at_risk,
             unsent = risks.unsent,
@@ -484,13 +488,13 @@ impl Account {
         if !risks.any() {
             return LogoutDecision::Proceed;
         }
-        self.logout_warning = Some(risks);
+        self.logout = Logout::Warning(risks);
         self.publish_logout();
         LogoutDecision::Wait
     }
 
     pub(super) fn confirm_logout(&mut self) -> bool {
-        if self.logout_warning.take().is_none() {
+        if !self.drop_logout_warning() {
             return false;
         }
         self.publish_logout();
@@ -498,9 +502,17 @@ impl Account {
     }
 
     pub(super) fn cancel_logout(&mut self) {
-        if self.logout_warning.take().is_some() {
+        if self.drop_logout_warning() {
             self.publish_logout();
         }
+    }
+
+    fn drop_logout_warning(&mut self) -> bool {
+        let warned = matches!(self.logout, Logout::Warning(_));
+        if warned {
+            self.logout = Logout::Idle;
+        }
+        warned
     }
 
     pub(super) async fn restart(&mut self) {
@@ -508,8 +520,7 @@ impl Account {
         self.requests.end_session();
         self.dialog = None;
         self.pending = None;
-        self.logout_check = None;
-        self.logout_warning = None;
+        self.logout = Logout::Idle;
     }
 
     pub(super) async fn shutdown(&mut self) {
@@ -646,7 +657,7 @@ impl Account {
         match AuthRound::after(challenge, previous) {
             Next::Ask { round, open_page } => {
                 if open_page && let Some(page) = round.page() {
-                    self.launch(page.clone());
+                    open_auth_page(&mut self.actions, &self.browser, page.clone());
                 }
                 self.set_step(Step::Authenticating {
                     operation,
@@ -690,16 +701,6 @@ impl Account {
             };
             if let Err(e) = browser.open_url(&url).await {
                 tracing::warn!("the account page could not be opened: {e}");
-            }
-        });
-    }
-
-    fn launch(&mut self, page: LauncherSafeUrl) {
-        let browser = Arc::clone(&self.browser);
-        tracing::info!("opening the homeserver's page for the step it asks for");
-        self.actions.spawn(async move {
-            if let Err(e) = browser.open_url(&page).await {
-                tracing::warn!("the homeserver's page could not be opened: {e}");
             }
         });
     }
@@ -813,9 +814,11 @@ impl Account {
     }
 
     fn publish_logout(&self) {
-        let view = LogoutView {
-            warning: self.logout_warning,
+        let warning = match self.logout {
+            Logout::Warning(risks) => Some(risks),
+            Logout::Idle | Logout::Checking(_) => None,
         };
+        let view = LogoutView { warning };
         self.output
             .publish(Box::new(move |state| state.logout = view));
     }

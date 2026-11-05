@@ -143,7 +143,7 @@ impl AppService {
                     .landed(port, generation, outcome, &membership)
             }),
             PreviewEvent::AvatarsReady { generation, ready } => {
-                self.room_previews.avatars_landed(generation, ready);
+                self.room_previews.avatars_ready(generation, ready);
                 None
             }
             PreviewEvent::JoinSettled {

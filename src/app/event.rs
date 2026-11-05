@@ -133,19 +133,7 @@ pub(super) enum AppEvent {
         session: u64,
         notice: Box<PushNotice>,
     },
-    SpaceIndexPaged {
-        generation: u64,
-        outcome: PageOutcome,
-    },
-    SpaceIndexAvatarsReady {
-        generation: u64,
-        ready: usize,
-    },
-    SpaceChildJoinSettled {
-        room_id: RoomId,
-        name: String,
-        outcome: JoinOutcome,
-    },
+    SpaceIndex(SpaceIndexEvent),
     InviteAnswered {
         room_id: RoomId,
         name: String,
@@ -157,18 +145,7 @@ pub(super) enum AppEvent {
     Preview(PreviewEvent),
     RoomCreation(CreationSettled),
     InvitePeople(InvitePeopleEvent),
-    RoomRosterFetched {
-        generation: u64,
-        outcome: RosterOutcome,
-    },
-    RoomAboutFetched {
-        generation: u64,
-        about: Option<RoomAbout>,
-    },
-    RoomInfoAvatarsReady {
-        generation: u64,
-        ready: usize,
-    },
+    RoomInfo(RoomInfoEvent),
     RoomAction(RoomActionEvent),
     MessageAction(MessageActionEvent),
     UserInfo(UserInfoEvent),
@@ -645,6 +622,57 @@ impl DepartureEvent {
     }
 }
 
+pub(super) enum SpaceIndexEvent {
+    Paged {
+        generation: u64,
+        outcome: PageOutcome,
+    },
+    AvatarsReady {
+        generation: u64,
+        ready: usize,
+    },
+    ChildJoinSettled {
+        room_id: RoomId,
+        name: String,
+        outcome: JoinOutcome,
+    },
+}
+
+impl SpaceIndexEvent {
+    fn label(&self) -> &'static str {
+        match self {
+            Self::Paged { .. } => "SpaceIndexPaged",
+            Self::AvatarsReady { .. } => "SpaceIndexAvatarsReady",
+            Self::ChildJoinSettled { .. } => "SpaceChildJoinSettled",
+        }
+    }
+}
+
+pub(super) enum RoomInfoEvent {
+    RosterFetched {
+        generation: u64,
+        outcome: RosterOutcome,
+    },
+    AboutFetched {
+        generation: u64,
+        about: Option<RoomAbout>,
+    },
+    AvatarsReady {
+        generation: u64,
+        ready: usize,
+    },
+}
+
+impl RoomInfoEvent {
+    fn label(&self) -> &'static str {
+        match self {
+            Self::RosterFetched { .. } => "RoomRosterFetched",
+            Self::AboutFetched { .. } => "RoomAboutFetched",
+            Self::AvatarsReady { .. } => "RoomInfoAvatarsReady",
+        }
+    }
+}
+
 pub(super) enum RoomActionEvent {
     NotifySettled {
         request: u64,
@@ -732,18 +760,14 @@ impl AppEvent {
             Self::Presence(event) => event.label(),
             Self::Call(event) => event.label(),
             Self::Notified { .. } => "Notified",
-            Self::SpaceIndexPaged { .. } => "SpaceIndexPaged",
-            Self::SpaceIndexAvatarsReady { .. } => "SpaceIndexAvatarsReady",
-            Self::SpaceChildJoinSettled { .. } => "SpaceChildJoinSettled",
+            Self::SpaceIndex(event) => event.label(),
             Self::InviteAnswered { .. } => "InviteAnswered",
             Self::Departure(event) => event.label(),
             Self::UpgradeJoinSettled(_) => "UpgradeJoinSettled",
             Self::Preview(event) => event.label(),
             Self::RoomCreation(_) => "RoomCreationSettled",
             Self::InvitePeople(event) => event.label(),
-            Self::RoomRosterFetched { .. } => "RoomRosterFetched",
-            Self::RoomAboutFetched { .. } => "RoomAboutFetched",
-            Self::RoomInfoAvatarsReady { .. } => "RoomInfoAvatarsReady",
+            Self::RoomInfo(event) => event.label(),
             Self::RoomAction(event) => event.label(),
             Self::MessageAction(event) => event.label(),
             Self::UserInfo(event) => event.label(),

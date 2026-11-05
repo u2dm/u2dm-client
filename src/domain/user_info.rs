@@ -1,37 +1,13 @@
-use std::{fmt, ops};
-
 use crate::domain::member_name::MemberName;
 use crate::domain::room::RoomId;
 use crate::domain::room_info::MemberRole;
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct UserId(String);
-
-impl UserId {
-    pub fn new(id: impl Into<String>) -> Self {
-        Self(id.into())
-    }
+string_id! {
+    #[derive(Debug, Clone, PartialEq, Eq, Hash)]
+    pub struct UserId(String);
 }
 
-impl ops::Deref for UserId {
-    type Target = str;
-
-    fn deref(&self) -> &str {
-        &self.0
-    }
-}
-
-impl AsRef<str> for UserId {
-    fn as_ref(&self) -> &str {
-        &self.0
-    }
-}
-
-impl fmt::Display for UserId {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(&self.0)
-    }
-}
+derefs_to_str!(UserId);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RoomMembership {

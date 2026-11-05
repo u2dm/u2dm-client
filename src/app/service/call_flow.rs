@@ -2,7 +2,6 @@ use std::sync::Arc;
 
 use super::AppService;
 use crate::app::event::CallEvent;
-use crate::commands::ui::CallCommand;
 use crate::domain::call::DeviceId;
 use crate::domain::user_info::UserId;
 
@@ -71,65 +70,6 @@ impl AppService {
                     );
                 }
             }
-        }
-    }
-
-    pub(super) fn handle_call_command(&mut self, command: CallCommand) {
-        let directory = &self.room_directory;
-        match command {
-            CallCommand::DeclineCall(room_id) => self.calls.decline(&room_id, directory),
-            CallCommand::SilenceRing => self.calls.silence(directory),
-            CallCommand::OpenCallSheet { room_id, video } => {
-                self.calls.open_sheet(&room_id, video, directory);
-            }
-            CallCommand::CloseCallSheet => self.calls.close_sheet(directory),
-            CallCommand::SheetCamera(on) => self.calls.sheet_camera(on, directory),
-            CallCommand::TestCallDevice { kind, on } => self.calls.test_device(kind, on, directory),
-            CallCommand::StartCall {
-                room_id,
-                video,
-                media,
-                leaving,
-            } => self
-                .calls
-                .start_call(room_id, video, media, leaving, directory),
-            CallCommand::JoinCall {
-                room_id,
-                media,
-                leaving,
-            } => self.calls.join_call(room_id, media, leaving, directory),
-            CallCommand::AnswerCall {
-                room_id,
-                camera,
-                leaving,
-            } => self.calls.answer(room_id, camera, leaving, directory),
-            CallCommand::LeaveCall => self.calls.leave_call(directory),
-            CallCommand::RetryFailedCall => self.calls.retry_failed(directory),
-            CallCommand::DismissFailedCall => self.calls.dismiss_failed(directory),
-            CallCommand::AnnounceCallAgain => self.calls.announce_again(directory),
-            CallCommand::SetMicrophone(on) => self.calls.set_microphone(on, directory),
-            CallCommand::SetCamera(on) => self.calls.set_camera(on, directory),
-            CallCommand::ShareScreen(on) => self.calls.set_screen_share(on, directory),
-            CallCommand::ChangeScreenShare => self.calls.change_screen_share(directory),
-            CallCommand::UseCallDevice { kind, key } => {
-                self.calls.use_device(kind, key.as_ref(), directory);
-            }
-            CallCommand::RefreshCallDevices => self.calls.refresh_devices(),
-            CallCommand::FocusCallTile(key) => self.calls.focus_call_tile(&key, directory),
-            CallCommand::UnpinCallTile => self.calls.unpin_call_tile(directory),
-            CallCommand::RingDevices(open) => self.calls.ring_devices(open, directory),
-            CallCommand::ShowCallGallery => self.calls.show_call_gallery(directory),
-            CallCommand::ViewCallShare => self.calls.view_call_share(directory),
-            CallCommand::ShowSelfView(on) => self.calls.show_self_view(on, directory),
-            CallCommand::ShowSharePreview(on) => self.calls.show_share_preview(on, directory),
-            CallCommand::FollowSpeaker(on) => self.calls.follow_speaker(on, directory),
-            CallCommand::MuteForMe { user_id, on } => {
-                self.calls.mute_for_me(&user_id, on, directory);
-            }
-            CallCommand::WatchMicrophone(on) => self.calls.watch_microphone(on, directory),
-            CallCommand::WatchConnections(on) => self.calls.watch_connections(on, directory),
-            CallCommand::RaiseHand(on) => self.calls.raise_hand(on, directory),
-            CallCommand::SendCallReaction(name) => self.calls.send_reaction(&name, directory),
         }
     }
 

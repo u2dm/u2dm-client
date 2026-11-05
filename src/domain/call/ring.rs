@@ -1,5 +1,3 @@
-use std::{fmt, ops};
-
 use crate::domain::call::hands::HandSighting;
 use crate::domain::call::keys::ReceivedKey;
 use crate::domain::call::reactions::ReactionSighting;
@@ -12,34 +10,12 @@ pub const MAX_SENDER_TS_OFFSET_MS: u64 = 20_000;
 pub const MAX_RING_LIFETIME_MS: u64 = 120_000;
 pub const OUTGOING_RING_LIFETIME_MS: u64 = 90_000;
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct RingId(String);
-
-impl RingId {
-    pub fn new(id: impl Into<String>) -> Self {
-        Self(id.into())
-    }
+string_id! {
+    #[derive(Debug, Clone, PartialEq, Eq, Hash)]
+    pub struct RingId(String);
 }
 
-impl ops::Deref for RingId {
-    type Target = str;
-
-    fn deref(&self) -> &str {
-        &self.0
-    }
-}
-
-impl AsRef<str> for RingId {
-    fn as_ref(&self) -> &str {
-        &self.0
-    }
-}
-
-impl fmt::Display for RingId {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(&self.0)
-    }
-}
+derefs_to_str!(RingId);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RingKind {

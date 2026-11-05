@@ -359,11 +359,7 @@ impl UserInfo {
     }
 
     pub(super) fn trust_changed(&mut self, generation: u64, trust: UserTrust) {
-        let Some(open) = self
-            .open
-            .as_mut()
-            .filter(|open| open.generation == generation)
-        else {
+        let Some(open) = self.current(generation) else {
             tracing::debug!(generation, "dropping a superseded identity read");
             return;
         };
@@ -383,11 +379,7 @@ impl UserInfo {
     }
 
     pub(super) fn avatar_ready(&mut self, generation: u64) {
-        let Some(open) = self
-            .open
-            .as_mut()
-            .filter(|open| open.generation == generation)
-        else {
+        let Some(open) = self.current(generation) else {
             return;
         };
         open.avatars_ready = open.avatars_ready.saturating_add(1);
@@ -805,10 +797,7 @@ impl UserInfo {
     }
 
     fn loaded_mut(&mut self, generation: u64) -> Option<&mut UserProfile> {
-        self.open
-            .as_mut()
-            .filter(|open| open.generation == generation)
-            .and_then(OpenSheet::loaded_mut)
+        self.current(generation).and_then(OpenSheet::loaded_mut)
     }
 
     fn start_dm(
@@ -917,6 +906,12 @@ impl UserInfo {
                 generation,
             }))
         });
+    }
+
+    fn current(&mut self, generation: u64) -> Option<&mut OpenSheet> {
+        self.open
+            .as_mut()
+            .filter(|open| open.generation == generation)
     }
 
     fn publish(&self) {

@@ -1,34 +1,11 @@
 use std::sync::Arc;
-use std::{fmt, ops};
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct PackId(String);
-
-impl PackId {
-    pub fn new(id: impl Into<String>) -> Self {
-        Self(id.into())
-    }
+string_id! {
+    #[derive(Debug, Clone, PartialEq, Eq, Hash)]
+    pub struct PackId(String);
 }
 
-impl ops::Deref for PackId {
-    type Target = str;
-
-    fn deref(&self) -> &str {
-        &self.0
-    }
-}
-
-impl AsRef<str> for PackId {
-    fn as_ref(&self) -> &str {
-        &self.0
-    }
-}
-
-impl fmt::Display for PackId {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(&self.0)
-    }
-}
+derefs_to_str!(PackId);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ImageUsage {

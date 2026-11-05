@@ -13,14 +13,14 @@ use crate::app::room_directory::RoomDirectory;
 use crate::app::show_toast;
 use crate::commands::messages::UserMessage;
 use crate::commands::view::{ActiveCall, CallFailure, RoomCallSummary, Toast};
-use crate::domain::call::KeySendReport;
 use crate::domain::call::keys::ReceivedKey;
 use crate::domain::call::media::MediaEvent;
 use crate::domain::call::reactions::ReactionOption;
 use crate::domain::call::ring::OutgoingRing;
-use crate::domain::call::sfu::{GrantResult, SfuId};
+use crate::domain::call::sfu::{GrantRequest, GrantResult, SfuId};
+use crate::domain::call::{KeySendReport, MemberKey, OutgoingKey};
 use crate::domain::room::RoomId;
-use crate::ports::matrix::CallSignalPort;
+use crate::ports::matrix::{CallSignalPort, RtcMembershipPort};
 use crate::util::unix_now_ms;
 
 impl Calls {
@@ -72,11 +72,7 @@ impl Calls {
         self.run_effects(effects);
     }
 
-    pub(in crate::app) fn leave_call(&mut self, directory: &RoomDirectory) {
-        self.end_call(None, directory);
-    }
-
-    pub(in crate::app) fn announce_again(&mut self, directory: &RoomDirectory) {
+    pub(super) fn announce_again(&mut self, directory: &RoomDirectory) {
         let Some(joined) = self.joined.as_mut() else {
             return;
         };
@@ -98,76 +94,11 @@ impl Calls {
         }
     }
 
-    pub(in crate::app) fn set_microphone(&mut self, on: bool, directory: &RoomDirectory) {
-        self.change_joined(directory, |joined| joined.set_microphone(on));
-    }
-
-    pub(in crate::app) fn set_camera(&mut self, on: bool, directory: &RoomDirectory) {
-        self.change_joined(directory, |joined| joined.set_camera(on));
-    }
-
-    pub(in crate::app) fn set_screen_share(&mut self, on: bool, directory: &RoomDirectory) {
-        self.change_joined(directory, |joined| joined.set_screen_share(on));
-    }
-
-    pub(in crate::app) fn change_screen_share(&mut self, directory: &RoomDirectory) {
-        self.change_joined(directory, Joined::change_screen_share);
-    }
-
-    pub(in crate::app) fn focus_call_tile(&mut self, key: &str, directory: &RoomDirectory) {
-        self.change_joined(directory, |joined| joined.focus_tile(key));
-    }
-
-    pub(in crate::app) fn unpin_call_tile(&mut self, directory: &RoomDirectory) {
-        self.change_joined(directory, Joined::unpin_tile);
-    }
-
-    pub(in crate::app) fn show_call_gallery(&mut self, directory: &RoomDirectory) {
-        self.change_joined(directory, Joined::show_gallery);
-    }
-
-    pub(in crate::app) fn view_call_share(&mut self, directory: &RoomDirectory) {
-        self.change_joined(directory, Joined::view_share);
-    }
-
-    pub(in crate::app) fn show_self_view(&mut self, on: bool, directory: &RoomDirectory) {
-        self.change_joined(directory, |joined| joined.show_self_view(on));
-    }
-
-    pub(in crate::app) fn show_share_preview(&mut self, on: bool, directory: &RoomDirectory) {
-        self.change_joined(directory, |joined| joined.show_share_preview(on));
-    }
-
-    pub(in crate::app) fn follow_speaker(&mut self, on: bool, directory: &RoomDirectory) {
-        self.change_joined(directory, |joined| joined.follow_speaker(on));
-    }
-
-    pub(in crate::app) fn watch_connections(&mut self, on: bool, directory: &RoomDirectory) {
-        self.change_joined(directory, |joined| joined.watch_connections(on));
-    }
-
-    pub(in crate::app) fn watch_microphone(&mut self, on: bool, directory: &RoomDirectory) {
-        self.change_joined(directory, |joined| joined.watch_microphone(on));
-    }
-
-    pub(in crate::app) fn mute_for_me(
+    pub(super) fn change_joined(
         &mut self,
-        user_id: &str,
-        on: bool,
         directory: &RoomDirectory,
+        change: impl FnOnce(&mut Joined),
     ) {
-        self.change_joined(directory, |joined| joined.mute_for_me(user_id, on));
-    }
-
-    pub(in crate::app) fn raise_hand(&mut self, on: bool, directory: &RoomDirectory) {
-        self.change_joined_effects(directory, |joined| joined.raise_hand(on));
-    }
-
-    pub(in crate::app) fn send_reaction(&mut self, name: &str, directory: &RoomDirectory) {
-        self.change_joined_effects(directory, |joined| joined.send_reaction(name));
-    }
-
-    fn change_joined(&mut self, directory: &RoomDirectory, change: impl FnOnce(&mut Joined)) {
         let Some(joined) = self.joined.as_mut() else {
             return;
         };
@@ -177,7 +108,7 @@ impl Calls {
         self.publish(directory);
     }
 
-    fn change_joined_effects(
+    pub(super) fn change_joined_effects(
         &mut self,
         directory: &RoomDirectory,
         change: impl FnOnce(&mut Joined) -> Vec<Effect>,
@@ -269,45 +200,29 @@ impl Calls {
             }
             CallEvent::KeysSent { report, .. } => keys_sent(&report),
             CallEvent::Standings { standings, .. } => {
-                if let Some(joined) = self.joined.as_mut() {
-                    joined.standings_known(standings);
-                }
-                self.publish(directory);
+                self.change_joined(directory, |joined| joined.standings_known(standings));
             }
             CallEvent::HandSent {
                 membership_event,
                 outcome,
                 ..
-            } => {
-                if let Some(joined) = self.joined.as_mut() {
-                    let effects = joined.hand_sent(membership_event, outcome);
-                    self.run_effects(effects);
-                }
-                self.publish(directory);
-            }
+            } => self.change_joined_effects(directory, |joined| {
+                joined.hand_sent(membership_event, outcome)
+            }),
             CallEvent::HandLowered { reaction, ok, .. } => {
-                if let Some(joined) = self.joined.as_mut() {
-                    joined.hand_lowered(&reaction, ok);
-                }
-                self.publish(directory);
+                self.change_joined(directory, |joined| joined.hand_lowered(&reaction, ok));
             }
             CallEvent::HandsFetched { sightings, .. } => {
-                if let Some(joined) = self.joined.as_mut() {
-                    joined.hands_fetched(sightings);
-                }
-                self.publish(directory);
+                self.change_joined(directory, |joined| joined.hands_fetched(sightings));
             }
             CallEvent::ReactionSent {
                 membership_event,
                 reaction,
                 outcome,
                 ..
-            } => {
-                if let Some(joined) = self.joined.as_mut() {
-                    joined.reaction_sent(&membership_event, reaction, outcome);
-                }
-                self.publish(directory);
-            }
+            } => self.change_joined(directory, |joined| {
+                joined.reaction_sent(&membership_event, reaction, outcome);
+            }),
             CallEvent::Signal { .. }
             | CallEvent::RingWindow { .. }
             | CallEvent::Declined { .. }
@@ -322,11 +237,7 @@ impl Calls {
     fn lane_event(&mut self, event: LaneEvent, directory: &RoomDirectory) {
         match event {
             LaneEvent::Joined(sent) => {
-                if let Some(joined) = self.joined.as_mut() {
-                    let effects = joined.lane_joined(sent);
-                    self.run_effects(effects);
-                }
-                self.publish(directory);
+                self.change_joined_effects(directory, |joined| joined.lane_joined(sent));
             }
             LaneEvent::Failed(why) => {
                 tracing::warn!("the call membership failed: {why}");
@@ -367,93 +278,55 @@ impl Calls {
         let (Some(joined), Some(own)) = (&self.joined, &self.own) else {
             return;
         };
-        let call = joined.call;
-        let room_id = joined.room_id.clone();
-        let events = self.events.clone();
         let span = joined.span.clone();
+        let context = EffectContext {
+            port: Arc::clone(&own.port),
+            rtc: Arc::clone(&own.rtc),
+            room_id: joined.room_id.clone(),
+            call: joined.call,
+            events: self.events.clone(),
+        };
         match effect {
             Effect::SendKey { to, key } => {
-                let port = Arc::clone(&own.port);
-                self.key_tasks.spawn(
-                    async move {
-                        let report = port.send_key(&room_id, &key, &to).await;
-                        send(&events, CallEvent::KeysSent { call, report });
-                    }
-                    .instrument(span),
-                );
+                self.key_tasks
+                    .spawn(context.send_key(to, key).instrument(span));
             }
             Effect::WakeKeys(at) => self.wake_at(at, |call| CallEvent::KeyWake { call }),
-            Effect::Grant(request) => {
-                let rtc = Arc::clone(&own.rtc);
-                self.actions.spawn(
-                    async move {
-                        let outcome = rtc.sfu_grant(&room_id, &request).await;
-                        let sfu = request.target.id.clone();
-                        send(
-                            &events,
-                            CallEvent::Granted {
-                                call,
-                                sfu,
-                                outcome: Box::new(outcome),
-                            },
-                        );
-                    }
-                    .instrument(span),
-                );
-            }
+            Effect::Grant(request) => self.actions.spawn(context.grant(*request).instrument(span)),
             Effect::Announce {
                 membership_event_id,
                 kind,
             } => {
-                let port = Arc::clone(&own.port);
                 let ring = OutgoingRing {
                     membership_event_id,
                     kind,
                     intent: joined.intent(),
                     sent_ms: unix_now_ms(),
                 };
-                self.actions.spawn(
-                    async move {
-                        let ring = match port.announce_call(&room_id, &ring).await {
-                            Ok(ring) => {
-                                tracing::info!(%room_id, ?kind, "announced the call");
-                                Some(ring)
-                            }
-                            Err(e) => {
-                                tracing::warn!(%room_id, "the call was not announced: {e}");
-                                None
-                            }
-                        };
-                        send(&events, CallEvent::Announced { call, ring });
-                    }
-                    .instrument(span),
-                );
+                self.actions.spawn(context.announce(ring).instrument(span));
             }
             Effect::Standings(members) => {
-                let port = Arc::clone(&own.port);
-                self.actions.spawn(
-                    async move {
-                        let standings = port.device_standing(&members).await;
-                        send(&events, CallEvent::Standings { call, standings });
-                    }
-                    .instrument(span),
-                );
-            }
-            Effect::RaiseHand { .. } | Effect::LowerHand { .. } | Effect::FetchHands(_) => {
-                let port = Arc::clone(&own.port);
                 self.actions
-                    .spawn(hand_effect(port, room_id, call, effect, events).instrument(span));
+                    .spawn(context.standings(members).instrument(span));
+            }
+            Effect::RaiseHand { membership_event } => {
+                self.actions
+                    .spawn(context.raise_hand(membership_event).instrument(span));
+            }
+            Effect::LowerHand { reaction } => {
+                self.actions
+                    .spawn(context.lower_hand(reaction).instrument(span));
+            }
+            Effect::FetchHands(memberships) => {
+                self.actions
+                    .spawn(context.fetch_hands(memberships).instrument(span));
             }
             Effect::SendReaction {
                 membership_event,
                 reaction,
-            } => {
-                let port = Arc::clone(&own.port);
-                self.actions.spawn(
-                    reaction_effect(port, room_id, call, membership_event, reaction, events)
-                        .instrument(span),
-                );
-            }
+            } => self
+                .actions
+                .spawn(context.react(membership_event, reaction).instrument(span)),
         }
     }
 
@@ -556,72 +429,133 @@ impl Calls {
     }
 }
 
-async fn hand_effect(
+struct EffectContext {
     port: Arc<dyn CallSignalPort>,
+    rtc: Arc<dyn RtcMembershipPort>,
     room_id: RoomId,
     call: u64,
-    effect: Effect,
     events: EventSender,
-) {
-    let event = match effect {
-        Effect::RaiseHand { membership_event } => {
-            let outcome = port
-                .raise_hand(&room_id, &membership_event)
-                .await
-                .map_err(|e| e.to_string());
-            CallEvent::HandSent {
-                call,
-                membership_event,
-                outcome,
-            }
-        }
-        Effect::LowerHand { reaction } => {
-            let lowered = port.lower_hand(&room_id, &reaction).await;
-            if let Err(e) = &lowered {
-                tracing::warn!(%room_id, "a raised hand was not lowered: {e}");
-            }
-            CallEvent::HandLowered {
-                call,
-                reaction,
-                ok: lowered.is_ok(),
-            }
-        }
-        Effect::FetchHands(memberships) => {
-            let sightings = port.raised_hands(&room_id, &memberships).await;
-            tracing::debug!(%room_id, asked = memberships.len(), found = sightings.len(), "asked which hands are raised");
-            CallEvent::HandsFetched { call, sightings }
-        }
-        Effect::SendKey { .. }
-        | Effect::WakeKeys(_)
-        | Effect::Grant(_)
-        | Effect::Announce { .. }
-        | Effect::Standings(_)
-        | Effect::SendReaction { .. } => return,
-    };
-    send(&events, event);
 }
 
-async fn reaction_effect(
-    port: Arc<dyn CallSignalPort>,
-    room_id: RoomId,
-    call: u64,
-    membership_event: String,
-    reaction: ReactionOption,
-    events: EventSender,
-) {
-    let outcome = port
-        .send_reaction(&room_id, &membership_event, reaction)
-        .await
-        .map_err(|e| e.to_string());
-    send(
-        &events,
-        CallEvent::ReactionSent {
-            call,
-            membership_event,
-            reaction,
-            outcome,
-        },
-    );
+impl EffectContext {
+    async fn send_key(self, to: Vec<MemberKey>, key: OutgoingKey) {
+        let report = self.port.send_key(&self.room_id, &key, &to).await;
+        send(
+            &self.events,
+            CallEvent::KeysSent {
+                call: self.call,
+                report,
+            },
+        );
+    }
+
+    async fn grant(self, request: GrantRequest) {
+        let outcome = self.rtc.sfu_grant(&self.room_id, &request).await;
+        let sfu = request.target.id.clone();
+        send(
+            &self.events,
+            CallEvent::Granted {
+                call: self.call,
+                sfu,
+                outcome: Box::new(outcome),
+            },
+        );
+    }
+
+    async fn announce(self, ring: OutgoingRing) {
+        let room_id = &self.room_id;
+        let kind = ring.kind;
+        let ring = match self.port.announce_call(room_id, &ring).await {
+            Ok(ring) => {
+                tracing::info!(%room_id, ?kind, "announced the call");
+                Some(ring)
+            }
+            Err(e) => {
+                tracing::warn!(%room_id, "the call was not announced: {e}");
+                None
+            }
+        };
+        send(
+            &self.events,
+            CallEvent::Announced {
+                call: self.call,
+                ring,
+            },
+        );
+    }
+
+    async fn standings(self, members: Vec<MemberKey>) {
+        let standings = self.port.device_standing(&members).await;
+        send(
+            &self.events,
+            CallEvent::Standings {
+                call: self.call,
+                standings,
+            },
+        );
+    }
+
+    async fn raise_hand(self, membership_event: String) {
+        let outcome = self
+            .port
+            .raise_hand(&self.room_id, &membership_event)
+            .await
+            .map_err(|e| e.to_string());
+        send(
+            &self.events,
+            CallEvent::HandSent {
+                call: self.call,
+                membership_event,
+                outcome,
+            },
+        );
+    }
+
+    async fn lower_hand(self, reaction: String) {
+        let room_id = &self.room_id;
+        let lowered = self.port.lower_hand(room_id, &reaction).await;
+        if let Err(e) = &lowered {
+            tracing::warn!(%room_id, "a raised hand was not lowered: {e}");
+        }
+        send(
+            &self.events,
+            CallEvent::HandLowered {
+                call: self.call,
+                reaction,
+                ok: lowered.is_ok(),
+            },
+        );
+    }
+
+    async fn fetch_hands(self, memberships: Vec<String>) {
+        let room_id = &self.room_id;
+        let sightings = self.port.raised_hands(room_id, &memberships).await;
+        tracing::debug!(%room_id, asked = memberships.len(), found = sightings.len(), "asked which hands are raised");
+        send(
+            &self.events,
+            CallEvent::HandsFetched {
+                call: self.call,
+                sightings,
+            },
+        );
+    }
+
+    async fn react(self, membership_event: String, reaction: ReactionOption) {
+        let outcome = self
+            .port
+            .send_reaction(&self.room_id, &membership_event, reaction)
+            .await
+            .map_err(|e| e.to_string());
+        send(
+            &self.events,
+            CallEvent::ReactionSent {
+                call: self.call,
+                membership_event,
+                reaction,
+                outcome,
+            },
+        );
+    }
 }
 
 fn keys_sent(report: &KeySendReport) {

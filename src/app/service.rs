@@ -746,7 +746,7 @@ impl AppService {
             UiCommand::SaveFile { event_id, filename } => {
                 self.save_file(event_id, filename);
             }
-            UiCommand::Call(command) => self.handle_call_command(command),
+            UiCommand::Call(command) => self.calls.handle(command, &self.room_directory),
             UiCommand::DismissToast => {
                 show_toast(self.output.as_ref(), Toast::None);
             }
@@ -780,7 +780,6 @@ impl AppService {
         self.held_session.running().map(|a| Arc::clone(pick(a)))
     }
 
-    #[allow(clippy::too_many_lines)]
     async fn handle_event(&mut self, event: AppEvent) {
         match event {
             AppEvent::Session(event) => self.handle_session_event(event).await,
@@ -829,22 +828,7 @@ impl AppService {
             AppEvent::Presence(event) => self.handle_presence(event),
             AppEvent::Call(event) => self.handle_call(event),
             AppEvent::Notified { session, notice } => self.settle_notice(session, *notice),
-            AppEvent::SpaceIndexPaged {
-                generation,
-                outcome,
-            } => {
-                self.settle_space_index_page(generation, outcome);
-            }
-            AppEvent::SpaceIndexAvatarsReady { generation, ready } => {
-                self.space_index.avatars_ready(generation, ready);
-            }
-            AppEvent::SpaceChildJoinSettled {
-                room_id,
-                name,
-                outcome,
-            } => {
-                self.settle_space_child_join(room_id, &name, outcome);
-            }
+            AppEvent::SpaceIndex(event) => self.handle_space_index(event),
             AppEvent::InviteAnswered {
                 room_id,
                 name,
@@ -861,16 +845,7 @@ impl AppService {
             AppEvent::Preview(event) => self.handle_preview(event).await,
             AppEvent::RoomCreation(settled) => self.settle_room_creation(settled).await,
             AppEvent::InvitePeople(event) => self.handle_invite_people(event),
-            AppEvent::RoomRosterFetched {
-                generation,
-                outcome,
-            } => self.settle_room_roster(generation, outcome),
-            AppEvent::RoomAboutFetched { generation, about } => {
-                self.room_info.about_fetched(generation, about);
-            }
-            AppEvent::RoomInfoAvatarsReady { generation, ready } => {
-                self.room_info.avatars_ready(generation, ready);
-            }
+            AppEvent::RoomInfo(event) => self.handle_room_info(event),
             AppEvent::RoomAction(event) => self.handle_room_action(event),
             AppEvent::MessageAction(event) => self.handle_message_action(event),
             AppEvent::UserInfo(event) => self.handle_user_info(event).await,

@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use super::device_test::{TestOutcome, TestState, TestTask, Testing, level_percent};
+use super::device_test::{TestOutcome, TestState, TestTask, Testing};
 use super::devices::Devices;
 use super::offer::{Media, OfferFacts, offer};
 use super::preview::{Preview, PreviewOutcome, PreviewState, PreviewTask};
@@ -12,7 +12,7 @@ use crate::commands::view::{
     CallSheetView, DeviceTestView, JoinOffer, LeavingCall, OfferView, SheetPreview, SheetTests,
     TestPhase,
 };
-use crate::domain::call::device_test::DeviceTest;
+use crate::domain::call::device_test::{DeviceTest, level_percent};
 use crate::domain::call::devices::{DeviceChoice, DeviceKey, DeviceKind, DeviceLists};
 use crate::domain::room::{Room, RoomId};
 
@@ -27,12 +27,7 @@ impl Calls {
         }
     }
 
-    pub(in crate::app) fn open_sheet(
-        &mut self,
-        room_id: &RoomId,
-        video: bool,
-        directory: &RoomDirectory,
-    ) {
+    pub(super) fn open_sheet(&mut self, room_id: &RoomId, video: bool, directory: &RoomDirectory) {
         let Some(room) = directory.room(room_id) else {
             tracing::debug!(%room_id, "no listed room to offer a call in");
             return;
@@ -59,7 +54,7 @@ impl Calls {
         }
     }
 
-    pub(in crate::app) fn sheet_camera(&mut self, on: bool, directory: &RoomDirectory) {
+    pub(super) fn sheet_camera(&mut self, on: bool, directory: &RoomDirectory) {
         let Some(sheet) = self.sheet.as_mut().filter(|sheet| sheet.camera != on) else {
             return;
         };
@@ -145,12 +140,7 @@ impl Calls {
         })
     }
 
-    pub(in crate::app) fn test_device(
-        &mut self,
-        kind: DeviceKind,
-        on: bool,
-        directory: &RoomDirectory,
-    ) {
+    pub(super) fn test_device(&mut self, kind: DeviceKind, on: bool, directory: &RoomDirectory) {
         if let Some(testing) = self.testing.take() {
             testing.stop();
         }
@@ -311,13 +301,13 @@ impl Calls {
         Some(devices)
     }
 
-    pub(in crate::app) fn close_sheet(&mut self, directory: &RoomDirectory) {
+    pub(super) fn close_sheet(&mut self, directory: &RoomDirectory) {
         if self.sheet.take().is_some() {
             self.publish(directory);
         }
     }
 
-    pub(in crate::app) fn use_device(
+    pub(super) fn use_device(
         &mut self,
         kind: DeviceKind,
         key: Option<&DeviceKey>,
@@ -379,7 +369,7 @@ impl Calls {
         self.publish(directory);
     }
 
-    pub(in crate::app) fn refresh_devices(&mut self) {
+    pub(super) fn refresh_devices(&mut self) {
         if let Some(joined) = &self.joined {
             joined.refresh_devices();
         } else if self.sheet.is_some() || self.ring_choosing() {

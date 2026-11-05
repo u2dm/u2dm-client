@@ -46,7 +46,7 @@ impl AppService {
                 outcome,
             } => self.invite_people.found(port, generation, outcome),
             InvitePeopleEvent::AvatarsReady { generation, ready } => {
-                self.invite_people.avatars_landed(generation, ready);
+                self.invite_people.avatars_ready(generation, ready);
             }
             InvitePeopleEvent::Sent { batch, outcomes } => {
                 if let Some(room_id) = self.invite_people.sent(batch, outcomes)

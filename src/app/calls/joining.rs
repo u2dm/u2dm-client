@@ -135,7 +135,7 @@ impl Calls {
         }
     }
 
-    pub(in crate::app) fn start_call(
+    pub(super) fn start_call(
         &mut self,
         room_id: RoomId,
         video: bool,
@@ -159,7 +159,7 @@ impl Calls {
         );
     }
 
-    pub(in crate::app) fn join_call(
+    pub(super) fn join_call(
         &mut self,
         room_id: RoomId,
         media: MediaChoice,
@@ -185,7 +185,7 @@ impl Calls {
         );
     }
 
-    pub(in crate::app) fn answer(
+    pub(super) fn answer(
         &mut self,
         room_id: RoomId,
         camera: bool,
@@ -395,7 +395,7 @@ impl Calls {
         })
     }
 
-    pub(in crate::app) fn retry_failed(&mut self, directory: &RoomDirectory) {
+    pub(super) fn retry_failed(&mut self, directory: &RoomDirectory) {
         let Some(failed) = self.failed.take() else {
             tracing::debug!("no failed call to try again");
             return;
@@ -414,7 +414,7 @@ impl Calls {
         self.publish(directory);
     }
 
-    pub(in crate::app) fn dismiss_failed(&mut self, directory: &RoomDirectory) {
+    pub(super) fn dismiss_failed(&mut self, directory: &RoomDirectory) {
         if self.failed.take().is_some() {
             self.publish(directory);
         }

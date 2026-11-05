@@ -2,8 +2,8 @@ use super::devices::{DeviceChoice, DeviceKind};
 
 #[cfg_attr(not(feature = "calls"), allow(dead_code))]
 const LOUDNESS_FLOOR_DB: f64 = -60.0;
-#[cfg_attr(not(any(feature = "calls", feature = "demo")), allow(dead_code))]
-const PERCENT: f32 = 100.0;
+pub const PERCENT: f32 = 100.0;
+const LEVEL_STEPS: f32 = 20.0;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DeviceTest {
@@ -32,6 +32,11 @@ pub enum TestNews {
 #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
 pub fn loudness_percent(loudness: f32) -> u8 {
     (loudness.clamp(0.0, 1.0) * PERCENT).round() as u8
+}
+
+#[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+pub fn level_percent(loudness: f32) -> u8 {
+    ((loudness.clamp(0.0, 1.0) * LEVEL_STEPS).round() * PERCENT / LEVEL_STEPS) as u8
 }
 
 #[cfg_attr(not(feature = "calls"), allow(dead_code))]

@@ -11,7 +11,6 @@ mod reactions;
 
 use self::hands::HandRequest;
 use self::reactions::ReactionRequest;
-use super::device_test::{PERCENT, level_percent};
 use super::devices::Devices;
 use super::media::MediaCommand;
 use super::people;
@@ -21,6 +20,7 @@ use crate::commands::view::{
     LinkView, MicrophoneView, MissingMedia, ReactionNews, ScreenView, ServerDetails, TileKey,
     TileKind, TileState,
 };
+use crate::domain::call::device_test::{PERCENT, level_percent};
 use crate::domain::call::devices::{
     DeviceChoice, DeviceChoices, DeviceKey, DeviceKind, DeviceLists,
 };

@@ -1,7 +1,11 @@
+use std::sync::Arc;
+
+use super::task_group::TaskGroup;
 use crate::commands::messages::{UserMessage, UserMessageKind};
 use crate::commands::view::{AuthPrompt, AuthStage};
 use crate::domain::link::LauncherSafeUrl;
 use crate::domain::uia::{AccountPassword, AuthAnswer, AuthChallenge, AuthResponse, AuthStep};
+use crate::ports::browser::BrowserPort;
 
 pub(super) enum Reply {
     Password(AccountPassword),
@@ -121,4 +125,18 @@ impl AuthRound {
             error: self.error.clone(),
         }
     }
+}
+
+pub(super) fn open_auth_page(
+    actions: &mut TaskGroup,
+    browser: &Arc<dyn BrowserPort>,
+    page: LauncherSafeUrl,
+) {
+    let browser = Arc::clone(browser);
+    tracing::info!("opening the homeserver's page for the step it asks for");
+    actions.spawn(async move {
+        if let Err(e) = browser.open_url(&page).await {
+            tracing::warn!("the homeserver's page could not be opened: {e}");
+        }
+    });
 }

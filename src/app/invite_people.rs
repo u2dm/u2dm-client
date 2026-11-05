@@ -244,7 +244,7 @@ impl InvitePeople {
         self.publish();
     }
 
-    pub(super) fn avatars_landed(&mut self, generation: u64, ready: usize) {
+    pub(super) fn avatars_ready(&mut self, generation: u64, ready: usize) {
         if generation != self.generation || ready == 0 {
             return;
         }

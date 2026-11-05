@@ -18,7 +18,7 @@ use crate::domain::timeline::{
     TimelineAdvance, TimelineCommand, TimelineFocus, TimelinePatch, TimelineStatus, TimelineUpdate,
 };
 use crate::domain::viewport::ViewportController;
-use crate::error::AppError;
+use crate::error::{AppError, Result};
 use crate::ports::matrix::TimelinePort;
 use crate::ports::output::AppOutputPort;
 
@@ -102,15 +102,11 @@ impl ActiveTimeline {
         let (tl_cmd_tx, tl_cmd_rx) = mpsc::unbounded_channel::<TimelineCommand>();
         self.timeline_cmd_tx = Some(tl_cmd_tx);
 
-        let output = Arc::clone(&self.output);
-        let events = self.events.clone();
         let token = self.tasks.token();
-        let rid = room_id.clone();
-
         let mut forwarder = Forwarder {
-            output: Arc::clone(&output),
-            events,
-            room_id: rid.clone(),
+            output: Arc::clone(&self.output),
+            events: self.events.clone(),
+            room_id: room_id.clone(),
             generation,
             focus: focus.clone(),
             next_snapshot: Snapshot::Opening,
@@ -126,28 +122,7 @@ impl ActiveTimeline {
                     tracing::debug!("timeline subscription cancelled");
                     forwarder.report_failures_until(subscribe, &mut tl_rx).await;
                 }
-                result = &mut subscribe => {
-                    if let Err(AppError::FocusedEventUnavailable) = result {
-                        tracing::info!("the message to open around cannot be loaded, opening the room live");
-                        forwarder.fall_back_to_live();
-                    } else if let Err(e) = result {
-                        tracing::warn!("timeline subscription failed: {e}");
-                        output.emit(Effect::TimelineStatus {
-                            room_id: rid.clone(),
-                            generation,
-                            status: TimelineStatus::Failed { retryable: true },
-                        }).await;
-                    } else {
-                        tracing::debug!("timeline subscription ended");
-                        output
-                            .emit(Effect::TimelineStatus {
-                                room_id: rid.clone(),
-                                generation,
-                                status: TimelineStatus::Disconnected,
-                            })
-                            .await;
-                    }
-                }
+                result = &mut subscribe => forwarder.subscription_ended(result).await,
                 () = forwarder.run(&mut tl_rx) => {
                     tracing::debug!("timeline forwarder stopped");
                 }
@@ -744,6 +719,26 @@ impl Forwarder {
             generation,
             advance,
         });
+    }
+
+    async fn subscription_ended(&self, result: Result<()>) {
+        match result {
+            Err(AppError::FocusedEventUnavailable) => {
+                tracing::info!(
+                    "the message to open around cannot be loaded, opening the room live"
+                );
+                self.fall_back_to_live();
+            }
+            Err(e) => {
+                tracing::warn!("timeline subscription failed: {e}");
+                self.emit_status(TimelineStatus::Failed { retryable: true })
+                    .await;
+            }
+            Ok(()) => {
+                tracing::debug!("timeline subscription ended");
+                self.emit_status(TimelineStatus::Disconnected).await;
+            }
+        }
     }
 
     async fn emit_status(&self, status: TimelineStatus) {

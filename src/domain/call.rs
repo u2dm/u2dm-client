@@ -11,41 +11,19 @@ pub mod stats;
 pub mod video;
 
 use std::collections::{BTreeSet, HashSet};
+use std::fmt;
 use std::sync::Arc;
-use std::{fmt, ops};
 
 use self::keys::{KeyIndex, MediaKey};
 use crate::domain::member_name::NamedUser;
 use crate::domain::room::RoomId;
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub struct DeviceId(String);
-
-impl DeviceId {
-    pub fn new(id: impl Into<String>) -> Self {
-        Self(id.into())
-    }
+string_id! {
+    #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+    pub struct DeviceId(String);
 }
 
-impl ops::Deref for DeviceId {
-    type Target = str;
-
-    fn deref(&self) -> &str {
-        &self.0
-    }
-}
-
-impl AsRef<str> for DeviceId {
-    fn as_ref(&self) -> &str {
-        &self.0
-    }
-}
-
-impl fmt::Display for DeviceId {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(&self.0)
-    }
-}
+derefs_to_str!(DeviceId);
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct MemberKey {
@@ -72,23 +50,9 @@ impl fmt::Display for MemberKey {
     }
 }
 
-#[derive(Clone, PartialEq, Eq)]
-pub struct Secret(String);
-
-impl Secret {
-    pub fn new(secret: impl Into<String>) -> Self {
-        Self(secret.into())
-    }
-
-    pub fn expose(&self) -> &str {
-        &self.0
-    }
-}
-
-impl fmt::Debug for Secret {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str("Secret(..)")
-    }
+redacted! {
+    #[derive(Clone, PartialEq, Eq)]
+    pub struct Secret(String) => "Secret(..)";
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

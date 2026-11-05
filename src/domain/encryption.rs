@@ -1,5 +1,3 @@
-use std::fmt;
-
 use crate::domain::identity::SessionAlert;
 use crate::domain::uia::AuthChallenge;
 
@@ -88,23 +86,9 @@ impl Standing {
     }
 }
 
-#[derive(Clone, PartialEq, Eq)]
-pub struct RecoveryKey(String);
-
-impl RecoveryKey {
-    pub fn new(key: impl Into<String>) -> Self {
-        Self(key.into())
-    }
-
-    pub fn expose(&self) -> &str {
-        &self.0
-    }
-}
-
-impl fmt::Debug for RecoveryKey {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str("RecoveryKey([REDACTED])")
-    }
+redacted! {
+    #[derive(Clone, PartialEq, Eq)]
+    pub struct RecoveryKey(String) => "RecoveryKey([REDACTED])";
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -120,23 +104,9 @@ pub enum RecoverySetup {
     BackupInTheWay,
 }
 
-#[derive(Clone, PartialEq, Eq)]
-pub struct KeyPassphrase(String);
-
-impl KeyPassphrase {
-    pub fn new(passphrase: impl Into<String>) -> Self {
-        Self(passphrase.into())
-    }
-
-    pub fn expose(&self) -> &str {
-        &self.0
-    }
-}
-
-impl fmt::Debug for KeyPassphrase {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str("KeyPassphrase([REDACTED])")
-    }
+redacted! {
+    #[derive(Clone, PartialEq, Eq)]
+    pub struct KeyPassphrase(String) => "KeyPassphrase([REDACTED])";
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

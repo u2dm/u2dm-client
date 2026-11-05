@@ -183,7 +183,7 @@ impl Calls {
         self.publish(directory);
     }
 
-    pub(in crate::app) fn decline(&mut self, room_id: &RoomId, directory: &RoomDirectory) {
+    pub(super) fn decline(&mut self, room_id: &RoomId, directory: &RoomDirectory) {
         let Some(incoming) = self
             .incoming
             .as_ref()
@@ -223,7 +223,7 @@ impl Calls {
         }
     }
 
-    pub(in crate::app) fn silence(&mut self, directory: &RoomDirectory) {
+    pub(super) fn silence(&mut self, directory: &RoomDirectory) {
         let Some(incoming) = self
             .incoming
             .as_mut()
@@ -242,7 +242,7 @@ impl Calls {
             .is_some_and(|incoming| incoming.choosing)
     }
 
-    pub(in crate::app) fn ring_devices(&mut self, open: bool, directory: &RoomDirectory) {
+    pub(super) fn ring_devices(&mut self, open: bool, directory: &RoomDirectory) {
         let choices = self.devices.clone();
         let Some(incoming) = self.incoming.as_mut() else {
             tracing::debug!("nothing rings to choose devices for");

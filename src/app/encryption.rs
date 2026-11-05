@@ -8,7 +8,7 @@ use super::input::EventSender;
 use super::report_in;
 use super::session_requests::SessionRequests;
 use super::task_group::TaskGroup;
-use super::uia::{AuthRound, Next, Reply};
+use super::uia::{AuthRound, Next, Reply, open_auth_page};
 use crate::commands::messages::{UserMessage, UserMessageKind};
 use crate::commands::view::{EncryptionActivity, EncryptionDialog, EncryptionStep, EncryptionView};
 use crate::domain::encryption::{
@@ -16,7 +16,6 @@ use crate::domain::encryption::{
     RecoveryAttempt, RecoveryKey, RecoverySetup, Standing,
 };
 use crate::domain::identity::SessionAlert;
-use crate::domain::link::LauncherSafeUrl;
 use crate::domain::uia::{AuthAnswer, AuthChallenge, Guarded};
 use crate::ports::browser::BrowserPort;
 use crate::ports::matrix::{EncryptionPort, VerificationPort};
@@ -424,7 +423,7 @@ impl Encryption {
             return;
         };
         if let Some(page) = round.page().cloned() {
-            self.launch(page);
+            open_auth_page(&mut self.actions, &self.browser, page);
         }
     }
 
@@ -640,7 +639,7 @@ impl Encryption {
         match AuthRound::after(challenge, previous) {
             Next::Ask { round, open_page } => {
                 if open_page && let Some(page) = round.page().cloned() {
-                    self.launch(page);
+                    open_auth_page(&mut self.actions, &self.browser, page);
                 }
                 self.set_step(Step::Authenticating {
                     guard,
@@ -786,16 +785,6 @@ impl Encryption {
         if let Some(dialog) = self.dialog.as_mut() {
             dialog.step = step;
         }
-    }
-
-    fn launch(&mut self, page: LauncherSafeUrl) {
-        let browser = Arc::clone(&self.browser);
-        tracing::info!("opening the homeserver's page for the step it asks for");
-        self.actions.spawn(async move {
-            if let Err(e) = browser.open_url(&page).await {
-                tracing::warn!("the homeserver's page could not be opened: {e}");
-            }
-        });
     }
 
     fn fall_back_from_unoffered_step(&mut self) {

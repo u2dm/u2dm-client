@@ -1,5 +1,3 @@
-use std::fmt;
-
 use url::Url;
 
 use crate::domain::link::LauncherSafeUrl;
@@ -13,23 +11,9 @@ const SESSION_PARAMETER: &str = "session";
 const WRONG_PASSWORD_CODE: &str = "M_FORBIDDEN";
 pub const MIN_PASSWORD_CHARS: usize = 8;
 
-#[derive(Clone, PartialEq, Eq)]
-pub struct AccountPassword(String);
-
-impl AccountPassword {
-    pub fn new(password: impl Into<String>) -> Self {
-        Self(password.into())
-    }
-
-    pub fn expose(&self) -> &str {
-        &self.0
-    }
-}
-
-impl fmt::Debug for AccountPassword {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str("AccountPassword([REDACTED])")
-    }
+redacted! {
+    #[derive(Clone, PartialEq, Eq)]
+    pub struct AccountPassword(String) => "AccountPassword([REDACTED])";
 }
 
 pub fn is_complex_enough(password: &AccountPassword) -> bool {

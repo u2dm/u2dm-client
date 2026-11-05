@@ -2,11 +2,11 @@ use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 use super::avatars::spawn_avatar_batches;
-use super::event::{ActionOutcome, AppEvent, RoomActionEvent};
+use super::event::{ActionOutcome, AppEvent, RoomActionEvent, RoomInfoEvent};
 use super::input::EventSender;
 use super::link_requests::LinkRequests;
-use super::show_toast;
 use super::task_group::TaskGroup;
+use super::{report_in, show_toast};
 use crate::commands::messages::{UserMessage, UserMessageKind};
 use crate::commands::view::{
     CopiedLink, RoomCard, RoomInfoPlacement, RoomInfoView, RoomMenuTarget, RosterRow, RosterStatus,
@@ -300,9 +300,8 @@ impl RoomInfo {
         outcome: RosterOutcome,
     ) {
         let Some(open) = self
-            .open
-            .as_mut()
-            .filter(|open| open.generation == generation && open.fetch != Fetch::Idle)
+            .current(generation)
+            .filter(|open| open.fetch != Fetch::Idle)
         else {
             tracing::debug!(generation, "dropping a superseded member list");
             return;
@@ -317,11 +316,7 @@ impl RoomInfo {
     }
 
     pub(super) fn about_fetched(&mut self, generation: u64, about: Option<RoomAbout>) {
-        let Some(open) = self
-            .open
-            .as_mut()
-            .filter(|open| open.generation == generation)
-        else {
+        let Some(open) = self.current(generation) else {
             return;
         };
         open.about = about;
@@ -329,11 +324,7 @@ impl RoomInfo {
     }
 
     pub(super) fn avatars_ready(&mut self, generation: u64, ready: usize) {
-        let Some(open) = self
-            .open
-            .as_mut()
-            .filter(|open| open.generation == generation)
-        else {
+        let Some(open) = self.current(generation) else {
             return;
         };
         open.avatars_ready = open.avatars_ready.saturating_add(ready);
@@ -710,10 +701,12 @@ impl RoomInfo {
     }
 
     fn report(&mut self, room_id: &RoomId, message: UserMessage) {
-        match self.open.as_mut().filter(|open| open.card.id == *room_id) {
-            Some(open) => open.error = message,
-            None => show_toast(self.output.as_ref(), Toast::Error(message)),
-        }
+        let shown = self.open.as_mut().filter(|open| open.card.id == *room_id);
+        report_in(
+            self.output.as_ref(),
+            shown.map(|open| &mut open.error),
+            message,
+        );
     }
 
     fn clear_error(&mut self, room_id: &RoomId) {
@@ -731,10 +724,10 @@ impl RoomInfo {
                     RosterOutcome::Failed
                 }
             };
-            AppEvent::RoomRosterFetched {
+            AppEvent::RoomInfo(RoomInfoEvent::RosterFetched {
                 generation,
                 outcome,
-            }
+            })
         });
     }
 
@@ -745,13 +738,13 @@ impl RoomInfo {
                 .await
                 .inspect_err(|e| tracing::warn!(%room_id, "failed to read the room's details: {e}"))
                 .ok();
-            AppEvent::RoomAboutFetched { generation, about }
+            AppEvent::RoomInfo(RoomInfoEvent::AboutFetched { generation, about })
         });
     }
 
     fn spawn_avatars(&mut self, port: Arc<dyn RoomInfoPort>, generation: u64, mxcs: Vec<String>) {
         spawn_avatar_batches(&mut self.tasks, &self.events, port, mxcs, move |ready| {
-            AppEvent::RoomInfoAvatarsReady { generation, ready }
+            AppEvent::RoomInfo(RoomInfoEvent::AvatarsReady { generation, ready })
         });
     }
 
@@ -797,6 +790,12 @@ impl RoomInfo {
                 has_call: false,
             },
         }
+    }
+
+    fn current(&mut self, generation: u64) -> Option<&mut OpenSheet> {
+        self.open
+            .as_mut()
+            .filter(|open| open.generation == generation)
     }
 
     fn publish(&self) {

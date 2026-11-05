@@ -4,25 +4,9 @@ use std::fmt;
 const SMALLEST_SIDE: u32 = 2;
 pub const LARGEST_SHOWN: FrameSize = FrameSize::new(3840, 2160);
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub struct FeedId(String);
-
-impl FeedId {
-    pub fn new(id: impl Into<String>) -> Self {
-        Self(id.into())
-    }
-}
-
-impl AsRef<str> for FeedId {
-    fn as_ref(&self) -> &str {
-        &self.0
-    }
-}
-
-impl fmt::Display for FeedId {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(&self.0)
-    }
+string_id! {
+    #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+    pub struct FeedId(String);
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]

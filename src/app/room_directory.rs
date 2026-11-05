@@ -785,10 +785,10 @@ impl RoomDirectory {
     }
 
     pub(super) fn emit_rooms(&self, sel: &Selection) {
-        let rooms = self.listed_rooms(sel);
-        let invites = self.listed_invites(sel);
+        let rooms = self.listed(&self.listable, sel);
+        let invites = self.listed(&self.invites, sel);
         let invites_section = self.invites_section(sel);
-        let removals = self.listed_removals(sel);
+        let removals = self.listed(&self.removals, sel);
         let space_matches = self.space_matches(sel);
         self.output.publish(Box::new(move |view| {
             view.directory.rooms = rooms;
@@ -799,84 +799,29 @@ impl RoomDirectory {
         }));
     }
 
-    fn listed_removals(&self, sel: &Selection) -> RemovalList {
+    fn listed<T: Listed>(&self, all: &Arc<[Arc<T>]>, sel: &Selection) -> Arc<[Arc<T>]> {
         match &sel.filter {
-            RoomFilter::All if self.query.is_empty() => Arc::clone(&self.removals),
-            RoomFilter::All => self.removals_where(|removal| self.query.matches(&removal.name)),
-            RoomFilter::Direct => self
-                .removals_where(|removal| removal.is_direct && self.query.matches(&removal.name)),
+            RoomFilter::All if self.query.is_empty() => Arc::clone(all),
+            RoomFilter::All => kept(all, |item| self.query.matches(item.title())),
+            RoomFilter::Direct => kept(all, |item| {
+                item.is_direct() && self.query.matches(item.title())
+            }),
             RoomFilter::Space { space, subspace } => {
                 let space_id = subspace.as_ref().unwrap_or(space);
                 match self.graph.index.get(space_id.as_ref()).copied() {
-                    Some(space_index) => self.removals_where(|removal| {
-                        self.graph.contains_room(space_index, removal.id.as_ref())
+                    Some(space_index) => kept(all, |item| {
+                        self.graph.contains_room(space_index, item.id().as_ref())
                     }),
                     None => Arc::from(Vec::new()),
                 }
             }
         }
-    }
-
-    fn removals_where(&self, keep: impl Fn(&Removal) -> bool) -> RemovalList {
-        self.removals
-            .iter()
-            .filter(|removal| keep(removal))
-            .map(Arc::clone)
-            .collect::<Vec<Arc<Removal>>>()
-            .into()
-    }
-
-    fn listed_invites(&self, sel: &Selection) -> InviteList {
-        match &sel.filter {
-            RoomFilter::All if self.query.is_empty() => Arc::clone(&self.invites),
-            RoomFilter::All => self.invites_where(|invite| self.query.matches(&invite.name)),
-            RoomFilter::Direct => {
-                self.invites_where(|invite| invite.is_direct() && self.query.matches(&invite.name))
-            }
-            RoomFilter::Space { space, subspace } => {
-                let space_id = subspace.as_ref().unwrap_or(space);
-                match self.graph.index.get(space_id.as_ref()).copied() {
-                    Some(space_index) => self.invites_where(|invite| {
-                        self.graph.contains_room(space_index, invite.id.as_ref())
-                    }),
-                    None => Arc::from(Vec::new()),
-                }
-            }
-        }
-    }
-
-    fn invites_where(&self, keep: impl Fn(&Invite) -> bool) -> InviteList {
-        self.invites
-            .iter()
-            .filter(|invite| keep(invite))
-            .map(Arc::clone)
-            .collect::<Vec<Arc<Invite>>>()
-            .into()
     }
 
     pub(super) fn lists(&self, sel: &Selection, room_id: &RoomId) -> bool {
-        self.listed_rooms(sel)
+        self.listed(&self.listable, sel)
             .iter()
             .any(|room| room.id == *room_id)
-    }
-
-    fn listed_rooms(&self, sel: &Selection) -> RoomList {
-        match &sel.filter {
-            RoomFilter::All if self.query.is_empty() => Arc::clone(&self.listable),
-            RoomFilter::All => self.rooms_where(|room| self.query.matches(&room.display_name)),
-            RoomFilter::Direct => {
-                self.rooms_where(|room| room.is_direct && self.query.matches(&room.display_name))
-            }
-            RoomFilter::Space { space, subspace } => {
-                let space_id = subspace.as_ref().unwrap_or(space);
-                match self.graph.index.get(space_id.as_ref()).copied() {
-                    Some(space_index) => self.rooms_where(|room| {
-                        self.graph.contains_room(space_index, room.id.as_ref())
-                    }),
-                    None => Arc::from(Vec::new()),
-                }
-            }
-        }
     }
 
     fn space_matches(&self, sel: &Selection) -> Arc<[SpaceMatch]> {
@@ -961,15 +906,6 @@ impl RoomDirectory {
             .into_iter()
             .flat_map(|space| space.child_space_ids.iter())
             .filter_map(|id| self.graph.index.get(id).copied())
-    }
-
-    fn rooms_where(&self, keep: impl Fn(&Room) -> bool) -> RoomList {
-        self.listable
-            .iter()
-            .filter(|room| keep(room))
-            .map(Arc::clone)
-            .collect::<Vec<Arc<Room>>>()
-            .into()
     }
 
     pub(super) fn emit_spaces(&self) {
@@ -1263,6 +1199,62 @@ async fn write_space_order(
         backoff = backoff.saturating_mul(2);
         attempt = attempt.saturating_add(1);
     }
+}
+
+trait Listed {
+    fn id(&self) -> &RoomId;
+    fn title(&self) -> &str;
+    fn is_direct(&self) -> bool;
+}
+
+impl Listed for Room {
+    fn id(&self) -> &RoomId {
+        &self.id
+    }
+
+    fn title(&self) -> &str {
+        &self.display_name
+    }
+
+    fn is_direct(&self) -> bool {
+        self.is_direct
+    }
+}
+
+impl Listed for Invite {
+    fn id(&self) -> &RoomId {
+        &self.id
+    }
+
+    fn title(&self) -> &str {
+        &self.name
+    }
+
+    fn is_direct(&self) -> bool {
+        Invite::is_direct(self)
+    }
+}
+
+impl Listed for Removal {
+    fn id(&self) -> &RoomId {
+        &self.id
+    }
+
+    fn title(&self) -> &str {
+        &self.name
+    }
+
+    fn is_direct(&self) -> bool {
+        self.is_direct
+    }
+}
+
+fn kept<T>(all: &[Arc<T>], keep: impl Fn(&T) -> bool) -> Arc<[Arc<T>]> {
+    all.iter()
+        .filter(|item| keep(item))
+        .map(Arc::clone)
+        .collect::<Vec<Arc<T>>>()
+        .into()
 }
 
 fn publish_connection(output: &Arc<dyn AppOutputPort>, status: ConnectionStatus) {
