@@ -2,7 +2,7 @@ use std::path::PathBuf;
 
 use slint::{Image, SharedString};
 
-use super::message::preview_line;
+use super::body::preview_line;
 use crate::adapters::ui::decode::{
     AvatarSlot, ShownAvatar, load_avatar_async, peek_avatar, record_avatar_need,
 };

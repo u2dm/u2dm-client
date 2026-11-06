@@ -1,66 +1,25 @@
+mod actions;
+mod roster;
+
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
-use super::avatars::spawn_avatar_batches;
-use super::event::{ActionOutcome, AppEvent, RoomActionEvent, RoomInfoEvent};
+use self::actions::NotifyChange;
+use self::roster::{Fetch, MEMBER_PAGE, Members, Roster, derive_rows, unrequested_avatars};
 use super::input::EventSender;
 use super::link_requests::LinkRequests;
+use super::report_in;
 use super::task_group::TaskGroup;
-use super::{report_in, show_toast};
-use crate::commands::messages::{UserMessage, UserMessageKind};
-use crate::commands::view::{
-    CopiedLink, RoomCard, RoomInfoPlacement, RoomInfoView, RoomMenuTarget, RosterRow, RosterStatus,
-    Toast,
-};
+use crate::commands::messages::UserMessage;
+use crate::commands::view::{RoomCard, RoomInfoPlacement, RoomInfoView, RoomMenuTarget, RosterRow};
 use crate::domain::room::{NotifyMode, Room, RoomId, Space};
-use crate::domain::room_info::{MemberQuery, RoomAbout, RosterMember, RosterSection};
-use crate::ports::matrix::{LeavePort, RoomInfoPort};
+use crate::domain::room_info::{MemberQuery, RoomAbout};
+use crate::ports::matrix::RoomInfoPort;
 use crate::ports::output::AppOutputPort;
-
-const MEMBER_PAGE: usize = 50;
-
-type Members = Arc<[Arc<RosterMember>]>;
 
 pub(super) enum RosterOutcome {
     Loaded(Members),
     Failed,
-}
-
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum NotifyChange {
-    Requested { request: u64, target: NotifyMode },
-    AwaitingEcho { target: NotifyMode },
-}
-
-impl NotifyChange {
-    fn target(self) -> NotifyMode {
-        match self {
-            Self::Requested { target, .. } | Self::AwaitingEcho { target } => target,
-        }
-    }
-}
-
-enum Roster {
-    Loading,
-    Failed,
-    Ready(Members),
-}
-
-impl Roster {
-    fn status(&self) -> RosterStatus {
-        match self {
-            Self::Loading => RosterStatus::Loading,
-            Self::Failed => RosterStatus::Failed,
-            Self::Ready(_) => RosterStatus::Ready,
-        }
-    }
-}
-
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum Fetch {
-    Idle,
-    InFlight,
-    InFlightThenAgain,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -254,306 +213,6 @@ impl RoomInfo {
         }
     }
 
-    pub(super) fn members_changed(&mut self, port: Arc<dyn RoomInfoPort>, room_id: &RoomId) {
-        if self.shows(room_id) {
-            tracing::debug!(%room_id, "the room's members changed, refetching them");
-            self.refetch_roster(port);
-        }
-    }
-
-    pub(super) fn page(&mut self, port: Arc<dyn RoomInfoPort>) {
-        let Some(open) = self.open.as_mut().filter(|open| open.has_more) else {
-            return;
-        };
-        open.shown = open.shown.saturating_add(MEMBER_PAGE);
-        self.reveal(port);
-    }
-
-    pub(super) fn filter(&mut self, port: Arc<dyn RoomInfoPort>, query: String) {
-        let Some(open) = self.open.as_mut().filter(|open| open.query != query) else {
-            return;
-        };
-        open.query = query;
-        open.shown = MEMBER_PAGE;
-        self.reveal(port);
-    }
-
-    pub(super) fn retry(&mut self, port: Arc<dyn RoomInfoPort>) {
-        let Some(open) = self
-            .open
-            .as_mut()
-            .filter(|open| matches!(open.roster, Roster::Failed) && open.fetch == Fetch::Idle)
-        else {
-            return;
-        };
-        open.roster = Roster::Loading;
-        open.fetch = Fetch::InFlight;
-        let (room_id, generation) = (open.card.id.clone(), open.generation);
-        self.publish();
-        self.spawn_roster(port, room_id, generation);
-    }
-
-    pub(super) fn roster_fetched(
-        &mut self,
-        port: Arc<dyn RoomInfoPort>,
-        generation: u64,
-        outcome: RosterOutcome,
-    ) {
-        let Some(open) = self
-            .current(generation)
-            .filter(|open| open.fetch != Fetch::Idle)
-        else {
-            tracing::debug!(generation, "dropping a superseded member list");
-            return;
-        };
-        let again = open.fetch == Fetch::InFlightThenAgain;
-        open.fetch = Fetch::Idle;
-        open.adopt(outcome);
-        if again {
-            self.refetch_roster(Arc::clone(&port));
-        }
-        self.reveal(port);
-    }
-
-    pub(super) fn about_fetched(&mut self, generation: u64, about: Option<RoomAbout>) {
-        let Some(open) = self.current(generation) else {
-            return;
-        };
-        open.about = about;
-        self.publish();
-    }
-
-    pub(super) fn avatars_ready(&mut self, generation: u64, ready: usize) {
-        let Some(open) = self.current(generation) else {
-            return;
-        };
-        open.avatars_ready = open.avatars_ready.saturating_add(ready);
-        self.publish();
-    }
-
-    pub(super) fn set_notify(
-        &mut self,
-        port: Arc<dyn RoomInfoPort>,
-        room: Option<&Room>,
-        mode: NotifyMode,
-    ) {
-        let Some(room) = room else {
-            tracing::debug!(?mode, "the room is not listed, not changing its mode");
-            return;
-        };
-        let room_id = room.id.clone();
-        let change = self.notify.get(&room_id).copied();
-        if self.leaving.contains(&room_id)
-            || matches!(change, Some(NotifyChange::Requested { .. }))
-            || change.map_or(room.notify, NotifyChange::target) == mode
-        {
-            tracing::debug!(%room_id, ?mode, "ignoring a notification change that has nothing to do");
-            return;
-        }
-        self.requests = self.requests.wrapping_add(1);
-        let request = self.requests;
-        self.notify.insert(
-            room_id.clone(),
-            NotifyChange::Requested {
-                request,
-                target: mode,
-            },
-        );
-        self.clear_error(&room_id);
-        let name = room.display_name.clone();
-        self.publish();
-
-        self.actions.spawn_reporting(&self.events, async move {
-            let outcome = ActionOutcome::of(
-                port.set_notify(&room_id, mode).await,
-                |e| tracing::warn!(%room_id, "failed to change the room's notifications: {e}"),
-            );
-            let settled = RoomActionEvent::NotifySettled {
-                request,
-                room_id,
-                name,
-                outcome,
-            };
-            AppEvent::RoomAction(settled)
-        });
-    }
-
-    pub(super) fn notify_settled(
-        &mut self,
-        request: u64,
-        room_id: RoomId,
-        name: &str,
-        outcome: ActionOutcome,
-        listed: Option<NotifyMode>,
-    ) {
-        let Some(NotifyChange::Requested {
-            request: pending,
-            target,
-        }) = self.notify.get(&room_id).copied()
-        else {
-            tracing::debug!(%room_id, "dropping a notification change nobody is waiting for");
-            return;
-        };
-        if pending != request {
-            return;
-        }
-        match outcome {
-            ActionOutcome::Done if listed.is_none_or(|mode| mode == target) => {
-                self.notify.remove(&room_id);
-            }
-            ActionOutcome::Done => {
-                tracing::debug!(%room_id, "changed, waiting for sync to deliver the push rules");
-                self.notify
-                    .insert(room_id, NotifyChange::AwaitingEcho { target });
-            }
-            ActionOutcome::Failed => {
-                self.notify.remove(&room_id);
-                self.report(
-                    &room_id,
-                    UserMessage::about(UserMessageKind::NotifyChangeFailed, &name),
-                );
-            }
-        }
-        self.publish();
-    }
-
-    pub(super) fn leave(&mut self, port: Arc<dyn LeavePort>, room: Option<&Room>) {
-        let Some(room) = room else {
-            tracing::debug!("the room is not listed, not leaving it");
-            return;
-        };
-        let room_id = room.id.clone();
-        if !self.leaving.insert(room_id.clone()) {
-            return;
-        }
-        self.clear_error(&room_id);
-        let name = room.display_name.clone();
-        self.publish();
-
-        self.actions.spawn_reporting(&self.events, async move {
-            let outcome = ActionOutcome::of(
-                port.leave(&room_id).await,
-                |e| tracing::warn!(%room_id, "failed to leave the room: {e}"),
-            );
-            let settled = RoomActionEvent::LeaveSettled {
-                room_id,
-                name,
-                outcome,
-            };
-            AppEvent::RoomAction(settled)
-        });
-    }
-
-    pub(super) fn leave_settled(&mut self, room_id: &RoomId, name: &str, outcome: ActionOutcome) {
-        if !self.leaving.remove(room_id) {
-            tracing::debug!(%room_id, "dropping a leave nobody is waiting for");
-            return;
-        }
-        match outcome {
-            ActionOutcome::Done => {
-                let sheet_closed = self.drop_sheet_of(room_id);
-                let menu_closed = self.menu.as_ref().is_some_and(|menu| menu.id == *room_id);
-                if menu_closed {
-                    self.menu = None;
-                }
-                if sheet_closed || menu_closed {
-                    self.publish();
-                }
-            }
-            ActionOutcome::Failed => {
-                self.report(
-                    room_id,
-                    UserMessage::about(UserMessageKind::LeaveRoomFailed, &name),
-                );
-                self.publish();
-            }
-        }
-    }
-
-    pub(super) fn mark_read(&mut self, port: Arc<dyn RoomInfoPort>, room: Option<&Room>) {
-        let Some(room) = room else {
-            tracing::debug!("the room is not listed, not marking it read");
-            return;
-        };
-        let room_id = room.id.clone();
-        if !self.marking.insert(room_id.clone()) {
-            return;
-        }
-        let name = room.display_name.clone();
-        self.actions.spawn_reporting(&self.events, async move {
-            let outcome = ActionOutcome::of(
-                port.mark_read(&room_id).await,
-                |e| tracing::warn!(%room_id, "failed to mark the room as read: {e}"),
-            );
-            let settled = RoomActionEvent::ReadSettled {
-                room_id,
-                name,
-                outcome,
-            };
-            AppEvent::RoomAction(settled)
-        });
-    }
-
-    pub(super) fn read_settled(&mut self, room_id: &RoomId, name: &str, outcome: ActionOutcome) {
-        if !self.marking.remove(room_id) {
-            tracing::debug!(%room_id, "dropping a read marker nobody is waiting for");
-            return;
-        }
-        if outcome == ActionOutcome::Failed {
-            self.report(
-                room_id,
-                UserMessage::about(UserMessageKind::MarkReadFailed, &name),
-            );
-            self.publish();
-        }
-    }
-
-    pub(super) fn copy_link(
-        &mut self,
-        port: Arc<dyn RoomInfoPort>,
-        room_id: &RoomId,
-        name: Option<String>,
-    ) {
-        let Some(name) = name else {
-            tracing::debug!(%room_id, "neither a listed room nor a joined space, not linking it");
-            return;
-        };
-        let room_id = room_id.clone();
-        let request = self.links.issue();
-        self.actions.spawn_reporting(&self.events, async move {
-            let link = port
-                .room_link(&room_id)
-                .await
-                .inspect_err(|e| tracing::warn!(%room_id, "failed to link the room: {e}"))
-                .ok();
-            let resolved = RoomActionEvent::LinkResolved {
-                request,
-                name,
-                link,
-            };
-            AppEvent::RoomAction(resolved)
-        });
-    }
-
-    pub(super) fn link_resolved(&mut self, request: i32, name: &str, link: Option<String>) {
-        if !self.links.settle(request) {
-            tracing::debug!(request, "dropping a room link a later copy replaced");
-            return;
-        }
-        match link {
-            Some(url) => self.output.publish(Box::new(move |view| {
-                view.room_link = CopiedLink {
-                    serial: request,
-                    url,
-                };
-            })),
-            None => show_toast(
-                self.output.as_ref(),
-                Toast::Error(UserMessage::about(UserMessageKind::RoomLinkFailed, &name)),
-            ),
-        }
-    }
-
     pub(super) async fn restart(&mut self) {
         tokio::join!(self.tasks.restart(), self.actions.restart());
         self.open = None;
@@ -662,27 +321,6 @@ impl RoomInfo {
         self.notify.len() != before
     }
 
-    fn refetch_roster(&mut self, port: Arc<dyn RoomInfoPort>) {
-        let Some(open) = self.open.as_mut() else {
-            return;
-        };
-        if open.fetch != Fetch::Idle {
-            open.fetch = Fetch::InFlightThenAgain;
-            return;
-        }
-        open.fetch = Fetch::InFlight;
-        let (room_id, generation) = (open.card.id.clone(), open.generation);
-        self.spawn_roster(port, room_id, generation);
-    }
-
-    fn refetch_about(&mut self, port: Arc<dyn RoomInfoPort>) {
-        let Some(open) = self.open.as_ref() else {
-            return;
-        };
-        let (room_id, generation) = (open.card.id.clone(), open.generation);
-        self.spawn_about(port, room_id, generation);
-    }
-
     fn reveal(&mut self, port: Arc<dyn RoomInfoPort>) {
         let Some(open) = self.open.as_mut() else {
             return;
@@ -713,47 +351,6 @@ impl RoomInfo {
         if let Some(open) = self.open.as_mut().filter(|open| open.card.id == *room_id) {
             open.error = UserMessage::default();
         }
-    }
-
-    fn spawn_roster(&mut self, port: Arc<dyn RoomInfoPort>, room_id: RoomId, generation: u64) {
-        self.tasks.spawn_reporting(&self.events, async move {
-            let outcome = match port.roster(&room_id).await {
-                Ok(members) => RosterOutcome::Loaded(members.into_iter().map(Arc::new).collect()),
-                Err(e) => {
-                    tracing::warn!(%room_id, "failed to load the member list: {e}");
-                    RosterOutcome::Failed
-                }
-            };
-            AppEvent::RoomInfo(RoomInfoEvent::RosterFetched {
-                generation,
-                outcome,
-            })
-        });
-    }
-
-    fn spawn_about(&mut self, port: Arc<dyn RoomInfoPort>, room_id: RoomId, generation: u64) {
-        self.tasks.spawn_reporting(&self.events, async move {
-            let about = port
-                .about(&room_id)
-                .await
-                .inspect_err(|e| tracing::warn!(%room_id, "failed to read the room's details: {e}"))
-                .ok();
-            AppEvent::RoomInfo(RoomInfoEvent::AboutFetched { generation, about })
-        });
-    }
-
-    fn spawn_avatars(&mut self, port: Arc<dyn RoomInfoPort>, generation: u64, mxcs: Vec<String>) {
-        spawn_avatar_batches(&mut self.tasks, &self.events, port, mxcs, move |ready| {
-            AppEvent::RoomInfo(RoomInfoEvent::AvatarsReady { generation, ready })
-        });
-    }
-
-    fn pending_notify(&self, room_id: &RoomId, listed: NotifyMode) -> (NotifyMode, bool) {
-        let change = self.notify.get(room_id).copied();
-        (
-            change.map_or(listed, NotifyChange::target),
-            matches!(change, Some(NotifyChange::Requested { .. })),
-        )
     }
 
     fn menu_target(&self, menu: &MenuCard) -> RoomMenuTarget {
@@ -868,35 +465,4 @@ fn card_of(room: &Room) -> RoomCard {
         may_invite: room.may_invite,
         readable_by_anyone: room.readable_by_anyone(),
     }
-}
-
-fn derive_rows(roster: &Roster, query: &MemberQuery, shown: usize) -> (Vec<RosterRow>, bool) {
-    let Roster::Ready(members) = roster else {
-        return (Vec::new(), false);
-    };
-    let mut matching = members.iter().filter(|member| member.matches(query));
-    let mut rows = Vec::new();
-    let mut invited_heading_placed = false;
-    for member in matching.by_ref().take(shown) {
-        if member.section == RosterSection::Invited && !invited_heading_placed {
-            rows.push(RosterRow::InvitedHeading);
-            invited_heading_placed = true;
-        }
-        rows.push(RosterRow::Member(Arc::clone(member)));
-    }
-    let has_more = matching.next().is_some();
-    (rows, has_more)
-}
-
-fn unrequested_avatars(open: &mut OpenSheet) -> Vec<String> {
-    let OpenSheet {
-        rows, requested, ..
-    } = open;
-    rows.iter()
-        .filter_map(|row| match row {
-            RosterRow::Member(member) => member.avatar_mxc.clone(),
-            RosterRow::InvitedHeading => None,
-        })
-        .filter(|mxc| requested.insert(mxc.clone()))
-        .collect()
 }

@@ -1,33 +1,31 @@
-use std::collections::{BTreeMap, BTreeSet};
 use std::path::PathBuf;
 
 use slint::{Image, SharedString, StyledText};
 
+use super::body::{BodyLineDto, message_body, preview_line, row_body_and_preview};
+use super::reactions::{ReactionDto, reaction_dtos};
 use crate::adapters::ui::decode::{
     AvatarSlot, DecodeFailure, Decoded, MediaSlot, TimelineItemKey, load_avatar_async,
-    load_thumbnail, peek_avatar, peek_thumbnail, record_custom_emoji_need, record_media_need,
+    load_thumbnail, peek_avatar, peek_thumbnail, record_media_need,
 };
 use crate::adapters::ui::present::{
     Delivery, MessageKind, PollPhase, ServiceKind, ShieldReason, avatar_color_index,
-    decryption_failure, delivery, duration_label, file_extension, message_body_text, message_kind,
+    decryption_failure, delivery, duration_label, file_extension, message_kind,
     message_sender_label, message_sent_at_label, message_timestamp_label, name_initials,
-    poll_phase, preview_subject, pronoun_labels, reaction_key_label, reactor_labels, reader_labels,
-    service_kind, service_target, shield_reason, unsupported_kind, voice_bars, voter_labels,
+    poll_phase, preview_subject, pronoun_labels, reader_labels, service_kind, service_target,
+    shield_reason, unsupported_kind, voice_bars, voter_labels,
 };
-use crate::adapters::ui::richtext::{
-    self, Cover, InlineContent, InlineLine, InlinePiece, RoomWord, Spoilers,
-};
+use crate::adapters::ui::richtext::{Cover, Spoilers};
 use crate::adapters::ui::schema::{
     define_ui_enum, define_ui_names, emoji_arts, media_failures, media_states, spoiler_states,
 };
-use crate::adapters::ui::spoilers::{keep_covered_body, spoilers_on};
 use crate::domain::media::{
     AudioKind, AudioMeta, ContentKey, FileMeta, MediaFailure, ThumbnailOutcome,
 };
 use crate::domain::member_name::isolated;
 use crate::domain::message::{
-    CustomEmoji, DecryptionFailure, MessageBody, MessagePreviewKind, Reaction, ReactionSend,
-    Reactor, RichText, SendState, ServiceEvent, Shield, TimelineMessage,
+    DecryptionFailure, MessageBody, MessagePreviewKind, SendState, ServiceEvent, Shield,
+    TimelineMessage,
 };
 use crate::domain::poll::{Poll, PollAnswer};
 use crate::domain::timeline::EnrichmentDelta;
@@ -63,48 +61,6 @@ pub(in crate::adapters::ui) fn decode_failure_kind(failure: DecodeFailure) -> Me
         DecodeFailure::Damaged => MediaFailureKind::Damaged,
         DecodeFailure::Unreadable => MediaFailureKind::Unreadable,
     }
-}
-
-pub const REACTION_CHIP_CAP: usize = 6;
-
-#[derive(Clone)]
-pub struct ReactorAvatarDto {
-    pub user_id: SharedString,
-    pub initial: SharedString,
-    pub color_index: i32,
-    pub avatar: Option<Image>,
-    pub has_avatar: bool,
-}
-
-#[derive(Clone)]
-pub struct ReactionDto {
-    pub key: SharedString,
-    pub label: SharedString,
-    pub art: EmojiArt,
-    pub image: Option<Image>,
-    pub count: i32,
-    pub mine: bool,
-    pub send: ReactionSend,
-    pub overflow: bool,
-    pub reactors: SharedString,
-    pub hidden_reactors: i32,
-    pub avatars: Vec<ReactorAvatarDto>,
-}
-
-#[derive(Clone)]
-pub struct BodyPieceDto {
-    pub styled: StyledText,
-    pub key: SharedString,
-    pub art: EmojiArt,
-    pub image: Option<Image>,
-    pub spaced: bool,
-}
-
-#[derive(Clone)]
-pub struct BodyLineDto {
-    pub pieces: Vec<BodyPieceDto>,
-    pub words: StyledText,
-    pub gaps: i32,
 }
 
 #[derive(Clone)]
@@ -202,146 +158,6 @@ pub struct EnrichUpdate {
     pub thumbnail: ThumbUpdate,
     pub avatar: Option<Image>,
     pub pronouns: Option<Vec<SharedString>>,
-}
-
-fn reactor_avatar_dto(
-    item: &TimelineItemKey,
-    reactor: &Reactor,
-    media: &dyn MediaCache,
-) -> ReactorAvatarDto {
-    let slot = AvatarSlot::Reactor {
-        item: item.clone(),
-        user_id: reactor.user_id.clone(),
-    };
-    let path = reactor
-        .avatar_url
-        .as_deref()
-        .and_then(|mxc| media.user_avatar_path(mxc));
-    let avatar = load_avatar_async(path.as_deref(), slot);
-    ReactorAvatarDto {
-        user_id: SharedString::from(&reactor.user_id),
-        initial: SharedString::from(name_initials(&reactor.name, &reactor.user_id)),
-        color_index: avatar_color_index(&reactor.user_id),
-        has_avatar: avatar.is_some(),
-        avatar,
-    }
-}
-
-fn reactor_avatar_dtos(
-    item: &TimelineItemKey,
-    reaction: &Reaction,
-    media: &dyn MediaCache,
-) -> Vec<ReactorAvatarDto> {
-    if !reaction.shows_reactors() {
-        return Vec::new();
-    }
-    reaction
-        .senders
-        .iter()
-        .map(|reactor| reactor_avatar_dto(item, reactor, media))
-        .collect()
-}
-
-fn downloaded_emoji_art(
-    item: &TimelineItemKey,
-    mxc: &str,
-    media: &dyn MediaCache,
-) -> (EmojiArt, Option<Image>) {
-    let Some(path) = media.custom_emoji_path(mxc) else {
-        return (EmojiArt::Pending, None);
-    };
-    record_custom_emoji_need(item, mxc, &path);
-    match peek_thumbnail(&path, &MediaSlot::CustomEmoji(mxc.to_owned())) {
-        Decoded::Ready(image) => (EmojiArt::Ready, Some(image)),
-        Decoded::Failed(_) => (EmojiArt::Failed, None),
-        Decoded::Pending => (EmojiArt::Pending, None),
-    }
-}
-
-fn emoji_art(
-    item: &TimelineItemKey,
-    mxc: &str,
-    state: CustomEmoji,
-    media: &dyn MediaCache,
-) -> (EmojiArt, Option<Image>) {
-    match state {
-        CustomEmoji::Downloading => (EmojiArt::Pending, None),
-        CustomEmoji::Unavailable => (EmojiArt::Failed, None),
-        CustomEmoji::Downloaded => downloaded_emoji_art(item, mxc, media),
-    }
-}
-
-fn reaction_art(
-    item: &TimelineItemKey,
-    reaction: &Reaction,
-    media: &dyn MediaCache,
-) -> (EmojiArt, Option<Image>) {
-    match reaction.image {
-        None => (EmojiArt::Text, None),
-        Some(state) => emoji_art(item, &reaction.key, state, media),
-    }
-}
-
-fn reaction_dto(
-    item: &TimelineItemKey,
-    reaction: &Reaction,
-    media: &dyn MediaCache,
-) -> ReactionDto {
-    let (reactors, hidden) = reactor_labels(reaction);
-    let (art, image) = reaction_art(item, reaction, media);
-    let label = match art {
-        EmojiArt::Text => SharedString::from(reaction_key_label(&reaction.key)),
-        EmojiArt::Pending | EmojiArt::Ready | EmojiArt::Failed => SharedString::new(),
-    };
-    ReactionDto {
-        key: SharedString::from(&reaction.key),
-        label,
-        art,
-        image,
-        count: saturating_i32(reaction.count()),
-        mine: reaction.mine,
-        send: reaction.send,
-        overflow: false,
-        reactors: SharedString::from(reactors),
-        hidden_reactors: saturating_i32(hidden),
-        avatars: reactor_avatar_dtos(item, reaction, media),
-    }
-}
-
-fn overflow_dto(hidden: usize) -> ReactionDto {
-    ReactionDto {
-        key: SharedString::new(),
-        label: SharedString::new(),
-        art: EmojiArt::Text,
-        image: None,
-        count: saturating_i32(hidden),
-        mine: false,
-        send: ReactionSend::default(),
-        overflow: true,
-        reactors: SharedString::new(),
-        hidden_reactors: 0,
-        avatars: Vec::new(),
-    }
-}
-
-fn reaction_dtos(
-    item: &TimelineItemKey,
-    reactions: &[Reaction],
-    media: &dyn MediaCache,
-) -> (Vec<ReactionDto>, Vec<ReactionDto>) {
-    let all: Vec<ReactionDto> = reactions
-        .iter()
-        .map(|reaction| reaction_dto(item, reaction, media))
-        .collect();
-    if all.len() <= REACTION_CHIP_CAP {
-        return (all, Vec::new());
-    }
-    let mut chips: Vec<ReactionDto> = all
-        .get(..REACTION_CHIP_CAP)
-        .map(<[ReactionDto]>::to_vec)
-        .unwrap_or_default();
-    chips.push(overflow_dto(all.len() - REACTION_CHIP_CAP));
-    (chips, all)
 }
 
 pub struct AudioRowUpdate {
@@ -517,226 +333,6 @@ fn apply_thumbnail(
         Decoded::Pending => {}
     }
     Some(path)
-}
-
-fn one_line(text: &str) -> SharedString {
-    SharedString::from(text.split_whitespace().collect::<Vec<_>>().join(" "))
-}
-
-pub fn rich_body(text: &RichText) -> richtext::StyledBody {
-    match text.html() {
-        Some(html) => richtext::styled_body(
-            html,
-            &text.plain,
-            None,
-            RoomWord::Text,
-            Spoilers::Covered(Cover::Text),
-        ),
-        None => richtext::plain_body(&text.plain, None, RoomWord::Text),
-    }
-}
-
-pub fn preview_line(text: &RichText) -> SharedString {
-    match text.html() {
-        Some(html) => one_line(
-            &richtext::styled_body(html, &text.plain, None, RoomWord::Text, REVEALABLE).plain,
-        ),
-        None => one_line(&text.plain),
-    }
-}
-
-pub fn message_body(message: &TimelineMessage) -> richtext::StyledBody {
-    let actor = emote_actor(message);
-    BodyText::of(message, actor.as_deref()).styled(REVEALABLE)
-}
-
-pub struct RowBody {
-    pub rich: richtext::StyledBody,
-    pub lines: Vec<BodyLineDto>,
-    pub emote_only: bool,
-    pub spoilers: SpoilerState,
-}
-
-struct BodyText<'a> {
-    body: &'a MessageBody,
-    actor: Option<&'a str>,
-    room_word: RoomWord,
-    emoji: &'a BTreeMap<String, CustomEmoji>,
-}
-
-fn emote_actor(message: &TimelineMessage) -> Option<String> {
-    matches!(message.body, MessageBody::Emote(_)).then(|| message_sender_label(message))
-}
-
-impl<'a> BodyText<'a> {
-    fn of(message: &'a TimelineMessage, actor: Option<&'a str>) -> Self {
-        Self {
-            body: &message.body,
-            actor,
-            room_word: RoomWord::when(message.mentions_room),
-            emoji: &message.body_emoji,
-        }
-    }
-
-    fn styled(&self, spoilers: Spoilers) -> richtext::StyledBody {
-        let plain = message_body_text(self.body);
-        match self.body.html() {
-            Some(html) => richtext::styled_body(html, plain, self.actor, self.room_word, spoilers),
-            None => richtext::plain_body(plain, self.actor, self.room_word),
-        }
-    }
-
-    fn row_body(
-        &self,
-        item: &TimelineItemKey,
-        spoilers: Spoilers,
-        media: &dyn MediaCache,
-    ) -> RowBody {
-        let (lines, emote_only) = self.inline_lines(item, spoilers, media);
-        let rich = self.styled(spoilers);
-        RowBody {
-            spoilers: spoiler_state(rich.has_spoilers, spoilers),
-            rich,
-            lines,
-            emote_only,
-        }
-    }
-
-    fn inline_lines(
-        &self,
-        item: &TimelineItemKey,
-        spoilers: Spoilers,
-        media: &dyn MediaCache,
-    ) -> (Vec<BodyLineDto>, bool) {
-        let drawn: BTreeSet<String> = self
-            .emoji
-            .iter()
-            .filter(|(_, state)| **state != CustomEmoji::Unavailable)
-            .map(|(mxc, _)| mxc.clone())
-            .collect();
-        if drawn.is_empty() {
-            return (Vec::new(), false);
-        }
-        let Some(inline) = self.body.html().and_then(|html| {
-            richtext::inline_body(html, self.actor, self.room_word, spoilers, drawn)
-        }) else {
-            return (Vec::new(), false);
-        };
-        let lines = inline
-            .lines
-            .iter()
-            .map(|line| body_line_dto(item, line, self.emoji, media))
-            .collect();
-        (lines, inline.emote_only)
-    }
-}
-
-#[derive(Clone)]
-pub struct CoveredBody {
-    body: MessageBody,
-    actor: Option<String>,
-    room_word: RoomWord,
-    emoji: BTreeMap<String, CustomEmoji>,
-}
-
-impl CoveredBody {
-    fn of(message: &TimelineMessage, actor: Option<String>) -> Self {
-        Self {
-            body: message.body.clone(),
-            actor,
-            room_word: RoomWord::when(message.mentions_room),
-            emoji: message.body_emoji.clone(),
-        }
-    }
-
-    fn text(&self) -> BodyText<'_> {
-        BodyText {
-            body: &self.body,
-            actor: self.actor.as_deref(),
-            room_word: self.room_word,
-            emoji: &self.emoji,
-        }
-    }
-
-    pub fn revealed(&self, item: &TimelineItemKey, media: &dyn MediaCache) -> RowBody {
-        self.text().row_body(item, Spoilers::Shown, media)
-    }
-}
-
-fn row_body_and_preview(
-    item: &TimelineItemKey,
-    message: &TimelineMessage,
-    media: &dyn MediaCache,
-) -> (RowBody, SharedString) {
-    let actor = emote_actor(message);
-    let text = BodyText::of(message, actor.as_deref());
-    let spoilers = spoilers_on(&message.unique_id);
-    let body = text.row_body(item, spoilers, media);
-    if body.rich.has_spoilers {
-        keep_covered_body(&message.unique_id, CoveredBody::of(message, actor.clone()));
-    }
-    let preview = match (preview_subject(&message.body), spoilers) {
-        (Some(subject), _) => SharedString::from(subject),
-        (None, Spoilers::Shown) => text.styled(REVEALABLE).plain,
-        (None, Spoilers::Covered(_)) => body.rich.plain.clone(),
-    };
-    (body, one_line(&preview))
-}
-
-fn spoiler_state(has_spoilers: bool, spoilers: Spoilers) -> SpoilerState {
-    match (has_spoilers, spoilers) {
-        (false, _) => SpoilerState::None,
-        (true, Spoilers::Covered(_)) => SpoilerState::Covered,
-        (true, Spoilers::Shown) => SpoilerState::Shown,
-    }
-}
-
-fn body_line_dto(
-    item: &TimelineItemKey,
-    line: &InlineLine,
-    body_emoji: &BTreeMap<String, CustomEmoji>,
-    media: &dyn MediaCache,
-) -> BodyLineDto {
-    BodyLineDto {
-        pieces: line
-            .pieces
-            .iter()
-            .map(|piece| body_piece_dto(item, piece, body_emoji, media))
-            .collect(),
-        words: line.words.clone(),
-        gaps: saturating_i32(line.gaps),
-    }
-}
-
-fn body_piece_dto(
-    item: &TimelineItemKey,
-    piece: &InlinePiece,
-    body_emoji: &BTreeMap<String, CustomEmoji>,
-    media: &dyn MediaCache,
-) -> BodyPieceDto {
-    let (styled, key, (art, image)) = match &piece.content {
-        InlineContent::Text(styled) => {
-            (styled.clone(), SharedString::new(), (EmojiArt::Text, None))
-        }
-        InlineContent::Emoji(mxc) => {
-            let state = body_emoji
-                .get(mxc)
-                .copied()
-                .unwrap_or(CustomEmoji::Unavailable);
-            (
-                StyledText::default(),
-                SharedString::from(mxc),
-                emoji_art(item, mxc, state, media),
-            )
-        }
-    };
-    BodyPieceDto {
-        styled,
-        key,
-        art,
-        image,
-        spaced: piece.spaced,
-    }
 }
 
 pub struct QuotedMessage {

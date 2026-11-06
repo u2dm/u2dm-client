@@ -1,9 +1,14 @@
+mod body;
 mod call_rows;
 mod message;
 mod packs;
 mod people;
+mod reactions;
 mod rooms;
 
+pub(super) use self::body::{
+    BodyLineDto, BodyPieceDto, CoveredBody, RowBody, preview_line, rich_body,
+};
 pub(super) use self::call_rows::{
     CallConnectionDto, CallDeviceDto, CallNoticeMark, CallOfferMark, CallPersonDto, CallScreenMark,
     CallTileDto, CallTileMark, SheetPreviewMark, TestPhaseMark, call_connection_rows,
@@ -11,10 +16,9 @@ pub(super) use self::call_rows::{
     call_person_to_dto, call_screen_mark, call_tile_to_dto, sheet_preview_mark, test_phase_mark,
 };
 pub(super) use self::message::{
-    BodyLineDto, BodyPieceDto, CoveredBody, EmojiArt, MediaFailureKind, MediaState, MessageDto,
-    PollAnswerDto, QuotedMessage, REVEALABLE, ReactionDto, ReactorAvatarDto, RowBody, SpoilerState,
-    ThumbUpdate, audio_row_update, decode_failure_kind, enrich_to_update, message_to_dto,
-    preview_line, quoted_message, rich_body,
+    EmojiArt, MediaFailureKind, MediaState, MessageDto, PollAnswerDto, QuotedMessage, REVEALABLE,
+    SpoilerState, ThumbUpdate, audio_row_update, decode_failure_kind, enrich_to_update,
+    message_to_dto, quoted_message,
 };
 pub(super) use self::packs::{
     PackArt, PackBrowse, PackCellDto, PackGrid, PackRowDto, PackSurface, PackTabDto, cell_pack,
@@ -26,6 +30,7 @@ pub(super) use self::people::{
     request_invitee_avatar, request_member_avatar, request_mention_avatar, request_reader_avatar,
     user_device_to_dto, user_info_pronouns,
 };
+pub(super) use self::reactions::{ReactionDto, ReactorAvatarDto};
 pub(super) use self::rooms::{
     INVITES_HEADING_ROW, LogLineDto, ROOMS_HEADING_ROW, RoomCallMark, RoomDto, RoomRowKind,
     SPACES_HEADING_ROW, SpaceChildDto, SpaceDto, heading_to_dto, invite_avatar_path, invite_to_dto,

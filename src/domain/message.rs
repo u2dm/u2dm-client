@@ -1,15 +1,23 @@
-use std::collections::{BTreeMap, BTreeSet};
+mod edits;
+mod reactions;
+mod receipts;
+mod service;
+
+use std::collections::BTreeMap;
 use std::hash::{DefaultHasher, Hash, Hasher};
 
-use crate::domain::emote::Emote;
+pub(crate) use self::edits::{EditKind, EditTarget, MessageEdit, TextRevision};
+#[cfg(feature = "matrix")]
+pub(crate) use self::reactions::REACTOR_AVATAR_LIMIT;
+pub(crate) use self::reactions::{CustomEmoji, Reaction, ReactionSend, Reactor};
+pub(crate) use self::receipts::{ReadBy, ReadScan};
+pub(crate) use self::service::ServiceEvent;
 use crate::domain::location::Location;
 use crate::domain::media::{
     AudioKind, AudioMeta, ContentKey, FileMeta, ImageMeta, MediaKind, VideoMeta,
 };
 use crate::domain::member_name::{MemberName, NamedUser};
 use crate::domain::poll::Poll;
-use crate::domain::room_state::{GuestAccess, HistoryVisibility, PowerChange};
-use crate::domain::space_index::JoinRule;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum MessagePreviewKind {
@@ -26,84 +34,6 @@ pub enum MessagePreviewKind {
     Sticker,
     Poll,
     Deleted,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum ServiceEvent {
-    Joined,
-    Left,
-    Invited {
-        target: NamedUser,
-    },
-    InvitationAccepted,
-    InvitationRejected,
-    InvitationRevoked {
-        target: NamedUser,
-    },
-    Kicked {
-        target: NamedUser,
-        reason: Option<String>,
-    },
-    Banned {
-        target: NamedUser,
-        reason: Option<String>,
-    },
-    Unbanned {
-        target: NamedUser,
-    },
-    Knocked,
-    KnockAccepted {
-        target: NamedUser,
-    },
-    KnockRetracted,
-    KnockDenied {
-        target: NamedUser,
-    },
-    ThirdPartyInvited {
-        name: String,
-    },
-    ThirdPartyInviteRevoked {
-        name: String,
-    },
-    DisplayNameSet {
-        name: String,
-    },
-    DisplayNameChanged {
-        name: String,
-    },
-    DisplayNameRemoved,
-    AvatarChanged,
-    RoomNameChanged {
-        name: String,
-    },
-    RoomNameRemoved,
-    RoomTopicChanged,
-    RoomAvatarChanged,
-    RoomCreated,
-    UpgradedRoomCreated,
-    RoomUpgraded,
-    EncryptionEnabled,
-    JoinRuleChanged(JoinRule),
-    HistoryVisibilityChanged(HistoryVisibility),
-    GuestAccessChanged(GuestAccess),
-    ServerAclChanged,
-    MainAddressSet {
-        alias: String,
-    },
-    MainAddressRemoved,
-    AlternativeAddressesChanged,
-    MessagePinned,
-    MessageUnpinned,
-    PinnedMessagesChanged,
-    PowerLevelsChanged(PowerChange),
-    CallStarted,
-    CallNotification {
-        video: bool,
-        declined_by: Option<NamedUser>,
-    },
-    VerificationRequested {
-        target: NamedUser,
-    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
@@ -234,53 +164,6 @@ pub enum Shield {
     None,
     Warning(ShieldCode),
     Notice(ShieldCode),
-}
-
-impl ServiceEvent {
-    pub fn target(&self) -> Option<&NamedUser> {
-        match self {
-            Self::Invited { target }
-            | Self::InvitationRevoked { target }
-            | Self::Kicked { target, .. }
-            | Self::Banned { target, .. }
-            | Self::Unbanned { target }
-            | Self::KnockAccepted { target }
-            | Self::KnockDenied { target }
-            | Self::VerificationRequested { target }
-            | Self::CallNotification {
-                declined_by: Some(target),
-                ..
-            } => Some(target),
-            Self::PowerLevelsChanged(change) => change.target(),
-            _ => None,
-        }
-    }
-
-    pub fn target_mut(&mut self) -> Option<&mut NamedUser> {
-        match self {
-            Self::Invited { target }
-            | Self::InvitationRevoked { target }
-            | Self::Kicked { target, .. }
-            | Self::Banned { target, .. }
-            | Self::Unbanned { target }
-            | Self::KnockAccepted { target }
-            | Self::KnockDenied { target }
-            | Self::VerificationRequested { target }
-            | Self::CallNotification {
-                declined_by: Some(target),
-                ..
-            } => Some(target),
-            Self::PowerLevelsChanged(change) => change.target_mut(),
-            _ => None,
-        }
-    }
-
-    pub fn reason(&self) -> Option<&str> {
-        match self {
-            Self::Kicked { reason, .. } | Self::Banned { reason, .. } => reason.as_deref(),
-            _ => None,
-        }
-    }
 }
 
 impl MessageBody {
@@ -420,146 +303,6 @@ impl Default for MessagePermissions {
     }
 }
 
-pub const REACTOR_AVATAR_LIMIT: usize = 3;
-pub const REACTORS_NAMED: usize = 6;
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Reactor {
-    pub user_id: String,
-    pub name: MemberName,
-    pub avatar_url: Option<String>,
-}
-
-impl Reactor {
-    pub fn new(user_id: String) -> Self {
-        Self {
-            user_id,
-            name: MemberName::Unset,
-            avatar_url: None,
-        }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Reaction {
-    pub key: String,
-    pub image: Option<CustomEmoji>,
-    pub senders: Vec<Reactor>,
-    pub mine: bool,
-    pub send: ReactionSend,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum CustomEmoji {
-    Downloading,
-    Downloaded,
-    Unavailable,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum ReactionSend {
-    #[default]
-    Sent,
-    Sending,
-    Failed,
-}
-
-impl Reaction {
-    pub fn count(&self) -> usize {
-        self.senders.len()
-    }
-
-    pub fn shows_reactors(&self) -> bool {
-        self.senders.len() < REACTOR_AVATAR_LIMIT
-    }
-
-    pub fn named(&self) -> impl Iterator<Item = &Reactor> {
-        self.senders.iter().take(REACTORS_NAMED)
-    }
-
-    pub fn named_mut(&mut self) -> impl Iterator<Item = &mut Reactor> {
-        self.senders.iter_mut().take(REACTORS_NAMED)
-    }
-}
-
-pub const READERS_NAMED: usize = 6;
-
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
-pub struct ReadBy {
-    pub named: Vec<NamedUser>,
-    pub total: usize,
-}
-
-impl ReadBy {
-    pub fn is_read(&self) -> bool {
-        self.total > 0
-    }
-
-    pub fn hidden(&self) -> usize {
-        self.total.saturating_sub(self.named.len())
-    }
-}
-
-pub struct ReadScan<'own> {
-    own_user_id: Option<&'own str>,
-    readers: BTreeSet<String>,
-}
-
-impl<'own> ReadScan<'own> {
-    pub fn excluding(own_user_id: Option<&'own str>) -> Self {
-        Self {
-            own_user_id,
-            readers: BTreeSet::new(),
-        }
-    }
-
-    pub fn observe<'id>(&mut self, user_ids: impl IntoIterator<Item = &'id str>) {
-        for user_id in user_ids {
-            if Some(user_id) != self.own_user_id && !self.readers.contains(user_id) {
-                self.readers.insert(user_id.to_owned());
-            }
-        }
-    }
-
-    pub fn describes(&self, read_by: &ReadBy, sender: &str) -> bool {
-        read_by.total == self.total(sender)
-            && read_by
-                .named
-                .iter()
-                .map(|reader| reader.user_id.as_str())
-                .eq(self.named(sender))
-    }
-
-    pub fn read_by(&self, sender: &str) -> ReadBy {
-        ReadBy {
-            named: self.named(sender).map(NamedUser::unnamed).collect(),
-            total: self.total(sender),
-        }
-    }
-
-    pub fn readers(&self, sender: &str) -> Vec<String> {
-        self.readers
-            .iter()
-            .filter(|reader| reader.as_str() != sender)
-            .cloned()
-            .collect()
-    }
-
-    fn total(&self, sender: &str) -> usize {
-        self.readers
-            .len()
-            .saturating_sub(usize::from(self.readers.contains(sender)))
-    }
-
-    fn named<'a>(&'a self, sender: &'a str) -> impl Iterator<Item = &'a str> {
-        self.readers
-            .iter()
-            .map(String::as_str)
-            .filter(move |reader| *reader != sender)
-            .take(READERS_NAMED)
-    }
-}
-
 const PROGRESS_SCALE: u16 = 1000;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -583,72 +326,6 @@ impl SendState {
                     / f32::from(PROGRESS_SCALE)
             }
             _ => 0.0,
-        }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum EditTarget {
-    Sent(String),
-    Queued(String),
-}
-
-impl EditTarget {
-    pub fn of(event_id: String, local_id: String) -> Option<Self> {
-        if !event_id.is_empty() {
-            return Some(Self::Sent(event_id));
-        }
-        (!local_id.is_empty()).then_some(Self::Queued(local_id))
-    }
-
-    pub fn event_id(&self) -> Option<&str> {
-        match self {
-            Self::Sent(event_id) => Some(event_id),
-            Self::Queued(_) => None,
-        }
-    }
-
-    pub fn local_id(&self) -> Option<&str> {
-        match self {
-            Self::Sent(_) => None,
-            Self::Queued(local_id) => Some(local_id),
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum EditKind {
-    Message,
-    Caption,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct MessageEdit {
-    pub target: EditTarget,
-    pub kind: EditKind,
-    pub body: String,
-    pub original: Option<String>,
-    pub emotes: Vec<Emote>,
-}
-
-pub enum TextRevision {
-    Blank,
-    Unchanged,
-    Changed(String),
-}
-
-impl TextRevision {
-    pub fn of(kind: EditKind, original: Option<&str>, edited: String) -> Self {
-        let blank = edited.trim().is_empty();
-        let edited = match kind {
-            EditKind::Message if blank => return Self::Blank,
-            EditKind::Caption if blank => String::new(),
-            EditKind::Message | EditKind::Caption => edited,
-        };
-        if original == Some(edited.as_str()) {
-            Self::Unchanged
-        } else {
-            Self::Changed(edited)
         }
     }
 }

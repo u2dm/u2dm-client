@@ -1,105 +1,29 @@
+mod auth;
+mod logout;
+mod operation;
+
 use std::sync::Arc;
 
 use tokio::sync::mpsc;
 
+use self::logout::Logout;
+use self::operation::Operation;
 use super::event::{AccountEvent, AppEvent};
 use super::input::EventSender;
 use super::report_in;
 use super::session_requests::SessionRequests;
 use super::task_group::TaskGroup;
-use super::uia::{AuthRound, Next, Reply, open_auth_page};
+use super::uia::AuthRound;
 use crate::commands::messages::{UserMessage, UserMessageKind};
-use crate::commands::view::{AccountActivity, AccountAuth, AccountDialog, AccountStep, LogoutView};
+use crate::commands::view::{AccountActivity, AccountAuth, AccountDialog, AccountStep};
 use crate::domain::capabilities::{AccountApi, AccountFacts, AccountPage};
-use crate::domain::sessions::{LogoutRisks, OwnSessions};
-use crate::domain::uia::{AccountPassword, AuthAnswer, AuthChallenge, Guarded, is_complex_enough};
-use crate::error::{AppError, Result as AppResult};
+use crate::domain::sessions::OwnSessions;
+use crate::domain::uia::{AccountPassword, AuthAnswer, Guarded, is_complex_enough};
 use crate::ports::browser::BrowserPort;
 use crate::ports::matrix::AccountPort;
 use crate::ports::output::AppOutputPort;
 
 const SESSIONS_CHANNEL_CAP: usize = 4;
-
-#[derive(Clone)]
-enum Operation {
-    SignOut {
-        device_id: String,
-        name: String,
-    },
-    ChangePassword {
-        password: AccountPassword,
-        sign_out_others: bool,
-    },
-    Deactivate {
-        erase: bool,
-    },
-}
-
-impl Operation {
-    fn activity(&self) -> AccountActivity {
-        match self {
-            Self::SignOut { .. } => AccountActivity::SigningOut,
-            Self::ChangePassword { .. } => AccountActivity::ChangingPassword,
-            Self::Deactivate { .. } => AccountActivity::Deactivating,
-        }
-    }
-
-    fn origin(&self) -> Step {
-        match self {
-            Self::SignOut { .. } => Step::Overview,
-            Self::ChangePassword { .. } => Step::ChangingPassword,
-            Self::Deactivate { .. } => Step::ConfirmingDeactivation,
-        }
-    }
-
-    fn origin_step(&self) -> AccountStep {
-        match self {
-            Self::SignOut { .. } => AccountStep::Overview,
-            Self::ChangePassword { .. } => AccountStep::ChangingPassword,
-            Self::Deactivate { .. } => AccountStep::ConfirmingDeactivation,
-        }
-    }
-
-    fn subject(&self) -> String {
-        match self {
-            Self::SignOut { name, .. } => name.clone(),
-            Self::ChangePassword { .. } | Self::Deactivate { .. } => String::new(),
-        }
-    }
-
-    fn device(&self) -> Option<&str> {
-        match self {
-            Self::SignOut { device_id, .. } => Some(device_id),
-            Self::ChangePassword { .. } | Self::Deactivate { .. } => None,
-        }
-    }
-
-    fn failure(&self, error: &AppError) -> UserMessage {
-        match (self, error) {
-            (Self::ChangePassword { .. }, AppError::WeakPassword(reason)) => {
-                UserMessage::about(UserMessageKind::NewPasswordRefused, reason)
-            }
-            (Self::SignOut { name, .. }, _) => {
-                UserMessage::about(UserMessageKind::SessionSignOutFailed, name)
-            }
-            (Self::ChangePassword { .. }, _) => {
-                UserMessage::new(UserMessageKind::PasswordChangeFailed)
-            }
-            (Self::Deactivate { .. }, _) => UserMessage::new(UserMessageKind::DeactivationFailed),
-        }
-    }
-
-    async fn run(&self, port: &dyn AccountPort, auth: Option<&AuthAnswer>) -> AppResult<Guarded> {
-        match self {
-            Self::SignOut { device_id, .. } => port.sign_out_session(device_id, auth).await,
-            Self::ChangePassword {
-                password,
-                sign_out_others,
-            } => port.change_password(password, *sign_out_others, auth).await,
-            Self::Deactivate { erase } => port.deactivate(*erase, auth).await,
-        }
-    }
-}
 
 enum Step {
     Overview,
@@ -143,13 +67,6 @@ pub(super) enum Settled {
 pub(super) enum LogoutDecision {
     Wait,
     Proceed,
-}
-
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum Logout {
-    Idle,
-    Checking(u64),
-    Warning(LogoutRisks),
 }
 
 pub(super) struct Account {
@@ -368,62 +285,6 @@ impl Account {
         self.open_page(port, page);
     }
 
-    pub(super) fn awaits_auth(&self) -> bool {
-        self.dialog
-            .as_ref()
-            .is_some_and(|dialog| matches!(dialog.step, Step::Authenticating { .. }))
-    }
-
-    pub(super) fn answer_auth(&mut self, port: Arc<dyn AccountPort>, reply: Reply) {
-        if self.pending.is_some() {
-            tracing::debug!("an answer is already on its way to the homeserver");
-            return;
-        }
-        let Some(Dialog {
-            step: Step::Authenticating { operation, round },
-            ..
-        }) = self.dialog.as_mut()
-        else {
-            return;
-        };
-        let Some(answer) = round.reply(reply) else {
-            tracing::debug!("that answer does not fit the step the homeserver asks for");
-            return;
-        };
-        let operation = operation.clone();
-        self.start(port, operation, Some(answer));
-    }
-
-    pub(super) fn reopen_auth_page(&mut self) {
-        let Some(Dialog {
-            step: Step::Authenticating { round, .. },
-            ..
-        }) = self.dialog.as_ref()
-        else {
-            return;
-        };
-        if let Some(page) = round.page().cloned() {
-            open_auth_page(&mut self.actions, &self.browser, page);
-        }
-    }
-
-    pub(super) fn cancel_auth(&mut self) {
-        if self.pending.is_some() {
-            tracing::debug!("an answer is on its way to the homeserver, not abandoning it");
-            return;
-        }
-        let Some(dialog) = self.dialog.as_mut() else {
-            return;
-        };
-        let Step::Authenticating { operation, .. } = &dialog.step else {
-            return;
-        };
-        tracing::debug!("abandoning the authentication the homeserver asked for");
-        dialog.step = operation.origin();
-        dialog.error = UserMessage::default();
-        self.publish();
-    }
-
     pub(super) fn settled(
         &mut self,
         port: Option<Arc<dyn AccountPort>>,
@@ -456,63 +317,6 @@ impl Account {
         };
         self.publish();
         settled
-    }
-
-    pub(super) fn check_logout(&mut self, port: Arc<dyn AccountPort>) {
-        if self.logout != Logout::Idle {
-            tracing::debug!("the logout is already being checked or waits for an answer");
-            return;
-        }
-        let request = self.requests.issue();
-        self.logout = Logout::Checking(request);
-        let events = self.events.clone();
-        self.actions.spawn(async move {
-            let risks = port.logout_risks().await;
-            drop(events.send(AppEvent::Account(AccountEvent::LogoutChecked {
-                request,
-                risks,
-            })));
-        });
-    }
-
-    pub(super) fn logout_checked(&mut self, request: u64, risks: LogoutRisks) -> LogoutDecision {
-        if self.logout != Logout::Checking(request) {
-            return LogoutDecision::Wait;
-        }
-        self.logout = Logout::Idle;
-        tracing::info!(
-            keys_at_risk = risks.keys_at_risk,
-            unsent = risks.unsent,
-            "checked what logging out would lose"
-        );
-        if !risks.any() {
-            return LogoutDecision::Proceed;
-        }
-        self.logout = Logout::Warning(risks);
-        self.publish_logout();
-        LogoutDecision::Wait
-    }
-
-    pub(super) fn confirm_logout(&mut self) -> bool {
-        if !self.drop_logout_warning() {
-            return false;
-        }
-        self.publish_logout();
-        true
-    }
-
-    pub(super) fn cancel_logout(&mut self) {
-        if self.drop_logout_warning() {
-            self.publish_logout();
-        }
-    }
-
-    fn drop_logout_warning(&mut self) -> bool {
-        let warned = matches!(self.logout, Logout::Warning(_));
-        if warned {
-            self.logout = Logout::Idle;
-        }
-        warned
     }
 
     pub(super) async fn restart(&mut self) {
@@ -640,69 +444,10 @@ impl Account {
         }
     }
 
-    fn needs_auth(
-        &mut self,
-        port: Option<Arc<dyn AccountPort>>,
-        operation: Operation,
-        challenge: AuthChallenge,
-    ) {
-        let Some(dialog) = self.dialog.as_ref() else {
-            tracing::debug!("the dialog closed before the homeserver asked who you are");
-            return;
-        };
-        let previous = match &dialog.step {
-            Step::Authenticating { round, .. } => Some(round.as_ref()),
-            Step::Overview | Step::ChangingPassword | Step::ConfirmingDeactivation => None,
-        };
-        match AuthRound::after(challenge, previous) {
-            Next::Ask { round, open_page } => {
-                if open_page && let Some(page) = round.page() {
-                    open_auth_page(&mut self.actions, &self.browser, page.clone());
-                }
-                self.set_step(Step::Authenticating {
-                    operation,
-                    round: Box::new(round),
-                });
-            }
-            Next::Answer { round, answer } => {
-                self.set_step(Step::Authenticating {
-                    operation: operation.clone(),
-                    round: Box::new(round),
-                });
-                if let Some(port) = port {
-                    self.start(port, operation, Some(answer));
-                }
-            }
-            Next::Unsupported => {
-                self.set_step(operation.origin());
-                self.report(UserMessage::new(UserMessageKind::AuthUnsupported));
-            }
-        }
-    }
-
     fn set_step(&mut self, step: Step) {
         if let Some(dialog) = self.dialog.as_mut() {
             dialog.step = step;
         }
-    }
-
-    fn open_page(&mut self, port: Arc<dyn AccountPort>, page: AccountPage) {
-        tracing::info!(?page, "opening the homeserver's account page");
-        if let Some(dialog) = self.dialog.as_mut() {
-            dialog.error = UserMessage::default();
-            dialog.notice = UserMessage::new(UserMessageKind::AccountPageOpened);
-        }
-        self.publish();
-        let browser = Arc::clone(&self.browser);
-        self.actions.spawn(async move {
-            let Some(url) = port.page(&page).await else {
-                tracing::warn!(?page, "the homeserver offers no page for that");
-                return;
-            };
-            if let Err(e) = browser.open_url(&url).await {
-                tracing::warn!("the account page could not be opened: {e}");
-            }
-        });
     }
 
     fn act<F, Fut>(&mut self, work: Work, run: F)
@@ -812,16 +557,6 @@ impl Account {
             notice: dialog.notice.clone(),
         }
     }
-
-    fn publish_logout(&self) {
-        let warning = match self.logout {
-            Logout::Warning(risks) => Some(risks),
-            Logout::Idle | Logout::Checking(_) => None,
-        };
-        let view = LogoutView { warning };
-        self.output
-            .publish(Box::new(move |state| state.logout = view));
-    }
 }
 
 async fn follow_sessions(port: &dyn AccountPort, sessions_tx: mpsc::Sender<OwnSessions>) {
@@ -829,4 +564,3 @@ async fn follow_sessions(port: &dyn AccountPort, sessions_tx: mpsc::Sender<OwnSe
         tracing::warn!("failed to follow this account's sessions: {e}");
     }
 }
-

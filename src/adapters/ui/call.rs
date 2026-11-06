@@ -1,36 +1,40 @@
+mod devices;
+mod faces;
+mod ring;
+mod sheet;
+
 use std::cell::RefCell;
-use std::collections::HashSet;
 use std::slice;
 use std::time::Duration;
 
-use slint::{ComponentHandle, Image, SharedString, Timer, TimerMode, VecModel};
+use slint::{ComponentHandle, SharedString, Timer, TimerMode};
 
-use super::backend::{Models, UiBackend, UiEventContext};
-use super::decode::{AvatarSlot, load_avatar_async, peek_avatar};
-use super::dto::{
-    call_connection_rows, call_device_to_dto, call_face_to_dto, call_failure_message,
-    call_notice_mark, call_offer_mark, call_person_to_dto, call_screen_mark, call_tile_to_dto,
-    sheet_preview_mark, test_phase_mark,
+use self::devices::{apply_device_news, apply_device_rows, shown_devices};
+pub(super) use self::faces::show_faces;
+use self::faces::{
+    apply_here_faces, apply_names, apply_people, face_of, faces_in_call, request_faces,
 };
-use super::fields::{CallPersonFields, CallTileFields};
-use super::notices::NoticeWords;
-use super::present::{avatar_color_index, avatar_initials, duration_label};
-use super::props::{BoolProp, ImageProp, IntProp, StringProp, UiProps};
+use self::ring::{apply_ring, follow_ringback};
+use self::sheet::{apply_offer, apply_sheet, previewed_feed};
+use super::backend::{UiBackend, UiEventContext};
+use super::dto::{
+    call_connection_rows, call_failure_message, call_notice_mark, call_screen_mark,
+    call_tile_to_dto,
+};
+use super::fields::CallTileFields;
+use super::present::duration_label;
+use super::props::{BoolProp, IntProp, StringProp, UiProps};
 use super::reconcile::apply_call_tiles;
 use super::ringtone::{self, Tone};
-use super::rows::{patch_rows_where, row_index};
 use super::{audio, call_video, call_window, video};
 use crate::commands::messages::UserMessageKind;
 use crate::commands::view::{
-    ActiveCall, AppViewState, CallDevices, CallFace, CallNotice, CallPerson, CallPhase,
-    CallSheetView, CallTile, CallView, DeviceNews, FailedCall, JoinOffer, OfferView, RingView,
-    RoomCallSummary, ScreenView, ServerDetails, ShareNews, SheetPreview, TileKind,
+    ActiveCall, AppViewState, CallNotice, CallTile, CallView, FailedCall, RoomCallSummary,
+    ScreenView, ServerDetails, ShareNews, TileKind,
 };
-use crate::domain::call::devices::DeviceKind;
 use crate::domain::call::video::{FeedId, Framing};
 use crate::domain::member_name::NamedUser;
 use crate::ports::media::MediaCache;
-use crate::ports::notifier::{NotifierPort, RingNotice};
 use crate::util::{saturating_i32, unix_now_ms};
 
 const ELAPSED_TICK: Duration = Duration::from_secs(1);
@@ -105,100 +109,6 @@ fn apply_notice(w: &impl UiProps, notice: Option<&CallNotice>) {
     w.set_text(StringProp::NoticeName, name);
     w.set_int(IntProp::NoticeOthers, saturating_i32(others));
     w.set_call_notice(call_notice_mark(notice));
-}
-
-fn apply_offer(w: &impl UiProps, offer: Option<&OfferView>) {
-    w.set_text(
-        StringProp::OfferRoomId,
-        offer.map_or("", |offer| offer.room_id.as_ref()),
-    );
-    let join = offer.map(|offer| offer.offer);
-    if let Some(JoinOffer::Refused(refusal)) = join {
-        w.set_call_refusal(refusal);
-    }
-    w.set_call_offer(call_offer_mark(join));
-}
-
-fn apply_sheet(w: &impl UiProps, sheet: Option<&CallSheetView>) {
-    let Some(sheet) = sheet else {
-        w.set_bool(BoolProp::SheetVisible, false);
-        apply_sheet_preview(w, None);
-        w.set_call_sheet_test_phase(test_phase_mark(None));
-        return;
-    };
-    w.set_text(StringProp::SheetRoomId, sheet.room_id.as_ref());
-    w.set_text(StringProp::SheetRoomName, &sheet.room_name);
-    if let JoinOffer::Refused(refusal) = sheet.offer {
-        w.set_call_sheet_refusal(refusal);
-    }
-    w.set_call_sheet_offer(call_offer_mark(Some(sheet.offer)));
-    w.set_bool(BoolProp::SheetDirect, sheet.direct);
-    w.set_bool(BoolProp::SheetVideo, sheet.video);
-    w.set_int(IntProp::SheetPeople, saturating_i32(sheet.people));
-    apply_names(
-        w,
-        &sheet.others,
-        [StringProp::SheetPeopleFirst, StringProp::SheetPeopleSecond],
-        IntProp::SheetPeopleMore,
-    );
-    apply_names(
-        w,
-        &sheet.bridges,
-        [
-            StringProp::SheetBridgesFirst,
-            StringProp::SheetBridgesSecond,
-        ],
-        IntProp::SheetBridgesMore,
-    );
-    w.set_bool(BoolProp::SheetMicrophone, sheet.proposed.microphone);
-    w.set_bool(BoolProp::SheetCamera, sheet.proposed.camera);
-    apply_sheet_preview(w, sheet.preview.as_ref());
-    w.set_bool(BoolProp::SheetTests, sheet.tests.offered());
-    let running = sheet.tests.running();
-    if let Some(test) = running {
-        w.set_call_sheet_test_kind(test.kind);
-        w.set_int(IntProp::SheetTestLevel, i32::from(test.level));
-    }
-    w.set_call_sheet_test_phase(test_phase_mark(running.map(|test| test.phase)));
-    let leaving = sheet.leaving.as_ref();
-    w.set_text(
-        StringProp::SheetLeavingId,
-        leaving.map_or("", |leaving| leaving.room_id.as_ref()),
-    );
-    w.set_text(
-        StringProp::SheetLeavingName,
-        leaving.map_or("", |leaving| leaving.room_name.as_str()),
-    );
-    w.set_bool(BoolProp::SheetEnded, sheet.ended);
-    w.set_int(IntProp::SheetSerial, sheet.serial);
-    w.set_bool(BoolProp::SheetVisible, true);
-}
-
-fn apply_sheet_preview(w: &impl UiProps, preview: Option<&SheetPreview>) {
-    let call = match preview {
-        Some(SheetPreview::InCall { room_name, .. } | SheetPreview::Elsewhere { room_name }) => {
-            room_name.as_str()
-        }
-        _ => "",
-    };
-    w.set_text(StringProp::SheetPreviewCall, call);
-    w.set_text(
-        StringProp::SheetPreviewFeed,
-        preview
-            .and_then(SheetPreview::feed)
-            .map_or("", |feed| feed.as_ref()),
-    );
-    if let Some(SheetPreview::Failed(trouble)) = preview {
-        w.set_call_preview_trouble(*trouble);
-    }
-    w.set_call_sheet_preview(sheet_preview_mark(preview));
-}
-
-fn previewed_feed(call: &CallView) -> Option<&FeedId> {
-    call.sheet
-        .as_ref()
-        .and_then(|sheet| sheet.preview.as_ref())
-        .and_then(SheetPreview::feed)
 }
 
 fn apply_active<B: UiBackend>(
@@ -438,215 +348,10 @@ fn apply_share_news(w: &impl UiProps, news: Option<&ShareNews>, who: StringProp,
     w.set_int(serial, news.map_or(0, |news| saturating_i32(news.serial)));
 }
 
-fn shown_devices(call: &CallView) -> Option<&CallDevices> {
-    if let Some(devices) = call.ring.as_ref().and_then(|ring| ring.devices.as_ref()) {
-        return Some(devices);
-    }
-    match &call.sheet {
-        Some(sheet) => sheet.devices.as_ref(),
-        None => call.active.as_ref().map(|active| &active.devices),
-    }
-}
-
-fn apply_device_rows<B: UiBackend>(
-    w: &B::Window,
-    last: Option<&CallDevices>,
-    next: Option<&CallDevices>,
-) {
-    let models = B::models();
-    for kind in DeviceKind::ALL {
-        let options = next.map(|devices| devices.options.of(kind));
-        if last.map(|last| last.options.of(kind)) == options {
-            continue;
-        }
-        let rows: Vec<B::CallDevice> = options.map_or_else(Vec::new, |options| {
-            options
-                .iter()
-                .map(call_device_to_dto)
-                .map(B::CallDevice::from)
-                .collect()
-        });
-        device_model::<B>(&models, kind).set_vec(rows);
-    }
-    w.set_int(
-        IntProp::MicrophoneChosen,
-        chosen_index(next, DeviceKind::Microphone),
-    );
-    w.set_int(
-        IntProp::CameraChosen,
-        chosen_index(next, DeviceKind::Camera),
-    );
-    w.set_int(
-        IntProp::SpeakerChosen,
-        chosen_index(next, DeviceKind::Speaker),
-    );
-}
-
-fn chosen_index(devices: Option<&CallDevices>, kind: DeviceKind) -> i32 {
-    row_index(devices.and_then(|devices| {
-        devices
-            .options
-            .of(kind)
-            .iter()
-            .position(|option| option.chosen)
-    }))
-}
-
-fn apply_device_news(w: &impl UiProps, news: Option<&DeviceNews>) {
-    let Some(news) = news else {
-        w.set_int(IntProp::DeviceNewsSerial, 0);
-        return;
-    };
-    w.set_device_news_kind(news.kind);
-    w.set_device_news_trouble(news.trouble);
-    w.set_text(StringProp::DeviceNewsName, &news.name);
-    w.set_int(IntProp::DeviceNewsSerial, saturating_i32(news.serial));
-}
-
-fn device_model<B: UiBackend>(models: &Models<B>, kind: DeviceKind) -> &VecModel<B::CallDevice> {
-    match kind {
-        DeviceKind::Microphone => &models.call_microphones,
-        DeviceKind::Speaker => &models.call_speakers,
-        DeviceKind::Camera => &models.call_cameras,
-    }
-}
-
-fn apply_people<B: UiBackend>(
-    last: Option<&[CallPerson]>,
-    people: &[CallPerson],
-    media: &dyn MediaCache,
-) {
-    if last == Some(people) {
-        return;
-    }
-    let rows: Vec<B::CallPerson> = people
-        .iter()
-        .map(|person| {
-            let mut row = B::CallPerson::from(call_person_to_dto(person));
-            if let Some(face) = face_of(person.avatar_mxc.as_deref(), media) {
-                row.set_avatar(face);
-                row.set_has_avatar(true);
-            }
-            row
-        })
-        .collect();
-    B::models().call_people.set_vec(rows);
-}
-
-fn apply_here_faces<B: UiBackend>(faces: &[CallFace], media: &dyn MediaCache) {
-    let rows: Vec<B::CallPerson> = faces
-        .iter()
-        .map(|face| {
-            let mut row = B::CallPerson::from(call_face_to_dto(face));
-            if let Some(image) = face_of(face.avatar_mxc.as_deref(), media) {
-                row.set_avatar(image);
-                row.set_has_avatar(true);
-            }
-            row
-        })
-        .collect();
-    B::models().call_here_faces.set_vec(rows);
-    let faces = faces
-        .iter()
-        .map(|face| (face.user.user_id.as_str(), face.avatar_mxc.as_deref()));
-    request_faces::<B>(faces, media);
-}
-
-fn face_of(mxc: Option<&str>, media: &dyn MediaCache) -> Option<Image> {
-    let path = media.user_avatar_path(mxc?)?;
-    peek_avatar(&path)
-}
-
-fn faces_in_call(active: &ActiveCall) -> impl Iterator<Item = (&str, Option<&str>)> {
-    let tiles = active
-        .stage
-        .iter()
-        .chain(active.tiles.iter())
-        .chain(active.compact_self.iter())
-        .map(|tile| (tile.name.user_id.as_str(), tile.avatar_mxc.as_deref()));
-    let people = active
-        .people
-        .iter()
-        .map(|person| (person.user.user_id.as_str(), person.avatar_mxc.as_deref()));
-    tiles.chain(people)
-}
-
-fn request_faces<'a, B: UiBackend>(
-    faces: impl Iterator<Item = (&'a str, Option<&'a str>)>,
-    media: &dyn MediaCache,
-) {
-    let mut asked: HashSet<&str> = HashSet::new();
-    for (user_id, mxc) in faces {
-        let Some(mxc) = mxc else {
-            continue;
-        };
-        if !asked.insert(user_id) {
-            continue;
-        }
-        let path = media.user_avatar_path(mxc);
-        let slot = AvatarSlot::CallFace(user_id.to_owned());
-        if let Some(face) = load_avatar_async(path.as_deref(), slot) {
-            show_faces::<B>(&HashSet::from([user_id]), &face);
-        }
-    }
-}
-
-pub fn show_faces<B: UiBackend>(users: &HashSet<&str>, face: &Image) {
-    if users.is_empty() {
-        return;
-    }
-    let models = B::models();
-    for rows in [&models.call_stage, &models.call_tiles, &models.call_self] {
-        patch_rows_where(
-            &**rows,
-            |entry| !entry.screen() && !entry.has_avatar() && users.contains(entry.user_id()),
-            |entry| {
-                entry.set_avatar(face.clone());
-                entry.set_has_avatar(true);
-            },
-        );
-    }
-    for people in [&models.call_people, &models.call_here_faces] {
-        patch_rows_where(
-            &**people,
-            |entry| !entry.has_avatar() && users.contains(entry.user_id()),
-            |entry| {
-                entry.set_avatar(face.clone());
-                entry.set_has_avatar(true);
-            },
-        );
-    }
-}
-
-fn apply_names(
-    w: &impl UiProps,
-    names: &[NamedUser],
-    [first, second]: [StringProp; 2],
-    more: IntProp,
-) {
-    w.set_text(first, shown_name(names.first()));
-    w.set_text(second, shown_name(names.get(1)));
-    w.set_int(more, saturating_i32(names.len().saturating_sub(2)));
-}
-
 const fn framing(kind: TileKind) -> Framing {
     match kind {
         TileKind::Person => Framing::Cover,
         TileKind::Screen => Framing::Contain,
-    }
-}
-
-fn follow_ringback<W: UiProps + ComponentHandle + 'static>(
-    w: &W,
-    last: Option<CallPhase>,
-    next: CallPhase,
-) {
-    match (last == Some(CallPhase::Calling), next == CallPhase::Calling) {
-        (false, true) => {
-            ringtone::play(&w.as_weak(), Tone::Ringback);
-        }
-        (true, false) => ringtone::stop_if(Tone::Ringback),
-        _ => {}
     }
 }
 
@@ -690,107 +395,4 @@ fn apply_here<B: UiBackend>(w: &B::Window, here: Option<&RoomCallSummary>, media
     w.set_int(IntProp::HerePeople, saturating_i32(here.people));
     w.set_bool(BoolProp::HereVideo, here.video);
     w.set_bool(BoolProp::HereJoined, here.joined_by_you);
-}
-
-fn apply_ring<B: UiBackend>(
-    w: &B::Window,
-    last: Option<&RingView>,
-    next: Option<&RingView>,
-    in_call: bool,
-    ctx: &UiEventContext<'_, B>,
-) {
-    let notifier = ctx.notifier;
-    let Some(next) = next else {
-        stop_ringing(w, last, notifier);
-        return;
-    };
-    if let Some(last) = last.filter(|last| last.room_id != next.room_id) {
-        notifier.stop_ringing(&last.room_id);
-    }
-    let fresh = last.is_none_or(|last| last.serial != next.serial);
-    show_card(w, next);
-    if last.is_none_or(|last| fresh || last.room_avatar_mxc != next.room_avatar_mxc) {
-        show_ring_avatar(w, next, ctx.media);
-    }
-    if next.quiet {
-        ringtone::stop_if(Tone::Incoming);
-    } else if fresh || last.is_some_and(|last| last.quiet) {
-        audio::pause(w);
-        video::set_playing(w, false);
-        ringtone::play(&w.as_weak(), Tone::Incoming);
-    }
-    let was_desktop = last.is_some_and(|last| last.desktop && !fresh);
-    match (was_desktop, next.desktop) {
-        (false, true) => notifier.ring(compose_ring::<B>(w, next, in_call)),
-        (true, false) => notifier.stop_ringing(&next.room_id),
-        _ => {}
-    }
-}
-
-fn stop_ringing(w: &impl UiProps, last: Option<&RingView>, notifier: &dyn NotifierPort) {
-    w.set_bool(BoolProp::RingVisible, false);
-    ringtone::stop_if(Tone::Incoming);
-    if let Some(last) = last {
-        notifier.stop_ringing(&last.room_id);
-    }
-}
-
-fn show_card(w: &impl UiProps, ring: &RingView) {
-    w.set_text(StringProp::RingRoomId, ring.room_id.as_ref());
-    w.set_text(StringProp::RingRoomName, &ring.room_name);
-    w.set_text(StringProp::RingCaller, ring.caller.shown());
-    w.set_text(StringProp::RingInitial, avatar_initials(&ring.room_name));
-    w.set_int(
-        IntProp::RingColorIndex,
-        avatar_color_index(ring.room_id.as_ref()),
-    );
-    w.set_bool(BoolProp::RingVideo, ring.video);
-    w.set_bool(BoolProp::RingDirect, ring.direct);
-    w.set_bool(BoolProp::RingAnswerable, ring.answerable);
-    w.set_bool(BoolProp::RingQuiet, ring.quiet);
-    if let Some(refusal) = ring.refusal {
-        w.set_ring_refusal(refusal);
-    }
-    w.set_int(IntProp::RingSerial, saturating_i32(ring.serial));
-    w.set_bool(BoolProp::RingVisible, true);
-}
-
-fn show_ring_avatar(w: &impl UiProps, ring: &RingView, media: &dyn MediaCache) {
-    let path = ring
-        .room_avatar_mxc
-        .as_deref()
-        .and_then(|mxc| media.room_avatar_path(mxc));
-    w.set_image(
-        ImageProp::RingAvatar,
-        load_avatar_async(path.as_deref(), AvatarSlot::Ring),
-    );
-}
-
-fn compose_ring<B: UiBackend>(w: &B::Window, ring: &RingView, in_call: bool) -> RingNotice {
-    let caller = ring.caller.shown();
-    let body = B::notification_text(
-        w,
-        &NoticeWords::Ring {
-            video: ring.video,
-            caller: &caller,
-        },
-    );
-    RingNotice {
-        key: ring.room_id.clone(),
-        summary: ring.room_name.clone(),
-        body: body.to_string(),
-        open_label: w.get_string(StringProp::NotificationOpenLabel).to_string(),
-        decline_label: w
-            .get_string(StringProp::NotificationDeclineLabel)
-            .to_string(),
-        answer_label: (ring.answerable && !in_call).then(|| {
-            let label = if ring.video {
-                StringProp::NotificationAnswerWithoutCameraLabel
-            } else {
-                StringProp::NotificationAnswerLabel
-            };
-            w.get_string(label).to_string()
-        }),
-        sound: ringtone::sounding().is_none(),
-    }
 }

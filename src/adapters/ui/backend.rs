@@ -1,24 +1,33 @@
-use std::collections::{HashMap, HashSet};
-use std::ops::ControlFlow;
+mod art;
+mod avatars;
+mod queries;
+
 use std::rc::Rc;
 use std::sync::Arc;
 
 use slint::{CloseRequestResponse, ComponentHandle, Image, Model, ModelRc, SharedString, VecModel};
 use tokio::sync::{OwnedSemaphorePermit, mpsc, watch};
 
+pub(super) use self::art::{apply_pack_art, apply_pack_avatar};
+use self::art::{place_custom_emoji, place_pack_cell};
+use self::avatars::apply_avatar_ready;
+pub(super) use self::queries::{
+    RECENT_SPEAKERS, adopted_room_key, current_edited_row, last_editable_row, recent_speakers,
+    row_of_message, selected_room_key, shown_room_log_text, unread_below,
+};
+use super::call_video;
 use super::call_video::Host;
 use super::call_window::{self, WindowHooks};
 use super::clock::install_clock_invalidation;
 use super::decode::{
-    AvatarSlot, DecodeFailure, DecodeOutcome, MediaSlot, TimelineItemKey, advance_animations,
-    request_pack_cell, rows_showing_custom_emoji, set_animation_tick, set_avatar_ready,
-    set_image_ready,
+    DecodeOutcome, MediaSlot, TimelineItemKey, advance_animations, set_animation_tick,
+    set_avatar_ready, set_image_ready,
 };
 use super::dto::{
-    BodyLineDto, CallConnectionDto, CallDeviceDto, CallPersonDto, CallTileDto, EmojiArt,
-    InviteeDto, LogLineDto, MediaFailureKind, MediaState, MemberRowDto, MessageDto, PackBrowse,
-    PackRowDto, PackSurface, PackTabDto, RoomDto, RowBody, SpaceChildDto, SpaceDto, ThumbUpdate,
-    UserDeviceDto, cell_pack, decode_failure_kind, enrich_to_update,
+    BodyLineDto, CallConnectionDto, CallDeviceDto, CallPersonDto, CallTileDto, InviteeDto,
+    LogLineDto, MediaFailureKind, MediaState, MemberRowDto, MessageDto, PackBrowse, PackRowDto,
+    PackSurface, PackTabDto, RoomDto, RowBody, SpaceChildDto, SpaceDto, ThumbUpdate, UserDeviceDto,
+    decode_failure_kind, enrich_to_update,
 };
 use super::fields::{
     BodyLineFields, BodyPieceFields, CallConnectionFields, CallDeviceFields, CallPersonFields,
@@ -29,25 +38,18 @@ use super::fields::{
 use super::handoff::follow_handoffs;
 use super::multiplex::spawn_event_multiplexer;
 use super::notices::{NoticeWords, follow_activations};
-use super::present::room_log_text;
-use super::props::{ImageProp, IntProp, StringProp, UiProps};
-use super::reconcile::{
-    forget_pack_avatar, pack_cell_row, pack_tab_row, reorder_rows, shows_pack_avatar,
-    timeline_row_of,
-};
-use super::reduce::{dispatch_effect, is_latest_adoption, set_pack_browse};
-use super::router::EditedRow;
-use super::rows::{locate_row, patch_first, patch_rows_by_id, patch_rows_where, row_index};
+use super::props::UiProps;
+use super::reconcile::{reorder_rows, timeline_row_of};
+use super::reduce::{dispatch_effect, set_pack_browse};
+use super::rows::locate_row;
 use super::schema::model_props;
-use super::session::{begin_session, from_snapshot};
+use super::session::begin_session;
 use super::splice_model::SpliceModel;
 use super::spoilers::reveal_row;
 use super::window_events::install_window_events;
-use super::{call, call_video};
 use crate::commands::effects::Effect;
 use crate::commands::view::AppViewState;
 use crate::config::APP_ID;
-use crate::domain::room::RoomId;
 use crate::domain::timeline::EnrichmentDelta;
 use crate::ports::call::CallVideoPort;
 use crate::ports::handoff::HandoffPort;
@@ -247,93 +249,6 @@ fn install_render_hooks<B: UiBackend>(weak: slint::Weak<B::Window>) {
     });
 }
 
-pub fn selected_room_key<B: UiBackend>(weak: &slint::Weak<B::Window>) -> Option<(RoomId, i32)> {
-    let w = weak.upgrade()?;
-    let room_id = w.get_string(StringProp::SelectedRoomId).to_string();
-    if room_id.is_empty() {
-        return None;
-    }
-    Some((RoomId::new(room_id), w.get_int(IntProp::SelectedGeneration)))
-}
-
-pub fn adopted_room_key<B: UiBackend>(
-    weak: &slint::Weak<B::Window>,
-    seen_timeline_token: i32,
-) -> Option<(RoomId, i32)> {
-    selected_room_key::<B>(weak)
-        .filter(|(_, generation)| is_latest_adoption(*generation, seen_timeline_token))
-}
-
-pub fn unread_below<B: UiBackend>(first_unseen_row: i32) -> u32 {
-    let from = usize::try_from(first_unseen_row).unwrap_or(0);
-    let below = B::with_timeline(|timeline| {
-        timeline.count_tail(from, |entry: &B::Message| entry.counts_as_unread())
-    });
-    u32::try_from(below).unwrap_or(u32::MAX)
-}
-
-pub fn last_editable_row<B: UiBackend>() -> i32 {
-    row_index(B::with_timeline(|timeline| {
-        timeline.last_position(|entry: &B::Message| entry.text_editable())
-    }))
-}
-
-pub const RECENT_SPEAKERS: usize = 12;
-
-pub fn recent_speakers<B: UiBackend>(limit: usize) -> Vec<String> {
-    let mut speakers: Vec<String> = Vec::new();
-    B::with_timeline(|timeline| {
-        timeline.visit_newest_first(|entry: &B::Message| {
-            let speaker = entry.sender_id();
-            if entry.counts_as_unread() && !speakers.iter().any(|known| known == speaker) {
-                speakers.push(speaker.to_owned());
-            }
-            if speakers.len() >= limit {
-                ControlFlow::Break(())
-            } else {
-                ControlFlow::Continue(())
-            }
-        });
-    });
-    speakers
-}
-
-pub fn row_of_message<B: UiBackend>(event_id: &str, local_id: &str) -> i32 {
-    let names = |entry: &B::Message| {
-        (!event_id.is_empty() && entry.event_id() == event_id)
-            || (!local_id.is_empty() && entry.local_id() == local_id)
-    };
-    row_index(B::with_timeline(|timeline| timeline.last_position(names)))
-}
-
-pub fn shown_room_log_text() -> String {
-    from_snapshot(|view| view.room_log.clone())
-        .flatten()
-        .map(|shown| room_log_text(&shown))
-        .unwrap_or_default()
-}
-
-pub fn current_edited_row<B: UiBackend>(
-    weak: &slint::Weak<B::Window>,
-    unique_id: &str,
-    timeline_token: i32,
-) -> Option<EditedRow> {
-    if unique_id.is_empty() {
-        return None;
-    }
-    let w = weak.upgrade()?;
-    if w.get_int(IntProp::TimelineToken) != timeline_token {
-        return None;
-    }
-    B::with_timeline(|timeline| {
-        let entry = timeline.row_data(indexed_timeline_row::<B>(timeline, unique_id)?)?;
-        Some(EditedRow {
-            event_id: entry.event_id().to_owned(),
-            local_id: entry.local_id().to_owned(),
-        })
-    })
-}
-
 pub fn enrich_message<B: UiBackend>(
     entry: &mut B::Message,
     delta: &EnrichmentDelta,
@@ -424,120 +339,6 @@ fn show_row_body<B: UiBackend>(entry: &mut B::Message, body: RowBody) {
     entry.set_spoilers(body.spoilers);
 }
 
-fn place_custom_emoji<B: UiBackend>(
-    mxc: &str,
-    art: Result<&Image, DecodeFailure>,
-) -> Option<usize> {
-    let rows = rows_showing_custom_emoji(mxc);
-    B::with_timeline(|timeline| {
-        let mut placed = None;
-        for unique_id in &rows {
-            let Some(row) = indexed_timeline_row::<B>(timeline, unique_id) else {
-                continue;
-            };
-            let Some(entry) = timeline.row_data(row) else {
-                continue;
-            };
-            let in_chips = patch_reaction_art::<B>(&entry.reactions(), mxc, art);
-            let in_detail = patch_reaction_art::<B>(&entry.all_reactions(), mxc, art);
-            let in_body = patch_body_emoji::<B>(&entry.body_lines(), mxc, art);
-            if in_chips || in_detail || in_body {
-                placed = Some(row);
-            }
-        }
-        placed
-    })
-}
-
-fn patch_body_emoji<B: UiBackend>(
-    lines: &ModelRc<B::BodyLine>,
-    mxc: &str,
-    art: Result<&Image, DecodeFailure>,
-) -> bool {
-    let mut patched = false;
-    for line in lines.iter() {
-        patched |= patch_rows_where(
-            &line.pieces(),
-            |piece| piece.key() == mxc,
-            |piece| match art {
-                Ok(image) => {
-                    piece.set_image(image.clone());
-                    piece.set_art(EmojiArt::Ready);
-                }
-                Err(_) => piece.set_art(EmojiArt::Failed),
-            },
-        );
-    }
-    patched
-}
-
-fn patch_reaction_art<B: UiBackend>(
-    reactions: &ModelRc<B::Reaction>,
-    key: &str,
-    art: Result<&Image, DecodeFailure>,
-) -> bool {
-    patch_first(
-        reactions,
-        |reaction| reaction.key() == key,
-        |reaction| match art {
-            Ok(image) => {
-                reaction.set_image(image.clone());
-                reaction.set_art(EmojiArt::Ready);
-            }
-            Err(_) => reaction.set_art(EmojiArt::Failed),
-        },
-    )
-}
-
-fn place_pack_cell<B: UiBackend>(key: &str, art: Option<&Image>) -> Option<usize> {
-    let row = pack_cell_row(key)?;
-    let entry = B::models().pack_rows.row_data(row)?;
-    patch_pack_cell::<B>(&entry, key, art).then_some(row)
-}
-
-fn patch_pack_cell<B: UiBackend>(row: &B::PackRow, key: &str, art: Option<&Image>) -> bool {
-    patch_first(
-        &row.cells(),
-        |cell| cell.key() == key,
-        |cell| match art {
-            Some(art) => {
-                cell.set_image(art.clone());
-                cell.set_media_state(MediaState::Ready);
-            }
-            None => cell.set_media_state(MediaState::Failed),
-        },
-    )
-}
-
-fn adopt_pack_icon<B: UiBackend>(pack_id: &str, image: &Image) {
-    let Some(row) = pack_tab_row(pack_id) else {
-        return;
-    };
-    let packs = &B::models().pack_tabs;
-    let Some(updated) = packs
-        .row_data(row)
-        .and_then(|tab| pack_with_icon::<B>(&tab, pack_id, image))
-    else {
-        return;
-    };
-    packs.remove(row);
-    packs.insert(row, updated);
-}
-
-fn pack_with_icon<B: UiBackend>(
-    pack: &B::PackTab,
-    pack_id: &str,
-    image: &Image,
-) -> Option<B::PackTab> {
-    if pack.has_icon() || pack.id() != pack_id {
-        return None;
-    }
-    let mut updated = pack.clone();
-    updated.set_icon(image.clone());
-    updated.set_has_icon(true);
-    Some(updated)
-}
-
 pub(super) fn apply_thumbnail_ready<B: UiBackend>(slot: &MediaSlot, outcome: DecodeOutcome<'_>) {
     let art = match outcome {
         DecodeOutcome::Ready(image) => Ok(image),
@@ -563,223 +364,6 @@ pub(super) fn apply_thumbnail_ready<B: UiBackend>(slot: &MediaSlot, outcome: Dec
             if place_custom_emoji::<B>(mxc, art).is_none() {
                 tracing::debug!("dropped a decoded custom emoji with no live row showing it");
             }
-        }
-    }
-}
-
-pub(super) fn apply_pack_art<B: UiBackend>(key: &str, art: Option<&Image>) {
-    if place_pack_cell::<B>(key, art).is_none() {
-        tracing::debug!(key, "dropped a decoded image with no live sticker cell");
-    }
-    let pack = cell_pack(key);
-    if let Some(image) = art
-        && !shows_pack_avatar(pack)
-    {
-        adopt_pack_icon::<B>(pack, image);
-    }
-}
-
-pub(super) fn apply_pack_avatar<B: UiBackend>(pack_id: &str, art: Option<&Image>) {
-    match art {
-        Some(image) => adopt_pack_icon::<B>(pack_id, image),
-        None => {
-            if let Some(first_cell) = forget_pack_avatar(pack_id) {
-                request_pack_cell(&first_cell);
-            }
-        }
-    }
-}
-
-fn apply_pack_avatars<B: UiBackend>(slots: &[AvatarSlot], art: Option<&Image>) {
-    for slot in slots {
-        if let AvatarSlot::Pack(pack_id) = slot {
-            apply_pack_avatar::<B>(pack_id, art);
-        }
-    }
-}
-
-#[derive(Default)]
-struct AvatarTargets<'a> {
-    messages: HashSet<&'a str>,
-    reactors_by_message: HashMap<&'a str, HashSet<&'a str>>,
-    rooms: HashSet<&'a str>,
-    spaces: HashSet<&'a str>,
-    space_children: HashSet<&'a str>,
-    members: HashSet<&'a str>,
-    readers: HashSet<&'a str>,
-    mentions: HashSet<&'a str>,
-    invitees: HashSet<&'a str>,
-    call_faces: HashSet<&'a str>,
-    singles: HashSet<ImageProp>,
-}
-
-fn group_slots(slots: &[AvatarSlot]) -> AvatarTargets<'_> {
-    let mut targets = AvatarTargets::default();
-    for slot in slots {
-        match slot {
-            AvatarSlot::Message(item) => targets.messages.extend([item.unique_id()]),
-            AvatarSlot::Reactor { item, user_id } => targets
-                .reactors_by_message
-                .entry(item.unique_id())
-                .or_default()
-                .extend([user_id.as_str()]),
-            AvatarSlot::Room(id) => targets.rooms.extend([id.as_str()]),
-            AvatarSlot::Space(id) => targets.spaces.extend([id.as_str()]),
-            AvatarSlot::SpaceChild(id) => targets.space_children.extend([id.as_str()]),
-            AvatarSlot::Member(user_id) => targets.members.extend([user_id.as_str()]),
-            AvatarSlot::Reader(user_id) => targets.readers.extend([user_id.as_str()]),
-            AvatarSlot::Mention(user_id) => targets.mentions.extend([user_id.as_str()]),
-            AvatarSlot::Invitee(user_id) => targets.invitees.extend([user_id.as_str()]),
-            AvatarSlot::SelectedRoom => targets.singles.extend([ImageProp::SelectedRoomAvatar]),
-            AvatarSlot::RoomInfo => targets.singles.extend([ImageProp::RoomInfoAvatar]),
-            AvatarSlot::UserInfo => targets.singles.extend([ImageProp::UserInfoAvatar]),
-            AvatarSlot::Invite => targets.singles.extend([ImageProp::InviteAvatar]),
-            AvatarSlot::Removal => targets.singles.extend([ImageProp::RemovalAvatar]),
-            AvatarSlot::RoomPreview => targets.singles.extend([ImageProp::RoomPreviewAvatar]),
-            AvatarSlot::Ring => targets.singles.extend([ImageProp::RingAvatar]),
-            AvatarSlot::CallFace(user_id) => targets.call_faces.extend([user_id.as_str()]),
-            AvatarSlot::User => targets.singles.extend([ImageProp::UserAvatar]),
-            AvatarSlot::AttachmentPreview { .. } => {
-                targets.singles.extend([ImageProp::AttachmentPreview]);
-            }
-            AvatarSlot::Pack(_) => {}
-        }
-    }
-    targets
-}
-
-fn indexed_timeline_row<B: UiBackend>(
-    timeline: &SpliceModel<B::Message>,
-    unique_id: &str,
-) -> Option<usize> {
-    locate_row(
-        timeline,
-        &B::Message::unique_id,
-        unique_id,
-        timeline_row_of(unique_id)?,
-    )
-}
-
-fn patch_message_avatars<B: UiBackend>(
-    timeline: &SpliceModel<B::Message>,
-    unique_ids: &HashSet<&str>,
-    image: &Image,
-) {
-    for unique_id in unique_ids {
-        let Some(row) = indexed_timeline_row::<B>(timeline, unique_id) else {
-            continue;
-        };
-        let Some(mut entry) = timeline.row_data(row) else {
-            continue;
-        };
-        entry.set_avatar(image.clone());
-        entry.set_has_avatar(true);
-        timeline.set_row_data(row, entry);
-    }
-}
-
-fn patch_reactor_avatars<B: UiBackend>(
-    timeline: &SpliceModel<B::Message>,
-    reactors_by_message: &HashMap<&str, HashSet<&str>>,
-    image: &Image,
-) {
-    for (unique_id, user_ids) in reactors_by_message {
-        let Some(entry) =
-            indexed_timeline_row::<B>(timeline, unique_id).and_then(|row| timeline.row_data(row))
-        else {
-            continue;
-        };
-        for user_id in user_ids {
-            patch_reactor_avatar::<B>(&entry, user_id, image);
-        }
-    }
-}
-
-fn patch_reactor_avatar<B: UiBackend>(entry: &B::Message, user_id: &str, image: &Image) {
-    for reaction in entry.reactions().iter() {
-        patch_first(
-            &reaction.avatars(),
-            |face| face.user_id() == user_id && !face.has_avatar(),
-            |face| {
-                face.set_avatar(image.clone());
-                face.set_has_avatar(true);
-            },
-        );
-    }
-}
-
-fn apply_avatar_ready<B: UiBackend>(
-    weak: &slint::Weak<B::Window>,
-    slots: &[AvatarSlot],
-    outcome: DecodeOutcome<'_>,
-) {
-    let image = match outcome {
-        DecodeOutcome::Ready(image) => image,
-        DecodeOutcome::Failed(_) => {
-            apply_pack_avatars::<B>(slots, None);
-            return;
-        }
-        DecodeOutcome::Deferred => return,
-    };
-    apply_pack_avatars::<B>(slots, Some(image));
-    let targets = group_slots(slots);
-    if !targets.singles.is_empty()
-        && let Some(w) = weak.upgrade()
-    {
-        for single in &targets.singles {
-            w.set_image(*single, Some(image.clone()));
-        }
-    }
-    let models = B::models();
-    patch_message_avatars::<B>(&models.timeline, &targets.messages, image);
-    patch_reactor_avatars::<B>(&models.timeline, &targets.reactors_by_message, image);
-    let show_room = |entry: &mut B::Room| {
-        entry.set_avatar(image.clone());
-        entry.set_has_avatar(true);
-    };
-    patch_rows_by_id(&*models.rooms, &targets.rooms, &B::Room::id, show_room);
-    patch_rows_by_id(&*models.rooms, &targets.spaces, &B::Room::id, show_room);
-    for spaces in [&models.spaces, &models.subspaces] {
-        patch_rows_by_id(&**spaces, &targets.spaces, &B::Space::id, |entry| {
-            entry.set_avatar(image.clone());
-            entry.set_has_avatar(true);
-        });
-    }
-    if !targets.space_children.is_empty() {
-        patch_rows_by_id(
-            &*models.space_children,
-            &targets.space_children,
-            &B::SpaceChild::id,
-            |entry| {
-                entry.set_avatar(image.clone());
-                entry.set_has_avatar(true);
-            },
-        );
-    }
-    patch_person_avatars::<B>(&targets, image);
-    call::show_faces::<B>(&targets.call_faces, image);
-}
-
-fn patch_person_avatars<B: UiBackend>(targets: &AvatarTargets<'_>, image: &Image) {
-    let models = B::models();
-    for (rows, ids) in [
-        (&models.room_members, &targets.members),
-        (&models.readers, &targets.readers),
-        (&models.mentions, &targets.mentions),
-    ] {
-        if !ids.is_empty() {
-            patch_rows_by_id(&**rows, ids, &B::MemberRow::user_id, |entry| {
-                entry.set_avatar(image.clone());
-                entry.set_has_avatar(true);
-            });
-        }
-    }
-    if !targets.invitees.is_empty() {
-        for rows in [&models.invitee_results, &models.invitee_picks] {
-            patch_rows_by_id(&**rows, &targets.invitees, &B::Invitee::user_id, |entry| {
-                entry.set_avatar(image.clone());
-                entry.set_has_avatar(true);
-            });
         }
     }
 }

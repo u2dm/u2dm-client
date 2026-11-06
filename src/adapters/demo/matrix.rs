@@ -3,6 +3,7 @@ mod crypto_ports;
 mod media_ports;
 mod people_ports;
 mod room_ports;
+mod sync_ports;
 mod timeline_port;
 mod timeline_tasks;
 

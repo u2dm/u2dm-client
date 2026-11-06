@@ -1,32 +1,33 @@
-use tokio::sync::watch;
+mod call;
+mod drafts;
+mod watches;
 
-use super::props::send_command;
-use super::schema::{
-    call_device_kinds, notify_modes, room_accesses, room_kinds, simple_callbacks, variant_named,
+pub(super) use self::call::{
+    answer_call, join_call, mute_for_me, open_call_sheet, send_call_reaction, start_call,
+    test_call_device, use_call_device, watch_connections, watch_microphone,
 };
-use super::sending::SendingContext;
-use super::{clipboard, emote, permalink};
-use crate::adapters::draft_size;
+pub(super) use self::drafts::{
+    DraftVerdict, EditedRow, EditedText, edit_message, edit_poll, send_attachment, send_message,
+    send_poll,
+};
+pub(super) use self::watches::{
+    composer_changed, scroll_position, timeline_visibility, user_activity, window_focus,
+};
+use super::props::send_command;
+use super::schema::{notify_modes, room_accesses, room_kinds, simple_callbacks, variant_named};
+use super::{clipboard, permalink};
 use crate::app::input::CommandSender;
 use crate::commands::ui::{
-    AccountCommand, AuthCommand, CallCommand, ComposerActivity, DepartureCommand, KeysCommand,
-    MessageDraft, ReplyDraft, TimelineVisibility, UiCommand, UserActivity, ViewportChanged,
-    WindowAttention, WindowFocus,
+    AccountCommand, AuthCommand, CallCommand, DepartureCommand, KeysCommand, UiCommand,
 };
 use crate::domain::auth::LoginCredentials;
-use crate::domain::call::devices::{DeviceKey, DeviceKind};
-use crate::domain::call::media::MediaChoice;
 use crate::domain::capabilities::AccountPage;
 use crate::domain::departure::membership_reason;
-use crate::domain::emote::ComposerText;
 use crate::domain::encryption::{KeyPassphrase, RecoveryKey};
-use crate::domain::event_size::{EventSize, Oversize};
 use crate::domain::image_pack::PackId;
 use crate::domain::link::LauncherSafeUrl;
 use crate::domain::matrix_link::MatrixLink;
 use crate::domain::media::AttachmentPick;
-use crate::domain::message::{EditKind, EditTarget, MessageEdit, TextRevision};
-use crate::domain::poll::{ChoiceMode, PollDisclosure, PollDraft};
 use crate::domain::room::{NotifyMode, RoomId};
 use crate::domain::room_creation::{RoomAccess, RoomDraft, RoomKind};
 use crate::domain::uia::AccountPassword;
@@ -35,38 +36,6 @@ use crate::domain::user_info::UserId;
 type Tx = CommandSender;
 
 pub type RoomKey = Option<(RoomId, i32)>;
-
-pub enum DraftVerdict {
-    Accepted,
-    Incomplete,
-    TooLong(Oversize),
-}
-
-impl DraftVerdict {
-    pub fn accepted(&self) -> bool {
-        matches!(self, Self::Accepted)
-    }
-
-    pub fn shorten_by(&self) -> i32 {
-        match self {
-            Self::TooLong(oversize) => i32::from(oversize.shorten_by()),
-            Self::Accepted | Self::Incomplete => 0,
-        }
-    }
-}
-
-fn sent_if_it_fits(size: EventSize, send: impl FnOnce()) -> DraftVerdict {
-    match size.checked() {
-        Ok(_) => {
-            send();
-            DraftVerdict::Accepted
-        }
-        Err(oversize) => {
-            tracing::info!(%oversize, "refusing a draft too large to send");
-            DraftVerdict::TooLong(oversize)
-        }
-    }
-}
 
 fn optional_room(id: String) -> Option<RoomId> {
     (!id.is_empty()).then(|| RoomId::new(id))
@@ -151,110 +120,6 @@ pub fn login_password(tx: &Tx, username: String, password: String) {
         tx,
         UiCommand::LoginPassword(LoginCredentials { username, password }),
     );
-}
-
-pub fn open_call_sheet(tx: &Tx, room_id: String, video: bool) {
-    if room_id.is_empty() {
-        return;
-    }
-    send_command(
-        tx,
-        CallCommand::OpenCallSheet {
-            room_id: RoomId::new(room_id),
-            video,
-        },
-    );
-}
-
-pub fn start_call(
-    tx: &Tx,
-    room_id: String,
-    video: bool,
-    microphone: bool,
-    camera: bool,
-    leaving: String,
-) {
-    if room_id.is_empty() {
-        return;
-    }
-    send_command(
-        tx,
-        CallCommand::StartCall {
-            room_id: RoomId::new(room_id),
-            video,
-            media: MediaChoice { microphone, camera },
-            leaving: optional_room(leaving),
-        },
-    );
-}
-
-pub fn join_call(tx: &Tx, room_id: String, microphone: bool, camera: bool, leaving: String) {
-    if room_id.is_empty() {
-        return;
-    }
-    send_command(
-        tx,
-        CallCommand::JoinCall {
-            room_id: RoomId::new(room_id),
-            media: MediaChoice { microphone, camera },
-            leaving: optional_room(leaving),
-        },
-    );
-}
-
-pub fn answer_call(tx: &Tx, room_id: String, camera: bool, leaving: String) {
-    if room_id.is_empty() {
-        return;
-    }
-    send_command(
-        tx,
-        CallCommand::AnswerCall {
-            room_id: RoomId::new(room_id),
-            camera,
-            leaving: optional_room(leaving),
-        },
-    );
-}
-
-pub fn watch_connections(tx: &Tx, on: bool) {
-    send_command(tx, CallCommand::WatchConnections(on));
-}
-
-pub fn watch_microphone(tx: &Tx, on: bool) {
-    send_command(tx, CallCommand::WatchMicrophone(on));
-}
-
-pub fn send_call_reaction(tx: &Tx, name: String) {
-    if name.is_empty() {
-        return;
-    }
-    send_command(tx, CallCommand::SendCallReaction(name));
-}
-
-pub fn mute_for_me(tx: &Tx, user_id: String, on: bool) {
-    if user_id.is_empty() {
-        return;
-    }
-    send_command(tx, CallCommand::MuteForMe { user_id, on });
-}
-
-call_device_kinds!(variant_named call_device_kind_named DeviceKind;);
-
-pub fn test_call_device(tx: &Tx, kind: &str, on: bool) {
-    let Some(kind) = call_device_kind_named(kind) else {
-        tracing::warn!(kind, "the call sheet asked to test an unknown kind");
-        return;
-    };
-    send_command(tx, CallCommand::TestCallDevice { kind, on });
-}
-
-pub fn use_call_device(tx: &Tx, kind: &str, key: String) {
-    let Some(kind) = call_device_kind_named(kind) else {
-        tracing::warn!(kind, "the device menu sent an unknown kind");
-        return;
-    };
-    let key = (!key.is_empty()).then(|| DeviceKey::new(key));
-    send_command(tx, CallCommand::UseCallDevice { kind, key });
 }
 
 pub fn use_recovery_key(tx: &Tx, key: String) {
@@ -373,94 +238,6 @@ pub fn move_space(tx: &Tx, from: usize, to: usize, reorder: impl FnOnce(usize, u
     send_command(tx, UiCommand::MoveSpace { from, to });
 }
 
-pub fn send_message(
-    tx: &Tx,
-    room_id: String,
-    body: String,
-    reply_to: String,
-    reply_sender: String,
-    reply_preview: String,
-) -> DraftVerdict {
-    if room_id.is_empty() || body.is_empty() {
-        return DraftVerdict::Incomplete;
-    }
-    let emotes = emote::bound_in(&body);
-    let context = SendingContext::of(&room_id);
-    let size = if reply_to.is_empty() {
-        draft_size::message(&body, &emotes, &context.facts())
-    } else {
-        draft_size::reply(&body, &emotes, &reply_to, &context.facts())
-    };
-    let reply = (!reply_to.is_empty()).then_some(ReplyDraft {
-        event_id: reply_to,
-        sender: reply_sender,
-        preview: reply_preview,
-    });
-    sent_if_it_fits(size, || {
-        send_command(
-            tx,
-            UiCommand::SendMessage {
-                room_id: RoomId::new(room_id),
-                draft: MessageDraft {
-                    body,
-                    reply,
-                    emotes,
-                },
-            },
-        );
-    })
-}
-
-pub struct EditedRow {
-    pub event_id: String,
-    pub local_id: String,
-}
-
-pub struct EditedText {
-    pub caption: bool,
-    pub restored: bool,
-    pub original: String,
-    pub body: String,
-}
-
-pub fn edit_message(tx: &Tx, room_id: String, row: EditedRow, text: EditedText) -> DraftVerdict {
-    if room_id.is_empty() {
-        return DraftVerdict::Incomplete;
-    }
-    let Some(target) = EditTarget::of(row.event_id, row.local_id) else {
-        return DraftVerdict::Incomplete;
-    };
-    let kind = if text.caption {
-        EditKind::Caption
-    } else {
-        EditKind::Message
-    };
-    let original = (!text.restored).then_some(text.original);
-    match TextRevision::of(kind, original.as_deref(), text.body) {
-        TextRevision::Blank => DraftVerdict::Incomplete,
-        TextRevision::Unchanged => DraftVerdict::Accepted,
-        TextRevision::Changed(body) => {
-            let edit = MessageEdit {
-                target,
-                kind,
-                emotes: emote::bound_in(&body),
-                body,
-                original,
-            };
-            let size = draft_size::edit(&edit, &SendingContext::of(&room_id).facts());
-            sent_if_it_fits(size, || {
-                send_command(
-                    tx,
-                    UiCommand::EditMessage {
-                        room_id: RoomId::new(room_id),
-                        edit,
-                    },
-                );
-            })
-        }
-    }
-}
-
 pub fn suggest_mentions(tx: &Tx, key: RoomKey, query: String, recent: Vec<String>) {
     let Some((room_id, _)) = key else {
         return;
@@ -545,47 +322,8 @@ fn pick_attachment(tx: &Tx, room_id: String, pick: AttachmentPick) {
     );
 }
 
-pub fn send_attachment(
-    tx: &Tx,
-    room_id: String,
-    caption: String,
-    as_document: bool,
-    reply_to: String,
-) {
-    if room_id.is_empty() {
-        return;
-    }
-    send_command(
-        tx,
-        UiCommand::SendAttachment {
-            room_id: RoomId::new(room_id),
-            caption: ComposerText {
-                emotes: emote::bound_in(&caption),
-                text: caption,
-            },
-            as_document,
-            reply_to: (!reply_to.is_empty()).then_some(reply_to),
-        },
-    );
-}
-
-fn poll_draft(
-    question: String,
-    answers: Vec<String>,
-    multiple: bool,
-    hide_results: bool,
-) -> Option<PollDraft> {
-    PollDraft::parse(
-        question,
-        answers,
-        ChoiceMode::from_multiple(multiple),
-        PollDisclosure::from_hidden(hide_results),
-    )
-    .inspect_err(|reason| tracing::debug!(?reason, "refusing a poll draft"))
-    .ok()
-}
-
 room_kinds!(variant_named room_kind_named RoomKind;);
+
 room_accesses!(variant_named room_access_named RoomAccess;);
 
 #[allow(clippy::too_many_arguments)]
@@ -615,52 +353,6 @@ pub fn create_room(
             in_space,
         }),
     );
-}
-
-pub fn send_poll(
-    tx: &Tx,
-    room_id: String,
-    question: String,
-    answers: Vec<String>,
-    multiple: bool,
-    hide_results: bool,
-) -> DraftVerdict {
-    if room_id.is_empty() {
-        return DraftVerdict::Incomplete;
-    }
-    let Some(draft) = poll_draft(question, answers, multiple, hide_results) else {
-        return DraftVerdict::Incomplete;
-    };
-    let size = draft_size::poll_start(&draft, &SendingContext::of(&room_id).facts());
-    sent_if_it_fits(size, || {
-        send_command(
-            tx,
-            UiCommand::SendPoll {
-                room_id: RoomId::new(room_id),
-                draft,
-            },
-        );
-    })
-}
-
-pub fn edit_poll(
-    tx: &Tx,
-    event_id: String,
-    question: String,
-    answers: Vec<String>,
-    multiple: bool,
-    hide_results: bool,
-) -> DraftVerdict {
-    if event_id.is_empty() {
-        return DraftVerdict::Incomplete;
-    }
-    let Some(draft) = poll_draft(question, answers, multiple, hide_results) else {
-        return DraftVerdict::Incomplete;
-    };
-    let size = draft_size::poll_edit(&draft, &event_id, &SendingContext::selected().facts());
-    sent_if_it_fits(size, || {
-        send_command(tx, UiCommand::EditPoll { event_id, draft });
-    })
 }
 
 pub fn open_link(tx: &Tx, url: String) {
@@ -750,77 +442,4 @@ pub fn vote_poll(tx: &Tx, event_id: String, answer_id: String) {
             answer_id,
         },
     );
-}
-
-pub fn scroll_position(
-    scroll_tx: &watch::Sender<ViewportChanged>,
-    key: RoomKey,
-    at_bottom: bool,
-    unread_below: u32,
-) {
-    let Some((room_id, generation)) = key else {
-        return;
-    };
-    let update = ViewportChanged {
-        room_id,
-        generation,
-        at_bottom,
-        unread_below,
-    };
-    if scroll_tx.send(update).is_err() {
-        tracing::debug!("scroll position receiver closed");
-    }
-}
-
-pub fn timeline_visibility(visibility_tx: &watch::Sender<TimelineVisibility>, visible: bool) {
-    let visibility = if visible {
-        TimelineVisibility::Visible
-    } else {
-        TimelineVisibility::Hidden
-    };
-    if visibility_tx.send(visibility).is_err() {
-        tracing::debug!("timeline visibility receiver closed");
-    }
-}
-
-pub fn window_focus(attention_tx: &watch::Sender<WindowAttention>, attended: bool) {
-    let focus = if attended {
-        WindowFocus::Focused
-    } else {
-        WindowFocus::Unfocused
-    };
-    attention_tx.send_if_modified(|attention| {
-        let changed = attention.focus != focus;
-        attention.focus = focus;
-        changed
-    });
-}
-
-pub fn user_activity(attention_tx: &watch::Sender<WindowAttention>, active: bool) {
-    let activity = if active {
-        UserActivity::Active
-    } else {
-        UserActivity::Idle
-    };
-    attention_tx.send_if_modified(|attention| {
-        let changed = attention.activity != activity;
-        attention.activity = activity;
-        changed
-    });
-}
-
-pub fn composer_changed(
-    composer_tx: &watch::Sender<ComposerActivity>,
-    room_id: String,
-    composing: bool,
-    edits: i32,
-) {
-    let activity = ComposerActivity {
-        room_id: optional_room(room_id),
-        composing,
-        edits,
-    };
-    if composer_tx.send(activity).is_err() {
-        tracing::debug!("composer activity receiver closed");
-    }
 }
