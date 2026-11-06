@@ -26,7 +26,7 @@ use u2dm_ui::{Probe, RoomMenu, WindowTitle};
 
 use super::backend::{
     self, Models, RECENT_SPEAKERS, UiBackend, adopted_room_key, current_edited_row,
-    last_editable_row, recent_speakers, reorder_spaces, row_of_message, selected_room_key,
+    last_editable_row, on_main, recent_speakers, reorder_spaces, row_of_message, selected_room_key,
     shown_room_log_text, unread_below,
 };
 use super::call_window::{self, WindowHooks};
@@ -189,11 +189,7 @@ macro_rules! mirror_props {
 macro_rules! mirror_enum_props {
     ($name:ident;
         $($v:ident $fn:ident($ty:ty) $g:ident $gname:literal $lit:literal $s:ident $get:ident;)*) => {
-        fn $name(from: &AppWindow, to: &CallWindow) {
-            $( if call_window::mirrors($gname) {
-                to.global::<$g>().$s(from.global::<$g>().$get());
-            } )*
-        }
+        mirror_props!($name; $($v $g $gname $lit $s $get;)*);
     };
 }
 
@@ -646,20 +642,67 @@ impl SlintUiAdapter {
         Ok(Self { window })
     }
 
-    fn bind_video_callbacks(win: &AppWindow) {
-        let weak = win.as_weak();
-        actions(win).on_toggle_video(move || {
-            if let Some(window) = weak.upgrade() {
-                video::toggle(&window);
-            }
+    fn bind_room_callbacks(win: &AppWindow, cmd_tx: &CommandSender) {
+        let tx = cmd_tx.clone();
+        actions(win).on_move_space(move |from, to| {
+            let (Ok(from), Ok(to)) = (usize::try_from(from), usize::try_from(to)) else {
+                return;
+            };
+            router::move_space(&tx, from, to, reorder_spaces::<CompiledBackend>);
         });
 
-        let weak = win.as_weak();
-        actions(win).on_toggle_video_muted(move || {
-            if let Some(window) = weak.upgrade() {
-                video::toggle_muted(&window);
-            }
+        let tx = cmd_tx.clone();
+        actions(win).on_dismiss_unsent(move |submission| router::dismiss_unsent(&tx, submission));
+
+        let tx = cmd_tx.clone();
+        actions(win).on_set_room_notify(move |room_id, mode| {
+            router::set_room_notify(&tx, room_id.to_string(), mode.slint_name());
         });
+
+        let tx = cmd_tx.clone();
+        actions(win)
+            .on_paste_attachment(move |room_id| router::paste_attachment(&tx, room_id.to_string()));
+
+        actions(win).on_room_log_text(|| SharedString::from(shown_room_log_text()));
+    }
+
+    fn bind_reaction_callbacks(win: &AppWindow, cmd_tx: &CommandSender) {
+        let tx = cmd_tx.clone();
+        actions(win).on_toggle_reaction(move |event_id, key| {
+            router::toggle_reaction(&tx, event_id.to_string(), key.to_string());
+        });
+
+        let tx = cmd_tx.clone();
+        actions(win).on_react_with_emote(move |event_id, pack, shortcode| {
+            router::react_with_emote(
+                &tx,
+                event_id.to_string(),
+                pack.to_string(),
+                shortcode.to_string(),
+            );
+        });
+
+        let tx = cmd_tx.clone();
+        actions(win).on_set_pack_global(move |pack, global| {
+            router::set_pack_global(&tx, pack.to_string(), global);
+        });
+    }
+
+    fn bind_decode_requests(win: &AppWindow) {
+        actions(win).on_request_media(move |unique_id| request_media(&unique_id));
+
+        actions(win).on_request_room_avatar(move |room_id| {
+            request_avatar(&AvatarSlot::Room(room_id.to_string()));
+        });
+
+        actions(win).on_request_pack_cell(move |key| request_pack_cell(&key));
+
+        actions(win).on_request_custom_emoji(move |mxc| request_custom_emoji(&mxc));
+    }
+
+    fn bind_video_callbacks(win: &AppWindow) {
+        actions(win).on_toggle_video(on_main::<CompiledBackend>(win, video::toggle));
+        actions(win).on_toggle_video_muted(on_main::<CompiledBackend>(win, video::toggle_muted));
 
         let weak = win.as_weak();
         actions(win).on_seek_video(move |ms| {
@@ -695,6 +738,15 @@ impl SlintUiAdapter {
         actions(win).on_last_editable_row(last_editable_row::<CompiledBackend>);
         actions(win).on_row_of_message(|event_id, local_id| {
             row_of_message::<CompiledBackend>(&event_id, &local_id)
+        });
+
+        actions(win).on_poll_answer_texts(|answers| {
+            ModelRc::new(
+                answers
+                    .iter()
+                    .map(|answer| answer.label)
+                    .collect::<VecModel<SharedString>>(),
+            )
         });
     }
 
@@ -752,12 +804,7 @@ impl SlintUiAdapter {
     fn bind_audio_callbacks(win: &AppWindow, cmd_tx: &CommandSender) {
         audio::install_commands(cmd_tx);
 
-        let weak = win.as_weak();
-        actions(win).on_toggle_audio(move || {
-            if let Some(window) = weak.upgrade() {
-                audio::toggle(&window);
-            }
-        });
+        actions(win).on_toggle_audio(on_main::<CompiledBackend>(win, audio::toggle));
 
         let weak = win.as_weak();
         actions(win).on_seek_audio(move |ms| {
@@ -779,81 +826,31 @@ impl SlintUiAdapter {
         composer_tx: &watch::Sender<ComposerActivity>,
         attention_tx: &watch::Sender<WindowAttention>,
     ) -> Result<()> {
-        setup_emoji_store(&self.window);
-
         let win = &self.window;
+        setup_emoji_store(win);
         call_window::install_commands(cmd_tx);
         bind_simple_callbacks(&actions(win), win, cmd_tx);
-
-        let tx = cmd_tx.clone();
-        actions(win).on_move_space(move |from, to| {
-            let (Ok(from), Ok(to)) = (usize::try_from(from), usize::try_from(to)) else {
-                return;
-            };
-            router::move_space(&tx, from, to, reorder_spaces::<CompiledBackend>);
-        });
-
-        let tx = cmd_tx.clone();
-        actions(win).on_dismiss_unsent(move |submission| router::dismiss_unsent(&tx, submission));
-
-        let tx = cmd_tx.clone();
-        actions(win).on_set_room_notify(move |room_id, mode| {
-            router::set_room_notify(&tx, room_id.to_string(), mode.slint_name());
-        });
-
-        let tx = cmd_tx.clone();
-        actions(win)
-            .on_paste_attachment(move |room_id| router::paste_attachment(&tx, room_id.to_string()));
-
-        actions(win).on_request_media(move |unique_id| request_media(&unique_id));
-
+        Self::bind_room_callbacks(win, cmd_tx);
+        Self::bind_reaction_callbacks(win, cmd_tx);
         Self::bind_edit_callbacks(win, cmd_tx);
         Self::bind_draft_callbacks(win);
         Self::bind_mention_callbacks(win, cmd_tx);
+        Self::bind_decode_requests(win);
         Self::bind_video_callbacks(win);
         Self::bind_audio_callbacks(win, cmd_tx);
+        Self::bind_window_watches(win, scroll_tx, visibility_tx, composer_tx, attention_tx);
+        Ok(())
+    }
 
-        actions(win).on_request_room_avatar(move |room_id| {
-            request_avatar(&AvatarSlot::Room(room_id.to_string()));
-        });
-
-        actions(win).on_request_pack_cell(move |key| request_pack_cell(&key));
-
-        actions(win).on_request_custom_emoji(move |mxc| request_custom_emoji(&mxc));
-
-        actions(win).on_room_log_text(|| SharedString::from(shown_room_log_text()));
-
-        actions(win).on_poll_answer_texts(|answers| {
-            ModelRc::new(
-                answers
-                    .iter()
-                    .map(|answer| answer.label)
-                    .collect::<VecModel<SharedString>>(),
-            )
-        });
-
-        let tx = cmd_tx.clone();
-        actions(win).on_toggle_reaction(move |event_id, key| {
-            router::toggle_reaction(&tx, event_id.to_string(), key.to_string());
-        });
-
-        let tx = cmd_tx.clone();
-        actions(win).on_react_with_emote(move |event_id, pack, shortcode| {
-            router::react_with_emote(
-                &tx,
-                event_id.to_string(),
-                pack.to_string(),
-                shortcode.to_string(),
-            );
-        });
-
-        let tx = cmd_tx.clone();
-        actions(win).on_set_pack_global(move |pack, global| {
-            router::set_pack_global(&tx, pack.to_string(), global);
-        });
-
+    fn bind_window_watches(
+        win: &AppWindow,
+        scroll_tx: &watch::Sender<ViewportChanged>,
+        visibility_tx: &watch::Sender<TimelineVisibility>,
+        composer_tx: &watch::Sender<ComposerActivity>,
+        attention_tx: &watch::Sender<WindowAttention>,
+    ) {
         let scroll_tx = scroll_tx.clone();
-        let weak = self.window.as_weak();
+        let weak = win.as_weak();
         actions(win).on_scroll_position_changed(
             move |at_bottom, first_unseen_row, seen_timeline_token| {
                 router::scroll_position(
@@ -884,8 +881,6 @@ impl SlintUiAdapter {
         actions(win).on_user_activity_changed(move |active| {
             router::user_activity(&activity_tx, active);
         });
-
-        Ok(())
     }
 
     pub fn spawn_event_handler(

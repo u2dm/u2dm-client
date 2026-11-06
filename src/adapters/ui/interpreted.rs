@@ -5,8 +5,9 @@ use std::rc::Rc;
 use std::sync::Arc;
 
 use names::{
-    callback, composer_draft, draft_verdict, emoji_entry, emoji_row, emoji_store, mention_word,
-    text_splice, user_message, verification_emoji,
+    callback, composer_draft, draft_verdict, emoji_entry, emoji_row, emoji_store, login_view,
+    mention_word, notification_text, room_info_view, text_splice, user_message, verification_emoji,
+    verification_view, video_view, window_props,
 };
 use slint::{Image, Model, ModelRc, StyledText, VecModel};
 #[cfg(feature = "video")]
@@ -19,7 +20,7 @@ use tokio::sync::{mpsc, watch};
 
 use super::backend::{
     self, Models, RECENT_SPEAKERS, UiBackend, adopted_room_key, current_edited_row,
-    last_editable_row, recent_speakers, reorder_spaces, row_of_message, selected_room_key,
+    last_editable_row, on_main, recent_speakers, reorder_spaces, row_of_message, selected_room_key,
     shown_room_log_text, unread_below,
 };
 use super::call_window::{self, WindowHooks};
@@ -100,9 +101,6 @@ use crate::ports::handoff::HandoffPort;
 use crate::ports::media::MediaCache;
 use crate::ports::notifier::NotifierPort;
 
-const NOTIFICATION_TEXT: &str = "NotificationText";
-
-#[allow(dead_code)]
 mod names {
     pub mod callback {
         pub const GLOBAL: &str = "Actions";
@@ -202,6 +200,41 @@ mod names {
     pub mod verification_emoji {
         pub const SYMBOL: &str = "symbol";
         pub const DESCRIPTION: &str = "description";
+    }
+
+    pub mod video_view {
+        pub const NAME: &str = "VideoView";
+        pub const FRAME: &str = "frame";
+        pub const HAS_FRAME: &str = "has-frame";
+    }
+
+    pub mod room_info_view {
+        pub const NAME: &str = "RoomInfoView";
+        pub const TOPIC_STYLED: &str = "topic-styled";
+    }
+
+    pub mod login_view {
+        pub const NAME: &str = "LoginView";
+        pub const MESSAGES: &str = "messages";
+    }
+
+    pub mod verification_view {
+        pub const NAME: &str = "VerificationView";
+        pub const EMOJIS: &str = "emojis";
+    }
+
+    pub mod notification_text {
+        pub const NAME: &str = "NotificationText";
+        pub const MESSAGE: &str = "message";
+        pub const SERVICE: &str = "service";
+        pub const INVITE: &str = "invite";
+        pub const RING: &str = "ring";
+    }
+
+    pub mod window_props {
+        pub const INPUT_USERNAME: &str = "input-username";
+        pub const INPUT_MESSAGE: &str = "input-message";
+        pub const READY: &str = "ready";
     }
 }
 
@@ -455,9 +488,7 @@ macro_rules! mirror_props {
 macro_rules! mirror_enum_props {
     ($name:ident;
         $($v:ident $fn:ident($ty:ty) $g:ident $gname:literal $lit:literal $s:ident $get:ident;)*) => {
-        fn $name(from: &ComponentInstance, to: &ComponentInstance) {
-            $( if call_window::mirrors($gname) { copy_global(from, to, $gname, $lit); } )*
-        }
+        mirror_props!($name; $($v $g $gname $lit $s $get;)*);
     };
 }
 
@@ -504,18 +535,25 @@ impl UiProps for ComponentInstance {
 
     #[cfg(feature = "video")]
     fn apply_video_frame(&self, buffer: SharedPixelBuffer<Rgb8Pixel>) {
+        let frame = Value::Image(Image::from_rgb8(buffer));
+        set_global(self, video_view::NAME, video_view::FRAME, frame);
         set_global(
             self,
-            "VideoView",
-            "frame",
-            Value::Image(Image::from_rgb8(buffer)),
+            video_view::NAME,
+            video_view::HAS_FRAME,
+            Value::Bool(true),
         );
-        set_global(self, "VideoView", "has-frame", Value::Bool(true));
     }
 
     fn clear_video_frame(&self) {
-        set_global(self, "VideoView", "frame", Value::Image(Image::default()));
-        set_global(self, "VideoView", "has-frame", Value::Bool(false));
+        let frame = Value::Image(Image::default());
+        set_global(self, video_view::NAME, video_view::FRAME, frame);
+        set_global(
+            self,
+            video_view::NAME,
+            video_view::HAS_FRAME,
+            Value::Bool(false),
+        );
     }
 
     fn get_string(&self, prop: StringProp) -> SharedString {
@@ -549,8 +587,8 @@ impl UiProps for ComponentInstance {
     fn apply_room_info_topic(&self, topic: StyledText) {
         set_global(
             self,
-            "RoomInfoView",
-            "topic-styled",
+            room_info_view::NAME,
+            room_info_view::TOPIC_STYLED,
             Value::StyledText(topic),
         );
     }
@@ -559,20 +597,17 @@ impl UiProps for ComponentInstance {
         let entries: Vec<Value> = messages
             .iter()
             .map(|m| {
-                Value::Struct(Struct::from_iter([
-                    (user_message::KIND.to_string(), enum_value(&m.kind)),
-                    (
-                        user_message::DETAIL.to_string(),
-                        Value::String(SharedString::from(&m.detail)),
-                    ),
-                ]))
+                struct_value([
+                    (user_message::KIND, enum_value(&m.kind)),
+                    (user_message::DETAIL, text_value(&m.detail)),
+                ])
             })
             .collect();
         set_global(
             self,
-            "LoginView",
-            "messages",
-            Value::Model(ModelRc::new(VecModel::from(entries))),
+            login_view::NAME,
+            login_view::MESSAGES,
+            model_value(entries),
         );
     }
 
@@ -580,46 +615,33 @@ impl UiProps for ComponentInstance {
         let entries: Vec<Value> = emojis
             .iter()
             .map(|e| {
-                Value::Struct(Struct::from_iter([
-                    (
-                        verification_emoji::SYMBOL.to_string(),
-                        Value::String(SharedString::from(&e.symbol)),
-                    ),
-                    (
-                        verification_emoji::DESCRIPTION.to_string(),
-                        Value::String(SharedString::from(&e.description)),
-                    ),
-                ]))
+                struct_value([
+                    (verification_emoji::SYMBOL, text_value(&e.symbol)),
+                    (verification_emoji::DESCRIPTION, text_value(&e.description)),
+                ])
             })
             .collect();
         set_global(
             self,
-            "VerificationView",
-            "emojis",
-            Value::Model(ModelRc::new(VecModel::from(entries))),
+            verification_view::NAME,
+            verification_view::EMOJIS,
+            model_value(entries),
         );
     }
 
     fn clear_emoji_model(&self) {
         set_global(
             self,
-            "VerificationView",
-            "emojis",
-            Value::Model(ModelRc::new(VecModel::<Value>::default())),
+            verification_view::NAME,
+            verification_view::EMOJIS,
+            model_value(Vec::new()),
         );
     }
 
     fn clear_text_inputs(&self) {
-        set_prop(
-            self,
-            "input-username",
-            Value::String(SharedString::default()),
-        );
-        set_prop(
-            self,
-            "input-message",
-            Value::String(SharedString::default()),
-        );
+        let empty = Value::String(SharedString::default());
+        set_prop(self, window_props::INPUT_USERNAME, empty.clone());
+        set_prop(self, window_props::INPUT_MESSAGE, empty);
     }
 }
 
@@ -739,24 +761,18 @@ impl UiBackend for InterpretedBackend {
                 );
             }
         });
-        if let Err(e) = bound {
-            tracing::warn!("failed to bind the pack browsing callback: {e}");
-        }
+        warn_unbound(bound, "the pack browsing callback");
     }
 
     fn bind_reveal_spoilers(window: &ComponentInstance, reveal: impl Fn(&str) + 'static) {
         let bound = bind_void(window, callback::REVEAL_SPOILERS, move |args| {
             reveal(&string_arg(args, 0));
         });
-        if let Err(e) = bound {
-            tracing::warn!("failed to bind the spoiler reveal callback: {e}");
-        }
+        warn_unbound(bound, "the spoiler reveal callback");
     }
 
     fn bind_window_hooks(window: &ComponentInstance, hooks: WindowHooks) {
-        if let Err(e) = bind_hooks(window, hooks) {
-            tracing::warn!("failed to bind the window's call callbacks: {e}");
-        }
+        warn_unbound(bind_hooks(window, hooks), "the window's call callbacks");
     }
 
     fn bind_call_preview_seen(
@@ -767,9 +783,7 @@ impl UiBackend for InterpretedBackend {
             let (feed, width, height, shown) = seen_args(args);
             seen(&feed, width, height, shown);
         });
-        if let Err(e) = bound {
-            tracing::warn!("failed to bind the camera preview callback: {e}");
-        }
+        warn_unbound(bound, "the camera preview callback");
     }
 
     fn new_call_window(main: &ComponentInstance, hooks: WindowHooks) -> Option<ComponentInstance> {
@@ -782,15 +796,13 @@ impl UiBackend for InterpretedBackend {
         mirror_ints(main, &window);
         mirror_enums(main, &window);
         attach_mirrored_models(&window, &Self::models());
-        if let Some(tx) = call_window::commands()
-            && let Err(e) = bind_simple_callbacks(&window, main, &tx)
-        {
-            tracing::warn!("failed to bind the call window's callbacks: {e}");
+        if let Some(tx) = call_window::commands() {
+            let bound = bind_simple_callbacks(&window, main, &tx);
+            warn_unbound(bound, "the call window's callbacks");
         }
-        if let Err(e) = bind_hooks(&window, hooks) {
-            tracing::warn!("failed to bind the call window's call callbacks: {e}");
-        }
-        set_prop(&window, "ready", Value::Bool(true));
+        let bound = bind_hooks(&window, hooks);
+        warn_unbound(bound, "the call window's call callbacks");
+        set_prop(&window, window_props::READY, Value::Bool(true));
         Some(window)
     }
 
@@ -805,32 +817,26 @@ impl UiBackend for InterpretedBackend {
     fn notification_text(window: &ComponentInstance, words: &NoticeWords<'_>) -> SharedString {
         let (function, args) = match *words {
             NoticeWords::Message { kind, body, sender } => (
-                "message",
-                vec![
-                    enum_value(&kind),
-                    Value::String(body.into()),
-                    Value::String(sender.into()),
-                ],
+                notification_text::MESSAGE,
+                vec![enum_value(&kind), text_value(body), text_value(sender)],
             ),
             NoticeWords::Service {
                 kind,
                 actor,
                 target,
             } => (
-                "service",
-                vec![
-                    enum_value(&kind),
-                    Value::String(actor.into()),
-                    Value::String(target.into()),
-                ],
+                notification_text::SERVICE,
+                vec![enum_value(&kind), text_value(actor), text_value(target)],
             ),
-            NoticeWords::Invite { inviter } => ("invite", vec![Value::String(inviter.into())]),
+            NoticeWords::Invite { inviter } => {
+                (notification_text::INVITE, vec![text_value(inviter)])
+            }
             NoticeWords::Ring { video, caller } => (
-                "ring",
-                vec![Value::Bool(video), Value::String(caller.into())],
+                notification_text::RING,
+                vec![Value::Bool(video), text_value(caller)],
             ),
         };
-        match window.invoke_global(NOTIFICATION_TEXT, function, &args) {
+        match window.invoke_global(notification_text::NAME, function, &args) {
             Ok(Value::String(text)) => text,
             Ok(other) => {
                 tracing::warn!(function, "the notification words came back as {other:?}");
@@ -877,12 +883,8 @@ impl SlintUiAdapter {
     fn bind_audio_callbacks(&self, cmd_tx: &CommandSender) -> Result<()> {
         audio::install_commands(cmd_tx);
 
-        let weak = self.instance.as_weak();
-        bind_void(&self.instance, callback::TOGGLE_AUDIO, move |_| {
-            if let Some(window) = weak.upgrade() {
-                audio::toggle(&window);
-            }
-        })?;
+        let toggle = on_main::<InterpretedBackend>(&self.instance, audio::toggle);
+        bind_void(&self.instance, callback::TOGGLE_AUDIO, move |_| toggle())?;
 
         let weak = self.instance.as_weak();
         bind_void(&self.instance, callback::SEEK_AUDIO, move |args| {
@@ -930,6 +932,18 @@ impl SlintUiAdapter {
                 &string_arg(args, 0),
                 &string_arg(args, 1),
             ))
+        })?;
+
+        bind_action(&self.instance, callback::POLL_ANSWER_TEXTS, |args| {
+            model_value(
+                model_of(args.first())
+                    .iter()
+                    .map(|answer| match answer {
+                        Value::Struct(entry) => text_value(field(&entry, "label")),
+                        _ => Value::String(SharedString::new()),
+                    })
+                    .collect(),
+            )
         })
     }
 
@@ -1005,20 +1019,16 @@ impl SlintUiAdapter {
             &self.instance,
             callback::REQUEST_CUSTOM_EMOJI,
             move |args| request_custom_emoji(&string_arg(args, 0)),
-        )?;
+        )
+    }
 
-        let weak = self.instance.as_weak();
-        bind_void(&self.instance, callback::TOGGLE_VIDEO, move |_| {
-            if let Some(window) = weak.upgrade() {
-                video::toggle(&window);
-            }
-        })?;
+    fn bind_video_callbacks(&self) -> Result<()> {
+        let toggle = on_main::<InterpretedBackend>(&self.instance, video::toggle);
+        bind_void(&self.instance, callback::TOGGLE_VIDEO, move |_| toggle())?;
 
-        let weak = self.instance.as_weak();
+        let toggle_muted = on_main::<InterpretedBackend>(&self.instance, video::toggle_muted);
         bind_void(&self.instance, callback::TOGGLE_VIDEO_MUTED, move |_| {
-            if let Some(window) = weak.upgrade() {
-                video::toggle_muted(&window);
-            }
+            toggle_muted();
         })?;
 
         let weak = self.instance.as_weak();
@@ -1038,10 +1048,20 @@ impl SlintUiAdapter {
         attention_tx: &watch::Sender<WindowAttention>,
     ) -> Result<()> {
         setup_emoji_store(&self.instance)?;
-
         call_window::install_commands(cmd_tx);
         bind_simple_callbacks(&self.instance, &self.instance, cmd_tx)?;
+        self.bind_room_callbacks(cmd_tx)?;
+        self.bind_reaction_callbacks(cmd_tx)?;
+        self.bind_edit_callbacks(cmd_tx)?;
+        self.bind_draft_callbacks()?;
+        self.bind_mention_callbacks(cmd_tx)?;
+        self.bind_decode_requests()?;
+        self.bind_video_callbacks()?;
+        self.bind_audio_callbacks(cmd_tx)?;
+        self.bind_window_watches(scroll_tx, visibility_tx, composer_tx, attention_tx)
+    }
 
+    fn bind_room_callbacks(&self, cmd_tx: &CommandSender) -> Result<()> {
         let tx = cmd_tx.clone();
         bind_void(&self.instance, callback::MOVE_SPACE, move |args| {
             if let (Some(from), Some(to)) = (usize_arg(args, 0), usize_arg(args, 1)) {
@@ -1066,22 +1086,12 @@ impl SlintUiAdapter {
             Value::Bool(router::paste_attachment(&tx, string_arg(args, 0)))
         })?;
 
-        bind_action(&self.instance, callback::POLL_ANSWER_TEXTS, |args| {
-            Value::Model(ModelRc::new(
-                model_of(args.first())
-                    .iter()
-                    .map(|answer| match answer {
-                        Value::Struct(entry) => Value::String(field(&entry, "label").into()),
-                        _ => Value::String(SharedString::new()),
-                    })
-                    .collect::<VecModel<Value>>(),
-            ))
-        })?;
-
         bind_action(&self.instance, callback::ROOM_LOG_TEXT, |_| {
-            Value::String(SharedString::from(shown_room_log_text()))
-        })?;
+            text_value(shown_room_log_text())
+        })
+    }
 
+    fn bind_reaction_callbacks(&self, cmd_tx: &CommandSender) -> Result<()> {
         let tx = cmd_tx.clone();
         bind_void(&self.instance, callback::TOGGLE_REACTION, move |args| {
             router::toggle_reaction(&tx, string_arg(args, 0), string_arg(args, 1));
@@ -1100,14 +1110,16 @@ impl SlintUiAdapter {
         let tx = cmd_tx.clone();
         bind_void(&self.instance, callback::SET_PACK_GLOBAL, move |args| {
             router::set_pack_global(&tx, string_arg(args, 0), bool_arg(args, 1));
-        })?;
+        })
+    }
 
-        self.bind_edit_callbacks(cmd_tx)?;
-        self.bind_draft_callbacks()?;
-        self.bind_mention_callbacks(cmd_tx)?;
-        self.bind_decode_requests()?;
-        self.bind_audio_callbacks(cmd_tx)?;
-
+    fn bind_window_watches(
+        &self,
+        scroll_tx: &watch::Sender<ViewportChanged>,
+        visibility_tx: &watch::Sender<TimelineVisibility>,
+        composer_tx: &watch::Sender<ComposerActivity>,
+        attention_tx: &watch::Sender<WindowAttention>,
+    ) -> Result<()> {
         let scroll_tx = scroll_tx.clone();
         let weak = self.instance.as_weak();
         bind_void(
@@ -1125,15 +1137,6 @@ impl SlintUiAdapter {
             },
         )?;
 
-        self.bind_window_watches(visibility_tx, composer_tx, attention_tx)
-    }
-
-    fn bind_window_watches(
-        &self,
-        visibility_tx: &watch::Sender<TimelineVisibility>,
-        composer_tx: &watch::Sender<ComposerActivity>,
-        attention_tx: &watch::Sender<WindowAttention>,
-    ) -> Result<()> {
         let visibility_tx = visibility_tx.clone();
         bind_void(
             &self.instance,
@@ -1219,26 +1222,12 @@ pub fn install_timeline_dump(ui: &SlintUiAdapter) {
 }
 
 fn emoji_entry_to_value(e: &emoji::EmojiEntry) -> Value {
-    let tones: Vec<Value> = e
-        .tones
-        .iter()
-        .map(|t| Value::String(SharedString::from(t.as_str())))
-        .collect();
-
-    Value::Struct(Struct::from_iter([
-        (
-            emoji_entry::BASE.to_string(),
-            Value::String(SharedString::from(&e.base)),
-        ),
-        (
-            emoji_entry::TONES.to_string(),
-            Value::Model(ModelRc::new(VecModel::from(tones))),
-        ),
-        (
-            emoji_entry::NAME.to_string(),
-            Value::String(SharedString::from(&e.name)),
-        ),
-    ]))
+    let tones: Vec<Value> = e.tones.iter().map(text_value).collect();
+    struct_value([
+        (emoji_entry::BASE, text_value(&e.base)),
+        (emoji_entry::TONES, model_value(tones)),
+        (emoji_entry::NAME, text_value(&e.name)),
+    ])
 }
 
 fn emoji_rows_to_value(rows: &[emoji::EmojiRow]) -> Value {
@@ -1246,28 +1235,26 @@ fn emoji_rows_to_value(rows: &[emoji::EmojiRow]) -> Value {
         .iter()
         .map(|row| {
             let cells: Vec<Value> = row.cells.iter().map(emoji_entry_to_value).collect();
-            Value::Struct(Struct::from_iter([
-                (emoji_row::IS_HEADER.to_string(), Value::Bool(row.is_header)),
+            struct_value([
+                (emoji_row::IS_HEADER, Value::Bool(row.is_header)),
                 (
-                    emoji_row::GROUP.to_string(),
+                    emoji_row::GROUP,
                     Value::Number(f64::from(u32::try_from(row.group).unwrap_or(0))),
                 ),
-                (
-                    emoji_row::CELLS.to_string(),
-                    Value::Model(ModelRc::new(VecModel::from(cells))),
-                ),
-            ]))
+                (emoji_row::CELLS, model_value(cells)),
+            ])
         })
         .collect();
-    Value::Model(ModelRc::new(VecModel::from(rows)))
+    model_value(rows)
 }
 
 fn header_rows_to_value(header_rows: &[usize]) -> Value {
-    let header_rows: Vec<Value> = header_rows
-        .iter()
-        .map(|row| Value::Number(f64::from(u32::try_from(*row).unwrap_or(0))))
-        .collect();
-    Value::Model(ModelRc::new(VecModel::from(header_rows)))
+    model_value(
+        header_rows
+            .iter()
+            .map(|row| Value::Number(f64::from(u32::try_from(*row).unwrap_or(0))))
+            .collect(),
+    )
 }
 
 fn setup_emoji_store(inst: &ComponentInstance) -> Result<()> {
@@ -1330,36 +1317,21 @@ fn setup_emoji_store(inst: &ComponentInstance) -> Result<()> {
 }
 
 fn draft_verdict_value(verdict: &DraftVerdict) -> Value {
-    Value::Struct(Struct::from_iter([
-        (
-            draft_verdict::ACCEPTED.to_string(),
-            Value::Bool(verdict.accepted()),
-        ),
-        (
-            draft_verdict::SHORTEN_BY.to_string(),
-            num(verdict.shorten_by()),
-        ),
-    ]))
+    struct_value([
+        (draft_verdict::ACCEPTED, Value::Bool(verdict.accepted())),
+        (draft_verdict::SHORTEN_BY, num(verdict.shorten_by())),
+    ])
 }
 
 fn no_draft_value() -> Value {
-    Value::Struct(Struct::from_iter([(
-        composer_draft::HELD.to_string(),
-        Value::Bool(false),
-    )]))
+    struct_value([(composer_draft::HELD, Value::Bool(false))])
 }
 
 fn text_splice_value(text: String, caret: i32) -> Value {
-    Value::Struct(Struct::from_iter([
-        (
-            text_splice::TEXT.to_string(),
-            Value::String(SharedString::from(text)),
-        ),
-        (
-            text_splice::CARET.to_string(),
-            Value::Number(f64::from(caret)),
-        ),
-    ]))
+    struct_value([
+        (text_splice::TEXT, text_value(text)),
+        (text_splice::CARET, num(caret)),
+    ])
 }
 
 fn mention_word_value(text: &str, caret: i32) -> Value {
@@ -1368,16 +1340,27 @@ fn mention_word_value(text: &str, caret: i32) -> Value {
 }
 
 fn word_value(start: i32, query: String) -> Value {
-    Value::Struct(Struct::from_iter([
-        (
-            mention_word::START.to_string(),
-            Value::Number(f64::from(start)),
-        ),
-        (
-            mention_word::QUERY.to_string(),
-            Value::String(SharedString::from(query)),
-        ),
-    ]))
+    struct_value([
+        (mention_word::START, num(start)),
+        (mention_word::QUERY, text_value(query)),
+    ])
+}
+
+fn struct_value<const N: usize>(fields: [(&str, Value); N]) -> Value {
+    Value::Struct(
+        fields
+            .into_iter()
+            .map(|(name, value)| (name.to_owned(), value))
+            .collect(),
+    )
+}
+
+fn text_value(text: impl Into<SharedString>) -> Value {
+    Value::String(text.into())
+}
+
+fn model_value(values: Vec<Value>) -> Value {
+    Value::Model(ModelRc::new(VecModel::from(values)))
 }
 
 fn num(value: i32) -> Value {
@@ -1389,25 +1372,24 @@ fn ratio(value: f32) -> Value {
 }
 
 fn string_list(items: Vec<SharedString>) -> Value {
-    let values: Vec<Value> = items.into_iter().map(Value::String).collect();
-    Value::Model(ModelRc::new(VecModel::from(values)))
+    model_value(items.into_iter().map(Value::String).collect())
 }
 
 fn float_list(items: Vec<f32>) -> Value {
-    let values: Vec<Value> = items
-        .into_iter()
-        .map(|item| Value::Number(item.into()))
-        .collect();
-    Value::Model(ModelRc::new(VecModel::from(values)))
+    model_value(items.into_iter().map(ratio).collect())
 }
 
 fn struct_list<T>(items: Vec<T>) -> Value
 where
     Value: From<T>,
 {
-    Value::Model(ModelRc::new(
-        items.into_iter().map(Value::from).collect::<VecModel<_>>(),
-    ))
+    model_value(items.into_iter().map(Value::from).collect())
+}
+
+fn warn_unbound(bound: Result<()>, what: &str) {
+    if let Err(e) = bound {
+        tracing::warn!("failed to bind {what}: {e}");
+    }
 }
 
 macro_rules! field_value {

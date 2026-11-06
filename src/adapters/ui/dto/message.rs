@@ -449,6 +449,22 @@ fn apply_media(
     item: &TimelineItemKey,
     media: &dyn MediaCache,
 ) -> Option<PathBuf> {
+    apply_kind_details(dto, m, media);
+    let (_, meta) = m.body.media()?;
+    dto.image_width = meta.width.unwrap_or(0).cast_signed();
+    dto.image_height = meta.height.unwrap_or(0).cast_signed();
+    dto.image_mimetype = SharedString::from(meta.mimetype.as_deref().unwrap_or_default());
+    dto.image_extension = SharedString::from(
+        meta.filename
+            .as_deref()
+            .map(file_extension)
+            .unwrap_or_default()
+            .to_uppercase(),
+    );
+    apply_thumbnail(dto, meta.thumbnail.as_ref(), item, media)
+}
+
+fn apply_kind_details(dto: &mut MessageDto, m: &TimelineMessage, media: &dyn MediaCache) {
     if let MessageBody::Video { meta, .. } = &m.body
         && let Some(duration) = meta.duration
     {
@@ -469,20 +485,15 @@ fn apply_media(
     if let Some(poll) = m.body.poll() {
         apply_poll(dto, poll, m);
     }
+}
 
-    let (_, meta) = m.body.media()?;
-    dto.image_width = meta.width.unwrap_or(0).cast_signed();
-    dto.image_height = meta.height.unwrap_or(0).cast_signed();
-    dto.image_mimetype = SharedString::from(meta.mimetype.as_deref().unwrap_or_default());
-    dto.image_extension = SharedString::from(
-        meta.filename
-            .as_deref()
-            .map(file_extension)
-            .unwrap_or_default()
-            .to_uppercase(),
-    );
-
-    let Some(content) = meta.thumbnail.as_ref() else {
+fn apply_thumbnail(
+    dto: &mut MessageDto,
+    content: Option<&ContentKey>,
+    item: &TimelineItemKey,
+    media: &dyn MediaCache,
+) -> Option<PathBuf> {
+    let Some(content) = content else {
         dto.media_state = MediaState::Failed;
         dto.media_failure = MediaFailureKind::NoSource;
         return None;

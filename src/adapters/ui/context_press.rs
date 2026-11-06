@@ -21,8 +21,7 @@ pub fn context_press<B: UiBackend>(window: &B::Window) -> impl FnMut(&WindowEven
 }
 
 pub fn announce(window: &(impl ComponentHandle + UiProps)) {
-    let presses = window.get_int(IntProp::ContextPresses).wrapping_add(1);
-    window.set_int(IntProp::ContextPresses, presses);
+    window.bump(IntProp::ContextPresses);
     window.window().request_redraw();
 }
 

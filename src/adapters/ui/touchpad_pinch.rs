@@ -13,21 +13,19 @@ use slint::{Timer, TimerMode, Weak};
 #[cfg(target_os = "linux")]
 use wayland_client::backend::Backend;
 #[cfg(target_os = "linux")]
-use wayland_client::protocol::wl_pointer::{self, WlPointer};
+use wayland_client::protocol::wl_pointer::WlPointer;
 #[cfg(target_os = "linux")]
 use wayland_client::protocol::wl_registry::{self, WlRegistry};
 #[cfg(target_os = "linux")]
 use wayland_client::protocol::wl_seat::{self, Capability, WlSeat};
 #[cfg(target_os = "linux")]
-use wayland_client::{Connection, Dispatch, EventQueue, Proxy, QueueHandle, WEnum};
+use wayland_client::{Connection, Dispatch, EventQueue, Proxy, QueueHandle, WEnum, delegate_noop};
 #[cfg(target_os = "linux")]
 use wayland_protocols::wp::pointer_gestures::zv1::client::zwp_pointer_gesture_pinch_v1::{
     self, ZwpPointerGesturePinchV1,
 };
 #[cfg(target_os = "linux")]
-use wayland_protocols::wp::pointer_gestures::zv1::client::zwp_pointer_gestures_v1::{
-    self, ZwpPointerGesturesV1,
-};
+use wayland_protocols::wp::pointer_gestures::zv1::client::zwp_pointer_gestures_v1::ZwpPointerGesturesV1;
 
 use super::backend::UiBackend;
 use super::props::{IntProp, UiProps};
@@ -285,30 +283,10 @@ impl Dispatch<WlSeat, ()> for Pinches {
 }
 
 #[cfg(target_os = "linux")]
-impl Dispatch<WlPointer, ()> for Pinches {
-    fn event(
-        _: &mut Self,
-        _: &WlPointer,
-        _: wl_pointer::Event,
-        (): &(),
-        _: &Connection,
-        _: &QueueHandle<Self>,
-    ) {
-    }
-}
+delegate_noop!(Pinches: ignore WlPointer);
 
 #[cfg(target_os = "linux")]
-impl Dispatch<ZwpPointerGesturesV1, ()> for Pinches {
-    fn event(
-        _: &mut Self,
-        _: &ZwpPointerGesturesV1,
-        _: zwp_pointer_gestures_v1::Event,
-        (): &(),
-        _: &Connection,
-        _: &QueueHandle<Self>,
-    ) {
-    }
-}
+delegate_noop!(Pinches: ignore ZwpPointerGesturesV1);
 
 #[cfg(target_os = "linux")]
 impl Dispatch<ZwpPointerGesturePinchV1, ()> for Pinches {

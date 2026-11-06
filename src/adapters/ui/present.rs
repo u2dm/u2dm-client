@@ -176,7 +176,7 @@ fn uses_12h_clock(locale: Locale) -> bool {
 }
 
 fn to_local(timestamp_ms: u64) -> Option<chrono::DateTime<chrono::Local>> {
-    chrono::DateTime::from_timestamp((timestamp_ms / 1000).cast_signed(), 0)
+    chrono::DateTime::from_timestamp((timestamp_ms / MILLIS_PER_SECOND).cast_signed(), 0)
         .map(|utc| utc.with_timezone(&chrono::Local))
 }
 
@@ -204,6 +204,8 @@ thread_local! {
 
 const SECONDS_PER_MINUTE: u64 = 60;
 const SECONDS_PER_HOUR: u64 = 60 * SECONDS_PER_MINUTE;
+const MILLIS_PER_SECOND: u64 = 1000;
+const MILLIS_PER_MINUTE: u64 = SECONDS_PER_MINUTE * MILLIS_PER_SECOND;
 
 pub fn message_sent_at_label(timestamp: u64) -> String {
     let Some(local) = to_local(timestamp) else {
@@ -296,7 +298,7 @@ pub fn room_activity_label(last_activity_ts: u64) -> String {
     if last_activity_ts == 0 {
         return String::new();
     }
-    let minute = last_activity_ts / 60_000;
+    let minute = last_activity_ts / MILLIS_PER_MINUTE;
     if let Some(label) = ACTIVITY_LABELS.with_borrow(|labels| labels.get(&minute).cloned()) {
         return label;
     }

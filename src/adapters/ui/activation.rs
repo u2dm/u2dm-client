@@ -19,9 +19,9 @@ use wayland_client::protocol::wl_registry::{self, WlRegistry};
 #[cfg(target_os = "linux")]
 use wayland_client::protocol::wl_surface::WlSurface;
 #[cfg(target_os = "linux")]
-use wayland_client::{Connection, Dispatch, EventQueue, Proxy, QueueHandle};
+use wayland_client::{Connection, Dispatch, EventQueue, Proxy, QueueHandle, delegate_noop};
 #[cfg(target_os = "linux")]
-use wayland_protocols::xdg::activation::v1::client::xdg_activation_v1::{self, XdgActivationV1};
+use wayland_protocols::xdg::activation::v1::client::xdg_activation_v1::XdgActivationV1;
 
 #[cfg(target_os = "linux")]
 const ACTIVATION_VERSION: u32 = 1;
@@ -161,14 +161,4 @@ impl Dispatch<WlRegistry, ()> for Activation {
 }
 
 #[cfg(target_os = "linux")]
-impl Dispatch<XdgActivationV1, ()> for Activation {
-    fn event(
-        _: &mut Self,
-        _: &XdgActivationV1,
-        _: xdg_activation_v1::Event,
-        (): &(),
-        _: &Connection,
-        _: &QueueHandle<Self>,
-    ) {
-    }
-}
+delegate_noop!(Activation: ignore XdgActivationV1);

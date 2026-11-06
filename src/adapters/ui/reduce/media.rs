@@ -190,16 +190,10 @@ where
     W: ComponentHandle + UiProps + 'static,
 {
     audio::prepare(w, now.request, now.meta.duration);
-    w.set_string(StringProp::AudioEventId, SharedString::from(&now.event_id));
-    w.set_string(
-        StringProp::AudioRoomId,
-        SharedString::from(now.room_id.as_ref()),
-    );
-    w.set_string(StringProp::AudioSender, SharedString::from(&now.sender));
-    w.set_string(
-        StringProp::AudioTitle,
-        SharedString::from(&now.meta.filename),
-    );
+    w.set_text(StringProp::AudioEventId, &now.event_id);
+    w.set_text(StringProp::AudioRoomId, now.room_id.as_ref());
+    w.set_text(StringProp::AudioSender, &now.sender);
+    w.set_text(StringProp::AudioTitle, &now.meta.filename);
     w.set_audio_kind(now.meta.kind);
     w.set_bool(BoolProp::AudioLoading, now.file == TrackFile::Downloading);
     w.set_bool(BoolProp::AudioVisible, true);

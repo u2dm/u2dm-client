@@ -1,22 +1,18 @@
 use std::sync::Arc;
 
-use slint::{ComponentHandle, SharedString};
+use slint::ComponentHandle;
 
 use super::activation::raise;
-use super::backend::UiBackend;
+use super::backend::{UiBackend, in_event_loop};
 use super::props::{IntProp, StringProp, UiProps};
 use crate::ports::handoff::{Handoff, HandoffPort};
 
 pub fn follow_handoffs<B: UiBackend>(window: &B::Window, handoff: &dyn HandoffPort) {
-    let weak = window.as_weak();
-    handoff.on_handoff(Arc::new(move |handoff: Handoff| {
-        let queued = weak.upgrade_in_event_loop(move |window| {
-            take_handoff::<B>(&window, &handoff);
-        });
-        if let Err(e) = queued {
-            tracing::debug!("a hand-off could not reach the event loop: {e}");
-        }
-    }));
+    handoff.on_handoff(Arc::new(in_event_loop::<B, Handoff>(
+        window,
+        "a hand-off",
+        |window, handoff| take_handoff::<B>(window, &handoff),
+    )));
 }
 
 fn take_handoff<B: UiBackend>(window: &B::Window, handoff: &Handoff) {
@@ -29,8 +25,7 @@ fn take_handoff<B: UiBackend>(window: &B::Window, handoff: &Handoff) {
     let Some(link) = handoff.link.as_deref() else {
         return;
     };
-    window.set_string(StringProp::ExternalLink, SharedString::from(link));
-    let opens = window.get_int(IntProp::ExternalLinkOpens).wrapping_add(1);
-    window.set_int(IntProp::ExternalLinkOpens, opens);
+    window.set_text(StringProp::ExternalLink, link);
+    window.bump(IntProp::ExternalLinkOpens);
     window.window().request_redraw();
 }

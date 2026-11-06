@@ -7,8 +7,9 @@ use super::{SheetAvatar, run_change_handlers_next_frame};
 use crate::adapters::ui::backend::{UiBackend, UiEventContext};
 use crate::adapters::ui::decode::{AvatarSlot, load_avatar_async};
 use crate::adapters::ui::dto::{
-    invite_avatar_path, load_room_info_avatar, load_user_info_avatar, removal_avatar_path,
-    removal_shape, rich_body, room_preview_avatar_path, user_info_pronouns,
+    invite_avatar_path, invitee_to_dto, load_room_info_avatar, load_user_info_avatar,
+    log_line_to_dto, member_row_to_dto, removal_avatar_path, removal_shape, rich_body,
+    room_preview_avatar_path, user_device_to_dto, user_info_pronouns,
 };
 use crate::adapters::ui::fields::{InviteeFields, MemberRowFields};
 use crate::adapters::ui::present::{
@@ -48,19 +49,16 @@ pub(super) fn apply_room_log<B: UiBackend>(
     if let Some(last) = last.filter(|last| last.room_id == next.room_id) {
         follow_room_log::<B>(lines, &last.log, &next.log);
     } else {
-        w.set_string(
-            StringProp::RoomLogRoomId,
-            SharedString::from(next.room_id.as_ref()),
-        );
+        w.set_text(StringProp::RoomLogRoomId, next.room_id.as_ref());
         lines.set_vec(
             next.log
                 .lines
                 .iter()
-                .map(|line| B::convert_log_line(line))
+                .map(|line| B::LogLine::from(log_line_to_dto(line)))
                 .collect(),
         );
     }
-    w.set_string(StringProp::RoomLogName, SharedString::from(&next.name));
+    w.set_text(StringProp::RoomLogName, &next.name);
     w.set_int(IntProp::RoomLogDropped, saturating_i32(next.log.dropped));
     w.set_int(IntProp::RoomLogLinesLanded, next.lines_landed);
     w.set_bool(BoolProp::RoomLogVisible, true);
@@ -78,7 +76,7 @@ fn follow_room_log<B: UiBackend>(lines: &SpliceModel<B::LogLine>, shown: &RoomLo
         .lines
         .iter()
         .skip(arrived_from)
-        .map(|line| B::convert_log_line(line))
+        .map(|line| B::LogLine::from(log_line_to_dto(line)))
         .collect();
     lines.insert_rows(lines.row_count(), arrived);
 }
@@ -116,33 +114,25 @@ fn apply_invite_card(w: &impl UiProps, invite: Option<&Invite>) {
         w.set_bool(BoolProp::InviteVisible, false);
         return;
     };
-    w.set_string(
-        StringProp::InviteRoomId,
-        SharedString::from(invite.id.as_ref()),
-    );
-    w.set_string(StringProp::InviteName, SharedString::from(&invite.name));
-    w.set_string(
-        StringProp::InviteInitial,
-        SharedString::from(avatar_initials(&invite.name)),
-    );
+    w.set_text(StringProp::InviteRoomId, invite.id.as_ref());
+    w.set_text(StringProp::InviteName, &invite.name);
+    w.set_text(StringProp::InviteInitial, avatar_initials(&invite.name));
     w.set_int(
         IntProp::InviteColorIndex,
         avatar_color_index(invite.id.as_ref()),
     );
     w.set_invite_kind(invite.kind);
-    w.set_string(
+    w.set_text(
         StringProp::InviteTopic,
-        SharedString::from(invite.topic.as_deref().unwrap_or_default()),
+        invite.topic.as_deref().unwrap_or_default(),
     );
-    w.set_string(
+    w.set_text(
         StringProp::InviteInviter,
-        SharedString::from(
-            invite
-                .inviter
-                .as_ref()
-                .map(|inviter| inviter.name.identified(&inviter.user_id))
-                .unwrap_or_default(),
-        ),
+        invite
+            .inviter
+            .as_ref()
+            .map(|inviter| inviter.name.identified(&inviter.user_id))
+            .unwrap_or_default(),
     );
     w.set_bool(BoolProp::InviteVisible, true);
 }
@@ -196,28 +186,19 @@ fn apply_removal_card(w: &impl UiProps, removal: Option<&Removal>) {
         w.set_bool(BoolProp::RemovalVisible, false);
         return;
     };
-    w.set_string(
-        StringProp::RemovalRoomId,
-        SharedString::from(removal.id.as_ref()),
-    );
-    w.set_string(StringProp::RemovalName, SharedString::from(&removal.name));
-    w.set_string(
-        StringProp::RemovalInitial,
-        SharedString::from(avatar_initials(&removal.name)),
-    );
+    w.set_text(StringProp::RemovalRoomId, removal.id.as_ref());
+    w.set_text(StringProp::RemovalName, &removal.name);
+    w.set_text(StringProp::RemovalInitial, avatar_initials(&removal.name));
     w.set_int(
         IntProp::RemovalColorIndex,
         avatar_color_index(removal.id.as_ref()),
     );
     w.set_removal_kind(removal.kind);
     w.set_removal_shape(removal_shape(removal));
-    w.set_string(
-        StringProp::RemovalBy,
-        SharedString::from(removal.by.identified()),
-    );
-    w.set_string(
+    w.set_text(StringProp::RemovalBy, removal.by.identified());
+    w.set_text(
         StringProp::RemovalReason,
-        SharedString::from(removal.reason.as_deref().unwrap_or_default()),
+        removal.reason.as_deref().unwrap_or_default(),
     );
     w.set_bool(BoolProp::RemovalVisible, true);
 }
@@ -262,11 +243,8 @@ pub(super) fn apply_leave_space(
         w.set_bool(BoolProp::LeaveSpaceVisible, false);
         return;
     };
-    w.set_string(
-        StringProp::LeaveSpaceId,
-        SharedString::from(space.id.as_ref()),
-    );
-    w.set_string(StringProp::LeaveSpaceName, SharedString::from(&space.name));
+    w.set_text(StringProp::LeaveSpaceId, space.id.as_ref());
+    w.set_text(StringProp::LeaveSpaceName, &space.name);
     w.set_int(IntProp::LeaveSpaceRooms, saturating_i32(space.rooms));
     w.set_int(IntProp::LeaveSpaceSpaces, saturating_i32(space.spaces));
     w.set_bool(BoolProp::LeaveSpaceVisible, true);
@@ -281,14 +259,8 @@ pub(super) fn apply_create_room(
         return;
     }
     w.set_create_room_kind(view.kind);
-    w.set_string(
-        StringProp::CreateRoomParentName,
-        SharedString::from(&view.parent_name),
-    );
-    w.set_string(
-        StringProp::CreateRoomServerName,
-        SharedString::from(&view.server_name),
-    );
+    w.set_text(StringProp::CreateRoomParentName, &view.parent_name);
+    w.set_text(StringProp::CreateRoomServerName, &view.server_name);
     w.set_message(MessageProp::CreateRoomError, &view.error);
     w.set_create_room_status(view.status);
 }
@@ -310,20 +282,18 @@ pub(super) fn apply_invite_people<B: UiBackend>(
         avatars_ready,
     } = view;
     if last.is_none_or(|l| l.target != *target) {
-        let (room_id, name) = target.as_ref().map_or_else(
-            || (SharedString::default(), SharedString::default()),
-            |target| {
-                (
-                    SharedString::from(target.room_id.as_ref()),
-                    SharedString::from(&target.name),
-                )
-            },
+        let target = target.as_ref();
+        w.set_text(
+            StringProp::InvitePeopleRoomId,
+            target.map_or("", |target| target.room_id.as_ref()),
         );
-        w.set_string(StringProp::InvitePeopleRoomId, room_id);
-        w.set_string(StringProp::InvitePeopleRoomName, name);
+        w.set_text(
+            StringProp::InvitePeopleRoomName,
+            target.map_or("", |target| target.name.as_str()),
+        );
         w.set_bool(
             BoolProp::InvitePeopleIsSpace,
-            target.as_ref().is_some_and(|target| target.space),
+            target.is_some_and(|target| target.space),
         );
     }
     if last.is_none_or(|l| l.search != *search) {
@@ -355,7 +325,7 @@ pub(super) fn apply_invite_people<B: UiBackend>(
                     .filter(|_| !avatars_landed)
                     .map_or(&[] as &[_], |rows| rows.as_ref()),
                 ctx.media,
-                &|row| B::convert_invitee(row, ctx.media),
+                &|row| invitee_to_dto(row, ctx.media).into(),
                 &|entry| entry.user_id(),
             );
         }
@@ -395,7 +365,7 @@ pub(super) fn apply_room_preview(
         apply_room_preview_card(w, shown);
     }
     show_room_preview_avatar(w, shown.map(|shown| &*shown.room), media);
-    w.set_string(StringProp::RoomPreviewAddress, SharedString::from(address));
+    w.set_text(StringProp::RoomPreviewAddress, address);
     w.set_bool(BoolProp::RoomPreviewEntry, *entry);
     w.set_room_preview_access(*access);
     w.set_message(MessageProp::RoomPreviewError, error);
@@ -404,26 +374,20 @@ pub(super) fn apply_room_preview(
 
 fn apply_room_preview_card(w: &impl UiProps, shown: &ShownPreview) {
     let room = &shown.room;
-    w.set_string(
-        StringProp::RoomPreviewRoomId,
-        SharedString::from(room.id.as_ref()),
-    );
-    w.set_string(StringProp::RoomPreviewName, SharedString::from(&room.name));
-    w.set_string(
-        StringProp::RoomPreviewInitial,
-        SharedString::from(avatar_initials(&room.name)),
-    );
+    w.set_text(StringProp::RoomPreviewRoomId, room.id.as_ref());
+    w.set_text(StringProp::RoomPreviewName, &room.name);
+    w.set_text(StringProp::RoomPreviewInitial, avatar_initials(&room.name));
     w.set_int(
         IntProp::RoomPreviewColorIndex,
         avatar_color_index(room.id.as_ref()),
     );
-    w.set_string(
+    w.set_text(
         StringProp::RoomPreviewAlias,
-        SharedString::from(room.alias.as_deref().unwrap_or_default()),
+        room.alias.as_deref().unwrap_or_default(),
     );
-    w.set_string(
+    w.set_text(
         StringProp::RoomPreviewTopic,
-        SharedString::from(room.topic.as_deref().unwrap_or_default()),
+        room.topic.as_deref().unwrap_or_default(),
     );
     w.set_int(
         IntProp::RoomPreviewMembers,
@@ -501,8 +465,8 @@ pub(super) fn apply_room_info<B: UiBackend>(
             .map(message_sent_at_label)
             .unwrap_or_default();
         let link = about.as_ref().map_or("", |about| about.link.as_str());
-        w.set_string(StringProp::RoomInfoJoinedOn, SharedString::from(joined_on));
-        w.set_string(StringProp::RoomInfoLink, SharedString::from(link));
+        w.set_text(StringProp::RoomInfoJoinedOn, joined_on);
+        w.set_text(StringProp::RoomInfoLink, link);
     }
     if last.is_none_or(|l| l.roster != *roster) {
         w.set_room_info_roster(*roster);
@@ -533,7 +497,7 @@ pub(super) fn apply_room_info<B: UiBackend>(
             rows.as_ref(),
             previous,
             ctx.media,
-            &|row| B::convert_member_row(row, ctx.media),
+            &|row| member_row_to_dto(row, ctx.media).into(),
             &|entry| entry.user_id(),
         );
     }
@@ -544,23 +508,17 @@ fn apply_room_card(w: &impl UiProps, card: Option<&RoomCard>, media: &dyn MediaC
         w.set_image(ImageProp::RoomInfoAvatar, None);
         return;
     };
-    w.set_string(
-        StringProp::RoomInfoRoomId,
-        SharedString::from(card.id.as_ref()),
-    );
-    w.set_string(StringProp::RoomInfoName, SharedString::from(&card.name));
-    w.set_string(
-        StringProp::RoomInfoInitial,
-        SharedString::from(avatar_initials(&card.name)),
-    );
+    w.set_text(StringProp::RoomInfoRoomId, card.id.as_ref());
+    w.set_text(StringProp::RoomInfoName, &card.name);
+    w.set_text(StringProp::RoomInfoInitial, avatar_initials(&card.name));
     w.set_int(IntProp::RoomInfoColorIndex, avatar_color_index(&card.id));
     w.set_int(IntProp::RoomInfoMembers, saturating_i32(card.member_count));
     w.set_bool(BoolProp::RoomInfoIsDirect, card.is_direct);
     w.set_bool(BoolProp::RoomInfoMayInvite, card.may_invite);
     w.set_bool(BoolProp::RoomInfoReadableByAnyone, card.readable_by_anyone);
-    w.set_string(
+    w.set_text(
         StringProp::RoomInfoAlias,
-        SharedString::from(card.alias.as_deref().unwrap_or_default()),
+        card.alias.as_deref().unwrap_or_default(),
     );
     w.set_image(
         ImageProp::RoomInfoAvatar,
@@ -618,7 +576,8 @@ pub(super) fn apply_user_info<B: UiBackend>(
         let rows = sessions
             .iter()
             .flat_map(|devices| devices.iter())
-            .map(B::convert_user_device)
+            .map(user_device_to_dto)
+            .map(B::UserDevice::from)
             .collect::<Vec<_>>();
         ctx.models.user_devices.set_vec(rows);
     }
@@ -648,24 +607,18 @@ fn apply_user_card(w: &impl UiProps, card: Option<&UserCard>, media: &dyn MediaC
         return;
     };
     let profile = &card.profile;
-    w.set_string(
-        StringProp::UserInfoUserId,
-        SharedString::from(profile.user_id.as_ref()),
-    );
-    w.set_string(
-        StringProp::UserInfoName,
-        SharedString::from(profile.shown()),
-    );
-    w.set_string(
+    w.set_text(StringProp::UserInfoUserId, profile.user_id.as_ref());
+    w.set_text(StringProp::UserInfoName, profile.shown());
+    w.set_text(
         StringProp::UserInfoInitial,
-        SharedString::from(name_initials(&profile.name, &profile.user_id)),
+        name_initials(&profile.name, &profile.user_id),
     );
     w.set_int(
         IntProp::UserInfoColorIndex,
         avatar_color_index(&profile.user_id),
     );
     w.set_string(StringProp::UserInfoPronouns, user_info_pronouns(profile));
-    w.set_string(StringProp::UserInfoLink, SharedString::from(&profile.link));
+    w.set_text(StringProp::UserInfoLink, &profile.link);
     w.set_user_info_role(profile.role);
     w.set_user_info_membership(profile.membership);
     w.set_user_info_identity(profile.trust);

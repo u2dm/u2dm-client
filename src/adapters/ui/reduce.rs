@@ -34,6 +34,7 @@ use super::notices::apply_notifications;
 use super::present::{avatar_color_index, avatar_initials};
 use super::props::{BoolProp, ImageProp, IntProp, StringProp, UiProps};
 use super::reconcile::RoomListing;
+use super::rows::{NO_ROW, row_index};
 use super::session::{begin_session, from_snapshot, with_session};
 use super::{call_window, emote, sending};
 use crate::commands::effects::Effect;
@@ -44,10 +45,6 @@ use crate::domain::poll::PollPermissions;
 use crate::domain::timeline::TimelineStatus;
 use crate::ports::media::MediaCache;
 use crate::util::saturating_i32;
-
-const NO_ANCHOR: i32 = -1;
-
-const NO_SELECTED_ROW: i32 = -1;
 
 #[derive(Default)]
 pub struct RoomCursor {
@@ -122,10 +119,7 @@ fn next_prepend_token() -> i32 {
 
 fn set_focus(w: &impl UiProps, event_id: Option<&str>) {
     with_session(|session| session.room.focus_event_id = event_id.map(ToOwned::to_owned));
-    w.set_string(
-        StringProp::FocusEventId,
-        SharedString::from(event_id.unwrap_or_default()),
-    );
+    w.set_text(StringProp::FocusEventId, event_id.unwrap_or_default());
 }
 
 fn publish_room_cursor(w: &impl UiProps) {
@@ -141,10 +135,7 @@ fn publish_room_cursor(w: &impl UiProps) {
     w.set_int(IntProp::SelectedGeneration, generation);
     w.set_int(IntProp::TimelineToken, timeline_token);
     w.set_int(IntProp::PrependToken, prepend_token);
-    w.set_string(
-        StringProp::FocusEventId,
-        SharedString::from(focus.unwrap_or_default()),
-    );
+    w.set_text(StringProp::FocusEventId, focus.unwrap_or_default());
 }
 
 pub(super) fn latest_directory() -> Option<DirectoryView> {
@@ -194,14 +185,11 @@ pub fn dispatch_effect<B: UiBackend>(w: &B::Window, event: Effect, ctx: &UiEvent
             }
             w.set_bool(BoolProp::TimelineDetached, !live);
             w.set_int(IntProp::SelectedGeneration, generation);
-            w.set_string(StringProp::SelectedRoomId, SharedString::from(id.as_ref()));
+            w.set_text(StringProp::SelectedRoomId, id.as_ref());
             let listed = latest_directory().unwrap_or_default();
             publish_selected_room_row(w, RoomListing::of(&listed));
-            w.set_string(StringProp::SelectedRoomName, SharedString::from(&name));
-            w.set_string(
-                StringProp::SelectedRoomInitial,
-                SharedString::from(avatar_initials(&name)),
-            );
+            w.set_text(StringProp::SelectedRoomName, &name);
+            w.set_text(StringProp::SelectedRoomInitial, avatar_initials(&name));
             w.set_int(
                 IntProp::SelectedRoomColorIndex,
                 avatar_color_index(id.as_ref()),
@@ -229,7 +217,7 @@ pub fn dispatch_effect<B: UiBackend>(w: &B::Window, event: Effect, ctx: &UiEvent
             row,
         } => {
             if is_active(w, &room_id, generation) {
-                let anchor = i32::try_from(row).unwrap_or(NO_ANCHOR);
+                let anchor = i32::try_from(row).unwrap_or(NO_ROW);
                 tracing::debug!(anchor, generation, event_id, %room_id, "publishing the focus anchor");
                 set_focus(w, Some(&event_id));
                 w.set_int(IntProp::AnchorIndex, anchor);
@@ -405,7 +393,7 @@ fn apply_toast(w: &impl UiProps, last: Option<&Toast>, toast: &Toast) {
         Toast::FileSaved(path) => (UserMessageKind::FileSaved, path.as_str()),
     };
     w.set_toast_message(kind);
-    w.set_string(StringProp::ToastDetail, SharedString::from(detail));
+    w.set_text(StringProp::ToastDetail, detail);
 }
 
 fn show_selected_room_avatar(
@@ -432,10 +420,7 @@ fn show_selected_room_avatar(
 fn publish_selected_room_row(w: &impl UiProps, listing: RoomListing<'_>) {
     let selected = w.get_string(StringProp::SelectedRoomId);
     let place = listing.place_of(selected.as_str());
-    let row = place
-        .as_ref()
-        .and_then(|place| i32::try_from(place.row).ok())
-        .unwrap_or(NO_SELECTED_ROW);
+    let row = row_index(place.as_ref().map(|place| place.row));
     let headings = place
         .and_then(|place| i32::try_from(place.headings_above).ok())
         .unwrap_or_default();
@@ -454,14 +439,14 @@ fn clear_selected_room(w: &impl UiProps) {
     w.set_string(StringProp::SelectedRoomInitial, SharedString::default());
     w.set_int(IntProp::SelectedRoomColorIndex, 0);
     w.set_image(ImageProp::SelectedRoomAvatar, None);
-    w.set_int(IntProp::SelectedRoomRow, NO_SELECTED_ROW);
+    w.set_int(IntProp::SelectedRoomRow, NO_ROW);
     w.set_int(IntProp::SelectedRoomHeadings, 0);
     w.set_int(IntProp::SelectedRoomMembers, 0);
     w.set_bool(BoolProp::SelectedRoomEncrypted, false);
     w.set_bool(BoolProp::SelectedRoomReadableByAnyone, false);
     apply_poll_permissions(w, PollPermissions::UNRESTRICTED);
     apply_message_permissions(w, MessagePermissions::UNRESTRICTED);
-    w.set_int(IntProp::AnchorIndex, NO_ANCHOR);
+    w.set_int(IntProp::AnchorIndex, NO_ROW);
     w.set_bool(BoolProp::TimelineDetached, false);
     publish_room_cursor(w);
     apply_timeline_status(w, TimelineStatus::None);

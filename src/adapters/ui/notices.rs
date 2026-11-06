@@ -2,10 +2,10 @@ use std::sync::Arc;
 
 use slint::winit_030::WinitWindowAccessor;
 use slint::winit_030::winit::window::UserAttentionType;
-use slint::{ComponentHandle, SharedString, Window};
+use slint::{ComponentHandle, Window};
 
 use super::activation::raise;
-use super::backend::UiBackend;
+use super::backend::{UiBackend, in_event_loop};
 use super::dto::preview_line;
 use super::present::{ServiceKind, service_kind, service_target};
 use super::props::{IntProp, StringProp, UiProps};
@@ -120,15 +120,11 @@ fn ask_for_attention(window: &Window, highlight: bool) {
 }
 
 pub fn follow_activations<B: UiBackend>(window: &B::Window, notifier: &dyn NotifierPort) {
-    let weak = window.as_weak();
-    notifier.on_activation(Arc::new(move |activation: NoticeActivation| {
-        let queued = weak.upgrade_in_event_loop(move |window| {
-            act_on_notification::<B>(&window, &activation);
-        });
-        if let Err(e) = queued {
-            tracing::debug!("a notification click could not reach the event loop: {e}");
-        }
-    }));
+    notifier.on_activation(Arc::new(in_event_loop::<B, NoticeActivation>(
+        window,
+        "a notification click",
+        |window, activation| act_on_notification::<B>(window, &activation),
+    )));
 }
 
 pub fn act_on_notification<B: UiBackend>(window: &B::Window, activation: &NoticeActivation) {
@@ -144,32 +140,20 @@ pub fn act_on_notification<B: UiBackend>(window: &B::Window, activation: &Notice
 
 fn answer_from_notification(window: &impl UiProps, activation: &NoticeActivation) {
     tracing::debug!(room_id = %activation.key, "a ringing notification was answered");
-    window.set_string(
-        StringProp::CallRoom,
-        SharedString::from(activation.key.as_ref()),
-    );
-    let answers = window.get_int(IntProp::CallAnswers).wrapping_add(1);
-    window.set_int(IntProp::CallAnswers, answers);
+    window.set_text(StringProp::CallRoom, activation.key.as_ref());
+    window.bump(IntProp::CallAnswers);
 }
 
 fn decline_from_notification(window: &impl UiProps, activation: &NoticeActivation) {
     tracing::debug!(room_id = %activation.key, "a ringing notification was declined");
-    window.set_string(
-        StringProp::CallRoom,
-        SharedString::from(activation.key.as_ref()),
-    );
-    let declines = window.get_int(IntProp::CallDeclines).wrapping_add(1);
-    window.set_int(IntProp::CallDeclines, declines);
+    window.set_text(StringProp::CallRoom, activation.key.as_ref());
+    window.bump(IntProp::CallDeclines);
 }
 
 fn open_from_notification<B: UiBackend>(window: &B::Window, activation: &NoticeActivation) {
     tracing::debug!(room_id = %activation.key, token = activation.token.is_some(), "a notification was clicked");
     raise(window.window(), activation.token.as_deref());
-    window.set_string(
-        StringProp::NotificationRoom,
-        SharedString::from(activation.key.as_ref()),
-    );
-    let opens = window.get_int(IntProp::NotificationOpens).wrapping_add(1);
-    window.set_int(IntProp::NotificationOpens, opens);
+    window.set_text(StringProp::NotificationRoom, activation.key.as_ref());
+    window.bump(IntProp::NotificationOpens);
     window.window().request_redraw();
 }

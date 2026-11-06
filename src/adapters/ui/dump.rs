@@ -6,7 +6,7 @@ use serde::Serialize;
 use slint::{ComponentHandle, LogicalSize, Model};
 use tokio::sync::oneshot;
 
-use super::backend::UiBackend;
+use super::backend::{UiBackend, in_event_loop};
 use super::call_video::Host;
 use super::fields::{
     BodyLineFields, BodyPieceFields, CallDeviceFields, CallPersonFields, CallTileFields,
@@ -353,37 +353,35 @@ pub fn request() -> Option<oneshot::Receiver<TimelineDump>> {
 }
 
 pub fn install_probe<B: UiBackend>(window: &B::Window) {
-    let weak = window.as_weak();
-    let dump_weak = weak.clone();
-    install(Box::new(move |reply| {
-        let queued = dump_weak.upgrade_in_event_loop(move |window| {
-            drop(reply.send(collect::<B>(&window)));
-        });
-        if let Err(e) = queued {
-            tracing::debug!("the timeline dump could not reach the event loop: {e}");
+    install(Box::new(in_event_loop::<B, oneshot::Sender<TimelineDump>>(
+        window,
+        "the timeline dump",
+        |window, reply| drop(reply.send(collect::<B>(window))),
+    )));
+    install_pokes(Box::new(in_event_loop::<B, Poke>(
+        window,
+        "a probe poke",
+        apply_poke::<B>,
+    )));
+}
+
+fn apply_poke<B: UiBackend>(window: &B::Window, poke: Poke) {
+    match poke {
+        Poke::ToggleAudio => audio::toggle(window),
+        Poke::SeekAudio(position) => audio::seek(window, position),
+        Poke::WindowFocus(focused) => {
+            window.set_bool(BoolProp::WindowFocused, focused);
+            window.window().request_redraw();
         }
-    }));
-    install_pokes(Box::new(move |poke| {
-        let queued = weak.upgrade_in_event_loop(move |window| match poke {
-            Poke::ToggleAudio => audio::toggle(&window),
-            Poke::SeekAudio(position) => audio::seek(&window, position),
-            Poke::WindowFocus(focused) => {
-                window.set_bool(BoolProp::WindowFocused, focused);
-                window.window().request_redraw();
-            }
-            Poke::WindowSize(width, height) => {
-                window.window().set_size(LogicalSize::new(width, height));
-            }
-            Poke::UserActivity(active) => activity::report(&window, active),
-            Poke::SwipeTravel(px) => window.set_int(IntProp::SwipeTravel, px),
-            Poke::TouchpadPinch(permille) => touchpad_pinch::publish::<B>(&window, permille),
-            Poke::ContextPress => context_press::announce(&window),
-            Poke::CloseCallWindow => call_window::request_close::<B>(),
-        });
-        if let Err(e) = queued {
-            tracing::debug!("a probe poke could not reach the event loop: {e}");
+        Poke::WindowSize(width, height) => {
+            window.window().set_size(LogicalSize::new(width, height));
         }
-    }));
+        Poke::UserActivity(active) => activity::report(window, active),
+        Poke::SwipeTravel(px) => window.set_int(IntProp::SwipeTravel, px),
+        Poke::TouchpadPinch(permille) => touchpad_pinch::publish::<B>(window, permille),
+        Poke::ContextPress => context_press::announce(window),
+        Poke::CloseCallWindow => call_window::request_close::<B>(),
+    }
 }
 
 fn collect<B: UiBackend>(window: &B::Window) -> TimelineDump {

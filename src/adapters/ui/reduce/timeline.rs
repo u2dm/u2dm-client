@@ -1,26 +1,29 @@
 use std::collections::{BTreeSet, HashSet};
 use std::sync::Arc;
 
-use slint::{ComponentHandle, Model, SharedString};
+use slint::{ComponentHandle, Model};
 
 use super::{
-    NO_ANCHOR, is_new_generation, next_prepend_token, readopt_timeline,
-    run_change_handlers_next_frame, set_focus,
+    is_new_generation, next_prepend_token, readopt_timeline, run_change_handlers_next_frame,
+    set_focus,
 };
 use crate::adapters::ui::backend::{
     UiBackend, UiEventContext, enrich_message, keep_shown_enrichment,
 };
-use crate::adapters::ui::dto::{QuotedMessage, preview_line, quoted_message};
+use crate::adapters::ui::dto::{
+    QuotedMessage, message_to_dto, preview_line, quoted_message, reader_to_dto,
+};
 use crate::adapters::ui::fields::{MemberRowFields, MessageFields};
 use crate::adapters::ui::props::{BoolProp, IntProp, StringProp, UiProps};
 use crate::adapters::ui::reconcile::{apply_rows, apply_timeline_patch, rows_to_redo};
-use crate::adapters::ui::rows::patch_rows_by_id;
+use crate::adapters::ui::rows::{patch_rows_by_id, row_index};
 use crate::adapters::ui::session::{active_generation, from_snapshot, with_session};
 use crate::adapters::ui::splice_model::SpliceModel;
 use crate::commands::view::{
     AppViewState, CopiedLink, PaginationView, PinnedView, PresenceView, ReadersView, SourceState,
     TypingView,
 };
+use crate::domain::member_name::NamedUser;
 use crate::domain::message::{MessagePreviewKind, TimelineMessage};
 use crate::domain::presence::PresenceLine;
 use crate::domain::room::RoomId;
@@ -77,7 +80,7 @@ pub(super) fn apply_timeline<B: UiBackend>(
     apply_timeline_patch(
         &ctx.models.timeline,
         *patch,
-        &|m| B::convert_message(m, is_pinned(&pinned_ids, m), ctx.media),
+        &|m| message_to_dto(m, is_pinned(&pinned_ids, m), ctx.media).into(),
         &keep_shown_enrichment::<B>,
         &|entry, delta| enrich_message::<B>(entry, delta, ctx.media),
         &|entry| entry.unique_id(),
@@ -133,23 +136,18 @@ pub(super) fn apply_source(w: &impl UiProps, state: &SourceState) {
         SourceEncryption::Decrypted { details } => details.as_str(),
         SourceEncryption::Plain | SourceEncryption::Undecryptable => "",
     };
-    w.set_string(StringProp::SourceEventId, SharedString::from(event_id));
-    w.set_string(
+    w.set_text(StringProp::SourceEventId, event_id);
+    w.set_text(
         StringProp::SourceJson,
-        SharedString::from(source.map_or("", |source| source.json.as_str())),
+        source.map_or("", |source| source.json.as_str()),
     );
-    w.set_string(
+    w.set_text(
         StringProp::SourceEditJson,
-        SharedString::from(
-            source
-                .and_then(|source| source.edit_json.as_deref())
-                .unwrap_or(""),
-        ),
+        source
+            .and_then(|source| source.edit_json.as_deref())
+            .unwrap_or(""),
     );
-    w.set_string(
-        StringProp::SourceEncryptionJson,
-        SharedString::from(encryption_json),
-    );
+    w.set_text(StringProp::SourceEncryptionJson, encryption_json);
     w.set_source_encryption(encryption);
     w.set_source_status(state);
 }
@@ -190,7 +188,7 @@ pub(super) fn apply_readers<B: UiBackend>(
             rows.as_ref(),
             previous,
             ctx.media,
-            &|reader| B::convert_reader(reader, ctx.media),
+            &|reader| reader_to_dto(reader, ctx.media).into(),
             &|entry| entry.user_id(),
         );
     }
@@ -241,7 +239,7 @@ fn apply_copied_link(
     url: StringProp,
     serial: IntProp,
 ) {
-    w.set_string(url, SharedString::from(link.url.as_str()));
+    w.set_text(url, link.url.as_str());
     w.set_int(serial, link.serial);
     run_change_handlers_next_frame(w);
 }
@@ -281,9 +279,9 @@ pub(super) fn apply_pinned(w: &impl UiProps, pinned: &PinnedView) {
     };
     w.set_int(IntProp::PinnedCount, saturating_i32(count));
     w.set_int(IntProp::PinnedIndex, saturating_i32(index));
-    w.set_string(
+    w.set_text(
         StringProp::PinnedEventId,
-        SharedString::from(shown.map_or("", |message| message.event_id.as_str())),
+        shown.map_or("", |message| message.event_id.as_str()),
     );
     w.set_pinned_kind(shown.map_or(MessagePreviewKind::None, |message| message.kind));
     w.set_string(
@@ -312,33 +310,29 @@ fn apply_presence(w: &impl UiProps, last: Option<&PresenceView>, view: &Presence
     let partner_line = partner
         .as_ref()
         .map_or(PresenceLine::Hidden, |partner| partner.line);
-    w.set_string(
+    w.set_text(
         StringProp::PresenceRoomId,
-        partner.as_ref().map_or_else(SharedString::new, |partner| {
-            SharedString::from(partner.room_id.as_ref())
-        }),
+        partner
+            .as_ref()
+            .map_or("", |partner| partner.room_id.as_ref()),
     );
     w.set_presence_partner(partner_line);
     w.set_int(IntProp::PresencePartnerMinutes, minutes_seen(partner_line));
     let person_line = person
         .as_ref()
         .map_or(PresenceLine::Hidden, |person| person.line);
-    w.set_string(
+    w.set_text(
         StringProp::PresenceUserId,
-        person.as_ref().map_or_else(SharedString::new, |person| {
-            SharedString::from(person.user_id.as_ref())
-        }),
+        person.as_ref().map_or("", |person| person.user_id.as_ref()),
     );
     w.set_presence_person(person_line);
     w.set_int(IntProp::PresencePersonMinutes, minutes_seen(person_line));
-    w.set_string(
+    w.set_text(
         StringProp::PresenceStatus,
-        SharedString::from(
-            person
-                .as_ref()
-                .and_then(|person| person.status.as_deref())
-                .unwrap_or_default(),
-        ),
+        person
+            .as_ref()
+            .and_then(|person| person.status.as_deref())
+            .unwrap_or_default(),
     );
 }
 
@@ -354,18 +348,14 @@ fn apply_typing(w: &impl UiProps, last: Option<&TypingView>, view: &TypingView) 
         return;
     }
     let typists = view.typists.users();
-    let shown = |at: usize| {
-        typists
-            .get(at)
-            .map_or_else(SharedString::new, |user| SharedString::from(user.shown()))
-    };
-    w.set_string(
+    let shown = |at: usize| typists.get(at).map(NamedUser::shown).unwrap_or_default();
+    w.set_text(
         StringProp::TypingRoomId,
-        SharedString::from(view.room_id.as_deref().unwrap_or_default()),
+        view.room_id.as_deref().unwrap_or_default(),
     );
     w.set_int(IntProp::TypingCount, saturating_i32(typists.len()));
-    w.set_string(StringProp::TypingFirst, shown(0));
-    w.set_string(StringProp::TypingSecond, shown(1));
+    w.set_text(StringProp::TypingFirst, shown(0));
+    w.set_text(StringProp::TypingSecond, shown(1));
 }
 
 fn anchor_row<B: UiBackend>(model: &SpliceModel<B::Message>) -> i32 {
@@ -374,17 +364,14 @@ fn anchor_row<B: UiBackend>(model: &SpliceModel<B::Message>) -> i32 {
         Some(event_id) => entry.event_id() == event_id,
         None => entry.first_unread(),
     };
-    (0..model.row_count())
-        .find(|row| model.row_data(*row).is_some_and(|entry| is_anchor(&entry)))
-        .and_then(|row| i32::try_from(row).ok())
-        .unwrap_or(NO_ANCHOR)
+    row_index(
+        (0..model.row_count())
+            .find(|row| model.row_data(*row).is_some_and(|entry| is_anchor(&entry))),
+    )
 }
 
 fn unread_anchor_row(patch: &TimelinePatch) -> i32 {
-    patch
-        .unread_anchor()
-        .and_then(|anchor| i32::try_from(anchor.row).ok())
-        .unwrap_or(NO_ANCHOR)
+    row_index(patch.unread_anchor().map(|anchor| anchor.row))
 }
 
 pub(super) fn is_active(w: &impl UiProps, room_id: &RoomId, generation: i32) -> bool {

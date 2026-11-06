@@ -8,22 +8,23 @@ use slint::{ComponentHandle, Image, SharedString, Timer, TimerMode, VecModel};
 use super::backend::{Models, UiBackend, UiEventContext};
 use super::decode::{AvatarSlot, load_avatar_async, peek_avatar};
 use super::dto::{
-    call_connection_rows, call_failure_message, call_notice_mark, call_offer_mark,
-    call_screen_mark, sheet_preview_mark, test_phase_mark,
+    call_connection_rows, call_device_to_dto, call_face_to_dto, call_failure_message,
+    call_notice_mark, call_offer_mark, call_person_to_dto, call_screen_mark, call_tile_to_dto,
+    sheet_preview_mark, test_phase_mark,
 };
 use super::fields::{CallPersonFields, CallTileFields};
 use super::notices::NoticeWords;
-use super::present::{avatar_color_index, avatar_initials};
+use super::present::{avatar_color_index, avatar_initials, duration_label};
 use super::props::{BoolProp, ImageProp, IntProp, StringProp, UiProps};
 use super::reconcile::apply_call_tiles;
 use super::ringtone::{self, Tone};
-use super::rows::patch_rows_where;
+use super::rows::{patch_rows_where, row_index};
 use super::{audio, call_video, call_window, video};
 use crate::commands::messages::UserMessageKind;
 use crate::commands::view::{
     ActiveCall, AppViewState, CallDevices, CallFace, CallNotice, CallPerson, CallPhase,
     CallSheetView, CallTile, CallView, DeviceNews, FailedCall, JoinOffer, OfferView, RingView,
-    RoomCallSummary, ScreenView, ShareNews, SheetPreview, TileKind,
+    RoomCallSummary, ScreenView, ServerDetails, ShareNews, SheetPreview, TileKind,
 };
 use crate::domain::call::devices::DeviceKind;
 use crate::domain::call::video::{FeedId, Framing};
@@ -33,9 +34,6 @@ use crate::ports::notifier::{NotifierPort, RingNotice};
 use crate::util::{saturating_i32, unix_now_ms};
 
 const ELAPSED_TICK: Duration = Duration::from_secs(1);
-const SECONDS_PER_MINUTE: u64 = 60;
-const SECONDS_PER_HOUR: u64 = 3600;
-const MILLIS_PER_SECOND: u64 = 1000;
 
 thread_local! {
     static ELAPSED: RefCell<Option<Timer>> = const { RefCell::new(None) };
@@ -90,14 +88,8 @@ fn apply_failed(w: &impl UiProps, failed: Option<&FailedCall>) {
         w.set_call_failure(UserMessageKind::None);
         return;
     };
-    w.set_string(
-        StringProp::FailureRoomId,
-        SharedString::from(failed.room_id.as_ref()),
-    );
-    w.set_string(
-        StringProp::FailureDetail,
-        SharedString::from(&failed.room_name),
-    );
+    w.set_text(StringProp::FailureRoomId, failed.room_id.as_ref());
+    w.set_text(StringProp::FailureDetail, &failed.room_name);
     w.set_bool(BoolProp::FailureRetry, failed.retry);
     w.set_call_failure(call_failure_message(failed.failure));
 }
@@ -110,17 +102,15 @@ fn apply_notice(w: &impl UiProps, notice: Option<&CallNotice>) {
         ) => (who.shown(), *others),
         _ => (String::new(), 0),
     };
-    w.set_string(StringProp::NoticeName, SharedString::from(name));
+    w.set_text(StringProp::NoticeName, name);
     w.set_int(IntProp::NoticeOthers, saturating_i32(others));
     w.set_call_notice(call_notice_mark(notice));
 }
 
 fn apply_offer(w: &impl UiProps, offer: Option<&OfferView>) {
-    w.set_string(
+    w.set_text(
         StringProp::OfferRoomId,
-        offer.map_or_else(SharedString::new, |offer| {
-            SharedString::from(offer.room_id.as_ref())
-        }),
+        offer.map_or("", |offer| offer.room_id.as_ref()),
     );
     let join = offer.map(|offer| offer.offer);
     if let Some(JoinOffer::Refused(refusal)) = join {
@@ -136,14 +126,8 @@ fn apply_sheet(w: &impl UiProps, sheet: Option<&CallSheetView>) {
         w.set_call_sheet_test_phase(test_phase_mark(None));
         return;
     };
-    w.set_string(
-        StringProp::SheetRoomId,
-        SharedString::from(sheet.room_id.as_ref()),
-    );
-    w.set_string(
-        StringProp::SheetRoomName,
-        SharedString::from(&sheet.room_name),
-    );
+    w.set_text(StringProp::SheetRoomId, sheet.room_id.as_ref());
+    w.set_text(StringProp::SheetRoomName, &sheet.room_name);
     if let JoinOffer::Refused(refusal) = sheet.offer {
         w.set_call_sheet_refusal(refusal);
     }
@@ -177,17 +161,13 @@ fn apply_sheet(w: &impl UiProps, sheet: Option<&CallSheetView>) {
     }
     w.set_call_sheet_test_phase(test_phase_mark(running.map(|test| test.phase)));
     let leaving = sheet.leaving.as_ref();
-    w.set_string(
+    w.set_text(
         StringProp::SheetLeavingId,
-        leaving.map_or_else(SharedString::new, |leaving| {
-            SharedString::from(leaving.room_id.as_ref())
-        }),
+        leaving.map_or("", |leaving| leaving.room_id.as_ref()),
     );
-    w.set_string(
+    w.set_text(
         StringProp::SheetLeavingName,
-        leaving.map_or_else(SharedString::new, |leaving| {
-            SharedString::from(&leaving.room_name)
-        }),
+        leaving.map_or("", |leaving| leaving.room_name.as_str()),
     );
     w.set_bool(BoolProp::SheetEnded, sheet.ended);
     w.set_int(IntProp::SheetSerial, sheet.serial);
@@ -197,16 +177,16 @@ fn apply_sheet(w: &impl UiProps, sheet: Option<&CallSheetView>) {
 fn apply_sheet_preview(w: &impl UiProps, preview: Option<&SheetPreview>) {
     let call = match preview {
         Some(SheetPreview::InCall { room_name, .. } | SheetPreview::Elsewhere { room_name }) => {
-            SharedString::from(room_name)
+            room_name.as_str()
         }
-        _ => SharedString::new(),
+        _ => "",
     };
-    w.set_string(StringProp::SheetPreviewCall, call);
-    w.set_string(
+    w.set_text(StringProp::SheetPreviewCall, call);
+    w.set_text(
         StringProp::SheetPreviewFeed,
         preview
             .and_then(SheetPreview::feed)
-            .map_or_else(SharedString::new, |feed| SharedString::from(feed.as_ref())),
+            .map_or("", |feed| feed.as_ref()),
     );
     if let Some(SheetPreview::Failed(trouble)) = preview {
         w.set_call_preview_trouble(*trouble);
@@ -228,47 +208,15 @@ fn apply_active<B: UiBackend>(
     media: &dyn MediaCache,
 ) {
     let Some(active) = next else {
-        w.set_bool(BoolProp::ActiveVisible, false);
-        w.set_bool(BoolProp::MicrophoneMetered, false);
-        w.set_int(IntProp::ActiveCall, 0);
-        w.set_int(IntProp::ShareCount, 0);
-        w.set_int(IntProp::StartedShareSerial, 0);
-        w.set_int(IntProp::EndedShareSerial, 0);
-        w.set_int(IntProp::HandNewsSerial, 0);
-        w.set_int(IntProp::HandsRaised, 0);
-        w.set_int(IntProp::ReactionNewsSerial, 0);
-        w.set_int(IntProp::ShareChangeCancelled, 0);
-        w.set_int(IntProp::DeviceNewsSerial, 0);
-        apply_names(
-            w,
-            &[],
-            [StringProp::BridgesFirst, StringProp::BridgesSecond],
-            IntProp::BridgesMore,
-        );
-        apply_notice(w, None);
-        let models = B::models();
-        models.call_stage.set_vec(Vec::new());
-        models.call_tiles.set_vec(Vec::new());
-        models.call_self.set_vec(Vec::new());
-        models.call_people.set_vec(Vec::new());
-        models.call_connections.set_vec(Vec::new());
-        call_video::follow::<B>(w, &[]);
-        stop_elapsed(w);
-        ringtone::stop_if(Tone::Ringback);
+        clear_active::<B>(w);
         return;
     };
     if last.is_none() {
         audio::pause(w);
         video::set_playing(w, false);
     }
-    w.set_string(
-        StringProp::ActiveRoomId,
-        SharedString::from(active.room_id.as_ref()),
-    );
-    w.set_string(
-        StringProp::ActiveRoomName,
-        SharedString::from(&active.room_name),
-    );
+    w.set_text(StringProp::ActiveRoomId, active.room_id.as_ref());
+    w.set_text(StringProp::ActiveRoomName, &active.room_name);
     w.set_int(IntProp::ActiveCall, saturating_i32(active.call));
     w.set_bool(BoolProp::ActiveRoomAlert, active.room_unread.alert);
     w.set_bool(BoolProp::ActiveRoomMention, active.room_unread.mention);
@@ -298,16 +246,7 @@ fn apply_active<B: UiBackend>(
     apply_stage::<B>(w, last, active, media);
     apply_people::<B>(last.map(|last| last.people.as_ref()), &active.people, media);
     if last.map(|last| &last.connection) != Some(&active.connection) {
-        B::models().call_connections.set_vec(
-            active
-                .connection
-                .as_deref()
-                .map(call_connection_rows)
-                .unwrap_or_default()
-                .into_iter()
-                .map(Into::into)
-                .collect::<Vec<B::CallConnection>>(),
-        );
+        apply_connections::<B>(active.connection.as_deref());
     }
     request_faces::<B>(faces_in_call(active), media);
     apply_device_news(w, active.devices.news.as_ref());
@@ -316,6 +255,47 @@ fn apply_active<B: UiBackend>(
     }
     w.set_bool(BoolProp::ActiveVisible, true);
     follow_ringback(w, last.map(|last| last.phase), active.phase);
+}
+
+fn clear_active<B: UiBackend>(w: &B::Window) {
+    w.set_bool(BoolProp::ActiveVisible, false);
+    w.set_bool(BoolProp::MicrophoneMetered, false);
+    w.set_int(IntProp::ActiveCall, 0);
+    w.set_int(IntProp::ShareCount, 0);
+    w.set_int(IntProp::StartedShareSerial, 0);
+    w.set_int(IntProp::EndedShareSerial, 0);
+    w.set_int(IntProp::HandNewsSerial, 0);
+    w.set_int(IntProp::HandsRaised, 0);
+    w.set_int(IntProp::ReactionNewsSerial, 0);
+    w.set_int(IntProp::ShareChangeCancelled, 0);
+    w.set_int(IntProp::DeviceNewsSerial, 0);
+    apply_names(
+        w,
+        &[],
+        [StringProp::BridgesFirst, StringProp::BridgesSecond],
+        IntProp::BridgesMore,
+    );
+    apply_notice(w, None);
+    let models = B::models();
+    models.call_stage.set_vec(Vec::new());
+    models.call_tiles.set_vec(Vec::new());
+    models.call_self.set_vec(Vec::new());
+    models.call_people.set_vec(Vec::new());
+    models.call_connections.set_vec(Vec::new());
+    call_video::follow::<B>(w, &[]);
+    stop_elapsed(w);
+    ringtone::stop_if(Tone::Ringback);
+}
+
+fn apply_connections<B: UiBackend>(servers: Option<&[ServerDetails]>) {
+    B::models().call_connections.set_vec(
+        servers
+            .map(call_connection_rows)
+            .unwrap_or_default()
+            .into_iter()
+            .map(Into::into)
+            .collect::<Vec<B::CallConnection>>(),
+    );
 }
 
 fn shown_tiles(active: &ActiveCall) -> impl Iterator<Item = &CallTile> {
@@ -337,24 +317,7 @@ fn apply_stage<B: UiBackend>(
         saturating_i32(active.share_change_cancelled),
     );
     w.set_bool(BoolProp::StageChosen, active.stage_chosen);
-    w.set_string(StringProp::FirstSharer, shown_name(active.shares.first()));
-    w.set_int(IntProp::ShareCount, saturating_i32(active.shares.len()));
-    w.set_string(
-        StringProp::OfferedShare,
-        shown_name(active.offered_share.as_ref()),
-    );
-    apply_share_news(
-        w,
-        active.started_share.as_ref(),
-        StringProp::StartedShare,
-        IntProp::StartedShareSerial,
-    );
-    apply_share_news(
-        w,
-        active.ended_share.as_ref(),
-        StringProp::EndedShare,
-        IntProp::EndedShareSerial,
-    );
+    apply_shares(w, active);
     apply_names(
         w,
         &active.bridges,
@@ -371,7 +334,7 @@ fn apply_stage<B: UiBackend>(
     }
     let models = B::models();
     let convert = |tile: &CallTile| {
-        let mut row = B::convert_call_tile(tile);
+        let mut row = B::CallTile::from(call_tile_to_dto(tile));
         call_video::show_last::<B>(&mut row);
         if let Some(face) = face_of(tile.avatar_mxc.as_deref(), media) {
             row.set_avatar(face);
@@ -408,14 +371,35 @@ fn apply_stage<B: UiBackend>(
     call_video::follow::<B>(w, &feeds);
 }
 
-fn shown_name(who: Option<&NamedUser>) -> SharedString {
-    who.map_or_else(SharedString::new, |who| SharedString::from(who.shown()))
+fn apply_shares(w: &impl UiProps, active: &ActiveCall) {
+    w.set_text(StringProp::FirstSharer, shown_name(active.shares.first()));
+    w.set_int(IntProp::ShareCount, saturating_i32(active.shares.len()));
+    w.set_text(
+        StringProp::OfferedShare,
+        shown_name(active.offered_share.as_ref()),
+    );
+    apply_share_news(
+        w,
+        active.started_share.as_ref(),
+        StringProp::StartedShare,
+        IntProp::StartedShareSerial,
+    );
+    apply_share_news(
+        w,
+        active.ended_share.as_ref(),
+        StringProp::EndedShare,
+        IntProp::EndedShareSerial,
+    );
+}
+
+fn shown_name(who: Option<&NamedUser>) -> String {
+    who.map(NamedUser::shown).unwrap_or_default()
 }
 
 fn apply_hands(w: &impl UiProps, active: &ActiveCall) {
     w.set_call_hand(active.hand);
     w.set_int(IntProp::HandsRaised, saturating_i32(active.hands_raised));
-    w.set_string(
+    w.set_text(
         StringProp::HandNews,
         shown_name(active.hand_news.as_ref().map(|news| &news.who)),
     );
@@ -431,21 +415,17 @@ fn apply_hands(w: &impl UiProps, active: &ActiveCall) {
 fn apply_reactions(w: &impl UiProps, active: &ActiveCall) {
     w.set_call_reaction(active.reaction);
     let news = active.reaction_news.as_ref();
-    w.set_string(
+    w.set_text(
         StringProp::ReactionNews,
         shown_name(news.map(|news| &news.who)),
     );
-    w.set_string(
+    w.set_text(
         StringProp::ReactionNewsEmoji,
-        news.map_or_else(SharedString::new, |news| {
-            SharedString::from(news.reaction.emoji.as_str())
-        }),
+        news.map_or("", |news| news.reaction.emoji.as_str()),
     );
-    w.set_string(
+    w.set_text(
         StringProp::ReactionNewsName,
-        news.map_or_else(SharedString::new, |news| {
-            SharedString::from(news.reaction.name.as_str())
-        }),
+        news.map_or("", |news| news.reaction.name.as_str()),
     );
     w.set_int(
         IntProp::ReactionNewsSerial,
@@ -454,7 +434,7 @@ fn apply_reactions(w: &impl UiProps, active: &ActiveCall) {
 }
 
 fn apply_share_news(w: &impl UiProps, news: Option<&ShareNews>, who: StringProp, serial: IntProp) {
-    w.set_string(who, shown_name(news.map(|news| &news.who)));
+    w.set_text(who, shown_name(news.map(|news| &news.who)));
     w.set_int(serial, news.map_or(0, |news| saturating_i32(news.serial)));
 }
 
@@ -480,7 +460,11 @@ fn apply_device_rows<B: UiBackend>(
             continue;
         }
         let rows: Vec<B::CallDevice> = options.map_or_else(Vec::new, |options| {
-            options.iter().map(B::convert_call_device).collect()
+            options
+                .iter()
+                .map(call_device_to_dto)
+                .map(B::CallDevice::from)
+                .collect()
         });
         device_model::<B>(&models, kind).set_vec(rows);
     }
@@ -499,16 +483,13 @@ fn apply_device_rows<B: UiBackend>(
 }
 
 fn chosen_index(devices: Option<&CallDevices>, kind: DeviceKind) -> i32 {
-    devices
-        .and_then(|devices| {
-            devices
-                .options
-                .of(kind)
-                .iter()
-                .position(|option| option.chosen)
-        })
-        .and_then(|index| i32::try_from(index).ok())
-        .unwrap_or(-1)
+    row_index(devices.and_then(|devices| {
+        devices
+            .options
+            .of(kind)
+            .iter()
+            .position(|option| option.chosen)
+    }))
 }
 
 fn apply_device_news(w: &impl UiProps, news: Option<&DeviceNews>) {
@@ -518,7 +499,7 @@ fn apply_device_news(w: &impl UiProps, news: Option<&DeviceNews>) {
     };
     w.set_device_news_kind(news.kind);
     w.set_device_news_trouble(news.trouble);
-    w.set_string(StringProp::DeviceNewsName, SharedString::from(&news.name));
+    w.set_text(StringProp::DeviceNewsName, &news.name);
     w.set_int(IntProp::DeviceNewsSerial, saturating_i32(news.serial));
 }
 
@@ -541,7 +522,7 @@ fn apply_people<B: UiBackend>(
     let rows: Vec<B::CallPerson> = people
         .iter()
         .map(|person| {
-            let mut row = B::convert_call_person(person);
+            let mut row = B::CallPerson::from(call_person_to_dto(person));
             if let Some(face) = face_of(person.avatar_mxc.as_deref(), media) {
                 row.set_avatar(face);
                 row.set_has_avatar(true);
@@ -556,7 +537,7 @@ fn apply_here_faces<B: UiBackend>(faces: &[CallFace], media: &dyn MediaCache) {
     let rows: Vec<B::CallPerson> = faces
         .iter()
         .map(|face| {
-            let mut row = B::convert_call_face(face);
+            let mut row = B::CallPerson::from(call_face_to_dto(face));
             if let Some(image) = face_of(face.avatar_mxc.as_deref(), media) {
                 row.set_avatar(image);
                 row.set_has_avatar(true);
@@ -643,13 +624,8 @@ fn apply_names(
     [first, second]: [StringProp; 2],
     more: IntProp,
 ) {
-    let shown = |index: usize| {
-        names
-            .get(index)
-            .map_or_else(SharedString::new, |name| SharedString::from(name.shown()))
-    };
-    w.set_string(first, shown(0));
-    w.set_string(second, shown(1));
+    w.set_text(first, shown_name(names.first()));
+    w.set_text(second, shown_name(names.get(1)));
     w.set_int(more, saturating_i32(names.len().saturating_sub(2)));
 }
 
@@ -679,12 +655,12 @@ fn follow_elapsed<W: UiProps + ComponentHandle + 'static>(w: &W, since_ms: Optio
         stop_elapsed(w);
         return;
     };
-    w.set_string(StringProp::CallElapsed, elapsed_label(since_ms));
+    w.set_text(StringProp::CallElapsed, elapsed_label(since_ms));
     let weak = w.as_weak();
     let timer = Timer::default();
     timer.start(TimerMode::Repeated, ELAPSED_TICK, move || {
         if let Some(w) = weak.upgrade() {
-            w.set_string(StringProp::CallElapsed, elapsed_label(since_ms));
+            w.set_text(StringProp::CallElapsed, elapsed_label(since_ms));
         }
     });
     ELAPSED.with(|cell| *cell.borrow_mut() = Some(timer));
@@ -695,16 +671,9 @@ fn stop_elapsed(w: &impl UiProps) {
     w.set_string(StringProp::CallElapsed, SharedString::new());
 }
 
-fn elapsed_label(since_ms: u64) -> SharedString {
-    let seconds = unix_now_ms().saturating_sub(since_ms) / MILLIS_PER_SECOND;
-    let hours = seconds / SECONDS_PER_HOUR;
-    let minutes = seconds % SECONDS_PER_HOUR / SECONDS_PER_MINUTE;
-    let seconds = seconds % SECONDS_PER_MINUTE;
-    SharedString::from(if hours > 0 {
-        format!("{hours}:{minutes:02}:{seconds:02}")
-    } else {
-        format!("{minutes}:{seconds:02}")
-    })
+fn elapsed_label(since_ms: u64) -> String {
+    let elapsed = Duration::from_millis(unix_now_ms().saturating_sub(since_ms));
+    duration_label(elapsed)
 }
 
 fn apply_here<B: UiBackend>(w: &B::Window, here: Option<&RoomCallSummary>, media: &dyn MediaCache) {
@@ -717,10 +686,7 @@ fn apply_here<B: UiBackend>(w: &B::Window, here: Option<&RoomCallSummary>, media
         return;
     };
     apply_here_faces::<B>(&here.faces, media);
-    w.set_string(
-        StringProp::HereRoomId,
-        SharedString::from(here.room_id.as_ref()),
-    );
+    w.set_text(StringProp::HereRoomId, here.room_id.as_ref());
     w.set_int(IntProp::HerePeople, saturating_i32(here.people));
     w.set_bool(BoolProp::HereVideo, here.video);
     w.set_bool(BoolProp::HereJoined, here.joined_by_you);
@@ -770,22 +736,10 @@ fn stop_ringing(w: &impl UiProps, last: Option<&RingView>, notifier: &dyn Notifi
 }
 
 fn show_card(w: &impl UiProps, ring: &RingView) {
-    w.set_string(
-        StringProp::RingRoomId,
-        SharedString::from(ring.room_id.as_ref()),
-    );
-    w.set_string(
-        StringProp::RingRoomName,
-        SharedString::from(&ring.room_name),
-    );
-    w.set_string(
-        StringProp::RingCaller,
-        SharedString::from(ring.caller.shown()),
-    );
-    w.set_string(
-        StringProp::RingInitial,
-        SharedString::from(avatar_initials(&ring.room_name)),
-    );
+    w.set_text(StringProp::RingRoomId, ring.room_id.as_ref());
+    w.set_text(StringProp::RingRoomName, &ring.room_name);
+    w.set_text(StringProp::RingCaller, ring.caller.shown());
+    w.set_text(StringProp::RingInitial, avatar_initials(&ring.room_name));
     w.set_int(
         IntProp::RingColorIndex,
         avatar_color_index(ring.room_id.as_ref()),

@@ -8,10 +8,10 @@ use super::backend::UiBackend;
 use super::decode::{ShownAvatar, forget_all_media_needs};
 use super::dto::{
     INVITED_HEADING_ROW, INVITES_HEADING_ROW, PackGrid, PackRowDto, ROOMS_HEADING_ROW, RoomRowKind,
-    SPACES_HEADING_ROW, prefetch_space_avatar, record_invite_avatar_need,
-    record_removal_avatar_need, record_room_avatar_need, request_invitee_avatar,
-    request_member_avatar, request_mention_avatar, request_reader_avatar,
-    request_space_child_avatar, request_space_match_avatar,
+    SPACES_HEADING_ROW, heading_to_dto, invite_to_dto, prefetch_space_avatar,
+    record_invite_avatar_need, record_removal_avatar_need, record_room_avatar_need, removal_to_dto,
+    request_invitee_avatar, request_member_avatar, request_mention_avatar, request_reader_avatar,
+    request_space_child_avatar, request_space_match_avatar, room_to_dto, space_match_to_dto,
 };
 use super::fields::RoomFields;
 use super::richtext::forget_styled_bodies;
@@ -659,11 +659,13 @@ impl ListedRow<'_> {
 
     fn to_row<B: UiBackend>(self, media: &dyn MediaCache) -> B::Room {
         match self {
-            Self::Invite(invite) => B::convert_invite(invite, media),
-            Self::Room(room) => B::convert_room(room, media),
-            Self::Removal(removal) => B::convert_removal(removal, media),
-            Self::Heading(heading) => B::heading(heading.id(), heading.kind(), heading.invites()),
-            Self::Space(space) => B::convert_space_match(space, media),
+            Self::Invite(invite) => invite_to_dto(invite, media).into(),
+            Self::Room(room) => room_to_dto(room, media).into(),
+            Self::Removal(removal) => removal_to_dto(removal, media).into(),
+            Self::Heading(heading) => {
+                heading_to_dto(heading.id(), heading.kind(), heading.invites()).into()
+            }
+            Self::Space(space) => space_match_to_dto(space, media).into(),
         }
     }
 }

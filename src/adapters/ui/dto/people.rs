@@ -149,10 +149,7 @@ fn invitee_avatar_path(row: &InviteeRow, media: &dyn MediaCache) -> Option<PathB
 pub fn user_device_to_dto(device: &UserDevice) -> UserDeviceDto {
     UserDeviceDto {
         device_id: SharedString::from(device.device_id.as_str()),
-        name: device
-            .name
-            .as_deref()
-            .map_or_else(SharedString::new, SharedString::from),
+        name: SharedString::from(device.name.as_deref().unwrap_or_default()),
         trust: device.trust,
         last_seen: SharedString::new(),
         ip: SharedString::new(),
@@ -162,18 +159,12 @@ pub fn user_device_to_dto(device: &UserDevice) -> UserDeviceDto {
 pub fn own_session_to_dto(session: &OwnSession) -> UserDeviceDto {
     UserDeviceDto {
         device_id: SharedString::from(session.device_id.as_str()),
-        name: session
-            .name
-            .as_deref()
-            .map_or_else(SharedString::new, SharedString::from),
+        name: SharedString::from(session.name.as_deref().unwrap_or_default()),
         trust: session.trust,
         last_seen: session.last_seen_ms.map_or_else(SharedString::new, |at| {
             SharedString::from(room_activity_label(at))
         }),
-        ip: session
-            .last_seen_ip
-            .as_deref()
-            .map_or_else(SharedString::new, SharedString::from),
+        ip: SharedString::from(session.last_seen_ip.as_deref().unwrap_or_default()),
     }
 }
 

@@ -2,6 +2,7 @@ use slint::SharedString;
 
 use crate::adapters::ui::backend::{UiBackend, UiEventContext};
 use crate::adapters::ui::decode::{AvatarSlot, load_avatar_async};
+use crate::adapters::ui::dto::own_session_to_dto;
 use crate::adapters::ui::present::{VerifyStep, user_initial, verification_cancellation};
 use crate::adapters::ui::props::{BoolProp, ImageProp, IntProp, MessageProp, StringProp, UiProps};
 use crate::adapters::ui::richtext::recognise_own_user;
@@ -51,18 +52,12 @@ pub(super) fn apply_lifecycle(
         w.set_login_method_kind(*method);
     }
     if last.is_none_or(|l| l.resolved_homeserver != *resolved_homeserver) {
-        w.set_string(
-            StringProp::ResolvedHomeserver,
-            SharedString::from(resolved_homeserver),
-        );
+        w.set_text(StringProp::ResolvedHomeserver, resolved_homeserver);
     }
     if last.is_none_or(|l| l.user_id != *user_id) {
         recognise_own_user(user_id);
-        w.set_string(StringProp::UserId, SharedString::from(user_id));
-        w.set_string(
-            StringProp::UserInitial,
-            SharedString::from(user_initial(user_id)),
-        );
+        w.set_text(StringProp::UserId, user_id);
+        w.set_text(StringProp::UserInitial, user_initial(user_id));
     }
     if last.is_none_or(|l| l.avatar_path != *avatar_path) {
         let avatar = load_avatar_async(avatar_path.as_deref(), AvatarSlot::User);
@@ -96,10 +91,7 @@ pub(super) fn apply_encryption(
     } else {
         ""
     };
-    w.set_string(
-        StringProp::EncryptionRecoveryKey,
-        SharedString::from(shown_key),
-    );
+    w.set_text(StringProp::EncryptionRecoveryKey, shown_key);
     let (key_file, keys_count, keys_total) = match &dialog.step {
         EncryptionStep::ExportingKeys(file) | EncryptionStep::ImportingKeys(file) => {
             (file.as_str(), 0, 0)
@@ -108,7 +100,7 @@ pub(super) fn apply_encryption(
         EncryptionStep::KeysImported { imported, total } => ("", *imported, *total),
         _ => ("", 0, 0),
     };
-    w.set_string(StringProp::EncryptionKeyFile, SharedString::from(key_file));
+    w.set_text(StringProp::EncryptionKeyFile, key_file);
     w.set_int(IntProp::EncryptionKeysCount, saturating_i32(keys_count));
     w.set_int(IntProp::EncryptionKeysTotal, saturating_i32(keys_total));
     let closed_prompt = AuthPrompt::default();
@@ -136,12 +128,9 @@ pub(super) fn apply_account<B: UiBackend>(
     w.set_bool(BoolProp::AccountVisible, view.dialog.is_some());
     w.set_account_step(&dialog.step);
     w.set_account_activity(dialog.activity);
-    w.set_string(
+    w.set_text(
         StringProp::AccountBusySession,
-        dialog
-            .busy_session
-            .as_deref()
-            .map_or_else(SharedString::new, SharedString::from),
+        dialog.busy_session.as_deref().unwrap_or_default(),
     );
     w.set_message(MessageProp::AccountError, &dialog.error);
     w.set_message(MessageProp::AccountNotice, &dialog.notice);
@@ -153,10 +142,7 @@ pub(super) fn apply_account<B: UiBackend>(
     w.set_account_auth_stage(auth.prompt.stage);
     w.set_message(MessageProp::AccountAuthError, &auth.prompt.error);
     w.set_account_auth_for(auth.guarding);
-    w.set_string(
-        StringProp::AccountAuthSubject,
-        SharedString::from(&auth.subject),
-    );
+    w.set_text(StringProp::AccountAuthSubject, &auth.subject);
     if last_dialog.is_none_or(|last| last.sessions != dialog.sessions) {
         apply_own_sessions::<B>(w, dialog.sessions.as_ref(), ctx);
     }
@@ -172,26 +158,24 @@ fn apply_own_sessions<B: UiBackend>(
 ) {
     w.set_bool(BoolProp::AccountSessionsKnown, sessions.is_some());
     let this = sessions.map(|sessions| &sessions.this);
-    w.set_string(
+    w.set_text(
         StringProp::AccountThisDeviceId,
-        this.map_or_else(SharedString::new, |this| {
-            SharedString::from(this.device_id.as_str())
-        }),
+        this.map_or("", |this| this.device_id.as_str()),
     );
-    w.set_string(
+    w.set_text(
         StringProp::AccountThisName,
         this.and_then(|this| this.name.as_deref())
-            .map_or_else(SharedString::new, SharedString::from),
+            .unwrap_or_default(),
     );
-    w.set_string(
+    w.set_text(
         StringProp::AccountThisKey,
-        this.and_then(ThisSession::fingerprint)
-            .map_or_else(SharedString::new, SharedString::from),
+        this.and_then(ThisSession::fingerprint).unwrap_or_default(),
     );
     let rows = sessions
         .iter()
         .flat_map(|sessions| sessions.others.iter())
-        .map(B::convert_own_session)
+        .map(own_session_to_dto)
+        .map(B::UserDevice::from)
         .collect::<Vec<_>>();
     ctx.models.account_sessions.set_vec(rows);
 }
@@ -221,9 +205,9 @@ fn apply_account_facts(w: &impl UiProps, facts: Option<&AccountFacts>) {
         BoolProp::AccountForgetsRooms,
         capabilities.forget_forced_upon_leave,
     );
-    w.set_string(
+    w.set_text(
         StringProp::AccountDefaultRoomVersion,
-        SharedString::from(&capabilities.default_room_version),
+        &capabilities.default_room_version,
     );
 }
 
@@ -281,7 +265,7 @@ fn apply_verification_flow(w: &impl UiProps, event: &DomainVerificationEvent) {
 fn open_verification(w: &impl UiProps, step: VerifyStep, sender: &str, is_self: bool) {
     w.set_bool(BoolProp::VerificationVisible, true);
     w.set_verification_phase(step);
-    w.set_string(StringProp::VerificationSender, SharedString::from(sender));
+    w.set_text(StringProp::VerificationSender, sender);
     w.set_bool(BoolProp::VerificationIsSelf, is_self);
     w.set_message(MessageProp::VerificationError, &UserMessage::default());
 }

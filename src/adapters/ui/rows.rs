@@ -2,6 +2,13 @@ use std::collections::HashSet;
 
 use slint::Model;
 
+pub const NO_ROW: i32 = -1;
+
+pub fn row_index(row: Option<usize>) -> i32 {
+    row.and_then(|row| i32::try_from(row).ok())
+        .unwrap_or(NO_ROW)
+}
+
 pub fn patch_rows_by_id<T: Clone + 'static>(
     model: &impl Model<Data = T>,
     ids: &HashSet<&str>,

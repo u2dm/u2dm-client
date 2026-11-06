@@ -122,10 +122,7 @@ pub fn call_tile_to_dto(tile: &CallTile) -> CallTileDto {
         hand: hand_position(tile.hand),
         reaction: reaction_emoji(tile.reaction.as_ref()),
         reaction_name: reaction_name(tile.reaction.as_ref()),
-        feed: tile
-            .video
-            .as_ref()
-            .map_or_else(SharedString::new, |feed| SharedString::from(feed.as_ref())),
+        feed: SharedString::from(tile.video.as_ref().map_or("", |feed| feed.as_ref())),
         has_frame: false,
         frame: None,
         source_width: 0,
@@ -140,15 +137,11 @@ fn hand_position(hand: Option<usize>) -> i32 {
 }
 
 fn reaction_emoji(reaction: Option<&CallReaction>) -> SharedString {
-    reaction.map_or_else(SharedString::new, |reaction| {
-        SharedString::from(reaction.emoji.as_str())
-    })
+    SharedString::from(reaction.map_or("", |reaction| reaction.emoji.as_str()))
 }
 
 fn reaction_name(reaction: Option<&CallReaction>) -> SharedString {
-    reaction.map_or_else(SharedString::new, |reaction| {
-        SharedString::from(reaction.name.as_str())
-    })
+    SharedString::from(reaction.map_or("", |reaction| reaction.name.as_str()))
 }
 
 pub fn call_person_to_dto(person: &CallPerson) -> CallPersonDto {
@@ -156,13 +149,6 @@ pub fn call_person_to_dto(person: &CallPerson) -> CallPersonDto {
         key: person.tile.as_ref().map_or_else(SharedString::new, |tile| {
             SharedString::from(tile.to_string())
         }),
-        user_id: SharedString::from(person.user.user_id.as_str()),
-        name: SharedString::from(person.user.shown()),
-        initial: SharedString::from(name_initials(&person.user.name, &person.user.user_id)),
-        color_index: avatar_color_index(&person.user.user_id),
-        has_avatar: false,
-        avatar: None,
-        you: person.you,
         devices: saturating_i32(person.devices),
         muted: person.muted,
         muted_for_you: person.muted_for_you,
@@ -173,19 +159,24 @@ pub fn call_person_to_dto(person: &CallPerson) -> CallPersonDto {
         sees_no_video: person.sees_no_video,
         exposes_e2ee: person.exposes_e2ee,
         state: call_tile_mark(person.state),
+        ..face_dto(&person.user, person.you)
     }
 }
 
 pub fn call_face_to_dto(face: &CallFace) -> CallPersonDto {
+    face_dto(&face.user, face.you)
+}
+
+fn face_dto(user: &NamedUser, you: bool) -> CallPersonDto {
     CallPersonDto {
         key: SharedString::new(),
-        user_id: SharedString::from(face.user.user_id.as_str()),
-        name: SharedString::from(face.user.shown()),
-        initial: SharedString::from(name_initials(&face.user.name, &face.user.user_id)),
-        color_index: avatar_color_index(&face.user.user_id),
+        user_id: SharedString::from(user.user_id.as_str()),
+        name: SharedString::from(user.shown()),
+        initial: SharedString::from(name_initials(&user.name, &user.user_id)),
+        color_index: avatar_color_index(&user.user_id),
         has_avatar: false,
         avatar: None,
-        you: face.you,
+        you,
         devices: 0,
         muted: false,
         muted_for_you: false,
@@ -199,8 +190,10 @@ pub fn call_face_to_dto(face: &CallFace) -> CallPersonDto {
     }
 }
 
+const UNKNOWN_FIGURE: i32 = -1;
+
 pub fn call_connection_rows(servers: &[ServerDetails]) -> Vec<CallConnectionDto> {
-    let known = |value: Option<u32>| value.map_or(-1, saturating_i32);
+    let known = |value: Option<u32>| value.map_or(UNKNOWN_FIGURE, saturating_i32);
     let mut rows = Vec::new();
     for server in servers {
         rows.push(CallConnectionDto {
@@ -241,24 +234,19 @@ fn video_row(
         host: SharedString::from(&server.host),
         publishing: server.publishing,
         state: server.state,
-        sent_kbps: -1,
-        received_kbps: -1,
-        loss_permille: -1,
-        round_trip_ms: -1,
+        sent_kbps: UNKNOWN_FIGURE,
+        received_kbps: UNKNOWN_FIGURE,
+        loss_permille: UNKNOWN_FIGURE,
+        round_trip_ms: UNKNOWN_FIGURE,
         width: saturating_i32(size.width),
         height: saturating_i32(size.height),
-        name: sender.map_or_else(SharedString::new, |sender| {
-            SharedString::from(sender.shown())
-        }),
+        name: SharedString::from(sender.map(NamedUser::shown).unwrap_or_default()),
     }
 }
 
 pub fn call_device_to_dto(option: &DeviceOption) -> CallDeviceDto {
     CallDeviceDto {
-        key: option
-            .key
-            .as_ref()
-            .map_or_else(SharedString::new, |key| SharedString::from(key.as_ref())),
+        key: SharedString::from(option.key.as_ref().map_or("", |key| key.as_ref())),
         name: SharedString::from(&option.name),
         status: option.status,
         chosen: option.chosen,

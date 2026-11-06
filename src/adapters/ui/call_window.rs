@@ -13,7 +13,7 @@ use slint::winit_030::winit::platform::startup_notify::WindowExtStartupNotify;
 use slint::{CloseRequestResponse, ComponentHandle, Timer, Window};
 
 use super::activation::raise;
-use super::backend::UiBackend;
+use super::backend::{UiBackend, on_main};
 use super::call_video::{self, Host};
 use super::props::{BoolProp, IntProp, UiProps};
 use super::router;
@@ -89,10 +89,6 @@ pub fn keep(window: Option<Opened>) -> Option<Opened> {
 pub fn hooks<B: UiBackend>(main: &B::Window, host: Host) -> WindowHooks {
     let seeing = main.as_weak();
     let showing = main.as_weak();
-    let opening = main.as_weak();
-    let closing = main.as_weak();
-    let chatting = main.as_weak();
-    let raising = main.as_weak();
     WindowHooks {
         call_tile_seen: Box::new(move |feed, width, height, shown| {
             if let Some(main) = seeing.upgrade()
@@ -118,26 +114,10 @@ pub fn hooks<B: UiBackend>(main: &B::Window, host: Host) -> WindowHooks {
                 watch(host, Watch::Connections, on);
             }
         }),
-        show_call_window: Box::new(move || {
-            if let Some(main) = opening.upgrade() {
-                show::<B>(&main);
-            }
-        }),
-        close_call_window: Box::new(move || {
-            if let Some(main) = closing.upgrade() {
-                close::<B>(&main);
-            }
-        }),
-        show_call_chat: Box::new(move || {
-            if let Some(main) = chatting.upgrade() {
-                show_call_chat::<B>(&main);
-            }
-        }),
-        show_main_window: Box::new(move || {
-            if let Some(main) = raising.upgrade() {
-                raise_main::<B>(&main);
-            }
-        }),
+        show_call_window: Box::new(on_main::<B>(main, show::<B>)),
+        close_call_window: Box::new(on_main::<B>(main, close::<B>)),
+        show_call_chat: Box::new(on_main::<B>(main, show_call_chat::<B>)),
+        show_main_window: Box::new(on_main::<B>(main, raise_main::<B>)),
     }
 }
 
@@ -230,8 +210,7 @@ pub fn take_token<B: UiBackend>(event: &WindowEvent, main: &slint::Weak<B::Windo
 
 fn show_call_chat<B: UiBackend>(main: &B::Window) {
     raise_main::<B>(main);
-    let asks = main.get_int(IntProp::CallChatAsks).wrapping_add(1);
-    main.set_int(IntProp::CallChatAsks, asks);
+    main.bump(IntProp::CallChatAsks);
     main.window().request_redraw();
 }
 

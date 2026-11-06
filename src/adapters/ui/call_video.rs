@@ -256,19 +256,16 @@ fn settle_with<B: UiBackend>(window: &B::Window, change: impl FnOnce(&mut Feeds)
     }
 }
 
+fn shown_feed<R>(feed: &str, read: impl FnOnce(&Shown) -> Option<R>) -> Option<R> {
+    FEEDS.with(|cell| cell.borrow().shown.get(&FeedId::new(feed)).and_then(read))
+}
+
 pub fn last_frame(feed: &str) -> Option<Image> {
-    FEEDS.with(|cell| {
-        cell.borrow()
-            .shown
-            .get(&FeedId::new(feed))
-            .and_then(|shown| shown.frame.clone())
-    })
+    shown_feed(feed, |shown| shown.frame.clone())
 }
 
 pub fn show_last<B: UiBackend>(tile: &mut B::CallTile) {
-    let last = FEEDS.with(|cell| {
-        let state = cell.borrow();
-        let shown = state.shown.get(&FeedId::new(tile.feed()))?;
+    let last = shown_feed(tile.feed(), |shown| {
         Some((shown.frame.clone()?, shown.source))
     });
     if let Some((frame, source)) = last {
@@ -285,22 +282,12 @@ fn put_source<B: UiBackend>(tile: &mut B::CallTile, source: FrameSize) {
 
 #[cfg(feature = "demo")]
 pub fn frames_of(feed: &str) -> u64 {
-    FEEDS.with(|cell| {
-        cell.borrow()
-            .shown
-            .get(&FeedId::new(feed))
-            .map_or(0, |entry| entry.frames)
-    })
+    shown_feed(feed, |entry| Some(entry.frames)).unwrap_or(0)
 }
 
 #[cfg(feature = "demo")]
 pub fn wanted_of(feed: &str) -> Option<FrameSize> {
-    FEEDS.with(|cell| {
-        cell.borrow()
-            .shown
-            .get(&FeedId::new(feed))
-            .map(|entry| entry.wanted)
-    })
+    shown_feed(feed, |entry| Some(entry.wanted))
 }
 
 #[cfg(feature = "demo")]

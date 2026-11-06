@@ -98,23 +98,12 @@ pub fn pack_needle(query: &str) -> String {
 }
 
 pub fn pack_grid(packs: &[ImagePack], browse: &PackBrowse, media: &dyn MediaCache) -> PackGrid {
-    match browse.surface {
-        PackSurface::StickerGrid => sectioned_grid(
-            packs,
-            &browse.needle,
-            ImageUsage::offers_sticker,
-            browse.columns,
-            media,
-        ),
-        PackSurface::EmoteGrid => sectioned_grid(
-            packs,
-            &browse.needle,
-            ImageUsage::offers_emoticon,
-            browse.columns,
-            media,
-        ),
-        PackSurface::EmoteSuggestions => suggestion_list(packs, &browse.needle, media),
-    }
+    let offered = match browse.surface {
+        PackSurface::StickerGrid => ImageUsage::offers_sticker,
+        PackSurface::EmoteGrid => ImageUsage::offers_emoticon,
+        PackSurface::EmoteSuggestions => return suggestion_list(packs, &browse.needle, media),
+    };
+    sectioned_grid(packs, &browse.needle, offered, browse.columns, media)
 }
 
 fn sectioned_grid(

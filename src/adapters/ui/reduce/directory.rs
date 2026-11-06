@@ -6,6 +6,7 @@ use super::{
     publish_selected_room_row, refresh_selected_room_avatar, run_change_handlers_next_frame,
 };
 use crate::adapters::ui::backend::{UiBackend, UiEventContext};
+use crate::adapters::ui::dto::{space_child_to_dto, space_to_dto};
 use crate::adapters::ui::fields::{SpaceChildFields, SpaceFields};
 use crate::adapters::ui::props::{BoolProp, IntProp, StringProp, UiProps};
 use crate::adapters::ui::reconcile::{RoomListing, apply_rooms, apply_rows, rows_to_redo};
@@ -18,7 +19,7 @@ pub(super) fn apply_room_menu(w: &(impl UiProps + ComponentHandle), menu: Option
         run_change_handlers_next_frame(w);
         return;
     };
-    w.set_string(StringProp::RoomMenuName, SharedString::from(&menu.name));
+    w.set_text(StringProp::RoomMenuName, &menu.name);
     w.set_bool(BoolProp::RoomMenuUnread, menu.unread);
     w.set_room_menu_notify(menu.notify);
     w.set_bool(BoolProp::RoomMenuNotifyBusy, menu.notify_busy);
@@ -27,10 +28,7 @@ pub(super) fn apply_room_menu(w: &(impl UiProps + ComponentHandle), menu: Option
     w.set_bool(BoolProp::RoomMenuIsSpace, menu.is_space);
     w.set_bool(BoolProp::RoomMenuMayAddChildren, menu.may_add_children);
     w.set_bool(BoolProp::RoomMenuHasCall, menu.has_call);
-    w.set_string(
-        StringProp::RoomMenuRoomId,
-        SharedString::from(menu.room_id.as_ref()),
-    );
+    w.set_text(StringProp::RoomMenuRoomId, menu.room_id.as_ref());
     run_change_handlers_next_frame(w);
 }
 
@@ -84,7 +82,7 @@ pub(super) fn apply_directory<B: UiBackend>(
                 listed.as_ref(),
                 &[],
                 ctx.media,
-                &|space| B::convert_space(space, ctx.media),
+                &|space| space_to_dto(space, ctx.media).into(),
                 &|entry| entry.id(),
             );
         }
@@ -93,19 +91,13 @@ pub(super) fn apply_directory<B: UiBackend>(
         w.set_room_scope(*scope);
     }
     if last.is_none_or(|l| l.space_id != *space_id) {
-        w.set_string(StringProp::SelectedSpaceId, SharedString::from(space_id));
+        w.set_text(StringProp::SelectedSpaceId, space_id);
     }
     if last.is_none_or(|l| l.space_name != *space_name) {
-        w.set_string(
-            StringProp::SelectedSpaceName,
-            SharedString::from(space_name),
-        );
+        w.set_text(StringProp::SelectedSpaceName, space_name);
     }
     if last.is_none_or(|l| l.subspace_id != *subspace_id) {
-        w.set_string(
-            StringProp::SelectedSubspaceId,
-            SharedString::from(subspace_id),
-        );
+        w.set_text(StringProp::SelectedSubspaceId, subspace_id);
     }
     if last.is_none_or(|l| l.listed_space != *listed_space) {
         apply_listed_space(w, listed_space);
@@ -124,18 +116,12 @@ pub(super) fn apply_directory<B: UiBackend>(
 }
 
 fn apply_listed_space(w: &impl UiProps, listed_space: &SpaceHeading) {
-    w.set_string(
-        StringProp::ListedSpaceName,
-        SharedString::from(&listed_space.name),
-    );
+    w.set_text(StringProp::ListedSpaceName, &listed_space.name);
     w.set_int(
         IntProp::ListedSpaceMembers,
         saturating_i32(listed_space.member_count),
     );
-    w.set_string(
-        StringProp::ListedSpaceId,
-        SharedString::from(&listed_space.id),
-    );
+    w.set_text(StringProp::ListedSpaceId, &listed_space.id);
     w.set_bool(BoolProp::ListedSpaceMayInvite, listed_space.may_invite);
     w.set_bool(
         BoolProp::ListedSpaceMayAddChildren,
@@ -161,7 +147,7 @@ pub(super) fn apply_space_index<B: UiBackend>(
         w.set_space_index_status(*status);
     }
     if last.is_none_or(|l| l.space_name != *space_name) {
-        w.set_string(StringProp::SpaceIndexName, SharedString::from(space_name));
+        w.set_text(StringProp::SpaceIndexName, space_name);
     }
     if last.is_none_or(|l| l.pages_landed != *pages_landed) {
         w.set_int(IntProp::SpaceIndexPagesLanded, *pages_landed);
@@ -174,7 +160,7 @@ pub(super) fn apply_space_index<B: UiBackend>(
             rows.as_ref(),
             previous,
             ctx.media,
-            &|row| B::convert_space_child(row, ctx.media),
+            &|row| space_child_to_dto(row, ctx.media).into(),
             &|entry| entry.id(),
         );
     }

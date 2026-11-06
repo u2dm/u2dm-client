@@ -91,14 +91,14 @@ macro_rules! declare_message_setter {
                     StringProp::$detail
                 })*
             };
-            self.set_string(detail, SharedString::from(&message.detail));
+            self.set_text(detail, &message.detail);
         }
     };
 }
 
 string_props!(prop_enum StringProp;);
 bool_props!(prop_enum BoolProp;);
-int_props!(prop_enum IntProp;);
+int_props!(prop_enum #[derive(Clone, Copy)] IntProp;);
 image_props!(image_prop_enum);
 message_props!(message_prop_enum);
 #[cfg(feature = "demo")]
@@ -130,4 +130,12 @@ pub trait UiProps {
     fn apply_emoji_model(&self, emojis: &[DomainVerificationEmoji]);
     fn clear_emoji_model(&self);
     fn clear_text_inputs(&self);
+
+    fn set_text(&self, prop: StringProp, value: impl Into<SharedString>) {
+        self.set_string(prop, value.into());
+    }
+
+    fn bump(&self, prop: IntProp) {
+        self.set_int(prop, self.get_int(prop).wrapping_add(1));
+    }
 }

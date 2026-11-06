@@ -17,12 +17,8 @@ use super::decode::{
 use super::dto::{
     BodyLineDto, CallConnectionDto, CallDeviceDto, CallPersonDto, CallTileDto, EmojiArt,
     InviteeDto, LogLineDto, MediaFailureKind, MediaState, MemberRowDto, MessageDto, PackBrowse,
-    PackRowDto, PackSurface, PackTabDto, RoomDto, RoomRowKind, RowBody, SpaceChildDto, SpaceDto,
-    ThumbUpdate, UserDeviceDto, call_device_to_dto, call_face_to_dto, call_person_to_dto,
-    call_tile_to_dto, cell_pack, decode_failure_kind, enrich_to_update, heading_to_dto,
-    invite_to_dto, invitee_to_dto, log_line_to_dto, member_row_to_dto, mention_to_dto,
-    message_to_dto, own_session_to_dto, reader_to_dto, removal_to_dto, room_to_dto,
-    space_child_to_dto, space_match_to_dto, space_to_dto, user_device_to_dto,
+    PackRowDto, PackSurface, PackTabDto, RoomDto, RowBody, SpaceChildDto, SpaceDto, ThumbUpdate,
+    UserDeviceDto, cell_pack, decode_failure_kind, enrich_to_update,
 };
 use super::fields::{
     BodyLineFields, BodyPieceFields, CallConnectionFields, CallDeviceFields, CallPersonFields,
@@ -41,7 +37,7 @@ use super::reconcile::{
 };
 use super::reduce::{dispatch_effect, is_latest_adoption, set_pack_browse};
 use super::router::EditedRow;
-use super::rows::{locate_row, patch_first, patch_rows_by_id, patch_rows_where};
+use super::rows::{locate_row, patch_first, patch_rows_by_id, patch_rows_where, row_index};
 use super::schema::model_props;
 use super::session::{begin_session, from_snapshot};
 use super::splice_model::SpliceModel;
@@ -49,20 +45,10 @@ use super::spoilers::reveal_row;
 use super::window_events::install_window_events;
 use super::{call, call_video};
 use crate::commands::effects::Effect;
-use crate::commands::view::{
-    AppViewState, CallFace, CallPerson, CallTile, DeviceOption, InviteeRow, RosterRow,
-    SpaceIndexRow, SpaceMatch,
-};
+use crate::commands::view::AppViewState;
 use crate::config::APP_ID;
-use crate::domain::departure::Removal;
-use crate::domain::invite::Invite;
-use crate::domain::message::TimelineMessage;
-use crate::domain::room::{Room, RoomId, Space};
-use crate::domain::room_info::{Reader, RosterMember};
-use crate::domain::room_log::LogLine;
-use crate::domain::sessions::OwnSession;
+use crate::domain::room::RoomId;
 use crate::domain::timeline::EnrichmentDelta;
-use crate::domain::user_info::UserDevice;
 use crate::ports::call::CallVideoPort;
 use crate::ports::handoff::HandoffPort;
 use crate::ports::media::MediaCache;
@@ -107,86 +93,6 @@ pub trait UiBackend: Sized + 'static {
     fn call_window() -> Option<Self::CallWindow>;
     fn keep_call_window(window: Option<Self::CallWindow>) -> Option<Self::CallWindow>;
     fn notification_text(window: &Self::Window, words: &NoticeWords<'_>) -> SharedString;
-
-    fn convert_message(
-        message: &TimelineMessage,
-        pinned: bool,
-        media: &dyn MediaCache,
-    ) -> Self::Message {
-        message_to_dto(message, pinned, media).into()
-    }
-
-    fn convert_room(room: &Room, media: &dyn MediaCache) -> Self::Room {
-        room_to_dto(room, media).into()
-    }
-
-    fn convert_space_match(space: &SpaceMatch, media: &dyn MediaCache) -> Self::Room {
-        space_match_to_dto(space, media).into()
-    }
-
-    fn convert_invite(invite: &Invite, media: &dyn MediaCache) -> Self::Room {
-        invite_to_dto(invite, media).into()
-    }
-
-    fn convert_removal(removal: &Removal, media: &dyn MediaCache) -> Self::Room {
-        removal_to_dto(removal, media).into()
-    }
-
-    fn heading(id: &str, kind: RoomRowKind, invites: usize) -> Self::Room {
-        heading_to_dto(id, kind, invites).into()
-    }
-
-    fn convert_space(space: &Space, media: &dyn MediaCache) -> Self::Space {
-        space_to_dto(space, media).into()
-    }
-
-    fn convert_space_child(row: &SpaceIndexRow, media: &dyn MediaCache) -> Self::SpaceChild {
-        space_child_to_dto(row, media).into()
-    }
-
-    fn convert_member_row(row: &RosterRow, media: &dyn MediaCache) -> Self::MemberRow {
-        member_row_to_dto(row, media).into()
-    }
-
-    fn convert_reader(reader: &Reader, media: &dyn MediaCache) -> Self::MemberRow {
-        reader_to_dto(reader, media).into()
-    }
-
-    fn convert_mention(member: &RosterMember, media: &dyn MediaCache) -> Self::MemberRow {
-        mention_to_dto(member, media).into()
-    }
-
-    fn convert_invitee(row: &InviteeRow, media: &dyn MediaCache) -> Self::Invitee {
-        invitee_to_dto(row, media).into()
-    }
-
-    fn convert_log_line(line: &LogLine) -> Self::LogLine {
-        log_line_to_dto(line).into()
-    }
-
-    fn convert_call_tile(tile: &CallTile) -> Self::CallTile {
-        call_tile_to_dto(tile).into()
-    }
-
-    fn convert_call_person(person: &CallPerson) -> Self::CallPerson {
-        call_person_to_dto(person).into()
-    }
-
-    fn convert_call_face(face: &CallFace) -> Self::CallPerson {
-        call_face_to_dto(face).into()
-    }
-
-    fn convert_call_device(option: &DeviceOption) -> Self::CallDevice {
-        call_device_to_dto(option).into()
-    }
-
-    fn convert_user_device(device: &UserDevice) -> Self::UserDevice {
-        user_device_to_dto(device).into()
-    }
-
-    fn convert_own_session(session: &OwnSession) -> Self::UserDevice {
-        own_session_to_dto(session).into()
-    }
 
     fn with_timeline<R>(f: impl FnOnce(&SpliceModel<Self::Message>) -> R) -> R {
         f(&Self::models().timeline)
@@ -274,6 +180,32 @@ pub struct UiEventContext<'a, B: UiBackend> {
     pub notifier: &'a dyn NotifierPort,
 }
 
+pub fn in_event_loop<B: UiBackend, T: Send + 'static>(
+    window: &B::Window,
+    what: &'static str,
+    act: fn(&B::Window, T),
+) -> impl Fn(T) + Send + Sync + 'static {
+    let weak = window.as_weak();
+    move |value| {
+        let queued = weak.upgrade_in_event_loop(move |window| act(&window, value));
+        if let Err(e) = queued {
+            tracing::debug!("{what} could not reach the event loop: {e}");
+        }
+    }
+}
+
+pub fn on_main<B: UiBackend>(
+    main: &B::Window,
+    act: impl Fn(&B::Window) + 'static,
+) -> impl Fn() + 'static {
+    let weak = main.as_weak();
+    move || {
+        if let Some(main) = weak.upgrade() {
+            act(&main);
+        }
+    }
+}
+
 fn post_effect<B: UiBackend>(
     weak: &slint::Weak<B::Window>,
     media: Arc<dyn MediaCache>,
@@ -340,12 +272,10 @@ pub fn unread_below<B: UiBackend>(first_unseen_row: i32) -> u32 {
     u32::try_from(below).unwrap_or(u32::MAX)
 }
 
-const NO_ROW: i32 = -1;
-
 pub fn last_editable_row<B: UiBackend>() -> i32 {
-    B::with_timeline(|timeline| timeline.last_position(|entry: &B::Message| entry.text_editable()))
-        .and_then(|row| i32::try_from(row).ok())
-        .unwrap_or(NO_ROW)
+    row_index(B::with_timeline(|timeline| {
+        timeline.last_position(|entry: &B::Message| entry.text_editable())
+    }))
 }
 
 pub const RECENT_SPEAKERS: usize = 12;
@@ -373,9 +303,7 @@ pub fn row_of_message<B: UiBackend>(event_id: &str, local_id: &str) -> i32 {
         (!event_id.is_empty() && entry.event_id() == event_id)
             || (!local_id.is_empty() && entry.local_id() == local_id)
     };
-    B::with_timeline(|timeline| timeline.last_position(names))
-        .and_then(|row| i32::try_from(row).ok())
-        .unwrap_or(NO_ROW)
+    row_index(B::with_timeline(|timeline| timeline.last_position(names)))
 }
 
 pub fn shown_room_log_text() -> String {
@@ -689,66 +617,30 @@ fn group_slots(slots: &[AvatarSlot]) -> AvatarTargets<'_> {
     let mut targets = AvatarTargets::default();
     for slot in slots {
         match slot {
-            AvatarSlot::Message(item) => {
-                targets.messages.insert(item.unique_id());
-            }
-            AvatarSlot::Reactor { item, user_id } => {
-                targets
-                    .reactors_by_message
-                    .entry(item.unique_id())
-                    .or_default()
-                    .insert(user_id.as_str());
-            }
-            AvatarSlot::Room(id) => {
-                targets.rooms.insert(id.as_str());
-            }
-            AvatarSlot::Space(id) => {
-                targets.spaces.insert(id.as_str());
-            }
-            AvatarSlot::SpaceChild(id) => {
-                targets.space_children.insert(id.as_str());
-            }
-            AvatarSlot::Member(user_id) => {
-                targets.members.insert(user_id.as_str());
-            }
-            AvatarSlot::Reader(user_id) => {
-                targets.readers.insert(user_id.as_str());
-            }
-            AvatarSlot::Mention(user_id) => {
-                targets.mentions.insert(user_id.as_str());
-            }
-            AvatarSlot::Invitee(user_id) => {
-                targets.invitees.insert(user_id.as_str());
-            }
-            AvatarSlot::SelectedRoom => {
-                targets.singles.insert(ImageProp::SelectedRoomAvatar);
-            }
-            AvatarSlot::RoomInfo => {
-                targets.singles.insert(ImageProp::RoomInfoAvatar);
-            }
-            AvatarSlot::UserInfo => {
-                targets.singles.insert(ImageProp::UserInfoAvatar);
-            }
-            AvatarSlot::Invite => {
-                targets.singles.insert(ImageProp::InviteAvatar);
-            }
-            AvatarSlot::Removal => {
-                targets.singles.insert(ImageProp::RemovalAvatar);
-            }
-            AvatarSlot::RoomPreview => {
-                targets.singles.insert(ImageProp::RoomPreviewAvatar);
-            }
-            AvatarSlot::Ring => {
-                targets.singles.insert(ImageProp::RingAvatar);
-            }
-            AvatarSlot::CallFace(user_id) => {
-                targets.call_faces.insert(user_id.as_str());
-            }
-            AvatarSlot::User => {
-                targets.singles.insert(ImageProp::UserAvatar);
-            }
+            AvatarSlot::Message(item) => targets.messages.extend([item.unique_id()]),
+            AvatarSlot::Reactor { item, user_id } => targets
+                .reactors_by_message
+                .entry(item.unique_id())
+                .or_default()
+                .extend([user_id.as_str()]),
+            AvatarSlot::Room(id) => targets.rooms.extend([id.as_str()]),
+            AvatarSlot::Space(id) => targets.spaces.extend([id.as_str()]),
+            AvatarSlot::SpaceChild(id) => targets.space_children.extend([id.as_str()]),
+            AvatarSlot::Member(user_id) => targets.members.extend([user_id.as_str()]),
+            AvatarSlot::Reader(user_id) => targets.readers.extend([user_id.as_str()]),
+            AvatarSlot::Mention(user_id) => targets.mentions.extend([user_id.as_str()]),
+            AvatarSlot::Invitee(user_id) => targets.invitees.extend([user_id.as_str()]),
+            AvatarSlot::SelectedRoom => targets.singles.extend([ImageProp::SelectedRoomAvatar]),
+            AvatarSlot::RoomInfo => targets.singles.extend([ImageProp::RoomInfoAvatar]),
+            AvatarSlot::UserInfo => targets.singles.extend([ImageProp::UserInfoAvatar]),
+            AvatarSlot::Invite => targets.singles.extend([ImageProp::InviteAvatar]),
+            AvatarSlot::Removal => targets.singles.extend([ImageProp::RemovalAvatar]),
+            AvatarSlot::RoomPreview => targets.singles.extend([ImageProp::RoomPreviewAvatar]),
+            AvatarSlot::Ring => targets.singles.extend([ImageProp::RingAvatar]),
+            AvatarSlot::CallFace(user_id) => targets.call_faces.extend([user_id.as_str()]),
+            AvatarSlot::User => targets.singles.extend([ImageProp::UserAvatar]),
             AvatarSlot::AttachmentPreview { .. } => {
-                targets.singles.insert(ImageProp::AttachmentPreview);
+                targets.singles.extend([ImageProp::AttachmentPreview]);
             }
             AvatarSlot::Pack(_) => {}
         }

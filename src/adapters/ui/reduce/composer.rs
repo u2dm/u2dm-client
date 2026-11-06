@@ -2,7 +2,7 @@ use slint::SharedString;
 
 use crate::adapters::ui::backend::{UiBackend, UiEventContext};
 use crate::adapters::ui::decode::load_attachment_preview;
-use crate::adapters::ui::dto::preview_line;
+use crate::adapters::ui::dto::{mention_to_dto, preview_line};
 use crate::adapters::ui::emote;
 use crate::adapters::ui::fields::MemberRowFields;
 use crate::adapters::ui::present::{duration_label, file_extension, identity_banner};
@@ -30,12 +30,9 @@ pub(super) fn apply_mentions<B: UiBackend>(
     } = mentions;
 
     if last.is_none_or(|l| l.room_id != *room_id) {
-        w.set_string(
+        w.set_text(
             StringProp::MentionsRoomId,
-            room_id
-                .as_ref()
-                .map(|room| SharedString::from(room.as_ref()))
-                .unwrap_or_default(),
+            room_id.as_ref().map_or("", |room| room.as_ref()),
         );
     }
     if last.is_none_or(|l| l.offers_room != *offers_room) {
@@ -48,7 +45,7 @@ pub(super) fn apply_mentions<B: UiBackend>(
             rows.as_ref(),
             previous,
             ctx.media,
-            &|member| B::convert_mention(member, ctx.media),
+            &|member| mention_to_dto(member, ctx.media).into(),
             &|entry| entry.user_id(),
         );
     }
@@ -81,31 +78,28 @@ pub(super) fn apply_attachment(
     w.set_bool(BoolProp::AttachmentVisible, *visible);
     w.set_attachment_kind(*kind);
     w.set_bool(BoolProp::AttachmentSending, *sending);
-    w.set_string(StringProp::AttachmentFilename, SharedString::from(filename));
-    w.set_string(StringProp::AttachmentMimetype, SharedString::from(mimetype));
-    w.set_string(
+    w.set_text(StringProp::AttachmentFilename, filename);
+    w.set_text(StringProp::AttachmentMimetype, mimetype);
+    w.set_text(
         StringProp::AttachmentExtension,
-        SharedString::from(file_extension(filename).to_uppercase()),
+        file_extension(filename).to_uppercase(),
     );
-    w.set_string(
+    w.set_text(
         StringProp::AttachmentSize,
-        SharedString::from(if *visible {
+        if *visible {
             format_bytes(*size)
         } else {
             String::new()
-        }),
+        },
     );
-    w.set_string(
+    w.set_text(
         StringProp::AttachmentDuration,
-        SharedString::from(duration.map(duration_label).unwrap_or_default()),
+        duration.map(duration_label).unwrap_or_default(),
     );
     w.set_int(IntProp::AttachmentWidth, (*width).cast_signed());
     w.set_int(IntProp::AttachmentHeight, (*height).cast_signed());
     w.set_attachment_error(*error);
-    w.set_string(
-        StringProp::AttachmentErrorDetail,
-        SharedString::from(error_detail),
-    );
+    w.set_text(StringProp::AttachmentErrorDetail, error_detail);
     let preview = load_attachment_preview(*pick, preview_path.as_deref());
     w.set_image(ImageProp::AttachmentPreview, preview);
 }
@@ -134,25 +128,22 @@ pub(super) fn apply_unsent(w: &impl UiProps, unsent: Option<&UnsentMessage>) {
             .and_then(|unsent| unsent.oversize)
             .map_or(0, |oversize| i32::from(oversize.shorten_by())),
     );
-    w.set_string(
+    w.set_text(
         StringProp::UnsentRoomId,
-        SharedString::from(unsent.map_or("", |unsent| unsent.room_id.as_ref())),
+        unsent.map_or("", |unsent| unsent.room_id.as_ref()),
     );
-    w.set_string(
-        StringProp::UnsentBody,
-        SharedString::from(draft.map_or("", Draft::body)),
-    );
-    w.set_string(
+    w.set_text(StringProp::UnsentBody, draft.map_or("", Draft::body));
+    w.set_text(
         StringProp::UnsentReplyEventId,
-        SharedString::from(reply.map_or("", |reply| reply.event_id.as_str())),
+        reply.map_or("", |reply| reply.event_id.as_str()),
     );
-    w.set_string(
+    w.set_text(
         StringProp::UnsentReplySender,
-        SharedString::from(reply.map_or("", |reply| reply.sender.as_str())),
+        reply.map_or("", |reply| reply.sender.as_str()),
     );
-    w.set_string(
+    w.set_text(
         StringProp::UnsentReplyPreview,
-        SharedString::from(reply.map_or("", |reply| reply.preview.as_str())),
+        reply.map_or("", |reply| reply.preview.as_str()),
     );
     apply_unsent_edit(w, edit);
 }
@@ -174,14 +165,8 @@ pub(super) fn apply_composer_banners(
 fn apply_identity_alert(w: &impl UiProps, view: &IdentityAlertView) {
     let banner = identity_banner(view.alert.as_ref());
     w.set_identity_alert_kind(banner.kind);
-    w.set_string(
-        StringProp::IdentityAlertUserId,
-        SharedString::from(banner.user_id),
-    );
-    w.set_string(
-        StringProp::IdentityAlertName,
-        SharedString::from(banner.name),
-    );
+    w.set_text(StringProp::IdentityAlertUserId, banner.user_id);
+    w.set_text(StringProp::IdentityAlertName, banner.name);
     w.set_bool(BoolProp::IdentityAlertBusy, view.busy);
 }
 
@@ -203,19 +188,15 @@ fn apply_unsent_edit(w: &impl UiProps, edit: Option<&MessageEdit>) {
         BoolProp::UnsentEditCaption,
         edit.is_some_and(|edit| edit.kind == EditKind::Caption),
     );
-    w.set_string(
+    w.set_text(
         StringProp::UnsentEditEventId,
-        SharedString::from(
-            edit.and_then(|edit| edit.target.event_id())
-                .unwrap_or_default(),
-        ),
+        edit.and_then(|edit| edit.target.event_id())
+            .unwrap_or_default(),
     );
-    w.set_string(
+    w.set_text(
         StringProp::UnsentEditLocalId,
-        SharedString::from(
-            edit.and_then(|edit| edit.target.local_id())
-                .unwrap_or_default(),
-        ),
+        edit.and_then(|edit| edit.target.local_id())
+            .unwrap_or_default(),
     );
     w.set_string(
         StringProp::UnsentEditPreview,
