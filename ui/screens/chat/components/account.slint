@@ -7,20 +7,16 @@ import { UserDeviceEntry } from "../../../types.slint";
 import { UserMessages } from "../../../messages.slint";
 import { Actions } from "../../../actions.slint";
 import { MetaTip, Reactions } from "../../../local.slint";
-import { AppStyle, Fonts, IconSize, Radius, Space, Stroke, Weight } from "../../../theme.slint";
+import { AppStyle, Fonts, IconSize, Radius, Space, Weight } from "../../../theme.slint";
 import { AppButton, BackButton } from "../../../components/button.slint";
 import { ErrorBanner, NoticeBanner } from "../../../components/banner.slint";
 import { CheckRow } from "../../../components/check-row.slint";
+import { Hairline } from "../../../components/divider.slint";
 import { ModalHost, ScrollingDialogCard } from "../../../components/overlay.slint";
 import { TextField } from "../../../components/text-field.slint";
 import { AuthPrompt } from "./auth-prompt.slint";
-import { DialogNote, Verdict, VerificationHeader } from "./verification.slint";
-
-component SectionLabel inherits Text {
-    font-size: Fonts.caption;
-    font-weight: Weight.semibold;
-    color: AppStyle.foreground-muted;
-}
+import { Verdict, VerificationHeader } from "./verification.slint";
+import { DialogNote, SectionLabel } from "../../../components/text-roles.slint";
 
 component FactLine inherits Text {
     font-size: Fonts.body-small;
@@ -618,10 +614,7 @@ export component AccountDialog inherits ModalHost {
             }
         }
 
-        Rectangle {
-            height: Stroke.hairline;
-            background: AppStyle.overlay-pressed;
-        }
+        Hairline { }
 
         if AccountView.step == AccountStep.overview && AccountView.notice != UserMessageKind.none: NoticeBanner {
             text: UserMessages.text(AccountView.notice, AccountView.notice-detail);

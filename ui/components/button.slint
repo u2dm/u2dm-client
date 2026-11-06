@@ -4,7 +4,7 @@ import { IconDisplay, Icon, IconSet } from "@lucide";
 import { ClickArea } from "./a11y.slint";
 import { AppStyle, Fonts, IconSize, Metrics, Opacity, Radius, Size, Space, Weight } from "../theme.slint";
 import { DotPulse } from "./dot-pulse.slint";
-import { StateLayer } from "./state-layer.slint";
+import { ShadedClickArea, StateLayer } from "./state-layer.slint";
 import { TipSource } from "./tip.slint";
 import { TipScope } from "../local.slint";
 
@@ -189,7 +189,7 @@ export component HeaderIconButton inherits IconButton {
     tint: root.active ? Palette.accent-background : AppStyle.foreground-strong;
 }
 
-export component LinkButton inherits ClickArea {
+export component LinkButton inherits ShadedClickArea {
     in property <string> text;
     in property <color> tint: Palette.accent-background;
     in property <length> font-size: Fonts.body-small;
@@ -197,13 +197,8 @@ export component LinkButton inherits ClickArea {
 
     width: caption.preferred-width + root.pad;
     opacity: root.enabled ? 1 : Opacity.disabled;
-
-    StateLayer {
-        border-radius: root.ring-radius;
-        ink: root.tint;
-        hovered: root.has-hover && root.enabled;
-        pressed: root.pressed && root.enabled;
-    }
+    layer-radius: root.ring-radius;
+    ink: root.tint;
 
     caption := Text {
         text: root.text;

@@ -10,14 +10,9 @@ import { AppStyle, Fonts, Glyph, IconSize, Metrics, Radius, Size, Space, Stroke,
 import { ErrorBanner } from "../../../components/banner.slint";
 import { AppButton, IconButton } from "../../../components/button.slint";
 import { DotPulse } from "../../../components/dot-pulse.slint";
+import { Hairline } from "../../../components/divider.slint";
 import { ModalHost, ScrollingDialogCard } from "../../../components/overlay.slint";
-
-export component DialogNote inherits Text {
-    font-size: Fonts.body-small;
-    horizontal-alignment: center;
-    wrap: word-wrap;
-    color: AppStyle.foreground-muted;
-}
+import { DialogNote } from "../../../components/text-roles.slint";
 
 export component Verdict inherits VerticalLayout {
     in property <Icon> icon;
@@ -260,10 +255,7 @@ export component VerificationDialog inherits ModalHost {
             }
         }
 
-        Rectangle {
-            height: Stroke.hairline;
-            background: AppStyle.overlay-pressed;
-        }
+        Hairline { }
 
         if VerificationView.step == VerificationPhase.requested: VerticalLayout {
             spacing: Space.xl;

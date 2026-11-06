@@ -1,5 +1,6 @@
 import { Palette } from "std-widgets.slint";
 
+import { ClickArea } from "./a11y.slint";
 import { AppStyle, Motion } from "../theme.slint";
 
 export component StateLayer inherits Rectangle {
@@ -13,4 +14,18 @@ export component StateLayer inherits Rectangle {
         duration: Motion.fast;
         easing: ease-out;
     }
+}
+
+export component ShadedClickArea inherits ClickArea {
+    in property <color> ink: Palette.foreground;
+    in property <length> layer-radius: root.border-radius;
+
+    StateLayer {
+        border-radius: root.layer-radius;
+        ink: root.ink;
+        hovered: root.has-hover && root.enabled;
+        pressed: root.pressed && root.enabled;
+    }
+
+    @children
 }

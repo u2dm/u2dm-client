@@ -13,6 +13,7 @@ import { AppStyle, Fonts, Glyph, IconSize, Metrics, Size, Space, Stroke, Weight 
 import { CallKey, CallKeys } from "./call-controls.slint";
 import { CallStage } from "./call-stage.slint";
 import { CallViewWords } from "./call-view-menu.slint";
+import { SharingMark } from "./sharing-mark.slint";
 
 component ShareOffer inherits HorizontalLayout {
     in property <string> name;
@@ -21,12 +22,8 @@ component ShareOffer inherits HorizontalLayout {
 
     spacing: Space.sm;
 
-    IconDisplay {
+    SharingMark {
         cross-axis-self-alignment: center;
-        icon: IconSet.ScreenShare;
-        size: IconSize.sm;
-        stroke: AppStyle.call-sharing;
-        accessible-role: none;
     }
 
     Text {

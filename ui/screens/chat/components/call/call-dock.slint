@@ -1,8 +1,7 @@
 import { IconDisplay, IconSet } from "@lucide";
 
 import { AppButton, IconButton } from "../../../../components/button.slint";
-import { ClickArea } from "../../../../components/a11y.slint";
-import { StateLayer } from "../../../../components/state-layer.slint";
+import { ShadedClickArea } from "../../../../components/state-layer.slint";
 import { CallNotice, CallPhase, CallScreen } from "../../../../enums.slint";
 import { CallWords, UserMessages } from "../../../../messages.slint";
 import { Actions } from "../../../../actions.slint";
@@ -11,9 +10,10 @@ import { CallView, DirectoryView, SpaceIndexView, WindowView } from "../../../..
 import { AppStyle, Fonts, IconSize, Metrics, Motion, Radius, Size, Space, Stroke, Weight } from "../../../../theme.slint";
 import { CallCameraButton, CallHandButton, CallKey, CallLeaveButton, CallMicButton, CallMoreButton, CallReactButton, CallShareButton } from "./call-controls.slint";
 import { CallStatus, ShareStatus } from "./call-status.slint";
+import { SharingMark } from "./sharing-mark.slint";
 import { UnreadDot } from "../unread-dot.slint";
 
-component LineTarget inherits ClickArea {
+component LineTarget inherits ShadedClickArea {
     in property <string> text;
     in property <color> tint;
     in property <int> weight: Weight.regular;
@@ -26,13 +26,8 @@ component LineTarget inherits ClickArea {
     property <length> mark-room: root.marked ? mark.width + Space.sm : 0px;
 
     ring-radius: Radius.sm;
-
-    StateLayer {
-        border-radius: Radius.sm;
-        ink: root.tint;
-        hovered: root.has-hover && root.enabled;
-        pressed: root.pressed && root.enabled;
-    }
+    layer-radius: Radius.sm;
+    ink: root.tint;
 
     words := Text {
         x: Space.xs;
@@ -620,12 +615,8 @@ export component CallDock inherits Rectangle {
         padding-left: Space.sm;
         spacing: Space.md;
 
-        IconDisplay {
+        SharingMark {
             cross-axis-self-alignment: center;
-            icon: IconSet.ScreenShare;
-            size: IconSize.sm;
-            stroke: AppStyle.call-sharing;
-            accessible-role: none;
         }
 
         Text {

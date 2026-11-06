@@ -1,0 +1,14 @@
+import { AppStyle, Stroke } from "../theme.slint";
+
+export component Hairline inherits Rectangle {
+    height: Stroke.hairline;
+    background: AppStyle.overlay-pressed;
+}
+
+export component MenuDivider inherits Rectangle {
+    Rectangle {
+        y: (parent.height - self.height) / 2;
+        height: Stroke.hairline;
+        background: AppStyle.border;
+    }
+}

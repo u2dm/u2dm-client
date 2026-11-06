@@ -5,12 +5,14 @@ import { MenuScroll } from "../../../../components/menu.slint";
 import { ChoiceRow } from "../../../../components/choice-row.slint";
 import { MenuRow } from "../../../../components/menu-row.slint";
 import { PickerCard } from "../../../../components/overlay.slint";
+import { MenuDivider } from "../../../../components/divider.slint";
+import { SectionLabel } from "../../../../components/text-roles.slint";
 import { Actions } from "../../../../actions.slint";
 import { CallDeviceKind } from "../../../../enums.slint";
 import { CallWords } from "../../../../messages.slint";
 import { CallDeviceEntry } from "../../../../types.slint";
 import { CallView } from "../../../../views.slint";
-import { AppStyle, Fonts, IconSize, Metrics, Space, Stroke, Weight } from "../../../../theme.slint";
+import { AppStyle, Fonts, IconSize, Metrics, Space } from "../../../../theme.slint";
 
 component DeviceHeading inherits HorizontalLayout {
     in property <Icon> icon;
@@ -29,12 +31,9 @@ component DeviceHeading inherits HorizontalLayout {
         accessible-role: none;
     }
 
-    Text {
+    SectionLabel {
         horizontal-stretch: 1;
         text: root.text;
-        font-size: Fonts.caption;
-        font-weight: Weight.semibold;
-        color: AppStyle.foreground-muted;
         vertical-alignment: center;
         overflow: elide;
     }
@@ -236,14 +235,8 @@ export component CallDevicesMenu inherits PickerCard {
             }
         }
 
-        if root.in-call: Rectangle {
+        if root.in-call: MenuDivider {
             height: Space.md;
-
-            Rectangle {
-                y: (parent.height - self.height) / 2;
-                height: Stroke.hairline;
-                background: AppStyle.border;
-            }
         }
 
         if root.in-call: MenuRow {

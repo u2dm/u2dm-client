@@ -2,6 +2,7 @@ import { Palette, ScrollView, Spinner } from "std-widgets.slint";
 import { IconDisplay, IconSet, Icon } from "@lucide";
 import { LoginActivity } from "../../enums.slint";
 import { TextField } from "../../components/text-field.slint";
+import { Hairline } from "../../components/divider.slint";
 import { AppStyle, Fonts, IconSize, Metrics, Motion, Radius, Size, Space, Stroke, Tracking, Weight } from "../../theme.slint";
 
 component MatrixBracket inherits Rectangle {
@@ -313,10 +314,7 @@ export component OrDivider inherits HorizontalLayout {
         alignment: center;
         horizontal-stretch: 1;
 
-        Rectangle {
-            height: Stroke.hairline;
-            background: AppStyle.overlay-pressed;
-        }
+        Hairline { }
     }
 
     Text {
@@ -332,9 +330,6 @@ export component OrDivider inherits HorizontalLayout {
         alignment: center;
         horizontal-stretch: 1;
 
-        Rectangle {
-            height: Stroke.hairline;
-            background: AppStyle.overlay-pressed;
-        }
+        Hairline { }
     }
 }

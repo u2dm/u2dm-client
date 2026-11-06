@@ -113,6 +113,7 @@ export global Size {
 export global AppStyle {
     out property <bool> dark: Palette.color-scheme == ColorScheme.dark;
     out property <float> dialog-scrim: root.dark ? Opacity.scrim-strong : Opacity.scrim;
+    out property <color> scrim: Colors.black;
 
     out property <color> canvas: Palette.background;
     out property <color> nav: Palette.alternate-background;

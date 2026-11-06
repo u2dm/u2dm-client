@@ -1,12 +1,11 @@
 import { Icon, IconDisplay } from "@lucide";
 import { MessageEntry } from "../../../../../types.slint";
-import { ClickArea } from "../../../../../components/a11y.slint";
 import { SendState } from "../../../../../enums.slint";
 import { AppStyle, IconSize, Metrics } from "../../../../../theme.slint";
 import { UploadProgress } from "./media-frame.slint";
-import { StateLayer } from "../../../../../components/state-layer.slint";
+import { ShadedClickArea } from "../../../../../components/state-layer.slint";
 
-export component MediaButton inherits ClickArea {
+export component MediaButton inherits ShadedClickArea {
     in property <Icon> icon;
     in property <bool> solid;
     in property <length> glyph-size: IconSize.md;
@@ -24,13 +23,7 @@ export component MediaButton inherits ClickArea {
     ring-inset: -Metrics.ring-outset;
     ring-radius: self.height / 2 + Metrics.ring-outset;
     background: root.msg.is-own ? AppStyle.media-button-own : AppStyle.media-button;
-
-    StateLayer {
-        border-radius: root.border-radius;
-        ink: root.glyph;
-        hovered: root.has-hover && root.enabled;
-        pressed: root.pressed && root.enabled;
-    }
+    ink: root.glyph;
 
     if !root.spinning: IconDisplay {
         x: (parent.width - self.width) / 2;

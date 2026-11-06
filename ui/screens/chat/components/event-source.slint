@@ -3,10 +3,11 @@ import { Palette, ScrollView, Spinner } from "std-widgets.slint";
 import { CopyFeedback } from "../../../components/copier.slint";
 import { DialogHeader } from "../../../components/dialog-header.slint";
 import { DialogCard, ModalHost } from "../../../components/overlay.slint";
+import { SectionLabel } from "../../../components/text-roles.slint";
 import { SourceEncryption, SourceStatus } from "../../../enums.slint";
 import { SourceView } from "../../../views.slint";
 import { Actions } from "../../../actions.slint";
-import { AppStyle, Fonts, Metrics, Radius, Size, Space, Weight } from "../../../theme.slint";
+import { AppStyle, Fonts, Metrics, Radius, Size, Space } from "../../../theme.slint";
 
 component SourceSection inherits VerticalLayout {
     in property <string> title;
@@ -14,11 +15,8 @@ component SourceSection inherits VerticalLayout {
 
     spacing: Space.sm;
 
-    Text {
+    SectionLabel {
         text: root.title;
-        font-size: Fonts.caption;
-        font-weight: Weight.semibold;
-        color: AppStyle.foreground-muted;
     }
 
     Rectangle {

@@ -1,7 +1,8 @@
 import { IconDisplay, IconSet } from "@lucide";
 
 import { ReplyQuote } from "./reply-quote.slint";
-import { AppStyle, IconSize, Metrics, Radius, Size, Space } from "../../../../theme.slint";
+import { ComposerStrip } from "./composer-strip.slint";
+import { AppStyle, IconSize, Metrics, Radius, Size } from "../../../../theme.slint";
 import { ClickArea } from "../../../../components/a11y.slint";
 
 component QuoteBar inherits Rectangle {
@@ -16,13 +17,7 @@ component QuoteBar inherits Rectangle {
     height: Metrics.reply-bar;
     background: AppStyle.well;
 
-    HorizontalLayout {
-        padding-left: Space.lg;
-        padding-right: Space.md;
-        padding-top: Space.md;
-        padding-bottom: Space.md;
-        spacing: Space.md;
-
+    ComposerStrip {
         ReplyQuote {
             horizontal-stretch: 1;
             sender: root.title;

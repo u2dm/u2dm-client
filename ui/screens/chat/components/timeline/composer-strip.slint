@@ -1,0 +1,54 @@
+import { AppStyle, Fonts, Space, Stroke, Weight } from "../../../../theme.slint";
+
+export component ComposerStrip inherits HorizontalLayout {
+    padding-left: Space.lg;
+    padding-right: Space.md;
+    padding-top: Space.md;
+    padding-bottom: Space.md;
+    spacing: Space.md;
+
+    @children
+}
+
+export component MarkedBanner inherits Rectangle {
+    in property <color> marker;
+    in property <string> title;
+    in property <color> title-color: AppStyle.foreground-strong;
+    in property <string> body;
+    in property <AccessibleLiveness> liveness;
+
+    height: layout.preferred-height;
+
+    layout := ComposerStrip {
+        Rectangle {
+            width: Stroke.marker;
+            border-radius: self.width / 2;
+            background: root.marker;
+        }
+
+        VerticalLayout {
+            horizontal-stretch: 1;
+            alignment: center;
+            spacing: Space.xs;
+
+            Text {
+                text: root.title;
+                font-size: Fonts.body-small;
+                font-weight: Weight.bold;
+                color: root.title-color;
+                wrap: word-wrap;
+                accessible-live-region: root.liveness;
+            }
+
+            Text {
+                text: root.body;
+                font-size: Fonts.body-small;
+                color: AppStyle.overlay-foreground-muted;
+                wrap: word-wrap;
+                accessible-live-region: root.liveness;
+            }
+        }
+
+        @children
+    }
+}

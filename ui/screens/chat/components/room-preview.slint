@@ -5,6 +5,7 @@ import { ModalHost } from "../../../components/overlay.slint";
 import { DotPulse } from "../../../components/dot-pulse.slint";
 import { ErrorBanner } from "../../../components/banner.slint";
 import { TextField } from "../../../components/text-field.slint";
+import { DialogNote } from "../../../components/text-roles.slint";
 import { SheetCard, SheetCover } from "./sheet.slint";
 import { ChildAccessText } from "./space-index.slint";
 import { AppStyle, Fonts, Metrics, Size, Space, Weight } from "../../../theme.slint";
@@ -12,13 +13,6 @@ import { ChildAccess, RoomPreviewStatus, UserMessageKind } from "../../../enums.
 import { RoomPreviewView } from "../../../views.slint";
 import { Actions } from "../../../actions.slint";
 import { MetaTip, Reactions, Shell } from "../../../local.slint";
-
-component PreviewNote inherits Text {
-    font-size: Fonts.body-small;
-    color: AppStyle.foreground-muted;
-    horizontal-alignment: center;
-    wrap: word-wrap;
-}
 
 component AddressEntry inherits VerticalLayout {
     in-out property <string> typed;
@@ -89,11 +83,11 @@ component PreviewCover inherits SheetCover {
         overflow: elide;
     }
 
-    PreviewNote {
+    DialogNote {
         text: root.kind == "" ? root.members : @tr("{} · {}", root.kind, root.members);
     }
 
-    if RoomPreviewView.topic != "": PreviewNote {
+    if RoomPreviewView.topic != "": DialogNote {
         text: RoomPreviewView.topic;
         font-family: Fonts.emoji;
         max-lines: Metrics.room-preview-topic-lines;
@@ -218,14 +212,14 @@ export component RoomPreviewDialog inherits ModalHost {
                     }
                 }
 
-                PreviewNote {
+                DialogNote {
                     text: @tr("Looking up {}…", RoomPreviewView.address);
                 }
             }
 
             if root.status == RoomPreviewStatus.loaded: PreviewCover { }
 
-            if root.status == RoomPreviewStatus.loaded && RoomPreviewView.opens-event: PreviewNote {
+            if root.status == RoomPreviewStatus.loaded && RoomPreviewView.opens-event: DialogNote {
                 text: @tr("The link points to a message in this room.");
             }
 
@@ -233,7 +227,7 @@ export component RoomPreviewDialog inherits ModalHost {
                 padding-left: Space.xl;
                 padding-right: Space.xl;
 
-                PreviewNote {
+                DialogNote {
                     text: @tr("{} can't be previewed. You may still be able to join it.", RoomPreviewView.address);
                 }
             }

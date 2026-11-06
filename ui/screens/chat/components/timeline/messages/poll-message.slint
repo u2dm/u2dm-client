@@ -7,7 +7,7 @@ import { Actions } from "../../../../../actions.slint";
 import { Polls, ReactionPopup, Reactions } from "../../../../../local.slint";
 import { RoomView } from "../../../../../views.slint";
 import { AppStyle, Fonts, IconSize, Metrics, Radius, Space, Stroke, Weight } from "../../../../../theme.slint";
-import { StateLayer } from "../../../../../components/state-layer.slint";
+import { ShadedClickArea } from "../../../../../components/state-layer.slint";
 
 component RadioArea inherits ClickArea {
     accessible-role: radio-button;
@@ -211,7 +211,7 @@ component PollAnswerRow inherits Rectangle {
     }
 }
 
-component PollFooterButton inherits ClickArea {
+component PollFooterButton inherits ShadedClickArea {
     in property <string> text;
     in property <string> flipped-text;
     in property <bool> flipped;
@@ -226,13 +226,7 @@ component PollFooterButton inherits ClickArea {
     ring-radius: self.height / 2;
     label: caption.text;
     background: root.destructive ? AppStyle.poll-end-fill : transparent;
-
-    StateLayer {
-        border-radius: root.border-radius;
-        ink: root.caption-color;
-        hovered: root.has-hover && root.enabled;
-        pressed: root.pressed && root.enabled;
-    }
+    ink: root.caption-color;
 
     other-caption := Text {
         visible: false;

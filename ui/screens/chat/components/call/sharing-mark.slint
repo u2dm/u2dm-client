@@ -1,0 +1,10 @@
+import { IconDisplay, IconSet } from "@lucide";
+
+import { AppStyle, IconSize } from "../../../../theme.slint";
+
+export component SharingMark inherits IconDisplay {
+    icon: IconSet.ScreenShare;
+    size: IconSize.sm;
+    stroke: AppStyle.call-sharing;
+    accessible-role: none;
+}

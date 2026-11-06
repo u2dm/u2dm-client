@@ -9,10 +9,12 @@ import { AppButton, BackButton } from "../../../components/button.slint";
 import { ErrorBanner, NoticeBanner } from "../../../components/banner.slint";
 import { CopyFeedback } from "../../../components/copier.slint";
 import { DotPulse } from "../../../components/dot-pulse.slint";
+import { Hairline } from "../../../components/divider.slint";
 import { ModalHost, ScrollingDialogCard } from "../../../components/overlay.slint";
 import { TextField } from "../../../components/text-field.slint";
 import { AuthPrompt } from "./auth-prompt.slint";
-import { DialogNote, Verdict, VerificationHeader } from "./verification.slint";
+import { Verdict, VerificationHeader } from "./verification.slint";
+import { DialogNote } from "../../../components/text-roles.slint";
 
 component ActivityRow inherits Text {
     text: root.label-for(EncryptionView.activity);
@@ -110,10 +112,7 @@ component SetupProblem inherits VerticalLayout {
 component RoomKeysSection inherits VerticalLayout {
     spacing: Space.lg;
 
-    Rectangle {
-        height: Stroke.hairline;
-        background: AppStyle.overlay-pressed;
-    }
+    Hairline { }
 
     DialogNote {
         text: @tr("A key file holds the keys to the encrypted messages this session can read, protected by a passphrase. Another Matrix app can import it.");
@@ -677,10 +676,7 @@ export component EncryptionDialog inherits ModalHost {
             }
         }
 
-        Rectangle {
-            height: Stroke.hairline;
-            background: AppStyle.overlay-pressed;
-        }
+        Hairline { }
 
         if EncryptionView.step == EncryptionStep.overview: Overview { }
 

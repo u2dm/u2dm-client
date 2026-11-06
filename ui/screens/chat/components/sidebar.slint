@@ -18,6 +18,7 @@ import { RoomEntry } from "../../../types.slint";
 import { HeaderIconButton } from "../../../components/button.slint";
 import { RetryNotice } from "../../../components/retry-notice.slint";
 import { SearchField } from "../../../components/search-field.slint";
+import { SecondaryText } from "../../../components/text-roles.slint";
 import { ContextPress } from "./context-press.slint";
 import { AppStyle, Fonts, IconSize, Metrics, Motion, Opacity, Size, Space, Stroke, Weight } from "../../../theme.slint";
 import { InviteKind, RemovalKind, RoomCallMark, RoomRowKind, RoomScope, ServiceKind } from "../../../enums.slint";
@@ -125,16 +126,13 @@ component RoomSummary inherits VerticalLayout {
                 }
             }
 
-            Text {
+            SecondaryText {
                 horizontal-stretch: 1;
                 text: root.is-service
                     ? ServiceLabel.label(root.entry.last-message-service-kind, root.sender-label, root.entry.last-message-service-target)
                     : MessagePreview.label(root.entry.last-message-kind, root.entry.last-message-body);
-                font-family: Fonts.emoji;
-                font-size: Fonts.body-small;
                 vertical-alignment: center;
                 overflow: elide;
-                color: AppStyle.foreground-muted;
             }
         }
 
@@ -257,14 +255,11 @@ component InviteSummary inherits VerticalLayout {
     HorizontalLayout {
         spacing: Space.md;
 
-        Text {
+        SecondaryText {
             horizontal-stretch: 1;
             text: InviteLine.from(root.entry);
-            font-family: Fonts.emoji;
-            font-size: Fonts.body-small;
             vertical-alignment: center;
             overflow: elide;
-            color: AppStyle.foreground-muted;
         }
 
         UnreadDot {
@@ -311,14 +306,11 @@ component RemovalSummary inherits VerticalLayout {
             stroke: AppStyle.foreground-muted;
         }
 
-        Text {
+        SecondaryText {
             horizontal-stretch: 1;
             text: RemovalLine.from(root.entry);
-            font-family: Fonts.emoji;
-            font-size: Fonts.body-small;
             vertical-alignment: center;
             overflow: elide;
-            color: AppStyle.foreground-muted;
         }
     }
 }
@@ -342,16 +334,13 @@ component SpaceSummary inherits VerticalLayout {
     HorizontalLayout {
         spacing: Space.md;
 
-        Text {
+        SecondaryText {
             horizontal-stretch: 1;
             text: root.entry.space-parent == ""
                 ? @tr("{n} room" | "{n} rooms" % root.entry.space-rooms)
                 : @tr("In {} · {n} room" | "In {} · {n} rooms" % root.entry.space-rooms, root.entry.space-parent);
-            font-family: Fonts.emoji;
-            font-size: Fonts.body-small;
             vertical-alignment: center;
             overflow: elide;
-            color: AppStyle.foreground-muted;
         }
 
         if root.has-unread: UnreadDot {

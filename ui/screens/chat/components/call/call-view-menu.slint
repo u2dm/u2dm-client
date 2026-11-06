@@ -4,12 +4,14 @@ import { RovingKeys } from "../../../../components/a11y.slint";
 import { MenuScroll } from "../../../../components/menu.slint";
 import { MenuRow } from "../../../../components/menu-row.slint";
 import { PickerCard } from "../../../../components/overlay.slint";
+import { MenuDivider } from "../../../../components/divider.slint";
+import { SectionLabel } from "../../../../components/text-roles.slint";
 import { Actions } from "../../../../actions.slint";
 import { CallScreen } from "../../../../enums.slint";
 import { CallWords } from "../../../../messages.slint";
 import { CallMode, CallPanel } from "../../../../local.slint";
 import { CallView, WindowView } from "../../../../views.slint";
-import { AppStyle, Fonts, Metrics, Space, Stroke, Weight } from "../../../../theme.slint";
+import { Metrics, Space } from "../../../../theme.slint";
 
 enum CallViewChoice { call-and-chat, call-only, chat-only, window, back, automatic, gallery, follow, pinned, strip, self-view, share-preview, fit }
 
@@ -60,26 +62,17 @@ export component MenuGroup inherits VerticalLayout {
 
     padding-top: root.first ? 0 : Space.xs;
 
-    if !root.first: Rectangle {
+    if !root.first: MenuDivider {
         height: Metrics.call-menu-group-gap;
-
-        Rectangle {
-            y: (parent.height - self.height) / 2;
-            height: Stroke.hairline;
-            background: AppStyle.border;
-        }
     }
 
     HorizontalLayout {
         padding-left: Space.lg;
         padding-right: Space.lg;
 
-        Text {
+        SectionLabel {
             height: Metrics.call-menu-heading;
             text: root.heading;
-            font-size: Fonts.caption;
-            font-weight: Weight.semibold;
-            color: AppStyle.foreground-muted;
             vertical-alignment: center;
             overflow: elide;
         }

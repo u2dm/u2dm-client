@@ -2,9 +2,8 @@ import { Palette, ScrollView } from "std-widgets.slint";
 import { Icon, IconDisplay, IconSet } from "@lucide";
 
 import { AppButton, LinkButton } from "../../../../components/button.slint";
-import { ClickArea } from "../../../../components/a11y.slint";
 import { DialogCard, ModalHost, Placement } from "../../../../components/overlay.slint";
-import { StateLayer } from "../../../../components/state-layer.slint";
+import { ShadedClickArea } from "../../../../components/state-layer.slint";
 import { AppStyle, Fonts, IconSize, Metrics, Radius, Size, Space, Weight } from "../../../../theme.slint";
 import { CallDeviceKind, CallDeviceStatus, CallOffer, CallSheetPreview, CallTestPhase } from "../../../../enums.slint";
 import { CallDeviceEntry } from "../../../../types.slint";
@@ -13,7 +12,7 @@ import { CallView, DirectoryView, SpaceIndexView } from "../../../../views.slint
 import { CallWords } from "../../../../messages.slint";
 import { Actions } from "../../../../actions.slint";
 import { CallPanel, MetaTip, Reactions, Shell } from "../../../../local.slint";
-import { DialogNote } from "../verification.slint";
+import { DialogNote, SecondaryText } from "../../../../components/text-roles.slint";
 
 component BridgeNote inherits HorizontalLayout {
     in property <string> text;
@@ -72,7 +71,7 @@ component MediaChoiceRow inherits HorizontalLayout {
 
     spacing: Space.sm;
 
-    choice := ClickArea {
+    choice := ShadedClickArea {
         horizontal-stretch: 1;
         height: Metrics.choice-row;
         border-radius: Radius.md;
@@ -85,12 +84,6 @@ component MediaChoiceRow inherits HorizontalLayout {
         accessible-description: root.device == "" ? root.detail : @tr("{}. {}", root.detail, root.device);
         clicked => {
             root.on = !root.on;
-        }
-
-        StateLayer {
-            border-radius: parent.border-radius;
-            hovered: parent.has-hover && parent.enabled;
-            pressed: parent.pressed && parent.enabled;
         }
 
         HorizontalLayout {
@@ -181,12 +174,9 @@ component DeviceLine inherits Rectangle {
         padding-right: Space.md;
         spacing: Space.md;
 
-        Text {
+        SecondaryText {
             horizontal-stretch: 1;
             text: root.shown;
-            font-family: Fonts.emoji;
-            font-size: Fonts.body-small;
-            color: AppStyle.foreground-muted;
             vertical-alignment: center;
             overflow: elide;
         }
@@ -352,7 +342,7 @@ component DeviceChecks inherits VerticalLayout {
 
     spacing: Space.xs;
 
-    ClickArea {
+    ShadedClickArea {
         height: Size.lg;
         border-radius: Radius.md;
         ring-radius: Radius.md;
@@ -363,12 +353,6 @@ component DeviceChecks inherits VerticalLayout {
         accessible-expanded: root.shown;
         clicked => {
             root.toggle();
-        }
-
-        StateLayer {
-            border-radius: parent.border-radius;
-            hovered: parent.has-hover && parent.enabled;
-            pressed: parent.pressed && parent.enabled;
         }
 
         HorizontalLayout {
@@ -506,13 +490,10 @@ component CameraPreview inherits Rectangle {
             }
         }
 
-        Text {
+        SecondaryText {
             height: root.note != "" && !root.failed ? self.preferred-height : 0;
             visible: root.note != "" && !root.failed;
             text: root.note;
-            font-family: Fonts.emoji;
-            font-size: Fonts.body-small;
-            color: AppStyle.foreground-muted;
             horizontal-alignment: center;
             wrap: word-wrap;
         }

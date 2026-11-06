@@ -4,6 +4,7 @@ import { CloseWatch } from "../../../components/close-watch.slint";
 import { DialogHeader } from "../../../components/dialog-header.slint";
 import { DialogCard, ModalHost } from "../../../components/overlay.slint";
 import { RetryNotice } from "../../../components/retry-notice.slint";
+import { SecondaryText } from "../../../components/text-roles.slint";
 import { MemberRow } from "./member-row.slint";
 import { MessagePreview, ServiceLabel } from "../../../messages.slint";
 import { PreviewKind, ReadersStatus, ServiceKind } from "../../../enums.slint";
@@ -67,11 +68,8 @@ component QuotedMessage inherits Rectangle {
                 }
             }
 
-            if root.kind-line != "": Text {
+            if root.kind-line != "": SecondaryText {
                 text: root.kind-line;
-                font-family: Fonts.emoji;
-                font-size: Fonts.body-small;
-                color: AppStyle.foreground-muted;
                 overflow: elide;
             }
 

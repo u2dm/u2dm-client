@@ -130,7 +130,7 @@ export component ModalHost inherits Rectangle {
 
         Rectangle {
             background: root.dim
-                ? Colors.black.transparentize(1.0 - root.dim-opacity)
+                ? AppStyle.scrim.transparentize(1.0 - root.dim-opacity)
                 : transparent;
             opacity: root.entered ? 1.0 : 0.0;
             animate opacity {

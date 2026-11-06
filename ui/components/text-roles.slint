@@ -1,0 +1,20 @@
+import { AppStyle, Fonts, Weight } from "../theme.slint";
+
+export component SectionLabel inherits Text {
+    font-size: Fonts.caption;
+    font-weight: Weight.semibold;
+    color: AppStyle.foreground-muted;
+}
+
+export component DialogNote inherits Text {
+    font-size: Fonts.body-small;
+    horizontal-alignment: center;
+    wrap: word-wrap;
+    color: AppStyle.foreground-muted;
+}
+
+export component SecondaryText inherits Text {
+    font-family: Fonts.emoji;
+    font-size: Fonts.body-small;
+    color: AppStyle.foreground-muted;
+}

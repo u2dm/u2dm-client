@@ -4,6 +4,7 @@ import { IconDisplay, IconSet } from "@lucide";
 import { AppButton, IconButton, LinkButton } from "../../../../components/button.slint";
 import { PickerCard } from "../../../../components/overlay.slint";
 import { Avatar } from "../../../../components/avatar.slint";
+import { SecondaryText } from "../../../../components/text-roles.slint";
 import { AppStyle, Fonts, Glyph, IconSize, Metrics, Size, Space, Weight } from "../../../../theme.slint";
 import { CallView } from "../../../../views.slint";
 import { CallWords } from "../../../../messages.slint";
@@ -131,14 +132,11 @@ export component IncomingCallCard inherits PickerCard {
                         accessible-label: @tr("The room is muted, so the call rings without sound");
                     }
 
-                    Text {
+                    SecondaryText {
                         horizontal-stretch: 1;
                         text: CallView.ring-direct
                             ? CallWords.incoming(CallView.ring-video)
                             : @tr("{} in {}", CallWords.incoming(CallView.ring-video), CallView.ring-room-name);
-                        font-family: Fonts.emoji;
-                        font-size: Fonts.body-small;
-                        color: AppStyle.foreground-muted;
                         overflow: elide;
                     }
                 }

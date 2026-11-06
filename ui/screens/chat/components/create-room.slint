@@ -6,6 +6,7 @@ import { ChoiceRow } from "../../../components/choice-row.slint";
 import { ModalHost, ScrollingDialogCard } from "../../../components/overlay.slint";
 import { ErrorBanner } from "../../../components/banner.slint";
 import { TextField } from "../../../components/text-field.slint";
+import { SectionLabel } from "../../../components/text-roles.slint";
 import { PickerTab } from "./timeline/picker-tab.slint";
 import { AppStyle, Fonts, Metrics, Space, Weight } from "../../../theme.slint";
 import { CreateRoomStatus, RoomAccess, RoomKind, UserMessageKind } from "../../../enums.slint";
@@ -30,12 +31,6 @@ component KindTab inherits PickerTab {
         vertical-alignment: center;
         accessible-role: none;
     }
-}
-
-component SectionLabel inherits Text {
-    font-size: Fonts.caption;
-    font-weight: Weight.semibold;
-    color: AppStyle.foreground-muted;
 }
 
 export component CreateRoomDialog inherits ModalHost {

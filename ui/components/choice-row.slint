@@ -1,11 +1,10 @@
 import { Palette } from "std-widgets.slint";
 import { IconDisplay, Icon } from "@lucide";
 
-import { ClickArea } from "./a11y.slint";
-import { StateLayer } from "./state-layer.slint";
+import { ShadedClickArea } from "./state-layer.slint";
 import { AppStyle, Fonts, IconSize, Metrics, Opacity, Radius, Size, Space, Stroke, Weight } from "../theme.slint";
 
-export component ChoiceRow inherits ClickArea {
+export component ChoiceRow inherits ShadedClickArea {
     in property <Icon> icon;
     in property <string> text;
     in property <string> detail;
@@ -21,12 +20,6 @@ export component ChoiceRow inherits ClickArea {
     accessible-role: radio-button;
     accessible-checkable: true;
     accessible-checked: root.checked;
-
-    StateLayer {
-        border-radius: root.border-radius;
-        hovered: root.has-hover && root.enabled;
-        pressed: root.pressed && root.enabled;
-    }
 
     content := HorizontalLayout {
         padding-left: Space.md;

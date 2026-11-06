@@ -3,6 +3,7 @@ import { IconSet } from "@lucide";
 import { AppButton } from "../../../components/button.slint";
 import { ModalHost } from "../../../components/overlay.slint";
 import { ErrorBanner } from "../../../components/banner.slint";
+import { SecondaryText } from "../../../components/text-roles.slint";
 import { DetailLine } from "./detail-line.slint";
 import { SheetCard, SheetCover } from "./sheet.slint";
 import { AppStyle, Fonts, Metrics, Space } from "../../../theme.slint";
@@ -38,11 +39,8 @@ component InviteCover inherits SheetCover {
         horizontal-alignment: center;
     }
 
-    if InviteView.topic != "": Text {
+    if InviteView.topic != "": SecondaryText {
         text: InviteView.topic;
-        font-family: Fonts.emoji;
-        font-size: Fonts.body-small;
-        color: AppStyle.foreground-muted;
         horizontal-alignment: center;
         wrap: word-wrap;
     }

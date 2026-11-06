@@ -1,9 +1,8 @@
 import { Icon, IconDisplay, IconSet } from "@lucide";
 
 import { AppButton } from "../../../../components/button.slint";
-import { ClickArea } from "../../../../components/a11y.slint";
 import { DotPulse } from "../../../../components/dot-pulse.slint";
-import { StateLayer } from "../../../../components/state-layer.slint";
+import { ShadedClickArea } from "../../../../components/state-layer.slint";
 import { TipSource } from "../../../../components/tip.slint";
 import { CallCamera, CallHand, CallMic, CallPhase, CallReaction, CallScreen } from "../../../../enums.slint";
 import { CallWords } from "../../../../messages.slint";
@@ -84,7 +83,7 @@ component FailureBadge inherits Rectangle {
     }
 }
 
-export component CallToggle inherits ClickArea {
+export component CallToggle inherits ShadedClickArea {
     in property <CallToggleState> state;
     in property <Icon> on-icon;
     in property <Icon> off-icon;
@@ -109,18 +108,12 @@ export component CallToggle inherits ClickArea {
     height: Metrics.call-control;
     border-radius: self.width / 2;
     background: root.failed ? AppStyle.call-decline : root.checked ? root.on-fill : AppStyle.control;
+    ink: root.tint;
     ring-inset: -Metrics.ring-outset;
     ring-radius: self.width / 2 + Metrics.ring-outset;
     accessible-checkable: true;
     accessible-checked: root.checked;
     accessible-description: root.binding == "" ? root.state-text : @tr("{}. Shortcut: {}", root.state-text, root.binding);
-
-    StateLayer {
-        border-radius: root.border-radius;
-        ink: root.tint;
-        hovered: root.has-hover && root.enabled;
-        pressed: root.pressed && root.enabled;
-    }
 
     if root.state == CallToggleState.pending: HorizontalLayout {
         alignment: center;

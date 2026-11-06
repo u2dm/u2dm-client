@@ -9,6 +9,7 @@ import { EditBar, ReplyBar } from "./reply-bar.slint";
 import { IdentityBanner } from "./identity-banner.slint";
 import { UpgradeBanner } from "./upgrade-banner.slint";
 import { ReplyQuote } from "./reply-quote.slint";
+import { ComposerStrip } from "./composer-strip.slint";
 import { AppStyle, Metrics, Space, Stroke } from "../../../../theme.slint";
 import { LinkButton } from "../../../../components/button.slint";
 import { ModalHost } from "../../../../components/overlay.slint";
@@ -26,12 +27,7 @@ component OversizeBanner inherits Rectangle {
     height: Metrics.reply-bar;
     background: AppStyle.danger-background;
 
-    HorizontalLayout {
-        padding-left: Space.lg;
-        padding-right: Space.md;
-        padding-top: Space.md;
-        padding-bottom: Space.md;
-
+    ComposerStrip {
         ReplyQuote {
             horizontal-stretch: 1;
             accent: AppStyle.danger;
@@ -53,13 +49,7 @@ component UnsentBanner inherits Rectangle {
     height: Metrics.reply-bar;
     background: AppStyle.danger-background;
 
-    HorizontalLayout {
-        padding-left: Space.lg;
-        padding-right: Space.md;
-        padding-top: Space.md;
-        padding-bottom: Space.md;
-        spacing: Space.md;
-
+    ComposerStrip {
         ReplyQuote {
             horizontal-stretch: 1;
             accent: AppStyle.danger;
