@@ -5,7 +5,7 @@ use async_trait::async_trait;
 use tokio::sync::mpsc;
 use tokio::time::sleep;
 
-use super::{DemoAuthed, current_lists, unavailable};
+use super::{DemoAuthed, current_lists, unavailable, unavailable_if};
 use crate::adapters::demo::calls::{self, Step};
 use crate::adapters::demo::{data, media, room_info};
 use crate::domain::call::hands::HandSighting;
@@ -117,9 +117,7 @@ impl CallSignalPort for DemoAuthed {
 
     async fn decline(&self, room_id: &RoomId, ring: &RingId) -> Result<()> {
         calls::pause().await;
-        if calls::scenario().decline_fails {
-            return Err(unavailable("declining the call"));
-        }
+        unavailable_if(calls::scenario().decline_fails, "declining the call")?;
         tracing::info!(%room_id, %ring, "demo: the call is declined");
         Ok(())
     }

@@ -7,7 +7,8 @@ use std::sync::atomic::Ordering;
 use async_trait::async_trait;
 use tokio::sync::mpsc;
 
-use super::{DemoAuthed, OutgoingFlow, unavailable};
+use super::{DemoAuthed, OutgoingFlow, unavailable, unavailable_if};
+use crate::adapters::demo::revisions::report_changes;
 use crate::adapters::demo::{account, data, encryption, identity, user_info, verification};
 use crate::domain::capabilities::{AccountFacts, AccountPage};
 use crate::domain::encryption::{
@@ -26,6 +27,14 @@ use crate::error::{AppError, Result};
 use crate::ports::matrix::{AccountPort, EncryptionPort, IdentityPort, VerificationPort};
 
 impl DemoAuthed {
+    fn verification_listener(&self) -> Result<mpsc::UnboundedSender<VerificationEvent>> {
+        self.verification_tx
+            .lock()
+            .ok()
+            .and_then(|guard| guard.clone())
+            .ok_or_else(|| AppError::Other("verification requests are not followed".to_owned()))
+    }
+
     fn emit_verification(&self, event: VerificationEvent) {
         let Ok(guard) = self.verification_tx.lock() else {
             return;
@@ -112,20 +121,11 @@ impl DemoAuthed {
 impl EncryptionPort for DemoAuthed {
     async fn follow(&self, state_tx: mpsc::Sender<AccountEncryption>) -> Result<()> {
         encryption::pause_first_assessment().await;
-        let mut revision = self.encryption.subscribe();
-        let mut reported = None;
-        loop {
-            let state = self.encryption.state();
-            if reported != Some(state) {
-                if state_tx.send(state).await.is_err() {
-                    return Ok(());
-                }
-                reported = Some(state);
-            }
-            if revision.changed().await.is_err() {
-                return Ok(());
-            }
-        }
+        report_changes(self.encryption.subscribe(), &state_tx, || {
+            self.encryption.state()
+        })
+        .await;
+        Ok(())
     }
 
     async fn set_up_identity(&self, auth: Option<&AuthAnswer>) -> Result<IdentityOutcome> {
@@ -135,7 +135,7 @@ impl EncryptionPort for DemoAuthed {
         let attempt = self.encryption.count_setup_attempt();
         encryption::pause_setup().await;
         if encryption::identity_refused()
-            && let Guarded::NeedsAuth(challenge) = self.account.guard(auth, false)
+            && let Guarded::NeedsAuth(challenge) = self.account.guard(auth)
         {
             tracing::debug!(
                 "demo: the homeserver wants a password for the first cross-signing keys"
@@ -152,9 +152,7 @@ impl EncryptionPort for DemoAuthed {
 
     async fn recover(&self, key: &RecoveryKey) -> Result<RecoveryAttempt> {
         encryption::pause_action().await;
-        if encryption::scenario().fails {
-            return Err(unavailable("Using a recovery key"));
-        }
+        unavailable_if(encryption::scenario().fails, "Using a recovery key")?;
         if !encryption::opens(key) {
             tracing::debug!("demo: the recovery key does not open the secret storage");
             return Ok(RecoveryAttempt::WrongKey);
@@ -166,9 +164,7 @@ impl EncryptionPort for DemoAuthed {
 
     async fn enable_recovery(&self) -> Result<RecoverySetup> {
         encryption::pause_action().await;
-        if encryption::scenario().fails {
-            return Err(unavailable("Setting up recovery"));
-        }
+        unavailable_if(encryption::scenario().fails, "Setting up recovery")?;
         self.encryption.recovery_enabled();
         tracing::debug!("demo: set up recovery");
         Ok(RecoverySetup::Created(encryption::created_key()))
@@ -176,25 +172,21 @@ impl EncryptionPort for DemoAuthed {
 
     async fn change_recovery_key(&self) -> Result<RecoveryKey> {
         encryption::pause_action().await;
-        if encryption::scenario().fails {
-            return Err(unavailable("Changing the recovery key"));
-        }
+        unavailable_if(encryption::scenario().fails, "Changing the recovery key")?;
         tracing::debug!("demo: changed the recovery key");
         Ok(encryption::changed_key())
     }
 
     async fn reset_identity(&self) -> Result<Guarded> {
         encryption::pause_action().await;
-        if encryption::scenario().fails {
-            return Err(unavailable("Resetting the identity"));
-        }
+        unavailable_if(encryption::scenario().fails, "Resetting the identity")?;
         tracing::debug!("demo: the homeserver asks who you are before the new identity");
-        Ok(self.account.guard(None, account::scenario().oauth))
+        Ok(self.account.guard_identity_reset(None))
     }
 
     async fn finish_identity_reset(&self, auth: &AuthAnswer) -> Result<Guarded> {
         encryption::pause_action().await;
-        let guarded = self.account.guard(Some(auth), account::scenario().oauth);
+        let guarded = self.account.guard_identity_reset(Some(auth));
         if guarded == Guarded::Done {
             tracing::debug!("demo: published the account's new identity");
             self.encryption.identity_reset();
@@ -208,18 +200,14 @@ impl EncryptionPort for DemoAuthed {
 
     async fn export_room_keys(&self, path: &Path, _passphrase: &KeyPassphrase) -> Result<usize> {
         encryption::pause_action().await;
-        if encryption::scenario().fails {
-            return Err(unavailable("Exporting room keys"));
-        }
+        unavailable_if(encryption::scenario().fails, "Exporting room keys")?;
         tracing::info!(path = %path.display(), "demo: exported the room keys without writing a file");
         Ok(encryption::EXPORTED_KEYS)
     }
 
     async fn import_room_keys(&self, path: &Path, passphrase: &KeyPassphrase) -> Result<KeyImport> {
         encryption::pause_action().await;
-        if encryption::scenario().fails {
-            return Err(unavailable("Importing room keys"));
-        }
+        unavailable_if(encryption::scenario().fails, "Importing room keys")?;
         tracing::info!(path = %path.display(), "demo: importing room keys");
         Ok(encryption::import_from(passphrase))
     }
@@ -251,9 +239,7 @@ impl AccountPort for DemoAuthed {
 
     async fn rename_session(&self, device_id: &str, name: &str) -> Result<()> {
         account::pause().await;
-        if account::scenario().fails {
-            return Err(unavailable("Renaming a session"));
-        }
+        unavailable_if(account::scenario().fails, "Renaming a session")?;
         tracing::debug!(%device_id, "demo: renamed the session");
         self.account
             .rename(&data::session().device_id, device_id, name);
@@ -266,10 +252,8 @@ impl AccountPort for DemoAuthed {
         auth: Option<&AuthAnswer>,
     ) -> Result<Guarded> {
         account::pause().await;
-        if account::scenario().fails {
-            return Err(unavailable("Signing out a session"));
-        }
-        let guarded = self.account.guard(auth, false);
+        unavailable_if(account::scenario().fails, "Signing out a session")?;
+        let guarded = self.account.guard(auth);
         if guarded == Guarded::Done {
             tracing::debug!(%device_id, "demo: signed the session out");
             self.account.remove(device_id);
@@ -284,10 +268,8 @@ impl AccountPort for DemoAuthed {
         auth: Option<&AuthAnswer>,
     ) -> Result<Guarded> {
         account::pause().await;
-        if account::scenario().fails {
-            return Err(unavailable("Changing the password"));
-        }
-        let guarded = self.account.guard(auth, false);
+        unavailable_if(account::scenario().fails, "Changing the password")?;
+        let guarded = self.account.guard(auth);
         if guarded != Guarded::Done {
             return Ok(guarded);
         }
@@ -305,10 +287,8 @@ impl AccountPort for DemoAuthed {
 
     async fn deactivate(&self, erase: bool, auth: Option<&AuthAnswer>) -> Result<Guarded> {
         account::pause().await;
-        if account::scenario().fails {
-            return Err(unavailable("Deactivating the account"));
-        }
-        let guarded = self.account.guard(auth, false);
+        unavailable_if(account::scenario().fails, "Deactivating the account")?;
+        let guarded = self.account.guard(auth);
         if guarded == Guarded::Done {
             tracing::info!(erase, "demo: deactivated the account");
         }
@@ -344,54 +324,32 @@ impl IdentityPort for DemoAuthed {
             return Ok(());
         }
         identity::pause_room_alerts().await;
-        let mut revision = self.identity.subscribe();
-        let mut reported = None;
-        loop {
-            let alerts = self.identity.room_alerts(room_id);
-            if reported.as_ref() != Some(&alerts) {
-                if alerts_tx.send(alerts.clone()).await.is_err() {
-                    return Ok(());
-                }
-                reported = Some(alerts);
-            }
-            if revision.changed().await.is_err() {
-                return Ok(());
-            }
-        }
+        report_changes(self.identity.subscribe(), &alerts_tx, || {
+            self.identity.room_alerts(room_id)
+        })
+        .await;
+        Ok(())
     }
 
     async fn follow_own(&self, own_tx: mpsc::Sender<OwnIdentity>) -> Result<()> {
         identity::pause_own_identity().await;
-        let mut revision = self.identity.subscribe();
-        let mut reported = None;
-        loop {
-            let own = self.identity.own_identity();
-            if reported != Some(own) {
-                if own_tx.send(own).await.is_err() {
-                    return Ok(());
-                }
-                reported = Some(own);
-            }
-            if revision.changed().await.is_err() {
-                return Ok(());
-            }
-        }
+        report_changes(self.identity.subscribe(), &own_tx, || {
+            self.identity.own_identity()
+        })
+        .await;
+        Ok(())
     }
 
     async fn pin_identity(&self, user_id: &UserId) -> Result<()> {
         identity::pause_action().await;
-        if identity::scenario().acks_fail {
-            return Err(unavailable("accepting a new identity"));
-        }
+        unavailable_if(identity::scenario().acks_fail, "accepting a new identity")?;
         tracing::debug!(%user_id, "demo: accepting a new identity");
         self.identity.accept(user_id).map_err(AppError::Other)
     }
 
     async fn withdraw_verification(&self, user_id: &UserId) -> Result<()> {
         identity::pause_action().await;
-        if identity::scenario().acks_fail {
-            return Err(unavailable("withdrawing a verification"));
-        }
+        unavailable_if(identity::scenario().acks_fail, "withdrawing a verification")?;
         tracing::debug!(%user_id, "demo: withdrawing a verification");
         self.identity.withdraw(user_id).map_err(AppError::Other)
     }
@@ -436,24 +394,13 @@ impl VerificationPort for DemoAuthed {
 
     async fn verify_this_session(&self) -> Result<()> {
         encryption::pause_action().await;
-        if encryption::scenario().fails {
-            return Err(unavailable("Asking your other sessions"));
-        }
+        unavailable_if(encryption::scenario().fails, "Asking your other sessions")?;
         if !self.encryption.state().verified_sessions {
             return Err(AppError::Other(
                 "no other session of this account can verify this one".to_owned(),
             ));
         }
-        let Some(tx) = self
-            .verification_tx
-            .lock()
-            .ok()
-            .and_then(|guard| guard.clone())
-        else {
-            return Err(AppError::Other(
-                "verification requests are not followed".to_owned(),
-            ));
-        };
+        let tx = self.verification_listener()?;
         let flow = self.begin_outgoing(OutgoingFlow::Session);
         tracing::debug!("demo: asked the account's other sessions to verify this one");
         self.emit_verification(VerificationEvent::RequestSent {
@@ -489,16 +436,7 @@ impl VerificationPort for DemoAuthed {
                 "this person cannot be verified now".to_owned(),
             ));
         }
-        let Some(tx) = self
-            .verification_tx
-            .lock()
-            .ok()
-            .and_then(|guard| guard.clone())
-        else {
-            return Err(AppError::Other(
-                "verification requests are not followed".to_owned(),
-            ));
-        };
+        let tx = self.verification_listener()?;
         let flow = self.begin_outgoing(OutgoingFlow::Person(user_id.to_string()));
         tracing::debug!(%user_id, room_id = %chat, "demo: asked the person to verify in your chat");
         let target = NamedUser::new(user_id.to_string(), data::names_in(&chat, []).of(user_id));

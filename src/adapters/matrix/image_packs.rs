@@ -24,8 +24,8 @@ use serde::de::DeserializeOwned;
 use serde::{Deserialize, Deserializer};
 use serde_json::{Map, Value, json};
 use tokio::sync::Semaphore;
-use tokio::task::JoinSet;
 
+use super::media::count_fetched;
 use super::requests::absent_as_none;
 use super::session::ClientHandle;
 use super::timeline::{refuse_oversized, refuse_unpermitted};
@@ -871,22 +871,13 @@ impl ImagePackPort for MatrixImagePacks {
         let Ok(client) = self.matrix.client().await else {
             return 0;
         };
-
-        let mut fetched = 0;
-        let mut tasks: JoinSet<bool> = JoinSet::new();
-        for mxc in mxcs {
-            let uri: OwnedMxcUri = mxc.as_str().into();
+        count_fetched(mxcs, MAX_INFLIGHT_FETCHES, |mxc| {
+            let uri: OwnedMxcUri = mxc.into();
             let client = client.clone();
             let media = Arc::clone(self.matrix.media());
-            tasks.spawn(async move { media.fetch_sticker_by_mxc(&client, uri).await.is_some() });
-            if tasks.len() >= MAX_INFLIGHT_FETCHES {
-                fetched += usize::from(matches!(tasks.join_next().await, Some(Ok(true))));
-            }
-        }
-        while let Some(result) = tasks.join_next().await {
-            fetched += usize::from(matches!(result, Ok(true)));
-        }
-        fetched
+            async move { media.fetch_sticker_by_mxc(&client, uri).await.is_some() }
+        })
+        .await
     }
 
     async fn send_sticker(

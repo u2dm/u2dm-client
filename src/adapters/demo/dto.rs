@@ -3,7 +3,7 @@ use std::time::Duration;
 
 use serde::Deserialize;
 
-use super::{create_room, invite_people, media, powers, reactions};
+use super::{create_room, data, invite_people, media, powers, reactions};
 use crate::domain::auth::Session;
 use crate::domain::event_size::EventIds;
 use crate::domain::image_pack::{ImagePack, ImageUsage, PackId, PackImage, PackOrigin, PackTitle};
@@ -851,10 +851,7 @@ impl RoomDto {
 
     pub fn rich_topic(&self) -> Option<RichText> {
         let plain = self.topic.clone()?;
-        Some(match &self.topic_html {
-            Some(html) => RichText::formatted(plain, html.clone()),
-            None => RichText::plain(plain),
-        })
+        Some(RichText::with_html(plain, self.topic_html.clone()))
     }
 }
 
@@ -1170,11 +1167,8 @@ impl LastMessageDto {
     }
 }
 
-fn rich_text(body: &str, html: Option<&str>) -> RichText {
-    match html {
-        Some(html) => RichText::formatted(body.to_owned(), html.to_owned()),
-        None => RichText::plain(body.to_owned()),
-    }
+pub(super) fn rich_text(body: &str, html: Option<&str>) -> RichText {
+    RichText::with_html(body.to_owned(), html.map(ToOwned::to_owned))
 }
 
 impl KindDto {
@@ -1237,5 +1231,5 @@ pub fn quiet_room(id: RoomId, display_name: String, last_activity_ts: u64) -> Ro
 
 fn ago_ms(now_ms: u64, minutes: u64, days: u64) -> u64 {
     let minutes = minutes.saturating_add(days.saturating_mul(24 * 60));
-    now_ms.saturating_sub(minutes.saturating_mul(60_000))
+    data::minutes_before(now_ms, minutes)
 }

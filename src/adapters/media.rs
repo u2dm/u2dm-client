@@ -14,7 +14,7 @@ use crate::adapters::{container, private_fs, video};
 use crate::domain::media::{AttachmentPick, PastedImage, PastedMedia, PickedAttachment, Waveform};
 use crate::error::{AppError, Result};
 use crate::ports::media::MediaFilePort;
-use crate::util::random_hex;
+use crate::util::{lookup, random_hex};
 
 const MEDIA_DIR: &str = "u2dm-media";
 const MEDIA_RETENTION: Duration = Duration::from_hours(24);
@@ -357,18 +357,11 @@ fn launcher_safe_extension(data: &[u8]) -> Option<&'static str> {
 
 fn launcher_safe_image_extension(data: &[u8]) -> Option<&'static str> {
     let format = image::guess_format(data).ok()?;
-    let extension = launcher_safe_extension_for(format)?;
+    let extension = lookup(LAUNCHER_SAFE_IMAGE_FORMATS, &format)?;
     if format.reading_enabled() && !header_parses(data, format) {
         return None;
     }
     Some(extension)
-}
-
-fn launcher_safe_extension_for(format: ImageFormat) -> Option<&'static str> {
-    LAUNCHER_SAFE_IMAGE_FORMATS
-        .iter()
-        .find(|(launcher_safe, _)| *launcher_safe == format)
-        .map(|(_, extension)| *extension)
 }
 
 fn header_parses(data: &[u8], format: ImageFormat) -> bool {

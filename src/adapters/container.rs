@@ -1,3 +1,5 @@
+use crate::util::lookup;
+
 const LAUNCHER_SAFE_VIDEO_FORMATS: &[(&str, &str)] = &[
     ("video/mp4", "mp4"),
     ("video/quicktime", "mov"),
@@ -35,31 +37,17 @@ const AUDIO_ONLY_CONTAINERS: &[(&str, &str)] = &[
 ];
 
 pub fn canonical_audio_mime(mime: &str) -> &str {
-    CANONICAL_AUDIO_TYPES
-        .iter()
-        .find(|(sniffed, _)| *sniffed == mime)
-        .map_or(mime, |(_, canonical)| *canonical)
+    lookup(CANONICAL_AUDIO_TYPES, &mime).unwrap_or(mime)
 }
 
 pub fn audio_only_mime(container: &str) -> Option<&'static str> {
-    AUDIO_ONLY_CONTAINERS
-        .iter()
-        .find(|(video, _)| *video == container)
-        .map(|(_, audio)| *audio)
+    lookup(AUDIO_ONLY_CONTAINERS, &container)
 }
 
 pub fn launcher_safe_audio_extension(data: &[u8]) -> Option<&'static str> {
-    let mime = infer::get(data)?.mime_type();
-    LAUNCHER_SAFE_AUDIO_FORMATS
-        .iter()
-        .find(|(container, _)| *container == mime)
-        .map(|(_, extension)| *extension)
+    lookup(LAUNCHER_SAFE_AUDIO_FORMATS, &infer::get(data)?.mime_type())
 }
 
 pub fn launcher_safe_video_extension(data: &[u8]) -> Option<&'static str> {
-    let mime = infer::get(data)?.mime_type();
-    LAUNCHER_SAFE_VIDEO_FORMATS
-        .iter()
-        .find(|(container, _)| *container == mime)
-        .map(|(_, extension)| *extension)
+    lookup(LAUNCHER_SAFE_VIDEO_FORMATS, &infer::get(data)?.mime_type())
 }

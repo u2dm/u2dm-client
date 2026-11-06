@@ -1,5 +1,5 @@
-use std::sync::Arc;
 use std::sync::atomic::Ordering;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use async_trait::async_trait;
@@ -7,7 +7,10 @@ use tokio::sync::mpsc;
 use tokio::time::sleep;
 use tokio_util::sync::CancellationToken;
 
-use super::{DemoAuthed, RoomLists, current_lists, unavailable};
+use super::{
+    DemoAuthed, EVERY_LIST, ListKind, RoomLists, announce_lists, current_lists, unavailable,
+    unavailable_if,
+};
 use crate::adapters::demo::{
     account, calls, create_room, data, departures, invites, links, media, notifications, room_info,
     space_index, sync, timeline, upgrades,
@@ -15,7 +18,7 @@ use crate::adapters::demo::{
 use crate::domain::departure::AdminStanding;
 use crate::domain::matrix_link::RoomAddress;
 use crate::domain::member_name::NamedUser;
-use crate::domain::push::{NoticeContent, PushNotice, PushTweaks};
+use crate::domain::push::{NoticeContent, PushNotice};
 use crate::domain::room::RoomId;
 use crate::domain::room_creation::{
     ChildLink, CreateFailure, CreateResult, CreatedRoom, JoinAccess, RoomBlueprint, RoomKind, Shape,
@@ -40,11 +43,7 @@ impl SyncPort for DemoAuthed {
         self.hold_back_late_invites();
         self.keep_stored_removals();
         calls::book().begin();
-        let lists = current_lists(&self.lists);
-        on_sync(SyncEvent::Removals(lists.removals().into()));
-        on_sync(SyncEvent::Rooms(lists.rooms().into()));
-        on_sync(SyncEvent::Invites(lists.invites().into()));
-        on_sync(SyncEvent::Spaces(lists.spaces().into()));
+        announce_lists(&on_sync, &self.lists, &EVERY_LIST);
         if sync::support() == SyncSupport::ClassicOnly {
             return sync::refuse_forever(&on_sync, &cancel).await;
         }
@@ -60,10 +59,8 @@ impl SyncPort for DemoAuthed {
             tokio::select! {
                 () = cancel.cancelled() => return SyncOutcome::Cancelled,
                 () = sleep(timeline::ROOM_LIST_INTERVAL) => {
-                    let lists = current_lists(&self.lists);
-                    on_sync(SyncEvent::Removals(lists.removals().into()));
-                    on_sync(SyncEvent::Rooms(lists.rooms().into()));
-                    on_sync(SyncEvent::Invites(lists.invites().into()));
+                    let kinds = [ListKind::Removals, ListKind::Rooms, ListKind::Invites];
+                    announce_lists(&on_sync, &self.lists, &kinds);
                 }
             }
         }
@@ -89,6 +86,21 @@ impl DemoAuthed {
         }
     }
 
+    pub(super) fn after_lag(
+        &self,
+        lag: Duration,
+        then: impl FnOnce(&SyncSink, &Mutex<RoomLists>) + Send + 'static,
+    ) {
+        let Some(sink) = self.sync_sink() else {
+            return;
+        };
+        let lists = Arc::clone(&self.lists);
+        tokio::spawn(async move {
+            sleep(lag).await;
+            then(&sink, &lists);
+        });
+    }
+
     fn remember_join(&self, room_id: &RoomId) {
         self.change_lists(|lists| {
             if !lists.joined.contains(room_id) {
@@ -99,32 +111,14 @@ impl DemoAuthed {
     }
 
     fn echo_join(&self) {
-        let Some(sink) = self.sync_sink() else {
-            return;
-        };
-        let lists = Arc::clone(&self.lists);
-        tokio::spawn(async move {
-            sleep(space_index::JOIN_ECHO_LAG).await;
-            let lists = current_lists(&lists);
-            sink(SyncEvent::Removals(lists.removals().into()));
-            sink(SyncEvent::Rooms(lists.rooms().into()));
-            sink(SyncEvent::Invites(lists.invites().into()));
-            sink(SyncEvent::Spaces(lists.spaces().into()));
+        self.after_lag(space_index::JOIN_ECHO_LAG, |sink, lists| {
+            announce_lists(sink, lists, &EVERY_LIST);
         });
     }
 
     fn echo_departure(&self) {
-        let Some(sink) = self.sync_sink() else {
-            return;
-        };
-        let lists = Arc::clone(&self.lists);
-        tokio::spawn(async move {
-            sleep(room_info::ECHO_LAG).await;
-            let lists = current_lists(&lists);
-            sink(SyncEvent::Removals(lists.removals().into()));
-            sink(SyncEvent::Rooms(lists.rooms().into()));
-            sink(SyncEvent::Invites(lists.invites().into()));
-            sink(SyncEvent::Spaces(lists.spaces().into()));
+        self.after_lag(room_info::ECHO_LAG, |sink, lists| {
+            announce_lists(sink, lists, &EVERY_LIST);
         });
     }
 
@@ -150,12 +144,7 @@ impl DemoAuthed {
         let Some(kind) = departures::scenario().live_removal() else {
             return;
         };
-        let Some(sink) = self.sync_sink() else {
-            return;
-        };
-        let lists = Arc::clone(&self.lists);
-        tokio::spawn(async move {
-            sleep(departures::KICK_AFTER).await;
+        self.after_lag(departures::KICK_AFTER, move |sink, lists| {
             if let Ok(mut lists) = lists.lock() {
                 let room_id = departures::KICKED_ROOM;
                 lists.joined.retain(|joined| joined.as_ref() != room_id);
@@ -175,9 +164,7 @@ impl DemoAuthed {
                 ?kind,
                 "demo: you were removed from a room"
             );
-            let lists = current_lists(&lists);
-            sink(SyncEvent::Removals(lists.removals().into()));
-            sink(SyncEvent::Rooms(lists.rooms().into()));
+            announce_lists(sink, lists, &[ListKind::Removals, ListKind::Rooms]);
         });
     }
 
@@ -238,7 +225,7 @@ impl DemoAuthed {
             let notice = PushNotice {
                 room_id: arrival.room_id.clone(),
                 room_name: room.display_name.clone(),
-                sent_at: data::arrived_at(),
+                sent_at: unix_now_ms(),
                 content: NoticeContent::Message {
                     sender: shown_sender.clone(),
                     kind: arrival.kind,
@@ -291,14 +278,11 @@ impl DemoAuthed {
         let notice = PushNotice {
             room_id: invite.id.clone(),
             room_name: invite.name.clone(),
-            sent_at: data::arrived_at(),
+            sent_at: unix_now_ms(),
             content: NoticeContent::Invite {
                 inviter: invite.inviter.clone(),
             },
-            tweaks: PushTweaks {
-                highlight: false,
-                sound: true,
-            },
+            tweaks: notifications::SOUND_ONLY,
         };
         tracing::debug!(room_id = %invite.id, "demo: push rules notify an invite");
         if notices_tx.send(notice).await.is_err() {
@@ -332,28 +316,18 @@ impl DemoAuthed {
         after: Duration,
         change: impl FnOnce(&mut data::RoomOverrides) + Send + 'static,
     ) {
-        let Some(sink) = self.sync_sink() else {
-            return;
-        };
-        let lists = Arc::clone(&self.lists);
-        tokio::spawn(async move {
-            sleep(after).await;
+        self.after_lag(after, |sink, lists| {
             if let Ok(mut lists) = lists.lock() {
                 change(&mut lists.overrides);
             }
             tracing::debug!("demo: the invites changed");
-            sink(SyncEvent::Invites(current_lists(&lists).invites().into()));
+            announce_lists(sink, lists, &[ListKind::Invites]);
         });
     }
 
     pub(super) fn echo_rooms(&self) {
-        let Some(sink) = self.sync_sink() else {
-            return;
-        };
-        let lists = Arc::clone(&self.lists);
-        tokio::spawn(async move {
-            sleep(room_info::ECHO_LAG).await;
-            sink(SyncEvent::Rooms(current_lists(&lists).rooms().into()));
+        self.after_lag(room_info::ECHO_LAG, |sink, lists| {
+            announce_lists(sink, lists, &[ListKind::Rooms]);
         });
     }
 
@@ -382,12 +356,7 @@ impl DemoAuthed {
     }
 
     fn list_child_later(&self, parent: RoomId, child: RoomId) {
-        let Some(sink) = self.sync_sink() else {
-            return;
-        };
-        let lists = Arc::clone(&self.lists);
-        tokio::spawn(async move {
-            sleep(create_room::PARENT_LAG).await;
+        self.after_lag(create_room::PARENT_LAG, move |sink, lists| {
             if let Ok(mut lists) = lists.lock() {
                 lists
                     .overrides
@@ -397,7 +366,7 @@ impl DemoAuthed {
                     .push(child.to_string());
             }
             tracing::debug!(%parent, %child, "demo: the parent space lists its new child");
-            sink(SyncEvent::Spaces(current_lists(&lists).spaces().into()));
+            announce_lists(sink, lists, &[ListKind::Spaces]);
         });
     }
 }
@@ -479,9 +448,7 @@ impl SpaceIndexPort for DemoAuthed {
 
     async fn join(&self, room_id: &RoomId, via: &[String]) -> Result<()> {
         space_index::pause().await;
-        if space_index::scenario().join_fails {
-            return Err(unavailable("joining rooms"));
-        }
+        unavailable_if(space_index::scenario().join_fails, "joining rooms")?;
         tracing::debug!(%room_id, ?via, "demo: joining a room from the space index");
         self.remember_join(room_id);
         self.echo_join();
@@ -498,9 +465,7 @@ impl SpaceIndexPort for DemoAuthed {
 impl InvitePort for DemoAuthed {
     async fn accept(&self, room_id: &RoomId) -> Result<()> {
         invites::pause().await;
-        if invites::scenario().accept_fails {
-            return Err(unavailable("accepting invites"));
-        }
+        unavailable_if(invites::scenario().accept_fails, "accepting invites")?;
         tracing::debug!(%room_id, "demo: accepting an invite");
         if invites::scenario().echo_lost {
             return Ok(());
@@ -512,9 +477,7 @@ impl InvitePort for DemoAuthed {
 
     async fn decline(&self, room_id: &RoomId) -> Result<()> {
         invites::pause().await;
-        if invites::scenario().decline_fails {
-            return Err(unavailable("declining invites"));
-        }
+        unavailable_if(invites::scenario().decline_fails, "declining invites")?;
         tracing::debug!(%room_id, "demo: declining an invite");
         self.change_lists(|lists| {
             lists.overrides.declined.insert(room_id.to_string());
@@ -585,9 +548,7 @@ impl RoomPreviewPort for DemoAuthed {
         via: &[String],
     ) -> Result<RoomId> {
         links::pause().await;
-        if links::scenario().join_fails {
-            return Err(unavailable("joining linked rooms"));
-        }
+        unavailable_if(links::scenario().join_fails, "joining linked rooms")?;
         let room_id = match room {
             RoomAddress::Id(room_id) => Some(room_id.clone()),
             RoomAddress::Alias(alias) => data::alias_target(alias),
@@ -653,9 +614,7 @@ impl LeavePort for DemoAuthed {
     async fn leave(&self, room_id: &RoomId) -> Result<()> {
         room_info::pause().await;
         departures::pause().await;
-        if room_info::scenario().leave_fails {
-            return Err(unavailable("leaving rooms"));
-        }
+        unavailable_if(room_info::scenario().leave_fails, "leaving rooms")?;
         if departures::scenario().room_stays && room_id.as_ref() == departures::STAYING_ROOM {
             return Err(unavailable("leaving this room"));
         }
@@ -674,9 +633,7 @@ impl LeavePort for DemoAuthed {
 
     async fn forget(&self, room_id: &RoomId) -> Result<()> {
         departures::pause().await;
-        if departures::scenario().forget_fails {
-            return Err(unavailable("forgetting rooms"));
-        }
+        unavailable_if(departures::scenario().forget_fails, "forgetting rooms")?;
         tracing::info!(%room_id, "demo: forgetting the room you were removed from");
         self.change_lists(|lists| {
             lists.overrides.forgotten.insert(room_id.to_string());

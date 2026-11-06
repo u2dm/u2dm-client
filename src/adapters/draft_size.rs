@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 use mime::Mime;
 use ruma::events::poll::unstable_start::{
     NewUnstablePollStartEventContent, ReplacementUnstablePollStartEventContent,
@@ -6,10 +8,10 @@ use ruma::events::poll::unstable_start::{
 use ruma::events::relation::Thread;
 use ruma::events::room::message::{
     AddMentions, AudioInfo, AudioMessageEventContent, FileInfo, FileMessageEventContent,
-    ForwardThread, ImageMessageEventContent, MessageType, Relation, ReplacementMetadata,
-    ReplyMetadata, RoomMessageEventContent, RoomMessageEventContentWithoutRelation,
-    TextMessageEventContent, UnstableAmplitude, UnstableAudioDetailsContentBlock, VideoInfo,
-    VideoMessageEventContent,
+    FormattedBody, ForwardThread, ImageMessageEventContent, MessageType, Relation,
+    ReplacementMetadata, ReplyMetadata, RoomMessageEventContent,
+    RoomMessageEventContentWithoutRelation, TextMessageEventContent, UnstableAmplitude,
+    UnstableAudioDetailsContentBlock, VideoInfo, VideoMessageEventContent,
 };
 use ruma::events::room::{EncryptedFile, ImageInfo, MediaSource, ThumbnailInfo};
 use ruma::events::{AnyMessageLikeEventContent, Mentions};
@@ -25,7 +27,7 @@ use crate::domain::event_size::{
     EventShape, EventSize, ID_MAX_BYTES, JSON_INTEGER_MAX, PREV_EVENTS_MAX, PUBLIC_KEY_BYTES,
     SHA256_BYTES, Wrapping, unpadded_base64_len,
 };
-use crate::domain::media::OutgoingAttachment;
+use crate::domain::media::{OutgoingAttachment, PickedAttachment, Waveform};
 use crate::domain::message::{EditKind, EditTarget, MessageEdit};
 use crate::domain::poll::PollDraft;
 
@@ -198,11 +200,40 @@ fn media_content(draft: &MediaDraft<'_>, facts: &RoomFacts<'_>) -> Option<RoomMe
     }
 }
 
+struct MediaParts {
+    body: String,
+    formatted: Option<FormattedBody>,
+    filename: Option<String>,
+    source: MediaSource,
+    thumbnail_source: Option<MediaSource>,
+    thumbnail_info: Option<Box<ThumbnailInfo>>,
+    size: Option<UInt>,
+    width: Option<UInt>,
+    height: Option<UInt>,
+    mimetype: Option<String>,
+}
+
 fn media_type(
     draft: &MediaDraft<'_>,
     caption: Option<TextMessageEventContent>,
     facts: &RoomFacts<'_>,
 ) -> Option<MessageType> {
+    let parts = media_parts(draft, caption, facts)?;
+    let picked = &draft.attachment.picked;
+    let msgtype = match draft.content_type.split('/').next().unwrap_or_default() {
+        "image" => image_type(parts),
+        "audio" => audio_type(parts, picked),
+        "video" => video_type(parts, picked.duration),
+        _ => file_type(parts),
+    };
+    Some(msgtype)
+}
+
+fn media_parts(
+    draft: &MediaDraft<'_>,
+    caption: Option<TextMessageEventContent>,
+    facts: &RoomFacts<'_>,
+) -> Option<MediaParts> {
     let picked = &draft.attachment.picked;
     let (body, formatted, filename) = match caption {
         Some(caption) => (
@@ -219,78 +250,94 @@ fn media_type(
         None
     };
     let (thumbnail_source, thumbnail_info) = thumbnail.unzip();
-    let size = UInt::new(picked.size);
     let (width, height) = picked.dimensions.map_or((None, None), |(w, h)| {
         (UInt::new(w.into()), UInt::new(h.into()))
     });
-    let mimetype = Some(draft.content_type.to_owned());
-    let msgtype = match draft.content_type.split('/').next().unwrap_or_default() {
-        "image" => {
-            let mut info = ImageInfo::new();
-            info.height = height;
-            info.width = width;
-            info.size = size;
-            info.mimetype = mimetype;
-            info.thumbnail_source = thumbnail_source;
-            info.thumbnail_info = thumbnail_info;
-            let mut content = ImageMessageEventContent::new(body, source);
-            content.info = Some(Box::new(info));
-            content.formatted = formatted;
-            content.filename = filename;
-            MessageType::Image(content)
-        }
-        "audio" => {
-            let mut content = AudioMessageEventContent::new(body, source);
-            content.formatted = formatted;
-            content.filename = filename;
-            if let (Some(duration), Some(waveform)) = (picked.duration, picked.waveform.as_ref()) {
-                let waveform = waveform
-                    .levels()
-                    .iter()
-                    .map(|level| {
-                        #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
-                        let amplitude =
-                            (level.clamp(0.0, 1.0) * f32::from(UnstableAmplitude::MAX)) as u16;
-                        UnstableAmplitude::from(amplitude)
-                    })
-                    .collect();
-                content.audio = Some(UnstableAudioDetailsContentBlock::new(duration, waveform));
-            }
-            let mut info = AudioInfo::new();
-            info.duration = picked.duration;
-            info.size = size;
-            info.mimetype = mimetype;
-            MessageType::Audio(content.info(Box::new(info)))
-        }
-        "video" => {
-            let mut info = VideoInfo::new();
-            info.duration = picked.duration;
-            info.height = height;
-            info.width = width;
-            info.size = size;
-            info.mimetype = mimetype;
-            info.thumbnail_source = thumbnail_source;
-            info.thumbnail_info = thumbnail_info;
-            let mut content = VideoMessageEventContent::new(body, source);
-            content.info = Some(Box::new(info));
-            content.formatted = formatted;
-            content.filename = filename;
-            MessageType::Video(content)
-        }
-        _ => {
-            let mut info = FileInfo::new();
-            info.size = size;
-            info.mimetype = mimetype;
-            info.thumbnail_source = thumbnail_source;
-            info.thumbnail_info = thumbnail_info;
-            let mut content = FileMessageEventContent::new(body, source);
-            content.info = Some(Box::new(info));
-            content.formatted = formatted;
-            content.filename = filename;
-            MessageType::File(content)
-        }
-    };
-    Some(msgtype)
+    Some(MediaParts {
+        body,
+        formatted,
+        filename,
+        source,
+        thumbnail_source,
+        thumbnail_info,
+        size: UInt::new(picked.size),
+        width,
+        height,
+        mimetype: Some(draft.content_type.to_owned()),
+    })
+}
+
+fn image_type(parts: MediaParts) -> MessageType {
+    let mut info = ImageInfo::new();
+    info.height = parts.height;
+    info.width = parts.width;
+    info.size = parts.size;
+    info.mimetype = parts.mimetype;
+    info.thumbnail_source = parts.thumbnail_source;
+    info.thumbnail_info = parts.thumbnail_info;
+    let mut content = ImageMessageEventContent::new(parts.body, parts.source);
+    content.info = Some(Box::new(info));
+    content.formatted = parts.formatted;
+    content.filename = parts.filename;
+    MessageType::Image(content)
+}
+
+fn audio_type(parts: MediaParts, picked: &PickedAttachment) -> MessageType {
+    let mut content = AudioMessageEventContent::new(parts.body, parts.source);
+    content.formatted = parts.formatted;
+    content.filename = parts.filename;
+    if let (Some(duration), Some(waveform)) = (picked.duration, picked.waveform.as_ref()) {
+        content.audio = Some(UnstableAudioDetailsContentBlock::new(
+            duration,
+            amplitudes(waveform),
+        ));
+    }
+    let mut info = AudioInfo::new();
+    info.duration = picked.duration;
+    info.size = parts.size;
+    info.mimetype = parts.mimetype;
+    MessageType::Audio(content.info(Box::new(info)))
+}
+
+fn amplitudes(waveform: &Waveform) -> Vec<UnstableAmplitude> {
+    waveform
+        .levels()
+        .iter()
+        .map(|level| {
+            #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+            let amplitude = (level.clamp(0.0, 1.0) * f32::from(UnstableAmplitude::MAX)) as u16;
+            UnstableAmplitude::from(amplitude)
+        })
+        .collect()
+}
+
+fn video_type(parts: MediaParts, duration: Option<Duration>) -> MessageType {
+    let mut info = VideoInfo::new();
+    info.duration = duration;
+    info.height = parts.height;
+    info.width = parts.width;
+    info.size = parts.size;
+    info.mimetype = parts.mimetype;
+    info.thumbnail_source = parts.thumbnail_source;
+    info.thumbnail_info = parts.thumbnail_info;
+    let mut content = VideoMessageEventContent::new(parts.body, parts.source);
+    content.info = Some(Box::new(info));
+    content.formatted = parts.formatted;
+    content.filename = parts.filename;
+    MessageType::Video(content)
+}
+
+fn file_type(parts: MediaParts) -> MessageType {
+    let mut info = FileInfo::new();
+    info.size = parts.size;
+    info.mimetype = parts.mimetype;
+    info.thumbnail_source = parts.thumbnail_source;
+    info.thumbnail_info = parts.thumbnail_info;
+    let mut content = FileMessageEventContent::new(parts.body, parts.source);
+    content.info = Some(Box::new(info));
+    content.formatted = parts.formatted;
+    content.filename = parts.filename;
+    MessageType::File(content)
 }
 
 fn media_source(facts: &RoomFacts<'_>) -> Option<MediaSource> {

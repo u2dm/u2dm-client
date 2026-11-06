@@ -1,5 +1,5 @@
 use std::collections::HashSet;
-use std::sync::{Mutex, OnceLock};
+use std::sync::{LazyLock, Mutex, OnceLock};
 use std::time::Duration;
 
 use tokio::time::sleep;
@@ -99,16 +99,13 @@ pub fn may_invite() -> bool {
     !scenario().no_permission
 }
 
-fn failed_searches() -> &'static Mutex<HashSet<String>> {
-    static FAILED: OnceLock<Mutex<HashSet<String>>> = OnceLock::new();
-    FAILED.get_or_init(|| Mutex::new(HashSet::new()))
-}
+static FAILED_SEARCHES: LazyLock<Mutex<HashSet<String>>> = LazyLock::new(Mutex::default);
 
 pub fn search_fails_now(term: &str) -> bool {
     if !scenario().search_fails_once {
         return false;
     }
-    failed_searches()
+    FAILED_SEARCHES
         .lock()
         .is_ok_and(|mut failed| failed.insert(term.to_owned()))
 }

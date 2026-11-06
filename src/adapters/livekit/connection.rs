@@ -182,10 +182,7 @@ struct Pump {
 }
 
 async fn pump_events(mut pump: Pump) {
-    pump.emit(MediaEvent::Sfu {
-        sfu: pump.sfu.clone(),
-        state: SfuState::Connected,
-    });
+    pump.sfu_state(SfuState::Connected);
     let mut checks = interval_at(Instant::now() + RECEIVE_CHECK, RECEIVE_CHECK);
     checks.set_missed_tick_behavior(MissedTickBehavior::Delay);
     loop {

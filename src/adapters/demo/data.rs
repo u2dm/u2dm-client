@@ -38,7 +38,7 @@ const STICKER_ASSET_MARKER: char = '#';
 const DEMO_VIA: &str = "demo.local";
 const COPY_SUFFIX: &str = "-copy";
 const OWN_NAME_IN_TIMELINES: &str = "You";
-const MINUTE_MS: u64 = 60_000;
+pub(super) const MINUTE_MS: u64 = 60_000;
 const MATRIX_TO: &str = "https://matrix.to/#/";
 
 static DATA: OnceLock<DemoData> = OnceLock::new();
@@ -123,7 +123,7 @@ impl Removed {
             kind,
             by: by.to_owned(),
             reason: reason.map(ToOwned::to_owned),
-            at_ms: unix_now_ms().saturating_sub(minutes.saturating_mul(MINUTE_MS)),
+            at_ms: minutes_before(unix_now_ms(), minutes),
         }
     }
 }
@@ -1107,27 +1107,27 @@ pub fn own_message(
     let sent = sent_text(body, emotes);
     let body = MessageBody::Text(sent.text);
     TimelineMessage {
-        unique_id: id.clone(),
         event_id: settled.then(|| id.clone()),
         local_id: (!settled).then(|| format!("local:{id}")),
-        sender_pronouns: Vec::new(),
-        sender: own_user().to_owned(),
-        sender_name: own_sender_name(),
-        sender_avatar_url: Some(own_user().to_owned()),
-        body_emoji: media::emoji_states(&body),
-        body,
         mentions_room: sent.mentions_room,
-        timestamp: unix_now_ms(),
-        is_own: true,
         reply,
-        edited: false,
         editable: true,
-        is_first_unread: false,
         send_state,
-        shield: Shield::None,
-        reactions: Vec::new(),
-        read_by: ReadBy::default(),
+        ..own_post(&id, body)
     }
+}
+
+fn own_post(id: &str, body: MessageBody) -> TimelineMessage {
+    TimelineMessage {
+        sender_name: own_sender_name(),
+        body_emoji: media::emoji_states(&body),
+        is_own: true,
+        ..posted(id, own_user(), unix_now_ms(), body)
+    }
+}
+
+pub(super) fn minutes_before(now_ms: u64, minutes: u64) -> u64 {
+    now_ms.saturating_sub(minutes.saturating_mul(MINUTE_MS))
 }
 
 pub fn posted(id: &str, sender: &str, at: u64, body: MessageBody) -> TimelineMessage {
@@ -1185,64 +1185,26 @@ pub fn own_sticker(sequence: u64, image: &PackImage, reply: Option<ReplyInfo>) -
         "demo-sent-{sequence}{STICKER_ASSET_MARKER}{}",
         media::mxc_asset(&image.mxc)
     );
-    let content = media::content_of(&id);
-    TimelineMessage {
-        unique_id: id.clone(),
-        event_id: Some(id),
-        local_id: None,
-        sender_pronouns: Vec::new(),
-        sender: own_user().to_owned(),
-        sender_name: own_sender_name(),
-        sender_avatar_url: Some(own_user().to_owned()),
-        body: MessageBody::Sticker {
-            alt: image.body.clone(),
-            meta: ImageMeta {
-                width: Some(SENT_STICKER_EXTENT),
-                height: Some(SENT_STICKER_EXTENT),
-                mimetype: None,
-                filename: None,
-                thumbnail: Some(content),
-            },
+    let body = MessageBody::Sticker {
+        alt: image.body.clone(),
+        meta: ImageMeta {
+            width: Some(SENT_STICKER_EXTENT),
+            height: Some(SENT_STICKER_EXTENT),
+            mimetype: None,
+            filename: None,
+            thumbnail: Some(media::content_of(&id)),
         },
-        body_emoji: BTreeMap::new(),
-        mentions_room: false,
-        timestamp: unix_now_ms(),
-        is_own: true,
+    };
+    TimelineMessage {
         reply,
-        edited: false,
-        editable: false,
-        is_first_unread: false,
-        send_state: SendState::default(),
-        shield: Shield::None,
-        reactions: Vec::new(),
-        read_by: ReadBy::default(),
+        ..own_post(&id, body)
     }
 }
 
 pub fn own_verification_request(sequence: u64, target: NamedUser) -> TimelineMessage {
     let id = format!("demo-sent-{sequence}-verification-request");
-    TimelineMessage {
-        unique_id: id.clone(),
-        event_id: Some(id),
-        local_id: None,
-        sender_pronouns: Vec::new(),
-        sender: own_user().to_owned(),
-        sender_name: own_sender_name(),
-        sender_avatar_url: Some(own_user().to_owned()),
-        body: MessageBody::Service(ServiceEvent::VerificationRequested { target }),
-        body_emoji: BTreeMap::new(),
-        mentions_room: false,
-        timestamp: unix_now_ms(),
-        is_own: true,
-        reply: None,
-        edited: false,
-        editable: false,
-        is_first_unread: false,
-        send_state: SendState::default(),
-        shield: Shield::None,
-        reactions: Vec::new(),
-        read_by: ReadBy::default(),
-    }
+    let body = MessageBody::Service(ServiceEvent::VerificationRequested { target });
+    own_post(&id, body)
 }
 
 pub fn own_attachment(
@@ -1313,26 +1275,10 @@ pub fn own_attachment(
         }
     };
     TimelineMessage {
-        unique_id: id.clone(),
-        event_id: Some(id),
-        local_id: None,
-        sender_pronouns: Vec::new(),
-        sender: own_user().to_owned(),
-        sender_name: own_sender_name(),
-        sender_avatar_url: Some(own_user().to_owned()),
-        body_emoji: media::emoji_states(&body),
-        body,
         mentions_room,
-        timestamp: unix_now_ms(),
-        is_own: true,
         reply,
-        edited: false,
         editable: true,
-        is_first_unread: false,
-        send_state: SendState::default(),
-        shield: Shield::None,
-        reactions: Vec::new(),
-        read_by: ReadBy::default(),
+        ..own_post(&id, body)
     }
 }
 
@@ -1375,26 +1321,9 @@ pub fn newest_other_sender(room_id: &RoomId) -> Option<NamedUser> {
 pub fn arrived_message(sequence: u64, sender: &NamedUser, body: MessageBody) -> TimelineMessage {
     let id = format!("demo-arrived-{sequence}");
     TimelineMessage {
-        unique_id: id.clone(),
-        event_id: Some(id),
-        local_id: None,
-        sender: sender.user_id.clone(),
         sender_name: sender.name.clone(),
-        sender_avatar_url: Some(sender.user_id.clone()),
         sender_pronouns: pronouns(&sender.user_id),
-        body_emoji: BTreeMap::new(),
-        body,
-        mentions_room: false,
-        timestamp: unix_now_ms(),
-        is_own: false,
-        reply: None,
-        edited: false,
-        editable: false,
-        is_first_unread: false,
-        send_state: SendState::Sent,
-        shield: Shield::None,
-        reactions: Vec::new(),
-        read_by: ReadBy::default(),
+        ..posted(&id, &sender.user_id, unix_now_ms(), body)
     }
 }
 
@@ -1429,30 +1358,12 @@ fn synthesized_message(dto: &RoomDto, room: &Room) -> TimelineMessage {
     let body = MessageBody::Text(room.last_message_body.clone());
 
     TimelineMessage {
-        unique_id: id.clone(),
-        event_id: Some(id),
-        local_id: None,
         sender_pronouns: pronouns(&sender),
-        sender_avatar_url: Some(sender.clone()),
-        sender,
         sender_name,
         body_emoji: media::emoji_states(&body),
-        body,
-        mentions_room: false,
-        timestamp: room.last_activity_ts,
         is_own: dto.last_message.own,
-        reply: None,
         edited: room.last_message_edited,
         editable: dto.last_message.own,
-        is_first_unread: false,
-        send_state: SendState::default(),
-        shield: Shield::None,
-        reactions: Vec::new(),
-        read_by: ReadBy::default(),
+        ..posted(&id, &sender, room.last_activity_ts, body)
     }
 }
-
-pub fn arrived_at() -> u64 {
-    unix_now_ms()
-}
-

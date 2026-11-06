@@ -8,6 +8,8 @@ use tokio::time::sleep;
 use url::Url;
 
 use super::catalog::{Flag, Scenarios, scenario_from_env};
+use super::data::MINUTE_MS;
+use super::revisions::Revisions;
 use crate::domain::capabilities::{
     AVATAR_FIELD, AccountApi, AccountFacts, AccountPage, Capabilities, DISPLAY_NAME_FIELD,
     ProfileFields,
@@ -127,7 +129,6 @@ const EMAIL_STAGE: &str = "m.login.email.identity";
 const RECAPTCHA_STAGE: &str = "m.login.recaptcha";
 const WRONG_PASSWORD_CODE: &str = "M_FORBIDDEN";
 const WRONG_PASSWORD_MESSAGE: &str = "Invalid password";
-const MINUTE_MS: u64 = 60_000;
 const HOUR_MS: u64 = 60 * MINUTE_MS;
 const DAY_MS: u64 = 24 * HOUR_MS;
 pub const WEAK_PASSWORD_REASON: &str = "Password must include a word you never used before";
@@ -266,7 +267,7 @@ pub struct AccountBook {
     this_name: Mutex<Option<String>>,
     rounds: Mutex<HashMap<String, Round>>,
     next_round: AtomicU64,
-    revision: watch::Sender<u64>,
+    revisions: Revisions,
 }
 
 impl Default for AccountBook {
@@ -281,7 +282,7 @@ impl Default for AccountBook {
             this_name: Mutex::new(Some(THIS_SESSION_NAME.to_owned())),
             rounds: Mutex::new(HashMap::new()),
             next_round: AtomicU64::new(0),
-            revision: watch::Sender::new(0),
+            revisions: Revisions::default(),
         }
     }
 }
@@ -314,7 +315,7 @@ fn initial_sessions(now: u64) -> Vec<OwnSession> {
 
 impl AccountBook {
     pub fn subscribe(&self) -> watch::Receiver<u64> {
-        self.revision.subscribe()
+        self.revisions.subscribe()
     }
 
     pub fn sessions(&self, device_id: &str) -> OwnSessions {
@@ -344,21 +345,21 @@ impl AccountBook {
                 session.name = Some(name.to_owned());
             }
         }
-        self.bump();
+        self.revisions.bump();
     }
 
     pub fn remove(&self, device_id: &str) {
         if let Ok(mut others) = self.others.lock() {
             others.retain(|session| session.device_id != device_id);
         }
-        self.bump();
+        self.revisions.bump();
     }
 
     pub fn remove_all_others(&self) {
         if let Ok(mut others) = self.others.lock() {
             others.clear();
         }
-        self.bump();
+        self.revisions.bump();
     }
 
     pub fn logout_risks(&self, keys_backed_up: bool) -> LogoutRisks {
@@ -369,7 +370,15 @@ impl AccountBook {
         }
     }
 
-    pub fn guard(&self, auth: Option<&AuthAnswer>, reset_on_oauth: bool) -> Guarded {
+    pub fn guard(&self, auth: Option<&AuthAnswer>) -> Guarded {
+        self.guarded(auth, false)
+    }
+
+    pub fn guard_identity_reset(&self, auth: Option<&AuthAnswer>) -> Guarded {
+        self.guarded(auth, scenario().oauth)
+    }
+
+    fn guarded(&self, auth: Option<&AuthAnswer>, reset_on_oauth: bool) -> Guarded {
         let scenario = scenario();
         let flows = scenario.flows(reset_on_oauth);
         let Some(session) = auth.and_then(|auth| auth.session.clone()) else {
@@ -432,11 +441,6 @@ impl AccountBook {
             reset_on_oauth,
             None,
         )))
-    }
-
-    fn bump(&self) {
-        self.revision
-            .send_modify(|revision| *revision = revision.wrapping_add(1));
     }
 }
 

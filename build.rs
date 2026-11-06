@@ -24,267 +24,95 @@ struct EnumCoverage {
     falls_through: &'static [&'static str],
 }
 
+const fn covers(
+    slint_enum: &'static str,
+    branches_in: &'static str,
+    falls_through: &'static [&'static str],
+) -> EnumCoverage {
+    EnumCoverage {
+        slint_enum,
+        branches_in,
+        falls_through,
+    }
+}
+
+const MESSAGES_SLINT: &str = "ui/messages.slint";
+const LOGIN_COMMON_SLINT: &str = "ui/screens/login/common.slint";
+const ATTACHMENT_DIALOG_SLINT: &str = "ui/screens/chat/components/timeline/attachment-dialog.slint";
+const AUDIO_MESSAGE_SLINT: &str =
+    "ui/screens/chat/components/timeline/messages/audio-message.slint";
+const SHIELD_MARK_SLINT: &str = "ui/screens/chat/components/timeline/shield-mark.slint";
+const UTD_MESSAGE_SLINT: &str = "ui/screens/chat/components/timeline/messages/utd-message.slint";
+const SPACE_INDEX_SLINT: &str = "ui/screens/chat/components/space-index.slint";
+const MESSAGE_BODY_SLINT: &str = "ui/screens/chat/components/timeline/message-body.slint";
+const NOTIFY_MODES_SLINT: &str = "ui/screens/chat/components/notify-modes.slint";
+const MEMBER_ROLES_SLINT: &str = "ui/screens/chat/components/member-roles.slint";
+const USER_INFO_SLINT: &str = "ui/screens/chat/components/user-info.slint";
+const IDENTITY_BANNER_SLINT: &str = "ui/screens/chat/components/timeline/identity-banner.slint";
+const ENCRYPTION_SLINT: &str = "ui/screens/chat/components/encryption.slint";
+const ACCOUNT_SLINT: &str = "ui/screens/chat/components/account.slint";
+const AUTH_PROMPT_SLINT: &str = "ui/screens/chat/components/auth-prompt.slint";
+const POLL_MESSAGE_SLINT: &str = "ui/screens/chat/components/timeline/messages/poll-message.slint";
+const ROOM_LOG_SLINT: &str = "ui/screens/chat/components/room-log.slint";
+const SIDEBAR_SLINT: &str = "ui/screens/chat/components/sidebar.slint";
+const INVITE_SLINT: &str = "ui/screens/chat/components/invite.slint";
+const REMOVAL_SLINT: &str = "ui/screens/chat/components/removal.slint";
+const CREATE_ROOM_SLINT: &str = "ui/screens/chat/components/create-room.slint";
+const INVITE_PEOPLE_SLINT: &str = "ui/screens/chat/components/invite-people.slint";
+
 const ENUM_COVERAGE: &[EnumCoverage] = &[
-    EnumCoverage {
-        slint_enum: "CallPhase",
-        branches_in: "ui/messages.slint",
-        falls_through: &["live"],
-    },
-    EnumCoverage {
-        slint_enum: "CallTileState",
-        branches_in: "ui/messages.slint",
-        falls_through: &["live"],
-    },
-    EnumCoverage {
-        slint_enum: "CallNotice",
-        branches_in: "ui/messages.slint",
-        falls_through: &["none"],
-    },
-    EnumCoverage {
-        slint_enum: "CallRefusal",
-        branches_in: "ui/messages.slint",
-        falls_through: &["session-unverified"],
-    },
-    EnumCoverage {
-        slint_enum: "CallScreen",
-        branches_in: "ui/messages.slint",
-        falls_through: &["off"],
-    },
-    EnumCoverage {
-        slint_enum: "CallScreenRefusal",
-        branches_in: "ui/messages.slint",
-        falls_through: &["no-portal"],
-    },
-    EnumCoverage {
-        slint_enum: "CallMic",
-        branches_in: "ui/messages.slint",
-        falls_through: &["off"],
-    },
-    EnumCoverage {
-        slint_enum: "CallReaction",
-        branches_in: "ui/messages.slint",
-        falls_through: &["ready"],
-    },
-    EnumCoverage {
-        slint_enum: "CallCamera",
-        branches_in: "ui/messages.slint",
-        falls_through: &["off"],
-    },
-    EnumCoverage {
-        slint_enum: "CallDeviceKind",
-        branches_in: "ui/messages.slint",
-        falls_through: &[],
-    },
-    EnumCoverage {
-        slint_enum: "CallDeviceStatus",
-        branches_in: "ui/messages.slint",
-        falls_through: &["connected"],
-    },
-    EnumCoverage {
-        slint_enum: "CallDeviceTrouble",
-        branches_in: "ui/messages.slint",
-        falls_through: &["failed"],
-    },
-    EnumCoverage {
-        slint_enum: "UserMessageKind",
-        branches_in: "ui/messages.slint",
-        falls_through: &["none"],
-    },
-    EnumCoverage {
-        slint_enum: "ServiceKind",
-        branches_in: "ui/messages.slint",
-        falls_through: &["none"],
-    },
-    EnumCoverage {
-        slint_enum: "LoginActivity",
-        branches_in: "ui/screens/login/common.slint",
-        falls_through: &["idle"],
-    },
-    EnumCoverage {
-        slint_enum: "PreviewKind",
-        branches_in: "ui/messages.slint",
-        falls_through: &["none", "text"],
-    },
-    EnumCoverage {
-        slint_enum: "MediaFailure",
-        branches_in: "ui/messages.slint",
-        falls_through: &["none"],
-    },
-    EnumCoverage {
-        slint_enum: "AttachmentKind",
-        branches_in: "ui/screens/chat/components/timeline/attachment-dialog.slint",
-        falls_through: &[],
-    },
-    EnumCoverage {
-        slint_enum: "AudioKind",
-        branches_in: "ui/screens/chat/components/timeline/messages/audio-message.slint",
-        falls_through: &[],
-    },
-    EnumCoverage {
-        slint_enum: "Delivery",
-        branches_in: "ui/messages.slint",
-        falls_through: &["none"],
-    },
-    EnumCoverage {
-        slint_enum: "ShieldReason",
-        branches_in: "ui/messages.slint",
-        falls_through: &["none"],
-    },
-    EnumCoverage {
-        slint_enum: "Shield",
-        branches_in: "ui/screens/chat/components/timeline/shield-mark.slint",
-        falls_through: &["none"],
-    },
-    EnumCoverage {
-        slint_enum: "DecryptionFailure",
-        branches_in: "ui/screens/chat/components/timeline/messages/utd-message.slint",
-        falls_through: &["unexplained"],
-    },
-    EnumCoverage {
-        slint_enum: "ChildAccess",
-        branches_in: "ui/screens/chat/components/space-index.slint",
-        falls_through: &[],
-    },
-    EnumCoverage {
-        slint_enum: "SpaceIndexStatus",
-        branches_in: "ui/screens/chat/components/space-index.slint",
-        falls_through: &["closed"],
-    },
-    EnumCoverage {
-        slint_enum: "MessageKind",
-        branches_in: "ui/screens/chat/components/timeline/message-body.slint",
-        falls_through: &["service"],
-    },
-    EnumCoverage {
-        slint_enum: "NotifyMode",
-        branches_in: "ui/screens/chat/components/notify-modes.slint",
-        falls_through: &[],
-    },
-    EnumCoverage {
-        slint_enum: "MemberRole",
-        branches_in: "ui/screens/chat/components/member-roles.slint",
-        falls_through: &["member"],
-    },
-    EnumCoverage {
-        slint_enum: "RoomMembership",
-        branches_in: "ui/screens/chat/components/user-info.slint",
-        falls_through: &["joined", "unknown"],
-    },
-    EnumCoverage {
-        slint_enum: "DirectChat",
-        branches_in: "ui/screens/chat/components/user-info.slint",
-        falls_through: &["hidden"],
-    },
-    EnumCoverage {
-        slint_enum: "UpgradeLink",
-        branches_in: "ui/messages.slint",
-        falls_through: &["hidden"],
-    },
-    EnumCoverage {
-        slint_enum: "IdentityTrust",
-        branches_in: "ui/screens/chat/components/user-info.slint",
-        falls_through: &["unverified"],
-    },
-    EnumCoverage {
-        slint_enum: "VerifyOffer",
-        branches_in: "ui/screens/chat/components/user-info.slint",
-        falls_through: &["hidden"],
-    },
-    EnumCoverage {
-        slint_enum: "DeviceTrust",
-        branches_in: "ui/screens/chat/components/user-info.slint",
-        falls_through: &[],
-    },
-    EnumCoverage {
-        slint_enum: "PresenceLine",
-        branches_in: "ui/messages.slint",
-        falls_through: &["hidden"],
-    },
-    EnumCoverage {
-        slint_enum: "IdentityAlertKind",
-        branches_in: "ui/screens/chat/components/timeline/identity-banner.slint",
-        falls_through: &["none"],
-    },
-    EnumCoverage {
-        slint_enum: "EncryptionStanding",
-        branches_in: "ui/screens/chat/components/encryption.slint",
-        falls_through: &[],
-    },
-    EnumCoverage {
-        slint_enum: "RecoveryStatus",
-        branches_in: "ui/screens/chat/components/encryption.slint",
-        falls_through: &[],
-    },
-    EnumCoverage {
-        slint_enum: "EncryptionStep",
-        branches_in: "ui/screens/chat/components/encryption.slint",
-        falls_through: &[],
-    },
-    EnumCoverage {
-        slint_enum: "EncryptionActivity",
-        branches_in: "ui/screens/chat/components/encryption.slint",
-        falls_through: &["none"],
-    },
-    EnumCoverage {
-        slint_enum: "AccountStep",
-        branches_in: "ui/screens/chat/components/account.slint",
-        falls_through: &[],
-    },
-    EnumCoverage {
-        slint_enum: "AccountActivity",
-        branches_in: "ui/screens/chat/components/account.slint",
-        falls_through: &["none"],
-    },
-    EnumCoverage {
-        slint_enum: "AuthStage",
-        branches_in: "ui/screens/chat/components/auth-prompt.slint",
-        falls_through: &[],
-    },
-    EnumCoverage {
-        slint_enum: "PollPhase",
-        branches_in: "ui/screens/chat/components/timeline/messages/poll-message.slint",
-        falls_through: &[],
-    },
-    EnumCoverage {
-        slint_enum: "LogLevel",
-        branches_in: "ui/screens/chat/components/room-log.slint",
-        falls_through: &[],
-    },
-    EnumCoverage {
-        slint_enum: "RoomRowKind",
-        branches_in: "ui/screens/chat/components/sidebar.slint",
-        falls_through: &[],
-    },
-    EnumCoverage {
-        slint_enum: "InviteKind",
-        branches_in: "ui/screens/chat/components/invite.slint",
-        falls_through: &["room"],
-    },
-    EnumCoverage {
-        slint_enum: "RemovalKind",
-        branches_in: "ui/screens/chat/components/removal.slint",
-        falls_through: &["kicked"],
-    },
-    EnumCoverage {
-        slint_enum: "InviteAnswer",
-        branches_in: "ui/screens/chat/components/invite.slint",
-        falls_through: &["none"],
-    },
-    EnumCoverage {
-        slint_enum: "RoomAccess",
-        branches_in: "ui/screens/chat/components/create-room.slint",
-        falls_through: &[],
-    },
-    EnumCoverage {
-        slint_enum: "PeopleSearchStatus",
-        branches_in: "ui/screens/chat/components/invite-people.slint",
-        falls_through: &[],
-    },
-    EnumCoverage {
-        slint_enum: "InviteeState",
-        branches_in: "ui/screens/chat/components/invite-people.slint",
-        falls_through: &["available"],
-    },
+    covers("CallPhase", MESSAGES_SLINT, &["live"]),
+    covers("CallTileState", MESSAGES_SLINT, &["live"]),
+    covers("CallNotice", MESSAGES_SLINT, &["none"]),
+    covers("CallRefusal", MESSAGES_SLINT, &["session-unverified"]),
+    covers("CallScreen", MESSAGES_SLINT, &["off"]),
+    covers("CallScreenRefusal", MESSAGES_SLINT, &["no-portal"]),
+    covers("CallMic", MESSAGES_SLINT, &["off"]),
+    covers("CallReaction", MESSAGES_SLINT, &["ready"]),
+    covers("CallCamera", MESSAGES_SLINT, &["off"]),
+    covers("CallDeviceKind", MESSAGES_SLINT, &[]),
+    covers("CallDeviceStatus", MESSAGES_SLINT, &["connected"]),
+    covers("CallDeviceTrouble", MESSAGES_SLINT, &["failed"]),
+    covers("UserMessageKind", MESSAGES_SLINT, &["none"]),
+    covers("ServiceKind", MESSAGES_SLINT, &["none"]),
+    covers("LoginActivity", LOGIN_COMMON_SLINT, &["idle"]),
+    covers("PreviewKind", MESSAGES_SLINT, &["none", "text"]),
+    covers("MediaFailure", MESSAGES_SLINT, &["none"]),
+    covers("AttachmentKind", ATTACHMENT_DIALOG_SLINT, &[]),
+    covers("AudioKind", AUDIO_MESSAGE_SLINT, &[]),
+    covers("Delivery", MESSAGES_SLINT, &["none"]),
+    covers("ShieldReason", MESSAGES_SLINT, &["none"]),
+    covers("Shield", SHIELD_MARK_SLINT, &["none"]),
+    covers("DecryptionFailure", UTD_MESSAGE_SLINT, &["unexplained"]),
+    covers("ChildAccess", SPACE_INDEX_SLINT, &[]),
+    covers("SpaceIndexStatus", SPACE_INDEX_SLINT, &["closed"]),
+    covers("MessageKind", MESSAGE_BODY_SLINT, &["service"]),
+    covers("NotifyMode", NOTIFY_MODES_SLINT, &[]),
+    covers("MemberRole", MEMBER_ROLES_SLINT, &["member"]),
+    covers("RoomMembership", USER_INFO_SLINT, &["joined", "unknown"]),
+    covers("DirectChat", USER_INFO_SLINT, &["hidden"]),
+    covers("UpgradeLink", MESSAGES_SLINT, &["hidden"]),
+    covers("IdentityTrust", USER_INFO_SLINT, &["unverified"]),
+    covers("VerifyOffer", USER_INFO_SLINT, &["hidden"]),
+    covers("DeviceTrust", USER_INFO_SLINT, &[]),
+    covers("PresenceLine", MESSAGES_SLINT, &["hidden"]),
+    covers("IdentityAlertKind", IDENTITY_BANNER_SLINT, &["none"]),
+    covers("EncryptionStanding", ENCRYPTION_SLINT, &[]),
+    covers("RecoveryStatus", ENCRYPTION_SLINT, &[]),
+    covers("EncryptionStep", ENCRYPTION_SLINT, &[]),
+    covers("EncryptionActivity", ENCRYPTION_SLINT, &["none"]),
+    covers("AccountStep", ACCOUNT_SLINT, &[]),
+    covers("AccountActivity", ACCOUNT_SLINT, &["none"]),
+    covers("AuthStage", AUTH_PROMPT_SLINT, &[]),
+    covers("PollPhase", POLL_MESSAGE_SLINT, &[]),
+    covers("LogLevel", ROOM_LOG_SLINT, &[]),
+    covers("RoomRowKind", SIDEBAR_SLINT, &[]),
+    covers("InviteKind", INVITE_SLINT, &["room"]),
+    covers("RemovalKind", REMOVAL_SLINT, &["kicked"]),
+    covers("InviteAnswer", INVITE_SLINT, &["none"]),
+    covers("RoomAccess", CREATE_ROOM_SLINT, &[]),
+    covers("PeopleSearchStatus", INVITE_PEOPLE_SLINT, &[]),
+    covers("InviteeState", INVITE_PEOPLE_SLINT, &["available"]),
 ];
 
 const SCHEMA_FILE: &str = "src/adapters/ui/schema.rs";
@@ -489,13 +317,15 @@ fn check_call_reaction_options() {
     );
 }
 
-fn section<'a>(text: &'a str, file: &str, bounds: (&str, &str), what: &str) -> &'a str {
-    let (header, footer) = bounds;
-    let Some(body) = text
-        .split_once(header)
+fn between<'a>(text: &'a str, header: &str, footer: &str) -> Option<&'a str> {
+    text.split_once(header)
         .and_then(|(_, rest)| rest.split_once(footer))
         .map(|(body, _)| body)
-    else {
+}
+
+fn section<'a>(text: &'a str, file: &str, bounds: (&str, &str), what: &str) -> &'a str {
+    let (header, footer) = bounds;
+    let Some(body) = between(text, header, footer) else {
         panic!("{file} has no `{header}` followed by `{footer}`, so {what} cannot be checked");
     };
     body
@@ -565,11 +395,7 @@ fn quoted_literals(source: &str) -> impl Iterator<Item = &str> {
 fn table_names(schema: &str, table: &str) -> Vec<String> {
     let header = format!("macro_rules! {table} {{");
     let footer = format!("pub(crate) use {table};");
-    let Some(body) = schema
-        .split_once(header.as_str())
-        .and_then(|(_, rest)| rest.split_once(footer.as_str()))
-        .map(|(body, _)| body)
-    else {
+    let Some(body) = between(schema, &header, &footer) else {
         panic!(
             "{SCHEMA_FILE} has no `macro_rules! {table}` followed by `{footer}`, so its variant \
              names cannot be checked. Update ENUM_TABLES in build.rs to the new name."
@@ -590,11 +416,7 @@ fn table_names(schema: &str, table: &str) -> Vec<String> {
 
 fn declared_variants(enums: &str, slint_enum: &str) -> Vec<String> {
     let header = format!("export enum {slint_enum} {{");
-    let Some(body) = enums
-        .split_once(header.as_str())
-        .and_then(|(_, rest)| rest.split_once('}'))
-        .map(|(body, _)| body)
-    else {
+    let Some(body) = between(enums, &header, "}") else {
         panic!(
             "{ENUMS_FILE} declares no `export enum {slint_enum}`, so it cannot be checked. Update \
              ENUM_COVERAGE or ENUM_TABLES in build.rs to the new name."

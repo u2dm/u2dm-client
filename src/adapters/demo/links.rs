@@ -1,5 +1,5 @@
 use std::collections::HashSet;
-use std::sync::{Mutex, OnceLock};
+use std::sync::{LazyLock, Mutex, OnceLock};
 use std::time::Duration;
 
 use tokio::time::sleep;
@@ -80,16 +80,13 @@ pub async fn pause() {
     }
 }
 
-fn failed_previews() -> &'static Mutex<HashSet<String>> {
-    static FAILED: OnceLock<Mutex<HashSet<String>>> = OnceLock::new();
-    FAILED.get_or_init(|| Mutex::new(HashSet::new()))
-}
+static FAILED_PREVIEWS: LazyLock<Mutex<HashSet<String>>> = LazyLock::new(Mutex::default);
 
 pub fn preview_fails_now(address: &str) -> bool {
     if !scenario().preview_fails {
         return false;
     }
-    failed_previews()
+    FAILED_PREVIEWS
         .lock()
         .is_ok_and(|mut failed| failed.insert(address.to_owned()))
 }

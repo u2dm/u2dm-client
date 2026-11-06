@@ -1,5 +1,5 @@
 use std::collections::HashSet;
-use std::sync::{Mutex, OnceLock};
+use std::sync::{LazyLock, Mutex, OnceLock};
 use std::time::Duration;
 
 use tokio::time::sleep;
@@ -81,10 +81,7 @@ pub async fn pause_avatars() {
     }
 }
 
-fn failed_pages() -> &'static Mutex<HashSet<(String, usize)>> {
-    static FAILED: OnceLock<Mutex<HashSet<(String, usize)>>> = OnceLock::new();
-    FAILED.get_or_init(|| Mutex::new(HashSet::new()))
-}
+static FAILED_PAGES: LazyLock<Mutex<HashSet<(String, usize)>>> = LazyLock::new(Mutex::default);
 
 pub fn page_fails_now(space_id: &str, offset: usize) -> bool {
     let demo = scenario();
@@ -96,7 +93,7 @@ pub fn page_fails_now(space_id: &str, offset: usize) -> bool {
     if !scripted {
         return false;
     }
-    failed_pages()
+    FAILED_PAGES
         .lock()
         .is_ok_and(|mut failed| failed.insert((space_id.to_owned(), offset)))
 }

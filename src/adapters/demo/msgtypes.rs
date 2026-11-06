@@ -1,10 +1,11 @@
 use std::sync::OnceLock;
 
 use super::catalog::{Flag, Scenarios, scenario_from_env};
+use super::dto::rich_text;
 use super::{data, media};
 use crate::domain::location::Location;
 use crate::domain::media::FileMeta;
-use crate::domain::message::{MessageBody, RichText, SendState, TimelineMessage};
+use crate::domain::message::{MessageBody, SendState, TimelineMessage};
 
 const ENV_VAR: &str = "U2DM_DEMO_MSGTYPES";
 const SHAPING: &str = "demo mode: appending message types";
@@ -220,16 +221,20 @@ struct Appended {
 impl Appended {
     fn notices(&mut self) {
         for (index, (plain, html)) in NOTICES.iter().enumerate() {
-            self.theirs("notice", index, MessageBody::Notice(rich(plain, *html)));
+            self.theirs(
+                "notice",
+                index,
+                MessageBody::Notice(rich_text(plain, *html)),
+            );
         }
-        self.mine("notice", MessageBody::Notice(rich(OWN_NOTICE, None)));
+        self.mine("notice", MessageBody::Notice(rich_text(OWN_NOTICE, None)));
     }
 
     fn emotes(&mut self) {
         for (index, (plain, html)) in EMOTES.iter().enumerate() {
-            self.theirs("emote", index, MessageBody::Emote(rich(plain, *html)));
+            self.theirs("emote", index, MessageBody::Emote(rich_text(plain, *html)));
         }
-        self.mine("emote", MessageBody::Emote(rich(OWN_EMOTE, None)));
+        self.mine("emote", MessageBody::Emote(rich_text(OWN_EMOTE, None)));
     }
 
     fn files(&mut self) {
@@ -279,20 +284,13 @@ impl Appended {
 impl DemoFile {
     fn body(&self) -> MessageBody {
         MessageBody::File {
-            caption: self.caption.map(|(plain, html)| rich(plain, html)),
+            caption: self.caption.map(|(plain, html)| rich_text(plain, html)),
             meta: FileMeta {
                 filename: self.filename.to_owned(),
                 mimetype: Some(self.mimetype.to_owned()),
                 size: Some(self.size),
             },
         }
-    }
-}
-
-fn rich(plain: &str, html: Option<&str>) -> RichText {
-    match html {
-        Some(html) => RichText::formatted(plain.to_owned(), html.to_owned()),
-        None => RichText::plain(plain.to_owned()),
     }
 }
 

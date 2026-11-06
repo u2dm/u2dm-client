@@ -33,6 +33,7 @@ mod presence;
 pub mod probe;
 mod reactions;
 mod receipts;
+mod revisions;
 mod richtext;
 mod room_info;
 mod shields;

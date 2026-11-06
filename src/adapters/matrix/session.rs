@@ -10,7 +10,7 @@ use super::account::MatrixAccount;
 use super::encryption::MatrixEncryption;
 use super::identity_alerts::MatrixIdentityAlerts;
 use super::image_packs::MatrixImagePacks;
-use super::media::{MatrixMedia, MediaService};
+use super::media::{MatrixMedia, MediaService, fetch_avatar_thumbnails};
 use super::profile::PronounCache;
 use super::rooms::{
     MatrixInvitePeople, MatrixInvites, MatrixLeaves, MatrixPresence, MatrixPush,
@@ -47,6 +47,13 @@ impl ClientHandle {
 
     pub(super) fn media(&self) -> &Arc<MediaService> {
         &self.media
+    }
+
+    pub(super) async fn fetch_avatars(&self, mxcs: &[String]) -> usize {
+        let Ok(client) = self.client().await else {
+            return 0;
+        };
+        fetch_avatar_thumbnails(&client, &self.media, mxcs).await
     }
 
     pub(super) async fn room(&self, room_id: &RoomId) -> Result<matrix_sdk::Room> {

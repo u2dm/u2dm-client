@@ -35,7 +35,6 @@ use super::{
     NOTIFICATION_TYPE_STABLE, REFERENCE,
 };
 use crate::adapters::matrix::decrypt_wait::{Attempt, LateDecryption, decrypt_or_wait};
-use crate::adapters::matrix::media::fetch_avatar_thumbnails;
 use crate::adapters::matrix::member_name::named_member;
 use crate::adapters::matrix::requests::in_time;
 use crate::adapters::matrix::session::{ClientHandle, SessionResource};
@@ -428,10 +427,7 @@ impl CallSignalPort for MatrixCallSignals {
     }
 
     async fn fetch_avatars(&self, mxcs: &[String]) -> usize {
-        let Ok(client) = self.matrix.client().await else {
-            return 0;
-        };
-        fetch_avatar_thumbnails(&client, self.matrix.media(), mxcs).await
+        self.matrix.fetch_avatars(mxcs).await
     }
 
     async fn raise_hand(&self, room_id: &RoomId, membership_event: &str) -> Result<String> {

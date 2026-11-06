@@ -28,6 +28,7 @@ use crate::domain::invite::Invite;
 use crate::domain::link::LauncherSafeUrl;
 use crate::domain::message::TimelineMessage;
 use crate::domain::room::{Room, RoomId, Space};
+use crate::domain::sync::SyncEvent;
 use crate::domain::timeline::TimelineUpdate;
 use crate::domain::user_info::RoomMembership;
 use crate::domain::verification::VerificationEvent;
@@ -66,9 +67,7 @@ impl AuthPort for DemoMatrix {
     }
 
     async fn login_oauth_finish(&self) -> Result<Session> {
-        if !login::oauth_succeeds() {
-            return Err(unavailable("OAuth login"));
-        }
+        unavailable_if(!login::oauth_succeeds(), "OAuth login")?;
         login::pause().await;
         Ok(oauth_session())
     }
@@ -127,9 +126,7 @@ impl AuthPort for DemoMatrix {
     }
 
     async fn reauth_oauth_finish(&self, prior: &Session) -> Result<AuthenticatedSession> {
-        if !login::oauth_succeeds() {
-            return Err(unavailable("OAuth login"));
-        }
+        unavailable_if(!login::oauth_succeeds(), "OAuth login")?;
         login::pause().await;
         Ok(authenticated(prior.clone()))
     }
@@ -295,6 +292,33 @@ fn current_lists(lists: &Mutex<RoomLists>) -> RoomLists {
     lists.lock().map(|lists| lists.clone()).unwrap_or_default()
 }
 
+#[derive(Clone, Copy)]
+enum ListKind {
+    Removals,
+    Rooms,
+    Invites,
+    Spaces,
+}
+
+const EVERY_LIST: [ListKind; 4] = [
+    ListKind::Removals,
+    ListKind::Rooms,
+    ListKind::Invites,
+    ListKind::Spaces,
+];
+
+fn announce_lists(sink: &SyncSink, lists: &Mutex<RoomLists>, kinds: &[ListKind]) {
+    let lists = current_lists(lists);
+    for kind in kinds {
+        sink(match kind {
+            ListKind::Removals => SyncEvent::Removals(lists.removals().into()),
+            ListKind::Rooms => SyncEvent::Rooms(lists.rooms().into()),
+            ListKind::Invites => SyncEvent::Invites(lists.invites().into()),
+            ListKind::Spaces => SyncEvent::Spaces(lists.spaces().into()),
+        });
+    }
+}
+
 #[derive(Default, Clone, PartialEq, Eq)]
 enum OutgoingFlow {
     #[default]
@@ -376,4 +400,11 @@ fn with_room_facts<T>(room_id: &RoomId, measure: impl FnOnce(&RoomFacts<'_>) -> 
 
 fn unavailable(action: &str) -> AppError {
     AppError::Other(format!("{action} is not available in demo mode"))
+}
+
+fn unavailable_if(refused: bool, action: &str) -> Result<()> {
+    if refused {
+        return Err(unavailable(action));
+    }
+    Ok(())
 }

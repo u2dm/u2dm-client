@@ -46,6 +46,13 @@ pub fn format_bytes(bytes: u64) -> String {
     }
 }
 
+pub fn lookup<K: PartialEq<Q>, Q, V: Copy>(table: &[(K, V)], key: &Q) -> Option<V> {
+    table
+        .iter()
+        .find(|(entry, _)| entry == key)
+        .map(|(_, value)| *value)
+}
+
 pub fn saturating_i32<T: TryInto<i32>>(value: T) -> i32 {
     value.try_into().unwrap_or(i32::MAX)
 }

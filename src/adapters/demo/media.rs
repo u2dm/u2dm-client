@@ -1,12 +1,13 @@
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::env;
 use std::path::{Path, PathBuf};
-use std::sync::{Mutex, OnceLock};
+use std::sync::{LazyLock, Mutex};
 
 use super::{attachments, data, room_info, space_index, stickers};
 use crate::adapters::body_emoji;
 use crate::domain::media::{ContentKey, MediaFailure, Waveform};
 use crate::domain::message::{CustomEmoji, MessageBody};
+use crate::domain::user_info::localpart;
 use crate::ports::media::MediaCache;
 
 const DATA_ENV: &str = "U2DM_DEMO_DATA";
@@ -102,7 +103,7 @@ impl MediaCache for DemoMediaCache {
     }
 
     fn audio_waveform(&self, content: &ContentKey) -> Option<Waveform> {
-        learned_waveforms()
+        LEARNED_WAVEFORMS
             .lock()
             .ok()?
             .get(content.as_str())
@@ -110,36 +111,28 @@ impl MediaCache for DemoMediaCache {
     }
 }
 
-fn learned_waveforms() -> &'static Mutex<HashMap<String, Waveform>> {
-    static LEARNED: OnceLock<Mutex<HashMap<String, Waveform>>> = OnceLock::new();
-    LEARNED.get_or_init(|| Mutex::new(HashMap::new()))
-}
+static LEARNED_WAVEFORMS: LazyLock<Mutex<HashMap<String, Waveform>>> =
+    LazyLock::new(Mutex::default);
 
 pub(super) fn remember_waveform(event_id: &str, waveform: Waveform) {
-    if let Ok(mut learned) = learned_waveforms().lock() {
+    if let Ok(mut learned) = LEARNED_WAVEFORMS.lock() {
         learned.insert(event_id.to_owned(), waveform);
     }
 }
 
-fn fetched_audio() -> &'static Mutex<HashSet<String>> {
-    static FETCHED: OnceLock<Mutex<HashSet<String>>> = OnceLock::new();
-    FETCHED.get_or_init(|| Mutex::new(HashSet::new()))
-}
+static FETCHED_AUDIO: LazyLock<Mutex<HashSet<String>>> = LazyLock::new(Mutex::default);
 
-fn prefetched_pack_images() -> &'static Mutex<HashSet<String>> {
-    static PREFETCHED: OnceLock<Mutex<HashSet<String>>> = OnceLock::new();
-    PREFETCHED.get_or_init(|| Mutex::new(HashSet::new()))
-}
+static PREFETCHED_PACK_IMAGES: LazyLock<Mutex<HashSet<String>>> = LazyLock::new(Mutex::default);
 
 fn sticker_downloaded(mxc: &str) -> bool {
     !stickers::scenario().images_trickle
-        || prefetched_pack_images()
+        || PREFETCHED_PACK_IMAGES
             .lock()
             .is_ok_and(|prefetched| prefetched.contains(mxc))
 }
 
 pub(super) fn prefetch_pack_images(mxcs: &[String]) -> usize {
-    if let Ok(mut prefetched) = prefetched_pack_images().lock() {
+    if let Ok(mut prefetched) = PREFETCHED_PACK_IMAGES.lock() {
         prefetched.extend(mxcs.iter().cloned());
     }
     mxcs.iter()
@@ -170,21 +163,18 @@ pub(super) fn emoji_states(body: &MessageBody) -> BTreeMap<String, CustomEmoji> 
         .collect()
 }
 
-fn fetched_unjoined_avatars() -> &'static Mutex<HashSet<String>> {
-    static FETCHED: OnceLock<Mutex<HashSet<String>>> = OnceLock::new();
-    FETCHED.get_or_init(|| Mutex::new(HashSet::new()))
-}
+static FETCHED_UNJOINED_AVATARS: LazyLock<Mutex<HashSet<String>>> = LazyLock::new(Mutex::default);
 
 fn unjoined_avatar_withheld(mxc: &str) -> bool {
     space_index::scenario().is_slow
         && data::is_unjoined_avatar(mxc)
-        && !fetched_unjoined_avatars()
+        && !FETCHED_UNJOINED_AVATARS
             .lock()
             .is_ok_and(|fetched| fetched.contains(mxc))
 }
 
 pub(super) fn fetch_unjoined_avatars(mxcs: &[String]) -> usize {
-    if let Ok(mut fetched) = fetched_unjoined_avatars().lock() {
+    if let Ok(mut fetched) = FETCHED_UNJOINED_AVATARS.lock() {
         fetched.extend(mxcs.iter().cloned());
     }
     mxcs.iter()
@@ -204,13 +194,13 @@ pub(super) fn fetch_member_avatars(mxcs: &[String]) -> usize {
 }
 
 fn was_fetched(event_id: &str) -> bool {
-    fetched_audio()
+    FETCHED_AUDIO
         .lock()
         .is_ok_and(|fetched| fetched.contains(event_id))
 }
 
 pub(super) fn fetch_audio(event_id: &str) -> Option<PathBuf> {
-    if let Ok(mut fetched) = fetched_audio().lock() {
+    if let Ok(mut fetched) = FETCHED_AUDIO.lock() {
         fetched.insert(event_id.to_owned());
     }
     audio_asset_path(event_id)
@@ -264,12 +254,4 @@ pub fn content_of(event_id: &str) -> ContentKey {
 
 pub fn mxc_asset(mxc: &str) -> &str {
     mxc.rsplit('/').next().unwrap_or(mxc)
-}
-
-fn localpart(user_id: &str) -> &str {
-    user_id
-        .trim_start_matches('@')
-        .split(':')
-        .next()
-        .unwrap_or(user_id)
 }

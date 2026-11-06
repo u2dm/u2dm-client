@@ -5,6 +5,7 @@ use tokio::sync::watch;
 use tokio::time::sleep;
 
 use super::catalog::{Flag, Scenarios, scenario_from_env};
+use super::revisions::Revisions;
 use crate::domain::encryption::{
     AccountEncryption, KeyImport, KeyPassphrase, KeyStorage, Recovery, RecoveryAttempt,
     RecoveryKey, SessionTrust,
@@ -238,7 +239,7 @@ pub fn changed_key() -> RecoveryKey {
 pub struct EncryptionBook {
     state: Mutex<AccountEncryption>,
     setup_attempts: Mutex<u32>,
-    revision: watch::Sender<u64>,
+    revisions: Revisions,
 }
 
 impl Default for EncryptionBook {
@@ -246,14 +247,14 @@ impl Default for EncryptionBook {
         Self {
             state: Mutex::new(scenario().opening_state()),
             setup_attempts: Mutex::new(0),
-            revision: watch::Sender::new(0),
+            revisions: Revisions::default(),
         }
     }
 }
 
 impl EncryptionBook {
     pub fn subscribe(&self) -> watch::Receiver<u64> {
-        self.revision.subscribe()
+        self.revisions.subscribe()
     }
 
     pub fn state(&self) -> AccountEncryption {
@@ -323,7 +324,6 @@ impl EncryptionBook {
         if let Ok(mut state) = self.state.lock() {
             change(&mut state);
         }
-        self.revision
-            .send_modify(|revision| *revision = revision.wrapping_add(1));
+        self.revisions.bump();
     }
 }

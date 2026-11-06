@@ -1,11 +1,12 @@
 use std::collections::HashSet;
-use std::sync::{Mutex, OnceLock};
+use std::sync::{LazyLock, Mutex, OnceLock};
 use std::time::Duration;
 
 use tokio::sync::watch;
 use tokio::time::sleep;
 
 use super::catalog::{Flag, Scenarios, scenario_from_env};
+use super::revisions::Revisions;
 use super::{data, room_info};
 use crate::domain::room_info::{ADMIN_LEVEL, MODERATOR_LEVEL, MemberRole};
 use crate::domain::user_info::{
@@ -162,14 +163,11 @@ pub async fn pause() {
     }
 }
 
-fn failed_reads() -> &'static Mutex<HashSet<String>> {
-    static FAILED: OnceLock<Mutex<HashSet<String>>> = OnceLock::new();
-    FAILED.get_or_init(|| Mutex::new(HashSet::new()))
-}
+static FAILED_READS: LazyLock<Mutex<HashSet<String>>> = LazyLock::new(Mutex::default);
 
 pub fn profile_fails_now(user_id: &str) -> bool {
     scenario().profile_fails_once
-        && failed_reads()
+        && FAILED_READS
             .lock()
             .is_ok_and(|mut failed| failed.insert(user_id.to_owned()))
 }
@@ -313,23 +311,15 @@ pub fn devices(user_id: &str, identity: IdentityTrust) -> Vec<UserDevice> {
         .collect()
 }
 
+#[derive(Default)]
 pub struct VerifiedPeople {
     people: Mutex<HashSet<String>>,
-    revision: watch::Sender<u64>,
-}
-
-impl Default for VerifiedPeople {
-    fn default() -> Self {
-        Self {
-            people: Mutex::default(),
-            revision: watch::Sender::new(0),
-        }
-    }
+    revisions: Revisions,
 }
 
 impl VerifiedPeople {
     pub fn subscribe(&self) -> watch::Receiver<u64> {
-        self.revision.subscribe()
+        self.revisions.subscribe()
     }
 
     pub fn contains(&self, user_id: &str) -> bool {
@@ -342,7 +332,6 @@ impl VerifiedPeople {
         if let Ok(mut people) = self.people.lock() {
             people.insert(user_id.to_owned());
         }
-        self.revision
-            .send_modify(|revision| *revision = revision.wrapping_add(1));
+        self.revisions.bump();
     }
 }

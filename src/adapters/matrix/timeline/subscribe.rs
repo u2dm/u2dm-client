@@ -230,11 +230,7 @@ fn process_diffs(
     let arrivals = items.arrivals_since(&earlier);
     stamp_editable_polls(items, &mut batch, ctx);
     stamp_read_marks(items, &mut batch, ctx);
-    let result = match batch.len() {
-        0 => None,
-        1 => Some(batch.remove(0)),
-        _ => Some(TimelinePatch::Batch(batch)),
-    };
+    let result = bundled(batch);
     tracing::debug!(
         produced = result.is_some(),
         label = result.as_ref().map(TimelinePatch::label),

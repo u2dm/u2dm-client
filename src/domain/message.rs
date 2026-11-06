@@ -138,6 +138,13 @@ impl RichText {
         }
     }
 
+    pub fn with_html(plain: String, html: Option<String>) -> Self {
+        match html {
+            Some(html) => Self::formatted(plain, html),
+            None => Self::plain(plain),
+        }
+    }
+
     pub fn authored(plain: String, html: String, composer: String) -> Self {
         Self {
             plain,

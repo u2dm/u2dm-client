@@ -6,7 +6,7 @@ use tokio::sync::{mpsc, watch};
 use tokio::task::spawn_blocking;
 use tokio::time::sleep;
 
-use super::{DemoAuthed, unavailable};
+use super::{DemoAuthed, unavailable_if};
 use crate::adapters::demo::{audio, data, media, message_menu, pinned, powers, stickers, videos};
 use crate::adapters::video;
 use crate::domain::image_pack::PackId;
@@ -44,12 +44,8 @@ impl PinnedPort for DemoAuthed {
 
     async fn change_pin(&self, room_id: &RoomId, event_id: &str, change: PinChange) -> Result<()> {
         message_menu::pause().await;
-        if !powers::messages().pin {
-            return Err(unavailable("pinning in this room"));
-        }
-        if message_menu::scenario().pin_fails {
-            return Err(unavailable("changing pins"));
-        }
+        unavailable_if(!powers::messages().pin, "pinning in this room")?;
+        unavailable_if(message_menu::scenario().pin_fails, "changing pins")?;
         tracing::debug!(%room_id, event_id, ?change, "demo: changing a pin");
         self.change_board(room_id, |pins| match change {
             PinChange::Pin => {
@@ -185,9 +181,7 @@ impl ImagePackPort for DemoAuthed {
     async fn catalog(&self, room_id: &RoomId) -> Result<PackCatalog> {
         let demo = stickers::scenario();
         stickers::pause_catalog().await;
-        if demo.catalog_fails {
-            return Err(unavailable("loading sticker packs"));
-        }
+        unavailable_if(demo.catalog_fails, "loading sticker packs")?;
         let packs = if demo.catalog_is_empty {
             Vec::new()
         } else {
@@ -217,9 +211,7 @@ impl ImagePackPort for DemoAuthed {
         in_reply_to: Option<&str>,
     ) -> Result<()> {
         powers::refuse_unless(powers::messages().send_stickers, "sending stickers")?;
-        if stickers::scenario().send_fails {
-            return Err(unavailable("sending stickers"));
-        }
+        unavailable_if(stickers::scenario().send_fails, "sending stickers")?;
         let image = data::sticker_image(pack, shortcode)
             .ok_or_else(|| AppError::Other(format!("no demo sticker {pack}/{shortcode}")))?;
         self.append_own_sticker(room_id, &image, in_reply_to).await;
@@ -227,9 +219,7 @@ impl ImagePackPort for DemoAuthed {
     }
 
     async fn set_global(&self, pack: &PackId, global: bool) -> Result<()> {
-        if stickers::scenario().global_fails {
-            return Err(unavailable("sharing image packs"));
-        }
+        unavailable_if(stickers::scenario().global_fails, "sharing image packs")?;
         if !data::is_room_pack(pack) {
             return Err(AppError::Other(format!("no demo room pack {pack}")));
         }

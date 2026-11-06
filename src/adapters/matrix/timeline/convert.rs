@@ -280,35 +280,6 @@ fn base_message(
     }
 }
 
-fn build_utd_message(
-    unique_id: String,
-    event: &EventTimelineItem,
-    event_id_str: String,
-    ctx: &TimelineContext<'_>,
-    encrypted: &EncryptedMessage,
-    reply: Option<ReplyInfo>,
-) -> TimelineMessage {
-    TimelineMessage {
-        body: MessageBody::UnableToDecrypt(decryption_failure(encrypted)),
-        reply,
-        ..base_message(unique_id, event, event_id_str, ctx)
-    }
-}
-
-fn build_service_message(
-    unique_id: String,
-    event: &EventTimelineItem,
-    event_id_str: String,
-    ctx: &TimelineContext<'_>,
-    service: ServiceEvent,
-) -> TimelineMessage {
-    TimelineMessage {
-        sender_pronouns: Vec::new(),
-        body: MessageBody::Service(service),
-        ..base_message(unique_id, event, event_id_str, ctx)
-    }
-}
-
 fn membership_to_service(change: &RoomMembershipChange) -> Option<ServiceEvent> {
     let target = NamedUser::unnamed(change.user_id().as_str());
     Some(match change.change()? {
@@ -650,12 +621,10 @@ fn extract_file_body(file: &FileMessageEventContent) -> MessageBody {
 }
 
 fn rich_body(plain: &str, formatted: Option<&FormattedBody>) -> RichText {
-    match formatted {
-        Some(formatted) if formatted.format == MessageFormat::Html => {
-            RichText::formatted(plain.to_owned(), formatted.body.clone())
-        }
-        _ => RichText::plain(plain.to_owned()),
-    }
+    let html = formatted
+        .filter(|formatted| formatted.format == MessageFormat::Html)
+        .map(|formatted| formatted.body.clone());
+    RichText::with_html(plain.to_owned(), html)
 }
 
 const REPLY_FALLBACKS: [RemoveReplyFallback; 2] =
@@ -818,30 +787,24 @@ pub(super) fn convert_event_item_with_uid(
         .map(ToString::to_string)
         .unwrap_or_default();
 
-    let content = event.content();
-    let reply = extract_reply(content, ctx);
+    let reply = extract_reply(event.content(), ctx);
+    let Some(renderable) = classify_event(event) else {
+        tracing::debug!(
+            event_id = event_id_str,
+            sender = %event.sender(),
+            "skipping non-message event"
+        );
+        return None;
+    };
 
-    match classify_event(event) {
-        Some(Renderable::Message(message)) => {
-            let (body, mentions_room, edited) = match ctx.discarded.original_content(event) {
-                Some(original) => (
-                    message_type_to_body(&original.msgtype),
-                    names_room(original.mentions.as_ref()),
-                    false,
-                ),
-                None => (
-                    message_type_to_body(message.msgtype()),
-                    names_room(message.mentions()),
-                    message.is_edited(),
-                ),
-            };
-            let body = with_emoticons_marked(body, event, ctx);
-            let body = if is_own(event, ctx) {
-                authored(body)
-            } else {
-                body
-            };
-            Some(TimelineMessage {
+    Some(match renderable {
+        Renderable::Message(message) => {
+            let ShownMessage {
+                body,
+                mentions_room,
+                edited,
+            } = shown_message(event, message, ctx);
+            TimelineMessage {
                 body_emoji: emoji_states(&body, ctx),
                 body,
                 mentions_room,
@@ -849,46 +812,66 @@ pub(super) fn convert_event_item_with_uid(
                 edited,
                 shield: shield(event),
                 ..base_message(unique_id, event, event_id_str, ctx)
-            })
+            }
         }
-        Some(Renderable::Sticker(sticker)) => {
-            let body = extract_sticker_body(sticker.content());
-            Some(TimelineMessage {
-                body,
-                reply,
-                shield: shield(event),
-                ..base_message(unique_id, event, event_id_str, ctx)
-            })
-        }
-        Some(Renderable::Poll(poll)) => Some(TimelineMessage {
+        Renderable::Sticker(sticker) => TimelineMessage {
+            body: extract_sticker_body(sticker.content()),
+            reply,
+            shield: shield(event),
+            ..base_message(unique_id, event, event_id_str, ctx)
+        },
+        Renderable::Poll(poll) => TimelineMessage {
             body: extract_poll_body(event, poll, ctx),
             reply,
             edited: poll.is_edit(),
             shield: shield(event),
             ..base_message(unique_id, event, event_id_str, ctx)
-        }),
-        Some(Renderable::Utd(encrypted)) => Some(build_utd_message(
-            unique_id,
-            event,
-            event_id_str,
-            ctx,
-            encrypted,
+        },
+        Renderable::Utd(encrypted) => TimelineMessage {
+            body: MessageBody::UnableToDecrypt(decryption_failure(encrypted)),
             reply,
-        )),
-        Some(Renderable::Service(service)) => Some(build_service_message(
-            unique_id,
-            event,
-            event_id_str,
-            ctx,
-            name_target(service, ctx),
-        )),
-        None => {
-            tracing::debug!(
-                event_id = event_id_str,
-                sender = %event.sender(),
-                "skipping non-message event"
-            );
-            None
-        }
+            ..base_message(unique_id, event, event_id_str, ctx)
+        },
+        Renderable::Service(service) => TimelineMessage {
+            sender_pronouns: Vec::new(),
+            body: MessageBody::Service(name_target(service, ctx)),
+            ..base_message(unique_id, event, event_id_str, ctx)
+        },
+    })
+}
+
+struct ShownMessage {
+    body: MessageBody,
+    mentions_room: bool,
+    edited: bool,
+}
+
+fn shown_message(
+    event: &EventTimelineItem,
+    message: &Message,
+    ctx: &TimelineContext<'_>,
+) -> ShownMessage {
+    let (body, mentions_room, edited) = match ctx.discarded.original_content(event) {
+        Some(original) => (
+            message_type_to_body(&original.msgtype),
+            names_room(original.mentions.as_ref()),
+            false,
+        ),
+        None => (
+            message_type_to_body(message.msgtype()),
+            names_room(message.mentions()),
+            message.is_edited(),
+        ),
+    };
+    let body = with_emoticons_marked(body, event, ctx);
+    let body = if is_own(event, ctx) {
+        authored(body)
+    } else {
+        body
+    };
+    ShownMessage {
+        body,
+        mentions_room,
+        edited,
     }
 }

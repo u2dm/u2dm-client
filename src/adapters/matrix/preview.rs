@@ -73,10 +73,7 @@ pub(super) fn from_msgtype(msgtype: &MessageType) -> MessagePreview {
     };
     MessagePreview {
         kind,
-        body: match formatted_html(msgtype) {
-            Some(html) => RichText::formatted(one_line(body), html),
-            None => RichText::plain(one_line(body)),
-        },
+        body: RichText::with_html(one_line(body), formatted_html(msgtype)),
         service: None,
         edited: false,
         server_notice: matches!(msgtype, MessageType::ServerNotice(_)),

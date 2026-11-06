@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::sync::{Mutex, OnceLock};
+use std::sync::{LazyLock, Mutex, OnceLock};
 use std::time::Duration;
 
 use tokio::time::sleep;
@@ -46,7 +46,7 @@ pub const CATALOG: Scenarios = Scenarios {
 const UPLOAD_DELAY: Duration = Duration::from_millis(2500);
 pub const UPLOAD_STEPS: u64 = 12;
 pub const UPLOAD_STEP_DELAY: Duration = Duration::from_millis(400);
-const PRETEND_UPLOAD_LIMIT: u64 = 1024;
+pub const PRETEND_UPLOAD_LIMIT: u64 = 1024;
 const PICK_PREFIX: &str = "pick=";
 
 #[derive(Default, Clone)]
@@ -80,36 +80,26 @@ pub async fn pause_upload() {
     }
 }
 
-pub fn upload_limit() -> u64 {
-    PRETEND_UPLOAD_LIMIT
-}
-
-fn previews() -> &'static Mutex<HashMap<String, PathBuf>> {
-    static PREVIEWS: OnceLock<Mutex<HashMap<String, PathBuf>>> = OnceLock::new();
-    PREVIEWS.get_or_init(|| Mutex::new(HashMap::new()))
-}
+static PREVIEWS: LazyLock<Mutex<HashMap<String, PathBuf>>> = LazyLock::new(Mutex::default);
 
 pub fn remember_preview(event_id: &str, path: &Path) {
-    if let Ok(mut guard) = previews().lock() {
+    if let Ok(mut guard) = PREVIEWS.lock() {
         guard.insert(event_id.to_owned(), path.to_path_buf());
     }
 }
 
 pub fn preview_path(event_id: &str) -> Option<PathBuf> {
-    previews().lock().ok()?.get(event_id).cloned()
+    PREVIEWS.lock().ok()?.get(event_id).cloned()
 }
 
-fn sent_audio() -> &'static Mutex<HashMap<String, PathBuf>> {
-    static SENT: OnceLock<Mutex<HashMap<String, PathBuf>>> = OnceLock::new();
-    SENT.get_or_init(|| Mutex::new(HashMap::new()))
-}
+static SENT_AUDIO: LazyLock<Mutex<HashMap<String, PathBuf>>> = LazyLock::new(Mutex::default);
 
 pub fn remember_sent_audio(event_id: &str, path: &Path) {
-    if let Ok(mut guard) = sent_audio().lock() {
+    if let Ok(mut guard) = SENT_AUDIO.lock() {
         guard.insert(event_id.to_owned(), path.to_path_buf());
     }
 }
 
 pub fn sent_audio_path(event_id: &str) -> Option<PathBuf> {
-    sent_audio().lock().ok()?.get(event_id).cloned()
+    SENT_AUDIO.lock().ok()?.get(event_id).cloned()
 }

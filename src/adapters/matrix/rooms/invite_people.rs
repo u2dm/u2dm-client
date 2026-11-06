@@ -11,7 +11,6 @@ use matrix_sdk::ruma::profile::{AvatarUrl, DisplayName};
 use matrix_sdk::ruma::{OwnedMxcUri, OwnedUserId, UInt};
 use matrix_sdk::{Client, HttpError, Room};
 
-use crate::adapters::matrix::media::fetch_avatar_thumbnails;
 use crate::adapters::matrix::permissions::may_invite;
 use crate::adapters::matrix::session::ClientHandle;
 use crate::adapters::matrix::user_info::{membership, own_user, parse_user};
@@ -128,10 +127,7 @@ impl InvitePeoplePort for MatrixInvitePeople {
     }
 
     async fn fetch_avatars(&self, mxcs: &[String]) -> usize {
-        let Ok(client) = self.matrix.client().await else {
-            return 0;
-        };
-        fetch_avatar_thumbnails(&client, self.matrix.media(), mxcs).await
+        self.matrix.fetch_avatars(mxcs).await
     }
 }
 

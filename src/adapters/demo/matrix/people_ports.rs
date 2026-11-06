@@ -1,7 +1,7 @@
 use async_trait::async_trait;
 use tokio::sync::mpsc;
 
-use super::{DemoAuthed, current_lists, unavailable};
+use super::{DemoAuthed, current_lists, unavailable, unavailable_if};
 use crate::adapters::demo::{
     data, invite_people, media, message_menu, room_info, typing, user_info,
 };
@@ -300,9 +300,7 @@ impl RoomInfoPort for DemoAuthed {
 
     async fn set_notify(&self, room_id: &RoomId, mode: NotifyMode) -> Result<()> {
         room_info::pause().await;
-        if room_info::scenario().notify_fails {
-            return Err(unavailable("changing notifications"));
-        }
+        unavailable_if(room_info::scenario().notify_fails, "changing notifications")?;
         tracing::debug!(%room_id, ?mode, "demo: changing a room's notifications");
         if room_info::scenario().echo_is_lost {
             return Ok(());
@@ -316,9 +314,7 @@ impl RoomInfoPort for DemoAuthed {
 
     async fn mark_read(&self, room_id: &RoomId) -> Result<()> {
         room_info::pause().await;
-        if room_info::scenario().read_fails {
-            return Err(unavailable("marking rooms as read"));
-        }
+        unavailable_if(room_info::scenario().read_fails, "marking rooms as read")?;
         tracing::debug!(%room_id, "demo: marking a room as read");
         self.change_lists(|lists| {
             lists.overrides.read.insert(room_id.to_string());
@@ -334,17 +330,13 @@ impl RoomInfoPort for DemoAuthed {
 
     async fn room_link(&self, room_id: &RoomId) -> Result<String> {
         room_info::pause().await;
-        if room_info::scenario().link_fails {
-            return Err(unavailable("room links"));
-        }
+        unavailable_if(room_info::scenario().link_fails, "room links")?;
         data::room_link_of(room_id).ok_or_else(|| unavailable("this room's link"))
     }
 
     async fn event_link(&self, room_id: &RoomId, event_id: &str) -> Result<String> {
         message_menu::pause().await;
-        if message_menu::scenario().link_fails {
-            return Err(unavailable("message links"));
-        }
+        unavailable_if(message_menu::scenario().link_fails, "message links")?;
         Ok(data::event_link(room_id, event_id))
     }
 }
@@ -352,9 +344,7 @@ impl RoomInfoPort for DemoAuthed {
 #[async_trait]
 impl UserInfoPort for DemoAuthed {
     async fn profile(&self, room_id: &RoomId, user_id: &UserId) -> Result<UserProfile> {
-        if user_info::profile_fails_now(user_id) {
-            return Err(unavailable("this profile"));
-        }
+        unavailable_if(user_info::profile_fails_now(user_id), "this profile")?;
         Ok(self.person(room_id, user_id))
     }
 
@@ -379,9 +369,7 @@ impl UserInfoPort for DemoAuthed {
 
     async fn start_dm(&self, user_id: &UserId) -> Result<RoomId> {
         user_info::pause().await;
-        if user_info::scenario().dm_fails {
-            return Err(unavailable("starting chats"));
-        }
+        unavailable_if(user_info::scenario().dm_fails, "starting chats")?;
         if let Some(existing) = self.chat_with(user_id) {
             return Ok(existing);
         }
@@ -408,9 +396,7 @@ impl UserInfoPort for DemoAuthed {
         reason: Option<&str>,
     ) -> Result<()> {
         user_info::pause().await;
-        if user_info::moderation_fails(action) {
-            return Err(unavailable("moderating this room"));
-        }
+        unavailable_if(user_info::moderation_fails(action), "moderating this room")?;
         if !self.person(room_id, user_id).offers(action) {
             return Err(unavailable("that moderation"));
         }

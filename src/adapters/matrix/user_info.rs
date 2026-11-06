@@ -21,7 +21,6 @@ use matrix_sdk::{Client, Room};
 use tokio::sync::{Semaphore, mpsc};
 
 use super::encryption::names;
-use super::media::fetch_avatar_thumbnails;
 use super::member_name::member_name;
 use super::permissions::{member_role, moderation_powers};
 use super::profile::{PronounCache, pronouns_of};
@@ -168,10 +167,7 @@ impl UserInfoPort for MatrixUserInfo {
     }
 
     async fn fetch_avatars(&self, mxcs: &[String]) -> usize {
-        let Ok(client) = self.matrix.client().await else {
-            return 0;
-        };
-        fetch_avatar_thumbnails(&client, self.matrix.media(), mxcs).await
+        self.matrix.fetch_avatars(mxcs).await
     }
 
     async fn start_dm(&self, user_id: &UserId) -> Result<RoomId> {

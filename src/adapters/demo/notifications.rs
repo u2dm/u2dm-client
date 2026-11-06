@@ -89,6 +89,14 @@ const BURST_GAP: Duration = Duration::from_secs(1);
 pub const ROOM_ECHO_LAG: Duration = Duration::from_millis(250);
 const READ_ELSEWHERE_AFTER: Duration = Duration::from_secs(3);
 pub const LATE_INVITE: &str = "!invite-leo:demo.local";
+pub const SOUND_ONLY: PushTweaks = PushTweaks {
+    highlight: false,
+    sound: true,
+};
+const HIGHLIGHT_AND_SOUND: PushTweaks = PushTweaks {
+    highlight: true,
+    sound: true,
+};
 const GROUP_ROOM: &str = "!rust:demo.local";
 const DIRECT_ROOM: &str = "!priya:demo.local";
 const MENTION_ROOM: &str = "!matrixhq:demo.local";
@@ -192,59 +200,9 @@ pub struct Timed {
 
 pub fn script() -> Vec<Timed> {
     let demo = scenario();
-    let mut arrivals = Vec::new();
-    if demo.group {
-        arrivals.push(Arrival::text(
-            GROUP_ROOM,
-            "Has anyone tried the new trait solver yet?",
-            PushTweaks::default(),
-        ));
-    }
-    if demo.dm {
-        arrivals.push(Arrival::text(
-            DIRECT_ROOM,
-            "Are we still on for lunch tomorrow?",
-            PushTweaks {
-                highlight: false,
-                sound: true,
-            },
-        ));
-    }
-    if demo.mention {
-        arrivals.push(mention());
-    }
-    if demo.spoiler {
-        arrivals.push(spoiler());
-    }
-    if demo.undecryptable {
-        arrivals.push(Arrival::of(
-            UNDECRYPTABLE_ROOM,
-            MessageBody::UnableToDecrypt(DecryptionFailure::default()),
-            PushTweaks {
-                highlight: false,
-                sound: true,
-            },
-        ));
-    }
-    if demo.muted {
-        arrivals.push(Arrival {
-            notifies: false,
-            ..Arrival::text(MUTED_ROOM, "Kernel 7.3 is out", PushTweaks::default())
-        });
-    }
+    let arrivals = arrivals(demo);
     let first_room = arrivals.first().map(|arrival| arrival.room_id.clone());
-    let mut steps: Vec<Timed> = arrivals
-        .into_iter()
-        .enumerate()
-        .map(|(index, arrival)| Timed {
-            after: if index == 0 {
-                FIRST_ARRIVAL
-            } else {
-                ARRIVAL_GAP
-            },
-            step: Step::Arrive(Box::new(arrival)),
-        })
-        .collect();
+    let mut steps = scheduled(arrivals);
     if demo.burst {
         let opens_script = steps.is_empty();
         steps.extend(BURST.iter().enumerate().map(|(index, text)| Timed {
@@ -281,16 +239,66 @@ pub fn script() -> Vec<Timed> {
     steps
 }
 
+fn arrivals(demo: Scenario) -> Vec<Arrival> {
+    let mut arrivals = Vec::new();
+    if demo.group {
+        arrivals.push(Arrival::text(
+            GROUP_ROOM,
+            "Has anyone tried the new trait solver yet?",
+            PushTweaks::default(),
+        ));
+    }
+    if demo.dm {
+        arrivals.push(Arrival::text(
+            DIRECT_ROOM,
+            "Are we still on for lunch tomorrow?",
+            SOUND_ONLY,
+        ));
+    }
+    if demo.mention {
+        arrivals.push(mention());
+    }
+    if demo.spoiler {
+        arrivals.push(spoiler());
+    }
+    if demo.undecryptable {
+        arrivals.push(Arrival::of(
+            UNDECRYPTABLE_ROOM,
+            MessageBody::UnableToDecrypt(DecryptionFailure::default()),
+            SOUND_ONLY,
+        ));
+    }
+    if demo.muted {
+        arrivals.push(Arrival {
+            notifies: false,
+            ..Arrival::text(MUTED_ROOM, "Kernel 7.3 is out", PushTweaks::default())
+        });
+    }
+    arrivals
+}
+
+fn scheduled(arrivals: Vec<Arrival>) -> Vec<Timed> {
+    arrivals
+        .into_iter()
+        .enumerate()
+        .map(|(index, arrival)| Timed {
+            after: if index == 0 {
+                FIRST_ARRIVAL
+            } else {
+                ARRIVAL_GAP
+            },
+            step: Step::Arrive(Box::new(arrival)),
+        })
+        .collect()
+}
+
 fn mention() -> Arrival {
     let own = data::own_member_name();
     let name = own.set().unwrap_or(data::own_user());
     Arrival::text(
         MENTION_ROOM,
         &format!("{name}, could you look at the release notes before Friday?"),
-        PushTweaks {
-            highlight: true,
-            sound: true,
-        },
+        HIGHLIGHT_AND_SOUND,
     )
 }
 

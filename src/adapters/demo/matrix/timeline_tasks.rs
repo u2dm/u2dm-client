@@ -5,12 +5,11 @@ use tokio::sync::mpsc;
 use tokio::time::sleep;
 
 use super::timeline_port::{opening_patch, send_patch, send_update};
-use super::{ActiveRoom, DemoAuthed, SharedActiveRoom, current_lists};
+use super::{ActiveRoom, DemoAuthed, ListKind, SharedActiveRoom, announce_lists};
 use crate::adapters::demo::{attachments, data, polls, powers, reactions, receipts, timeline};
 use crate::domain::member_name::MemberName;
 use crate::domain::message::{MessageBody, RichText, SendState, TimelineMessage};
 use crate::domain::poll::PollAction;
-use crate::domain::sync::SyncEvent;
 use crate::domain::timeline::{Arrivals, TimelineFocus, TimelinePatch, TimelineUpdate};
 
 impl DemoAuthed {
@@ -18,27 +17,17 @@ impl DemoAuthed {
         if !polls::scenario().permissions_get_revoked {
             return;
         }
-        let Some(sink) = self.sync_sink() else {
-            return;
-        };
-        let lists = Arc::clone(&self.lists);
-        tokio::spawn(async move {
-            sleep(polls::REVOKED_AFTER).await;
+        self.after_lag(polls::REVOKED_AFTER, |sink, lists| {
             if polls::revoke() {
-                sink(SyncEvent::Rooms(current_lists(&lists).rooms().into()));
+                announce_lists(sink, lists, &[ListKind::Rooms]);
             }
         });
     }
 
     pub(super) fn spawn_power_change(&self) {
-        let Some(sink) = self.sync_sink() else {
-            return;
-        };
-        let lists = Arc::clone(&self.lists);
-        tokio::spawn(async move {
-            sleep(powers::SWITCH_AFTER).await;
+        self.after_lag(powers::SWITCH_AFTER, |sink, lists| {
             if powers::switch() {
-                sink(SyncEvent::Rooms(current_lists(&lists).rooms().into()));
+                announce_lists(sink, lists, &[ListKind::Rooms]);
             }
         });
     }

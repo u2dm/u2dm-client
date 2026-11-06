@@ -8,7 +8,6 @@ use matrix_sdk::ruma::room::RoomType;
 use matrix_sdk::ruma::{OwnedRoomId, OwnedServerName, RoomOrAliasId, UInt};
 
 use super::build::space_child_vias;
-use crate::adapters::matrix::media::fetch_avatar_thumbnails;
 use crate::adapters::matrix::room_state::join_rule;
 use crate::adapters::matrix::session::ClientHandle;
 use crate::domain::room::RoomId;
@@ -73,10 +72,7 @@ impl SpaceIndexPort for MatrixSpaceIndex {
     }
 
     async fn fetch_avatars(&self, mxcs: &[String]) -> usize {
-        let Ok(client) = self.matrix.client().await else {
-            return 0;
-        };
-        fetch_avatar_thumbnails(&client, self.matrix.media(), mxcs).await
+        self.matrix.fetch_avatars(mxcs).await
     }
 }
 

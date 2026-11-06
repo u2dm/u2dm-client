@@ -36,6 +36,7 @@ pub(super) const VIDEO_KEY_PREFIX: &str = "video:";
 pub(super) const AUDIO_DIR: &str = "audio";
 pub(super) const AUDIO_KEY_PREFIX: &str = "audio:";
 const MAX_INFLIGHT_AVATARS: usize = 8;
+const THUMBNAIL_EXTENT: u32 = 400;
 
 pub(super) fn thumb_key(content: &ContentKey) -> String {
     format!("thumb:{}", content.as_str())
@@ -50,20 +51,34 @@ pub(super) async fn fetch_avatar_thumbnails(
     media: &Arc<MediaService>,
     mxcs: &[String],
 ) -> usize {
-    let mut fetched = 0;
-    let mut tasks: JoinSet<bool> = JoinSet::new();
-    for mxc in mxcs {
+    count_fetched(mxcs, MAX_INFLIGHT_AVATARS, |mxc| {
         let key = mxc_avatar_key(mxc);
-        let uri: OwnedMxcUri = mxc.as_str().into();
+        let uri: OwnedMxcUri = mxc.into();
         let client = client.clone();
         let media = Arc::clone(media);
-        tasks.spawn(async move {
+        async move {
             media
                 .fetch_avatar_by_mxc(&client, &key, uri)
                 .await
                 .is_some()
-        });
-        if tasks.len() >= MAX_INFLIGHT_AVATARS {
+        }
+    })
+    .await
+}
+
+pub(super) async fn count_fetched<Fetch>(
+    mxcs: &[String],
+    inflight: usize,
+    mut fetch: impl FnMut(&str) -> Fetch + Send,
+) -> usize
+where
+    Fetch: Future<Output = bool> + Send + 'static,
+{
+    let mut fetched = 0;
+    let mut tasks: JoinSet<bool> = JoinSet::new();
+    for mxc in mxcs {
+        tasks.spawn(fetch(mxc));
+        if tasks.len() >= inflight {
             fetched += usize::from(matches!(tasks.join_next().await, Some(Ok(true))));
         }
     }
@@ -173,7 +188,10 @@ pub(super) fn is_animated_mime(mimetype: Option<&str>) -> bool {
 }
 
 pub(super) fn thumbnail_format() -> MediaFormat {
-    MediaFormat::Thumbnail(MediaThumbnailSettings::new(400u32.into(), 400u32.into()))
+    MediaFormat::Thumbnail(MediaThumbnailSettings::new(
+        THUMBNAIL_EXTENT.into(),
+        THUMBNAIL_EXTENT.into(),
+    ))
 }
 
 #[derive(Clone, Copy)]

@@ -13,7 +13,9 @@ use super::timeline_tasks::{
     spawn_poll_activity, spawn_poll_refusal, spawn_scenario_tasks, spawn_seen,
     spawn_upload_progress,
 };
-use super::{ActiveRoom, DemoAuthed, SharedActiveRoom, unavailable, with_room_facts};
+use super::{
+    ActiveRoom, DemoAuthed, SharedActiveRoom, unavailable, unavailable_if, with_room_facts,
+};
 use crate::adapters::body_emoji;
 use crate::adapters::demo::identity::SendHold;
 use crate::adapters::demo::{
@@ -102,6 +104,20 @@ struct OpenedWindow {
     reset_messages: Vec<TimelineMessage>,
 }
 
+#[derive(Clone, Copy)]
+enum Settle {
+    Resend,
+    Discard,
+}
+
+struct Paging {
+    returns_history: bool,
+    history: u64,
+    messages: Vec<TimelineMessage>,
+    all: Vec<TimelineMessage>,
+    newer: usize,
+}
+
 impl DemoAuthed {
     pub(super) fn room_history(&self, room_id: &RoomId) -> Vec<TimelineMessage> {
         let mut history = data::messages(room_id);
@@ -177,22 +193,23 @@ impl DemoAuthed {
         }
     }
 
-    fn settle_own_send(&self, room_id: &RoomId, local_id: &str, resend: bool) {
+    fn settle_own_send(&self, room_id: &RoomId, local_id: &str, settle: Settle) {
         let Ok(mut own_sends) = self.own_sends.lock() else {
             return;
         };
         let Some(sent) = own_sends.get_mut(room_id) else {
             return;
         };
-        if resend {
-            if let Some(message) = sent
-                .iter_mut()
-                .find(|m| m.local_id.as_deref() == Some(local_id))
-            {
-                mark_sent(message);
+        match settle {
+            Settle::Resend => {
+                if let Some(message) = sent
+                    .iter_mut()
+                    .find(|m| m.local_id.as_deref() == Some(local_id))
+                {
+                    mark_sent(message);
+                }
             }
-        } else {
-            sent.retain(|m| m.local_id.as_deref() != Some(local_id));
+            Settle::Discard => sent.retain(|m| m.local_id.as_deref() != Some(local_id)),
         }
     }
 
@@ -350,7 +367,7 @@ impl DemoAuthed {
         &self,
         room_id: &RoomId,
         local_id: &str,
-        resend: bool,
+        settle: Settle,
     ) -> Result<()> {
         let prepared = {
             let Ok(mut guard) = self.active.lock() else {
@@ -359,28 +376,29 @@ impl DemoAuthed {
             let Some(active) = guard.as_mut() else {
                 return Err(unavailable("the demo timeline"));
             };
-            if &active.room_id != room_id {
-                return Err(unavailable("the demo timeline"));
-            }
+            unavailable_if(&active.room_id != room_id, "the demo timeline")?;
             let index = active
                 .messages
                 .iter()
                 .position(|m| m.local_id.as_deref() == Some(local_id))
                 .ok_or_else(|| AppError::Other(format!("no queued send for {local_id}")))?;
-            let patch = if resend {
-                let Some(message) = active.messages.get_mut(index) else {
-                    return Err(unavailable("the demo timeline"));
-                };
-                mark_sent(message);
-                TimelinePatch::Set {
-                    index,
-                    message: message.clone(),
+            let patch = match settle {
+                Settle::Resend => {
+                    let Some(message) = active.messages.get_mut(index) else {
+                        return Err(unavailable("the demo timeline"));
+                    };
+                    mark_sent(message);
+                    TimelinePatch::Set {
+                        index,
+                        message: message.clone(),
+                    }
                 }
-            } else {
-                active.messages.remove(index);
-                TimelinePatch::Remove { index }
+                Settle::Discard => {
+                    active.messages.remove(index);
+                    TimelinePatch::Remove { index }
+                }
             };
-            self.settle_own_send(room_id, local_id, resend);
+            self.settle_own_send(room_id, local_id, settle);
             (active.timeline_tx.clone(), patch)
         };
         let (timeline_tx, patch) = prepared;
@@ -773,35 +791,12 @@ impl DemoAuthed {
         locate_audio(lookup, active.messages.iter().cloned())
     }
 
-    async fn run_timeline(
+    async fn announce_opening(
         &self,
-        room_id: &RoomId,
-        focus: TimelineFocus,
-        timeline_tx: mpsc::Sender<TimelineUpdate>,
-        mut cmd_rx: mpsc::UnboundedReceiver<TimelineCommand>,
-    ) -> Result<()> {
-        let scenario = timeline::scenario();
-        if scenario.resolving_unread && focus.opens_at_read_position() {
-            drop(timeline_tx.send(TimelineUpdate::ResolvingUnread).await);
-        }
-        if scenario.unread_boundary_is_unresolved && focus.opens_at_read_position() {
-            drop(timeline_tx.send(TimelineUpdate::UnreadUnresolved).await);
-        }
-        if scenario.reset_is_slow {
-            sleep(timeline::SLOW_RESET_DELAY).await;
-        }
-        let Some(OpenedWindow {
-            all,
-            mut newer,
-            messages,
-            reset_messages,
-        }) = self
-            .open_window(room_id, &focus, scenario, &timeline_tx)
-            .await?
-        else {
-            return Ok(());
-        };
-
+        focus: &TimelineFocus,
+        scenario: timeline::Scenario,
+        timeline_tx: &mpsc::Sender<TimelineUpdate>,
+    ) {
         let opening_page = TimelineUpdate::Pagination {
             direction: PaginationDirection::Backwards,
             outcome: PaginationOutcome::Completed {
@@ -821,6 +816,66 @@ impl DemoAuthed {
                     .await,
             );
         }
+    }
+
+    async fn page_in(
+        &self,
+        direction: PaginationDirection,
+        paging: &mut Paging,
+        timeline_tx: &mpsc::Sender<TimelineUpdate>,
+    ) -> bool {
+        match direction {
+            PaginationDirection::Backwards if paging.returns_history => {
+                paging.history += 1;
+                let page = older_history(paging.history, &paging.messages);
+                if let Ok(mut guard) = self.active.lock()
+                    && let Some(active) = guard.as_mut()
+                {
+                    active.prepended = active.prepended.saturating_add(page.len());
+                }
+                let page = page.into_iter().map(TimelinePatch::PushFront).collect();
+                send_patch(timeline_tx, TimelinePatch::Batch(page)).await;
+                paging.history > 2
+            }
+            PaginationDirection::Backwards => true,
+            PaginationDirection::Forwards => {
+                let page = newer_page(&paging.all, &mut paging.newer);
+                let hit_end = page.is_empty();
+                self.append_newer(page, timeline_tx).await;
+                hit_end
+            }
+        }
+    }
+
+    async fn run_timeline(
+        &self,
+        room_id: &RoomId,
+        focus: TimelineFocus,
+        timeline_tx: mpsc::Sender<TimelineUpdate>,
+        mut cmd_rx: mpsc::UnboundedReceiver<TimelineCommand>,
+    ) -> Result<()> {
+        let scenario = timeline::scenario();
+        if scenario.resolving_unread && focus.opens_at_read_position() {
+            drop(timeline_tx.send(TimelineUpdate::ResolvingUnread).await);
+        }
+        if scenario.unread_boundary_is_unresolved && focus.opens_at_read_position() {
+            drop(timeline_tx.send(TimelineUpdate::UnreadUnresolved).await);
+        }
+        if scenario.reset_is_slow {
+            sleep(timeline::SLOW_RESET_DELAY).await;
+        }
+        let Some(OpenedWindow {
+            all,
+            newer,
+            messages,
+            reset_messages,
+        }) = self
+            .open_window(room_id, &focus, scenario, &timeline_tx)
+            .await?
+        else {
+            return Ok(());
+        };
+        self.announce_opening(&focus, scenario, &timeline_tx).await;
 
         spawn_scenario_tasks(
             &self.active,
@@ -834,31 +889,18 @@ impl DemoAuthed {
         self.spawn_poll_revocation();
         self.spawn_power_change();
 
-        let mut history = 0_u64;
+        let mut paging = Paging {
+            returns_history: scenario.pagination_returns_history,
+            history: 0,
+            messages,
+            all,
+            newer,
+        };
         while let Some(command) = cmd_rx.recv().await {
             let Some(direction) = self.run_command(command, &timeline_tx).await else {
                 continue;
             };
-            let mut hit_end = true;
-            if scenario.pagination_returns_history
-                && matches!(direction, PaginationDirection::Backwards)
-            {
-                history += 1;
-                hit_end = history > 2;
-                let page = older_history(history, &messages);
-                if let Ok(mut guard) = self.active.lock()
-                    && let Some(active) = guard.as_mut()
-                {
-                    active.prepended = active.prepended.saturating_add(page.len());
-                }
-                let page = page.into_iter().map(TimelinePatch::PushFront).collect();
-                send_patch(&timeline_tx, TimelinePatch::Batch(page)).await;
-            }
-            if matches!(direction, PaginationDirection::Forwards) {
-                let page = newer_page(&all, &mut newer);
-                hit_end = page.is_empty();
-                self.append_newer(page, &timeline_tx).await;
-            }
+            let hit_end = self.page_in(direction, &mut paging, &timeline_tx).await;
             let update = TimelineUpdate::Pagination {
                 direction,
                 outcome: PaginationOutcome::Completed { hit_end },
@@ -948,9 +990,7 @@ impl TimelinePort for DemoAuthed {
 
     async fn send_text(&self, room_id: &RoomId, body: &str, emotes: &[Emote]) -> Result<()> {
         powers::refuse_unless(powers::messages().send_messages, "sending messages")?;
-        if timeline::scenario().sends_are_refused {
-            return Err(unavailable("sending messages"));
-        }
+        unavailable_if(timeline::scenario().sends_are_refused, "sending messages")?;
         with_room_facts(room_id, |facts| draft_size::message(body, emotes, facts)).checked()?;
         self.append_own_message(room_id, body, emotes, None).await;
         Ok(())
@@ -964,9 +1004,7 @@ impl TimelinePort for DemoAuthed {
         in_reply_to: &str,
     ) -> Result<()> {
         powers::refuse_unless(powers::messages().send_messages, "sending replies")?;
-        if timeline::scenario().sends_are_refused {
-            return Err(unavailable("sending replies"));
-        }
+        unavailable_if(timeline::scenario().sends_are_refused, "sending replies")?;
         with_room_facts(room_id, |facts| {
             draft_size::reply(body, emotes, in_reply_to, facts)
         })
@@ -978,9 +1016,7 @@ impl TimelinePort for DemoAuthed {
 
     async fn edit_message(&self, room_id: &RoomId, edit: &MessageEdit) -> Result<()> {
         powers::refuse_unless(powers::messages().send_messages, "editing messages")?;
-        if timeline::scenario().edits_are_refused {
-            return Err(unavailable("editing messages"));
-        }
+        unavailable_if(timeline::scenario().edits_are_refused, "editing messages")?;
         with_room_facts(room_id, |facts| draft_size::edit(edit, facts)).checked()?;
         let RevisedText {
             timeline_tx,
@@ -1013,9 +1049,7 @@ impl TimelinePort for DemoAuthed {
 
     async fn send_poll(&self, room_id: &RoomId, draft: &PollDraft) -> Result<()> {
         powers::refuse_unless(powers::polls().start, "starting polls")?;
-        if timeline::scenario().sends_are_refused {
-            return Err(unavailable("sending polls"));
-        }
+        unavailable_if(timeline::scenario().sends_are_refused, "sending polls")?;
         with_room_facts(room_id, |facts| draft_size::poll_start(draft, facts)).checked()?;
         self.append_own_poll(room_id, draft).await;
         Ok(())
@@ -1026,11 +1060,13 @@ impl TimelinePort for DemoAuthed {
             tracing::debug!(%room_id, local_id, "demo: the retried send is held again");
             return Ok(());
         }
-        self.patch_queued_send(room_id, local_id, true).await
+        self.patch_queued_send(room_id, local_id, Settle::Resend)
+            .await
     }
 
     async fn discard_send(&self, room_id: &RoomId, local_id: &str) -> Result<()> {
-        self.patch_queued_send(room_id, local_id, false).await
+        self.patch_queued_send(room_id, local_id, Settle::Discard)
+            .await
     }
 
     async fn delete_message(&self, room_id: &RoomId, event_id: &str) -> Result<()> {
@@ -1055,12 +1091,8 @@ impl TimelinePort for DemoAuthed {
         } else {
             permissions.delete_others
         };
-        if !allowed {
-            return Err(unavailable("deleting this message"));
-        }
-        if message_menu::scenario().delete_refused {
-            return Err(unavailable("deleting messages"));
-        }
+        unavailable_if(!allowed, "deleting this message")?;
+        unavailable_if(message_menu::scenario().delete_refused, "deleting messages")?;
         tracing::debug!(%room_id, event_id, "demo: deleting a message");
         let fails = message_menu::scenario().delete_fails;
         if !fails && let Ok(mut deleted) = self.deleted.lock() {
@@ -1091,7 +1123,7 @@ impl TimelinePort for DemoAuthed {
         powers::refuse_unless(powers::messages().send_messages, "sending attachments")?;
         if attachments::scenario().refuses_size {
             return Err(AppError::AttachmentTooLarge {
-                limit: attachments::upload_limit(),
+                limit: attachments::PRETEND_UPLOAD_LIMIT,
             });
         }
         let content_type = if attachment.as_document {

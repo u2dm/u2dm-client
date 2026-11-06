@@ -7,6 +7,7 @@ use tokio::time::sleep;
 
 use super::catalog::{Flag, Scenarios, scenario_from_env};
 use super::data;
+use super::revisions::Revisions;
 use crate::domain::identity::{OwnIdentity, RoomAlert};
 use crate::domain::member_name::NamedUser;
 use crate::domain::room::RoomId;
@@ -132,23 +133,15 @@ pub enum SendHold {
     VerificationLost,
 }
 
+#[derive(Default)]
 pub struct IdentityBook {
     decisions: Mutex<Decisions>,
-    revision: watch::Sender<u64>,
-}
-
-impl Default for IdentityBook {
-    fn default() -> Self {
-        Self {
-            decisions: Mutex::default(),
-            revision: watch::Sender::new(0),
-        }
-    }
+    revisions: Revisions,
 }
 
 impl IdentityBook {
     pub fn subscribe(&self) -> watch::Receiver<u64> {
-        self.revision.subscribe()
+        self.revisions.subscribe()
     }
 
     fn decide<T>(&self, decide: impl FnOnce(&mut Decisions) -> T) -> Option<T> {
@@ -157,8 +150,7 @@ impl IdentityBook {
             .lock()
             .ok()
             .map(|mut decisions| decide(&mut decisions));
-        self.revision
-            .send_modify(|revision| *revision = revision.wrapping_add(1));
+        self.revisions.bump();
         decided
     }
 

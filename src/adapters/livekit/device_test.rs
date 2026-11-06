@@ -19,6 +19,7 @@ use livekit::webrtc::peer_connection_factory::{
     ContinualGatheringPolicy, PeerConnectionFactory, RtcConfiguration,
 };
 use livekit::webrtc::prelude::RtcAudioTrack;
+use livekit::webrtc::session_description::SessionDescription;
 use tokio::sync::mpsc;
 use tokio::task::{JoinHandle, spawn_blocking};
 use tokio::time::{Instant, sleep, timeout};
@@ -101,27 +102,13 @@ impl Loopback {
             .create_offer(OfferOptions::default())
             .await
             .map_err(|e| format!("no test offer: {e}"))?;
-        self.sender
-            .set_local_description(offer.clone())
-            .await
-            .map_err(|e| format!("the test offer was refused: {e}"))?;
-        self.receiver
-            .set_remote_description(offer)
-            .await
-            .map_err(|e| format!("the test offer was refused: {e}"))?;
+        exchange(&self.sender, &self.receiver, offer, "offer").await?;
         let answer = self
             .receiver
             .create_answer(AnswerOptions::default())
             .await
             .map_err(|e| format!("no test answer: {e}"))?;
-        self.receiver
-            .set_local_description(answer.clone())
-            .await
-            .map_err(|e| format!("the test answer was refused: {e}"))?;
-        self.sender
-            .set_remote_description(answer)
-            .await
-            .map_err(|e| format!("the test answer was refused: {e}"))?;
+        exchange(&self.receiver, &self.sender, answer, "answer").await?;
         let deadline = Instant::now() + LOOPBACK_WAIT;
         while self.receiver.connection_state() != PeerConnectionState::Connected {
             if Instant::now() >= deadline {
@@ -156,6 +143,21 @@ fn spelled(candidate: &IceCandidate) -> Candidate {
         candidate.sdp_mline_index(),
         candidate.candidate(),
     )
+}
+
+async fn exchange(
+    from: &PeerConnection,
+    to: &PeerConnection,
+    description: SessionDescription,
+    what: &str,
+) -> Result<(), String> {
+    let refused = |e| format!("the test {what} was refused: {e}");
+    from.set_local_description(description.clone())
+        .await
+        .map_err(refused)?;
+    to.set_remote_description(description)
+        .await
+        .map_err(refused)
 }
 
 async fn hand_over(candidates: &mut mpsc::UnboundedReceiver<Candidate>, to: &PeerConnection) {

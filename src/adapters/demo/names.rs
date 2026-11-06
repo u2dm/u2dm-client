@@ -2,7 +2,7 @@ use std::collections::{HashMap, HashSet};
 use std::sync::OnceLock;
 
 use super::catalog::{Flag, Scenarios, scenario_from_env};
-use super::data::posted;
+use super::data::{minutes_before, posted};
 use super::reactions;
 use crate::domain::member_name::{MemberName, NamedUser};
 use crate::domain::message::{
@@ -53,7 +53,6 @@ const NAMELESS: &str = "@ghost:impostor.example";
 const QUESTIONER: &str = "@vera:matrix.org";
 const RIGHT_TO_LEFT_NAME: &str = "נועה בן-דוד";
 const OVERRIDING_NAME: &str = "Kai\u{2069}\u{202e}";
-const MINUTE_MS: u64 = 60_000;
 
 #[derive(Default, Clone, Copy)]
 pub struct Scenario {
@@ -165,7 +164,7 @@ pub fn apply_scenario(room_id: &RoomId, messages: &mut Vec<TimelineMessage>, now
         return;
     }
     let scenario = scenario();
-    let at = |minutes: u64| now_ms.saturating_sub(minutes.saturating_mul(MINUTE_MS));
+    let at = |minutes: u64| minutes_before(now_ms, minutes);
     if scenario.impostor_joins {
         messages.extend(impostor_posts(at));
     }

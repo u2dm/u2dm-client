@@ -55,7 +55,6 @@ const PHOTO_WIDTH: u32 = 1040;
 const PHOTO_HEIGHT: u32 = 660;
 const STICKER_CONTENT: &str = "demo-sticker-ship";
 const STICKER_EXTENT: u32 = 512;
-const MINUTE_MS: u64 = 60_000;
 
 #[derive(Default, Clone, Copy)]
 #[allow(clippy::struct_excessive_bools)]
@@ -284,7 +283,7 @@ fn own_posts(own_user: &str) -> Vec<Post<'_>> {
 
 fn message(post: Post<'_>, own_user: &str, now_ms: u64) -> TimelineMessage {
     let is_own = post.sender == own_user;
-    let at = now_ms.saturating_sub(post.minutes_ago.saturating_mul(MINUTE_MS));
+    let at = data::minutes_before(now_ms, post.minutes_ago);
     TimelineMessage {
         sender_name: if is_own {
             data::own_sender_name()

@@ -1,5 +1,5 @@
 use std::collections::HashSet;
-use std::sync::{Mutex, OnceLock};
+use std::sync::{LazyLock, Mutex, OnceLock};
 use std::time::Duration;
 
 use tokio::time::sleep;
@@ -103,14 +103,11 @@ pub async fn pause_avatars() {
     }
 }
 
-fn failed_rosters() -> &'static Mutex<HashSet<RoomId>> {
-    static FAILED: OnceLock<Mutex<HashSet<RoomId>>> = OnceLock::new();
-    FAILED.get_or_init(|| Mutex::new(HashSet::new()))
-}
+static FAILED_ROSTERS: LazyLock<Mutex<HashSet<RoomId>>> = LazyLock::new(Mutex::default);
 
 pub fn roster_fails_now(room_id: &RoomId) -> bool {
     scenario().roster_fails_once
-        && failed_rosters()
+        && FAILED_ROSTERS
             .lock()
             .is_ok_and(|mut failed| failed.insert(room_id.clone()))
 }
@@ -127,13 +124,10 @@ pub fn withheld_avatar(user_id: &str) -> String {
     format!("{MEMBER_AVATAR_PREFIX}{user_id}")
 }
 
-fn fetched_member_avatars() -> &'static Mutex<HashSet<String>> {
-    static FETCHED: OnceLock<Mutex<HashSet<String>>> = OnceLock::new();
-    FETCHED.get_or_init(|| Mutex::new(HashSet::new()))
-}
+static FETCHED_MEMBER_AVATARS: LazyLock<Mutex<HashSet<String>>> = LazyLock::new(Mutex::default);
 
 pub fn remember_fetched_avatars(mxcs: &[String]) {
-    if let Ok(mut fetched) = fetched_member_avatars().lock() {
+    if let Ok(mut fetched) = FETCHED_MEMBER_AVATARS.lock() {
         fetched.extend(mxcs.iter().cloned());
     }
 }
@@ -142,7 +136,7 @@ pub fn avatar_owner(mxc: &str) -> Option<&str> {
     let Some(user_id) = mxc.strip_prefix(MEMBER_AVATAR_PREFIX) else {
         return Some(mxc);
     };
-    fetched_member_avatars()
+    FETCHED_MEMBER_AVATARS
         .lock()
         .is_ok_and(|fetched| fetched.contains(mxc))
         .then_some(user_id)

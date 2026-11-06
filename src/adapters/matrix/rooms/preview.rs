@@ -12,7 +12,6 @@ use matrix_sdk::{Error as SdkError, RoomState};
 use tokio::time::timeout;
 
 use super::upgrades::is_joined;
-use crate::adapters::matrix::media::fetch_avatar_thumbnails;
 use crate::adapters::matrix::room_state::join_rule;
 use crate::adapters::matrix::session::ClientHandle;
 use crate::domain::matrix_link::RoomAddress;
@@ -81,10 +80,7 @@ impl RoomPreviewPort for MatrixRoomPreviews {
     }
 
     async fn fetch_avatars(&self, mxcs: &[String]) -> usize {
-        let Ok(client) = self.matrix.client().await else {
-            return 0;
-        };
-        fetch_avatar_thumbnails(&client, self.matrix.media(), mxcs).await
+        self.matrix.fetch_avatars(mxcs).await
     }
 }
 

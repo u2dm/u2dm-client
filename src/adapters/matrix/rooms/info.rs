@@ -10,7 +10,6 @@ use matrix_sdk::ruma::{OwnedEventId, OwnedUserId};
 use matrix_sdk::{Room, RoomMemberships};
 
 use super::build::{default_notification_mode, notification_mode_for};
-use crate::adapters::matrix::media::fetch_avatar_thumbnails;
 use crate::adapters::matrix::member_name::member_name;
 use crate::adapters::matrix::permissions::member_role;
 use crate::adapters::matrix::session::ClientHandle;
@@ -105,10 +104,7 @@ impl RoomInfoPort for MatrixRoomInfo {
     }
 
     async fn fetch_avatars(&self, mxcs: &[String]) -> usize {
-        let Ok(client) = self.matrix.client().await else {
-            return 0;
-        };
-        fetch_avatar_thumbnails(&client, self.matrix.media(), mxcs).await
+        self.matrix.fetch_avatars(mxcs).await
     }
 
     async fn room_link(&self, room_id: &RoomId) -> Result<String> {
@@ -173,10 +169,8 @@ async fn rich_topic(room: &Room) -> Option<RichText> {
     if content.topic.trim().is_empty() {
         return None;
     }
-    Some(match content.topic_block.text.find_html() {
-        Some(html) => RichText::formatted(content.topic, html.to_owned()),
-        None => RichText::plain(content.topic),
-    })
+    let html = content.topic_block.text.find_html().map(ToOwned::to_owned);
+    Some(RichText::with_html(content.topic, html))
 }
 
 fn joined_at(member: &RoomMember) -> Option<u64> {
