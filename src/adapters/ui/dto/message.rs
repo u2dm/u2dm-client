@@ -10,17 +10,17 @@ use crate::adapters::ui::decode::{
 };
 use crate::adapters::ui::present::{
     Delivery, MessageKind, PollPhase, ServiceKind, ShieldReason, avatar_color_index,
-    decryption_failure, delivery, duration_label, file_extension, message_kind,
-    message_sender_label, message_sent_at_label, message_timestamp_label, name_initials,
-    poll_phase, preview_subject, pronoun_labels, reader_labels, service_kind, service_target,
-    shield_reason, unsupported_kind, voice_bars, voter_labels,
+    decryption_failure, delivery, duration_label, message_kind, message_sender_label,
+    message_sent_at_label, message_timestamp_label, name_initials, poll_phase, preview_subject,
+    pronoun_labels, reader_labels, service_kind, service_target, shield_reason, unsupported_kind,
+    voice_bars, voter_labels,
 };
 use crate::adapters::ui::richtext::{Cover, Spoilers};
 use crate::adapters::ui::schema::{
     define_ui_enum, define_ui_names, emoji_arts, media_failures, media_states, spoiler_states,
 };
 use crate::domain::media::{
-    AudioKind, AudioMeta, ContentKey, FileMeta, MediaFailure, ThumbnailOutcome,
+    AudioKind, AudioMeta, ContentKey, FileMeta, MediaFailure, ThumbnailOutcome, file_extension,
 };
 use crate::domain::member_name::isolated;
 use crate::domain::message::{
@@ -131,7 +131,7 @@ pub struct MessageDto {
     pub map_link: SharedString,
     pub audio_kind: AudioKind,
     pub waveform: Vec<f32>,
-    pub image_mimetype: SharedString,
+    pub mimetype: SharedString,
     pub image_extension: SharedString,
     pub thumbnail: Option<Image>,
     pub media_state: MediaState,
@@ -193,12 +193,14 @@ fn size_label(size: Option<u64>) -> SharedString {
 
 fn apply_file(dto: &mut MessageDto, meta: &FileMeta) {
     dto.filename = SharedString::from(&meta.filename);
+    dto.mimetype = SharedString::from(meta.mimetype.as_deref().unwrap_or_default());
     dto.size = size_label(meta.size);
 }
 
 fn apply_audio(dto: &mut MessageDto, meta: &AudioMeta, media: &dyn MediaCache) {
     dto.audio_kind = meta.kind;
     dto.filename = SharedString::from(&meta.filename);
+    dto.mimetype = SharedString::from(meta.mimetype.as_deref().unwrap_or_default());
     dto.size = size_label(meta.size);
     if let Some(duration) = meta.duration {
         dto.duration = SharedString::from(&duration_label(duration));
@@ -269,7 +271,8 @@ fn apply_media(
     let (_, meta) = m.body.media()?;
     dto.image_width = meta.width.unwrap_or(0).cast_signed();
     dto.image_height = meta.height.unwrap_or(0).cast_signed();
-    dto.image_mimetype = SharedString::from(meta.mimetype.as_deref().unwrap_or_default());
+    dto.mimetype = SharedString::from(meta.mimetype.as_deref().unwrap_or_default());
+    dto.filename = SharedString::from(meta.filename.as_deref().unwrap_or_default());
     dto.image_extension = SharedString::from(
         meta.filename
             .as_deref()
@@ -441,7 +444,7 @@ pub fn message_to_dto(m: &TimelineMessage, pinned: bool, media: &dyn MediaCache)
         map_link: SharedString::new(),
         audio_kind: AudioKind::Track,
         waveform: Vec::new(),
-        image_mimetype: SharedString::new(),
+        mimetype: SharedString::new(),
         image_extension: SharedString::new(),
         thumbnail: None,
         media_state: MediaState::Idle,

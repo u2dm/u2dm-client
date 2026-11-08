@@ -364,9 +364,15 @@ impl AppService {
         self.audio.located(media, request, track);
     }
 
-    pub(super) fn save_file(&mut self, event_id: String, filename: String) {
+    pub(super) fn save_file(
+        &mut self,
+        event_id: String,
+        filename: String,
+        mimetype: Option<String>,
+    ) {
         if let Some((media, room_id)) = self.in_active_room(|a| &a.media) {
-            self.media.save_file(media, room_id, event_id, filename);
+            self.media
+                .save_file(media, room_id, event_id, filename, mimetype);
         }
     }
 }

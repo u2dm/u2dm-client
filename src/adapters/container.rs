@@ -44,6 +44,11 @@ pub fn audio_only_mime(container: &str) -> Option<&'static str> {
     lookup(AUDIO_ONLY_CONTAINERS, &container)
 }
 
+pub fn extension_of(mime: &str) -> Option<&'static str> {
+    lookup(LAUNCHER_SAFE_VIDEO_FORMATS, &mime)
+        .or_else(|| lookup(LAUNCHER_SAFE_AUDIO_FORMATS, &mime))
+}
+
 pub fn launcher_safe_audio_extension(data: &[u8]) -> Option<&'static str> {
     lookup(LAUNCHER_SAFE_AUDIO_FORMATS, &infer::get(data)?.mime_type())
 }

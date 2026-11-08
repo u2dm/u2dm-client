@@ -743,8 +743,12 @@ impl AppService {
             UiCommand::OpenLink { url } => {
                 self.session.spawn_open_link(&mut self.operations, url);
             }
-            UiCommand::SaveFile { event_id, filename } => {
-                self.save_file(event_id, filename);
+            UiCommand::SaveFile {
+                event_id,
+                filename,
+                mimetype,
+            } => {
+                self.save_file(event_id, filename, mimetype);
             }
             UiCommand::Call(command) => self.calls.handle(command, &self.room_directory),
             UiCommand::DismissToast => {

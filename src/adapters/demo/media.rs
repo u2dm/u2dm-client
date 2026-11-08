@@ -231,8 +231,15 @@ pub(super) fn video_asset_path(event_id: &str) -> Option<PathBuf> {
     asset(&format!("video-{event_id}.mp4")).or_else(|| asset(&format!("video-{event_id}.webm")))
 }
 
+pub(super) fn full_file_path(event_id: &str) -> Option<PathBuf> {
+    attachments::sent_file_path(event_id)
+        .or_else(|| video_asset_path(event_id))
+        .or_else(|| audio_asset_path(event_id))
+        .or_else(|| DemoMediaCache.thumbnail_path(&content_of(event_id)))
+}
+
 fn audio_asset_path(event_id: &str) -> Option<PathBuf> {
-    attachments::sent_audio_path(event_id).or_else(|| {
+    attachments::sent_file_path(event_id).or_else(|| {
         AUDIO_ASSET_EXTENSIONS
             .iter()
             .find_map(|extension| asset(&format!("audio-{event_id}.{extension}")))

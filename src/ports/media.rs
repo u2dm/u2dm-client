@@ -11,7 +11,12 @@ pub trait MediaFilePort: Send + Sync {
     async fn open_path(&self, path: &Path) -> Result<()>;
     async fn pick_attachment(&self, pick: AttachmentPick) -> Result<Option<PickedAttachment>>;
     async fn release_attachment(&self, picked: PickedAttachment);
-    async fn save_file(&self, default_filename: &str, data: &[u8]) -> Result<Option<String>>;
+    async fn choose_save_path(
+        &self,
+        filename: &str,
+        mimetype: Option<&str>,
+    ) -> Result<Option<PathBuf>>;
+    async fn save_to(&self, path: &Path, data: Vec<u8>) -> Result<()>;
     async fn choose_key_export(&self, default_filename: &str) -> Result<Option<PathBuf>>;
     async fn pick_key_file(&self) -> Result<Option<PathBuf>>;
     async fn clear_session(&self);

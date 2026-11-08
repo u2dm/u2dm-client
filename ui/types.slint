@@ -351,7 +351,7 @@ export struct MessageEntry {
     thumbnail: image,
     media-state: MediaState,
     media-failure: MediaFailure,
-    image-mimetype: string,
+    mimetype: string,
     image-extension: string,
     image-width: int,
     image-height: int,
@@ -545,6 +545,7 @@ export struct SendAttachmentRequest {
 export struct SaveFileRequest {
     event-id: string,
     filename: string,
+    mimetype: string,
 }
 
 export struct VotePollRequest {

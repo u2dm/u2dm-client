@@ -390,11 +390,18 @@ pub fn find_room(tx: &Tx, address: String) {
     );
 }
 
-pub fn save_file(tx: &Tx, event_id: String, filename: String) {
+pub fn save_file(tx: &Tx, event_id: String, filename: String, mimetype: String) {
     if event_id.is_empty() {
         return;
     }
-    send_command(tx, UiCommand::SaveFile { event_id, filename });
+    send_command(
+        tx,
+        UiCommand::SaveFile {
+            event_id,
+            filename,
+            mimetype: (!mimetype.is_empty()).then_some(mimetype),
+        },
+    );
 }
 
 pub fn toggle_reaction(tx: &Tx, event_id: String, key: String) {

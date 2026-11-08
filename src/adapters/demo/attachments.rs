@@ -36,6 +36,11 @@ pub const CATALOG: Scenarios = Scenarios {
             note: "REQUIRED for any scripted dialog pick: a native chooser cannot be driven by the MCP inspector, and it blocks the Slint event loop; a Ctrl+V paste ignores it and reads the real clipboard",
         },
         Flag {
+            value: "save-to=<dir>",
+            effect: "skips the native save dialog and saves into that existing directory, under the name the dialog would suggest",
+            note: "REQUIRED for any scripted save (Save as…, a file's save button, the probe's `save_file`): the native dialog cannot be driven by the MCP inspector",
+        },
+        Flag {
             value: "all",
             effect: "slow only",
             note: "",
@@ -48,6 +53,7 @@ pub const UPLOAD_STEPS: u64 = 12;
 pub const UPLOAD_STEP_DELAY: Duration = Duration::from_millis(400);
 pub const PRETEND_UPLOAD_LIMIT: u64 = 1024;
 const PICK_PREFIX: &str = "pick=";
+const SAVE_PREFIX: &str = "save-to=";
 
 #[derive(Default, Clone)]
 pub struct Scenario {
@@ -55,6 +61,7 @@ pub struct Scenario {
     pub send_fails: bool,
     pub refuses_size: bool,
     pub preset_pick: Option<PathBuf>,
+    pub save_dir: Option<PathBuf>,
 }
 
 pub fn scenario() -> &'static Scenario {
@@ -69,6 +76,9 @@ fn apply(scenario: &mut Scenario, flag: &str) {
         "too-large" => scenario.refuses_size = true,
         preset if preset.starts_with(PICK_PREFIX) => {
             scenario.preset_pick = preset.strip_prefix(PICK_PREFIX).map(PathBuf::from);
+        }
+        preset if preset.starts_with(SAVE_PREFIX) => {
+            scenario.save_dir = preset.strip_prefix(SAVE_PREFIX).map(PathBuf::from);
         }
         other => tracing::warn!("unknown {ENV_VAR} flag: {other}"),
     }
@@ -92,14 +102,14 @@ pub fn preview_path(event_id: &str) -> Option<PathBuf> {
     PREVIEWS.lock().ok()?.get(event_id).cloned()
 }
 
-static SENT_AUDIO: LazyLock<Mutex<HashMap<String, PathBuf>>> = LazyLock::new(Mutex::default);
+static SENT_FILES: LazyLock<Mutex<HashMap<String, PathBuf>>> = LazyLock::new(Mutex::default);
 
-pub fn remember_sent_audio(event_id: &str, path: &Path) {
-    if let Ok(mut guard) = SENT_AUDIO.lock() {
+pub fn remember_sent_file(event_id: &str, path: &Path) {
+    if let Ok(mut guard) = SENT_FILES.lock() {
         guard.insert(event_id.to_owned(), path.to_path_buf());
     }
 }
 
-pub fn sent_audio_path(event_id: &str) -> Option<PathBuf> {
-    SENT_AUDIO.lock().ok()?.get(event_id).cloned()
+pub fn sent_file_path(event_id: &str) -> Option<PathBuf> {
+    SENT_FILES.lock().ok()?.get(event_id).cloned()
 }

@@ -146,26 +146,33 @@ impl MediaActions {
         room_id: RoomId,
         event_id: String,
         filename: String,
+        mimetype: Option<String>,
     ) {
-        self.spawn_media_action(
-            media,
-            room_id,
-            event_id,
-            UserMessageKind::FileDownloadFailed,
-            move |media_files, output, _event_id, data| async move {
-                match media_files.save_file(&filename, &data).await {
-                    Ok(Some(path)) => show_toast(output.as_ref(), Toast::FileSaved(path)),
-                    Ok(None) => {}
-                    Err(e) => {
-                        tracing::warn!("failed to save file: {e}");
-                        show_toast(
-                            output.as_ref(),
-                            Toast::Error(UserMessage::new(UserMessageKind::FileSaveFailed)),
-                        );
-                    }
+        let media_files = Arc::clone(&self.media_files);
+        let output = Arc::clone(&self.output);
+        self.spawn_cancellable(async move {
+            let chosen = media_files
+                .choose_save_path(&filename, mimetype.as_deref())
+                .await;
+            let saved = match chosen {
+                Ok(Some(path)) => {
+                    download_into(
+                        media.as_ref(),
+                        media_files.as_ref(),
+                        &room_id,
+                        &event_id,
+                        path,
+                    )
+                    .await
                 }
-            },
-        );
+                Ok(None) => return,
+                Err(e) => {
+                    tracing::warn!("the save chooser failed: {e}");
+                    SaveOutcome::WriteFailed
+                }
+            };
+            show_toast(output.as_ref(), saved.toast());
+        });
     }
 
     pub(super) async fn cancel_and_drain(&mut self) {
@@ -178,5 +185,49 @@ impl MediaActions {
 
     pub(super) async fn drain(&mut self) {
         self.tasks.drain().await;
+    }
+}
+
+enum SaveOutcome {
+    Written(PathBuf),
+    DownloadFailed,
+    WriteFailed,
+}
+
+impl SaveOutcome {
+    fn toast(self) -> Toast {
+        match self {
+            Self::Written(path) => Toast::FileSaved(path.display().to_string()),
+            Self::DownloadFailed => {
+                Toast::Error(UserMessage::new(UserMessageKind::FileDownloadFailed))
+            }
+            Self::WriteFailed => Toast::Error(UserMessage::new(UserMessageKind::FileSaveFailed)),
+        }
+    }
+}
+
+async fn download_into(
+    media: &dyn MediaPort,
+    media_files: &dyn MediaFilePort,
+    room_id: &RoomId,
+    event_id: &str,
+    path: PathBuf,
+) -> SaveOutcome {
+    let data = match media
+        .download_media(room_id, event_id, MediaRendition::FullFile)
+        .await
+    {
+        Ok(data) => data,
+        Err(e) => {
+            tracing::warn!("failed to download media to save: {e}");
+            return SaveOutcome::DownloadFailed;
+        }
+    };
+    match media_files.save_to(&path, data).await {
+        Ok(()) => SaveOutcome::Written(path),
+        Err(e) => {
+            tracing::warn!("failed to save file: {e}");
+            SaveOutcome::WriteFailed
+        }
     }
 }

@@ -353,6 +353,7 @@ pub enum UiCommand {
     SaveFile {
         event_id: String,
         filename: String,
+        mimetype: Option<String>,
     },
     #[strum(transparent)]
     Call(CallCommand),

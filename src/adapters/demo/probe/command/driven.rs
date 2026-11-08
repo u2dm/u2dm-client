@@ -560,6 +560,11 @@ pub fn to_driven(command: ProbeCommand, selected: Selection<'_>) -> Result<Drive
             UiCommand::PlayAudio { event_id }
         }
         ProbeCommand::CloseAudio => UiCommand::CloseAudio,
+        ProbeCommand::SaveFile {
+            event_id,
+            filename,
+            mimetype,
+        } => return scripted_save(event_id, filename, mimetype).map(Driven::Command),
         ProbeCommand::ToggleAudio => return Ok(Driven::Poke(Poke::ToggleAudio)),
         ProbeCommand::SeekAudio { ms } => {
             return Ok(Driven::Poke(Poke::SeekAudio(Duration::from_millis(ms))));
@@ -626,4 +631,23 @@ pub fn to_driven(command: ProbeCommand, selected: Selection<'_>) -> Result<Drive
         ProbeCommand::Logout => UiCommand::Logout,
         ProbeCommand::Quit => UiCommand::Quit,
     }))
+}
+
+fn scripted_save(
+    event_id: String,
+    filename: String,
+    mimetype: Option<String>,
+) -> Result<UiCommand, Rejected> {
+    if attachments::scenario().save_dir.is_none() {
+        return Err(Rejected(
+            "SaveFile opens a native save dialog, which cannot be driven; set \
+             U2DM_DEMO_ATTACHMENTS=save-to=<dir> first"
+                .to_owned(),
+        ));
+    }
+    Ok(UiCommand::SaveFile {
+        event_id,
+        filename,
+        mimetype,
+    })
 }

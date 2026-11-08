@@ -243,15 +243,14 @@ fn mark_sent(message: &mut TimelineMessage) {
 }
 
 fn remember_sent_media(settled: &TimelineMessage, attachment: &OutgoingAttachment) {
-    if let Some(event_id) = settled.event_id.as_deref()
-        && !attachment.as_document
+    let Some(event_id) = settled.event_id.as_deref() else {
+        return;
+    };
+    attachments::remember_sent_file(event_id, &attachment.picked.path);
+    if !attachment.as_document
+        && let Some(preview) = attachment.picked.preview_path()
     {
-        if let Some(preview) = attachment.picked.preview_path() {
-            attachments::remember_preview(event_id, preview);
-        }
-        if attachment.picked.is_audio() {
-            attachments::remember_sent_audio(event_id, &attachment.picked.path);
-        }
+        attachments::remember_preview(event_id, preview);
     }
 }
 

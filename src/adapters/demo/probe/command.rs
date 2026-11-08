@@ -550,6 +550,12 @@ pub enum ProbeCommand {
         event_id: String,
     },
     CloseAudio,
+    SaveFile {
+        event_id: String,
+        filename: String,
+        #[serde(default)]
+        mimetype: Option<String>,
+    },
     ToggleAudio,
     SeekAudio {
         ms: u64,

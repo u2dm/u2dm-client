@@ -5,13 +5,14 @@ use crate::adapters::ui::decode::load_attachment_preview;
 use crate::adapters::ui::dto::{mention_to_dto, preview_line};
 use crate::adapters::ui::emote;
 use crate::adapters::ui::fields::MemberRowFields;
-use crate::adapters::ui::present::{duration_label, file_extension, identity_banner};
+use crate::adapters::ui::present::{duration_label, identity_banner};
 use crate::adapters::ui::props::{BoolProp, ImageProp, IntProp, StringProp, UiProps};
 use crate::adapters::ui::reconcile::{apply_rows, rows_to_redo};
 use crate::commands::ui::Draft;
 use crate::commands::view::{
     AppViewState, AttachmentView, IdentityAlertView, MentionsView, UnsentMessage, UpgradeView,
 };
+use crate::domain::media::file_extension;
 use crate::domain::message::{EditKind, MessageEdit, RichText};
 use crate::domain::room::RoomId;
 use crate::util::format_bytes;

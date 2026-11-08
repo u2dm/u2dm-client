@@ -392,7 +392,8 @@ macro_rules! simple_callbacks {
             verdict(room_id "room-id" text, question "question" text, answers "answers" list,
                 multiple "multiple" flag, hide_results "hide-results" flag) SendPoll;
         on_save_file "save-file" save_file
-            request(event_id "event-id" text, filename "filename" text) SaveFile;
+            request(event_id "event-id" text, filename "filename" text, mimetype "mimetype" text)
+            SaveFile;
         on_edit_poll "edit-poll" edit_poll
             verdict(event_id "event-id" text, question "question" text, answers "answers" list,
                 multiple "multiple" flag, hide_results "hide-results" flag) EditPoll;
@@ -2185,7 +2186,7 @@ macro_rules! message_fields {
         service_reason set_service_reason "service-reason" text;
         media_state set_media_state "media-state" enumk(MediaState);
         media_failure set_media_failure "media-failure" enumk(MediaFailureKind);
-        image_mimetype set_image_mimetype "image-mimetype" text;
+        mimetype set_mimetype "mimetype" text;
         image_extension set_image_extension "image-extension" text;
         image_width set_image_width "image-width" int;
         image_height set_image_height "image-height" int;

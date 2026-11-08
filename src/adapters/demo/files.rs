@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 use async_trait::async_trait;
 
 use super::{attachments, encryption};
-use crate::adapters::media::DesktopMediaFiles;
+use crate::adapters::media::{DesktopMediaFiles, suggested_save_name};
 use crate::domain::media::{AttachmentPick, PickedAttachment};
 use crate::error::Result;
 use crate::ports::media::MediaFilePort;
@@ -55,8 +55,21 @@ impl MediaFilePort for DemoMediaFiles {
 
     async fn release_attachment(&self, _picked: PickedAttachment) {}
 
-    async fn save_file(&self, default_filename: &str, data: &[u8]) -> Result<Option<String>> {
-        self.inner.save_file(default_filename, data).await
+    async fn choose_save_path(
+        &self,
+        filename: &str,
+        mimetype: Option<&str>,
+    ) -> Result<Option<PathBuf>> {
+        let Some(dir) = attachments::scenario().save_dir.as_deref() else {
+            return self.inner.choose_save_path(filename, mimetype).await;
+        };
+        let path = dir.join(suggested_save_name(filename, mimetype));
+        tracing::info!(path = %path.display(), "demo: choosing where to save without a dialog");
+        Ok(Some(path))
+    }
+
+    async fn save_to(&self, path: &Path, data: Vec<u8>) -> Result<()> {
+        self.inner.save_to(path, data).await
     }
 
     async fn choose_key_export(&self, default_filename: &str) -> Result<Option<PathBuf>> {

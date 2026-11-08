@@ -15,7 +15,6 @@ use crate::domain::message::{PinChange, PinnedMessage};
 use crate::domain::room::RoomId;
 use crate::error::{AppError, Result};
 use crate::ports::matrix::{ImagePackPort, MediaPort, PackCatalog, PinnedPort};
-use crate::ports::media::MediaCache;
 
 #[async_trait]
 impl PinnedPort for DemoAuthed {
@@ -140,8 +139,7 @@ impl MediaPort for DemoAuthed {
         event_id: &str,
         _rendition: MediaRendition,
     ) -> Result<Vec<u8>> {
-        let path: PathBuf = media::DemoMediaCache
-            .thumbnail_path(&media::content_of(event_id))
+        let path = media::full_file_path(event_id)
             .ok_or_else(|| AppError::Other(format!("no demo asset for event {event_id}")))?;
         Ok(fs::read(path)?)
     }

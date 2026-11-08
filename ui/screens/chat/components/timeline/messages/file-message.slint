@@ -12,7 +12,7 @@ export component FileMessage inherits HorizontalLayout {
     property <bool> can-save: root.msg.event-id != "";
 
     function save() {
-        Actions.save-file({ event-id: root.msg.event-id, filename: root.msg.filename });
+        Actions.save-file({ event-id: root.msg.event-id, filename: root.msg.filename, mimetype: root.msg.mimetype });
     }
 
     padding-top: Space.md;

@@ -241,7 +241,10 @@ const SCENARIO_SOURCES: &[(&str, &[&str])] = &[
     ("src/adapters/demo/logout.rs", &[]),
     ("src/adapters/demo/sync.rs", &[]),
     ("src/adapters/demo/motion.rs", &[]),
-    ("src/adapters/demo/attachments.rs", &["pick=<path>"]),
+    (
+        "src/adapters/demo/attachments.rs",
+        &["pick=<path>", "save-to=<dir>"],
+    ),
 ];
 
 fn check_scenario_catalogs() {

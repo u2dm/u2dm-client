@@ -100,6 +100,18 @@ pub struct OutgoingAttachment {
     pub reply_to: Option<String>,
 }
 
+const FILE_EXTENSION_MAX_LEN: usize = 5;
+
+pub fn file_extension(filename: &str) -> &str {
+    let Some((_, extension)) = filename.rsplit_once('.') else {
+        return "";
+    };
+    let plausible = !extension.is_empty()
+        && extension.len() <= FILE_EXTENSION_MAX_LEN
+        && extension.chars().all(|c| c.is_ascii_alphanumeric());
+    if plausible { extension } else { "" }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct ContentKey(String);
 

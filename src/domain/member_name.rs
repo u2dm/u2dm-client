@@ -4,7 +4,7 @@ const LEFT_TO_RIGHT_ISOLATE: char = '\u{2066}';
 const FIRST_STRONG_ISOLATE: char = '\u{2068}';
 const POP_DIRECTIONAL_ISOLATE: char = '\u{2069}';
 
-fn steers_direction(c: char) -> bool {
+pub fn steers_direction(c: char) -> bool {
     matches!(
         c,
         LEFT_TO_RIGHT_EMBEDDING..=RIGHT_TO_LEFT_OVERRIDE

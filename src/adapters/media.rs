@@ -11,7 +11,10 @@ use tokio::fs as async_fs;
 use tokio::task::spawn_blocking;
 
 use crate::adapters::{container, private_fs, video};
-use crate::domain::media::{AttachmentPick, PastedImage, PastedMedia, PickedAttachment, Waveform};
+use crate::domain::media::{
+    AttachmentPick, PastedImage, PastedMedia, PickedAttachment, Waveform, file_extension,
+};
+use crate::domain::member_name::steers_direction;
 use crate::error::{AppError, Result};
 use crate::ports::media::MediaFilePort;
 use crate::util::{lookup, random_hex};
@@ -27,6 +30,8 @@ const POSTER_MAX_EDGE: u32 = 800;
 const POSTER_QUALITY: u8 = 80;
 const PASTED_IMAGE_FILENAME: &str = "image.png";
 const PASTED_IMAGE_COMPRESSION: CompressionType = CompressionType::Level(3);
+const UNNAMED_SAVE: &str = "attachment";
+const NAME_MAX_BYTES: usize = 255;
 
 const PICKABLE_MEDIA_EXTENSIONS: &[&str] = &[
     "png", "jpg", "jpeg", "gif", "webp", "bmp", "ico", "tif", "tiff", "avif", "heic", "heif",
@@ -144,14 +149,21 @@ impl MediaFilePort for DesktopMediaFiles {
         }
     }
 
-    async fn save_file(&self, default_filename: &str, data: &[u8]) -> Result<Option<String>> {
-        let dialog = rfd::AsyncFileDialog::new().set_file_name(default_filename);
-        let Some(file_handle) = dialog.save_file().await else {
-            return Ok(None);
-        };
+    async fn choose_save_path(
+        &self,
+        filename: &str,
+        mimetype: Option<&str>,
+    ) -> Result<Option<PathBuf>> {
+        let dialog = AsyncFileDialog::new().set_file_name(suggested_save_name(filename, mimetype));
+        Ok(dialog
+            .save_file()
+            .await
+            .map(|file_handle| file_handle.path().to_path_buf()))
+    }
 
-        file_handle.write(data).await?;
-        Ok(Some(file_handle.path().display().to_string()))
+    async fn save_to(&self, path: &Path, data: Vec<u8>) -> Result<()> {
+        async_fs::write(path, data).await?;
+        Ok(())
     }
 
     async fn choose_key_export(&self, default_filename: &str) -> Result<Option<PathBuf>> {
@@ -347,6 +359,58 @@ async fn probe_dimensions(path: PathBuf) -> Option<(u32, u32)> {
     .await
     .ok()
     .flatten()
+}
+
+pub(crate) fn suggested_save_name(filename: &str, mimetype: Option<&str>) -> String {
+    let readable: String = last_path_part(filename)
+        .chars()
+        .filter(|c| !c.is_control() && !steers_direction(*c))
+        .collect();
+    let visible = readable.trim_matches(|c: char| c == '.' || c.is_whitespace());
+    let stem = if visible.is_empty() {
+        UNNAMED_SAVE
+    } else {
+        visible
+    };
+    let named = match mimetype.and_then(declared_extension) {
+        Some(extension) if file_extension(stem).is_empty() => format!("{stem}.{extension}"),
+        _ => stem.to_owned(),
+    };
+    within_name_max(named)
+}
+
+fn last_path_part(filename: &str) -> &str {
+    filename
+        .rsplit(['/', '\\'])
+        .find(|part| !part.trim().is_empty())
+        .unwrap_or_default()
+}
+
+fn declared_extension(mimetype: &str) -> Option<&'static str> {
+    let essence = mimetype
+        .split(';')
+        .next()
+        .unwrap_or_default()
+        .trim()
+        .to_ascii_lowercase();
+    ImageFormat::from_mime_type(&essence)
+        .and_then(|format| lookup(LAUNCHER_SAFE_IMAGE_FORMATS, &format))
+        .or_else(|| container::extension_of(&essence))
+}
+
+fn within_name_max(name: String) -> String {
+    if name.len() <= NAME_MAX_BYTES {
+        return name;
+    }
+    let extension = file_extension(&name);
+    let suffix = if extension.is_empty() {
+        String::new()
+    } else {
+        format!(".{extension}")
+    };
+    let stem = name.strip_suffix(suffix.as_str()).unwrap_or(&name);
+    let kept = stem.floor_char_boundary(NAME_MAX_BYTES - suffix.len());
+    format!("{}{suffix}", stem.get(..kept).unwrap_or_default())
 }
 
 fn launcher_safe_extension(data: &[u8]) -> Option<&'static str> {
