@@ -296,6 +296,9 @@ export component CallBand inherits Rectangle {
 
     TouchArea {
         enabled: root.over-chat;
+        scroll-event(event) => {
+            return accept;
+        }
     }
 
     if root.lead-inset > 0: Rectangle {

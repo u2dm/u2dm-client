@@ -577,6 +577,21 @@ export component TimelineView inherits Rectangle {
             composer-top: parent.height - root.dock-height - input.height;
         }
 
+        composer-catcher := TouchArea {
+            x: input.x;
+            y: input.y;
+            width: input.width;
+            height: input.height;
+        }
+
+        dock-catcher := TouchArea {
+            y: parent.height - root.dock-height;
+            height: root.dock-height;
+            scroll-event(event) => {
+                return accept;
+            }
+        }
+
         band := CallBand {
             x: 0;
             y: stage.call-top;
