@@ -152,6 +152,7 @@ export component CallBand inherits Rectangle {
     out property <length> menu-bottom: view-icon.absolute-position.y + view-icon.height;
 
     property <bool> covers-chat: root.size == CallSize.full;
+    property <bool> over-chat: root.size == CallSize.stage && !root.beside-chat;
     property <bool> shows-chat-button;
     property <bool> staged: CallView.stage.length > 0;
     property <string> staged-title: CallWords.tile-title(CallView.stage[0]);
@@ -292,6 +293,10 @@ export component CallBand inherits Rectangle {
     background: root.lead-inset > 0 ? transparent : AppStyle.call-band;
     accessible-role: groupbox;
     accessible-label: @tr("Call in {}", CallView.active-room-name);
+
+    TouchArea {
+        enabled: root.over-chat;
+    }
 
     if root.lead-inset > 0: Rectangle {
         x: root.lead-inset;
@@ -443,7 +448,7 @@ export component CallBand inherits Rectangle {
     Rectangle {
         y: parent.height - self.height;
         height: Stroke.hairline;
-        visible: root.size == CallSize.stage && !root.beside-chat;
+        visible: root.over-chat;
         background: AppStyle.border;
     }
 }

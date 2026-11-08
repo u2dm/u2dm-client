@@ -699,6 +699,7 @@ export component TimelineView inherits Rectangle {
             y: 0;
             width: root.overlay-width;
             height: root.height - root.dock-height;
+            timeline-top: content.y + stage.call-above-chat;
             timeline-bottom: content.y + content.height - root.dock-height - input.height;
             closed => {
                 input.focus-input();
