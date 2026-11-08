@@ -31,9 +31,12 @@ mcp_root_element() {
 }
 
 mcp_elements_of_type() {
+  local root=$1
+  shift
   mcp_payload query_element_descendants \
-    "$(jq -cn --argjson root "$1" --arg type "$2" \
-      '{elementHandle: $root, findAll: true, queryStack: [{matchElementTypeNameOrBase: $type}]}')" |
+    "$(jq -cn --argjson root "$root" '{elementHandle: $root, findAll: true,
+      queryStack: ([$ARGS.positional[] | {matchDescendants: true}, {matchElementTypeNameOrBase: .}] | .[1:])}' \
+      --args "$@")" |
     jq -c '.elementHandles // []'
 }
 

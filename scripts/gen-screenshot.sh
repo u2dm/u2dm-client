@@ -76,10 +76,14 @@ await() {
   give_up "timed out waiting for $description"
 }
 
+joined_rooms() {
+  mcp_elements_of_type "$1" RoomRow RoomSummary
+}
+
 open_room() {
   local room
   room=$(jq -c ".[$ROOM_ROW] // empty" <<<"$1")
-  [[ -n $room ]] || give_up "the sidebar has no room at row $ROOM_ROW"
+  [[ -n $room ]] || give_up "the sidebar shows no joined room at index $ROOM_ROW"
   mcp_click "$room"
   sleep "$RENDER_SETTLE"
 }
@@ -94,6 +98,6 @@ build_demo_app
 launch_demo_app
 window=$(await "the inspector to come up" mcp_window)
 root=$(await "the window to report its root element" mcp_root_element "$window")
-rooms=$(await "the demo rooms to load" mcp_elements_of_type "$root" RoomRow)
+rooms=$(await "the demo rooms to load" joined_rooms "$root")
 open_room "$rooms"
 capture "$window"
