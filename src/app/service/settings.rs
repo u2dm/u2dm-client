@@ -49,7 +49,16 @@ impl AppService {
         match command {
             SettingsCommand::OpenSettings => self.settings.open(),
             SettingsCommand::CloseSettings => self.settings.close(),
-            SettingsCommand::ShowPage(page) => self.settings.show_page(page),
+            SettingsCommand::ShowPage(page) => {
+                let media = self.port(|session| &session.media);
+                self.settings.show_page(page, media);
+            }
+            SettingsCommand::ClearDownloadedMedia => {
+                let media = self.port(|session| &session.media);
+                let playing = [self.audio.playing_file(), self.video.playing_file()];
+                self.settings
+                    .clear_media(media, playing.into_iter().flatten().collect());
+            }
             SettingsCommand::Change(change) => {
                 let loaded_automatically = self.settings.values().media.auto_load;
                 self.settings.change(change);
@@ -65,6 +74,12 @@ impl AppService {
         match event {
             SettingsEvent::SaveFailed => self.settings.save_failed(),
             SettingsEvent::DevicesChosen(devices) => self.settings.remember_devices(*devices),
+            SettingsEvent::MediaMeasured(usage) => self.settings.media_measured(usage),
+            SettingsEvent::MediaCleared(outcome) => {
+                let media = self.port(|session| &session.media);
+                self.settings.media_cleared(outcome, media);
+                self.active_timeline.recheck_media();
+            }
         }
     }
 }

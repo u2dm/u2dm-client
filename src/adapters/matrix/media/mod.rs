@@ -20,7 +20,8 @@ use tokio::task::JoinSet;
 
 use super::session::ClientHandle;
 use crate::domain::media::{
-    ContentKey, ImageMeta, MediaFailure, MediaKind, MediaRendition, Waveform, WaveformNeed,
+    ContentKey, ImageMeta, MediaFailure, MediaKind, MediaRendition, MediaUsage, Waveform,
+    WaveformNeed,
 };
 use crate::domain::message::TimelineMessage;
 use crate::domain::room::RoomId;
@@ -35,6 +36,8 @@ pub(super) const VIDEOS_DIR: &str = "videos";
 pub(super) const VIDEO_KEY_PREFIX: &str = "video:";
 pub(super) const AUDIO_DIR: &str = "audio";
 pub(super) const AUDIO_KEY_PREFIX: &str = "audio:";
+pub(super) const AVATAR_KEY_PREFIX: &str = "mxc-avatar:";
+pub(super) const STICKER_KEY_PREFIX: &str = "sticker:";
 const MAX_INFLIGHT_AVATARS: usize = 8;
 const THUMBNAIL_EXTENT: u32 = 400;
 
@@ -43,7 +46,7 @@ pub(super) fn thumb_key(content: &ContentKey) -> String {
 }
 
 pub(super) fn mxc_avatar_key(mxc: &str) -> String {
-    format!("mxc-avatar:{mxc}")
+    format!("{AVATAR_KEY_PREFIX}{mxc}")
 }
 
 pub(super) async fn fetch_avatar_thumbnails(
@@ -122,7 +125,7 @@ pub(crate) fn thumbnail_content(
 }
 
 fn sticker_key(mxc: &str) -> String {
-    format!("sticker:{mxc}")
+    format!("{STICKER_KEY_PREFIX}{mxc}")
 }
 
 pub(super) struct MaterializedMedia {
@@ -284,10 +287,38 @@ impl MatrixMedia {
     }
 }
 
+fn media_cache_stopped() -> AppError {
+    AppError::Other("the media cache is not running".to_owned())
+}
+
 #[async_trait]
 impl MediaPort for MatrixMedia {
     fn set_auto_load(&self, on: bool) {
         self.matrix.media().set_auto_load(on);
+    }
+
+    async fn cache_usage(&self) -> Result<MediaUsage> {
+        self.matrix
+            .media()
+            .usage()
+            .await
+            .ok_or_else(media_cache_stopped)
+    }
+
+    async fn clear_cache(&self, keep: Vec<PathBuf>) -> Result<MediaUsage> {
+        let cleared = self
+            .matrix
+            .media()
+            .clear_downloaded(keep)
+            .await
+            .ok_or_else(media_cache_stopped)?;
+        if cleared.left_behind > 0 {
+            return Err(AppError::Other(format!(
+                "{} downloaded files could not be removed",
+                cleared.left_behind
+            )));
+        }
+        Ok(cleared.usage)
     }
 
     async fn download_media(

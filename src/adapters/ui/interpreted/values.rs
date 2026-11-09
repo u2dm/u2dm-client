@@ -33,11 +33,11 @@ use crate::commands::effects::VerificationActivity;
 use crate::commands::messages::UserMessageKind;
 use crate::commands::view::{
     AccountActivity, AccountStep, AttachmentKind, AuthStage, CallPhase, CameraView, ChildAccess,
-    CreateRoomStatus, DeviceStatus, DeviceTrouble, DirectChat, EncryptionActivity, EncryptionStep,
-    HandView, InviteeState, JoinRefusal, LinkView, LoginActivity, LoginStep, MicrophoneView,
-    PendingAnswer, PendingModeration, PeopleSearchStatus, PreviewTrouble, ReactionView,
-    ReadersStatus, RoomInfoPlacement, RoomPreviewSheet, RoomScope, RosterStatus, SettingsPage,
-    SourceState, SpaceIndexStatus, UpgradeLink, VerifyOffer,
+    CreateRoomStatus, DeviceStatus, DeviceTrouble, DirectChat, DownloadedMedia, EncryptionActivity,
+    EncryptionStep, HandView, InviteeState, JoinRefusal, LinkView, LoginActivity, LoginStep,
+    MicrophoneView, PendingAnswer, PendingModeration, PeopleSearchStatus, PreviewTrouble,
+    ReactionView, ReadersStatus, RoomInfoPlacement, RoomPreviewSheet, RoomScope, RosterStatus,
+    SettingsPage, SourceState, SpaceIndexStatus, UpgradeLink, VerifyOffer,
 };
 use crate::domain::auth::LoginMethod;
 use crate::domain::call::devices::DeviceKind;

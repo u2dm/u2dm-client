@@ -28,7 +28,7 @@ use crate::domain::image_pack::{ImagePack, PackId};
 use crate::domain::invite_people::{InviteResult, SearchResult};
 use crate::domain::link::LauncherSafeUrl;
 use crate::domain::matrix_link::RoomAddress;
-use crate::domain::media::{MediaRendition, OutgoingAttachment, WaveformNeed};
+use crate::domain::media::{MediaRendition, MediaUsage, OutgoingAttachment, WaveformNeed};
 use crate::domain::member_name::NamedUser;
 use crate::domain::message::{MessageEdit, PinChange, PinnedMessage};
 use crate::domain::poll::PollDraft;
@@ -435,6 +435,8 @@ pub trait PinnedPort: Send + Sync {
 #[async_trait]
 pub trait MediaPort: Send + Sync {
     fn set_auto_load(&self, on: bool);
+    async fn cache_usage(&self) -> Result<MediaUsage>;
+    async fn clear_cache(&self, keep: Vec<PathBuf>) -> Result<MediaUsage>;
     async fn download_media(
         &self,
         room_id: &RoomId,

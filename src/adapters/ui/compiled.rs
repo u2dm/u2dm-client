@@ -75,11 +75,11 @@ use crate::commands::messages::{UserMessage, UserMessageKind};
 use crate::commands::ui::{ComposerActivity, TimelineVisibility, ViewportChanged, WindowAttention};
 use crate::commands::view::{
     AccountActivity, AccountStep, AppViewState, AttachmentKind, AuthStage, CallPhase, CameraView,
-    ChildAccess, CreateRoomStatus, DeviceStatus, DeviceTrouble, DirectChat, EncryptionActivity,
-    EncryptionStep, HandView, InviteeState, JoinRefusal, LinkView, LoginActivity, LoginStep,
-    MicrophoneView, PendingAnswer, PendingModeration, PeopleSearchStatus, PreviewTrouble,
-    ReactionView, ReadersStatus, RoomInfoPlacement, RoomPreviewSheet, RoomScope, RosterStatus,
-    SettingsPage, SourceState, SpaceIndexStatus, UpgradeLink, VerifyOffer,
+    ChildAccess, CreateRoomStatus, DeviceStatus, DeviceTrouble, DirectChat, DownloadedMedia,
+    EncryptionActivity, EncryptionStep, HandView, InviteeState, JoinRefusal, LinkView,
+    LoginActivity, LoginStep, MicrophoneView, PendingAnswer, PendingModeration, PeopleSearchStatus,
+    PreviewTrouble, ReactionView, ReadersStatus, RoomInfoPlacement, RoomPreviewSheet, RoomScope,
+    RosterStatus, SettingsPage, SourceState, SpaceIndexStatus, UpgradeLink, VerifyOffer,
 };
 use crate::domain::auth::LoginMethod;
 use crate::domain::call::devices::DeviceKind;

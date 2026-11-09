@@ -348,6 +348,7 @@ pub enum ProbeCommand {
     },
     OpenSettings,
     CloseSettings,
+    ClearMediaCache,
     ShowSettingsPage {
         page: String,
     },

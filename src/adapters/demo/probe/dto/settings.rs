@@ -1,7 +1,7 @@
 use serde::Serialize;
 
 use crate::adapters::demo::probe::names;
-use crate::commands::view::SettingsView;
+use crate::commands::view::{DownloadedMedia, SettingsView};
 use crate::domain::call::devices::{ByKind, DeviceChoice};
 use crate::domain::settings::{
     Alerts, Appearance, CallPreferences, MediaPreferences, Messaging, Settings,
@@ -11,6 +11,7 @@ use crate::domain::settings::{
 pub(super) struct SettingsDto {
     values: SettingsValuesDto,
     dialog: Option<SettingsDialogDto>,
+    media_cleared: u64,
 }
 
 #[derive(Serialize)]
@@ -56,6 +57,25 @@ impl From<&ByKind<DeviceChoice>> for RememberedDevicesDto {
 #[derive(Serialize)]
 struct SettingsDialogDto {
     page: &'static str,
+    storage: StorageDto,
+}
+
+#[derive(Serialize)]
+struct StorageDto {
+    state: &'static str,
+    clearable_bytes: Option<u64>,
+    kept_bytes: Option<u64>,
+}
+
+impl From<DownloadedMedia> for StorageDto {
+    fn from(storage: DownloadedMedia) -> Self {
+        let usage = storage.usage();
+        Self {
+            state: names::downloaded_media_state(storage),
+            clearable_bytes: usage.map(|usage| usage.clearable),
+            kept_bytes: usage.map(|usage| usage.kept),
+        }
+    }
 }
 
 pub(super) fn settings(source: &SettingsView) -> SettingsDto {
@@ -110,6 +130,8 @@ pub(super) fn settings(source: &SettingsView) -> SettingsDto {
         },
         dialog: source.dialog.map(|dialog| SettingsDialogDto {
             page: names::settings_page(dialog.page),
+            storage: dialog.storage.into(),
         }),
+        media_cleared: source.media_cleared,
     }
 }

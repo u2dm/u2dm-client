@@ -156,6 +156,7 @@ pub enum UserMessageKind {
     DeactivationFailed,
     AccountPageOpened,
     SettingsNotSaved,
+    DownloadedMediaNotCleared,
     IdentityResetFailed,
     EncryptionSetupFailed,
     KeyExportFailed,

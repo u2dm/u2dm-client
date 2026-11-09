@@ -1,6 +1,7 @@
 use std::collections::{HashMap, HashSet};
 use std::fs as std_fs;
 use std::io::{self, ErrorKind};
+use std::ops::ControlFlow;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex as StdMutex, RwLock};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
@@ -11,7 +12,7 @@ use tokio::time::{MissedTickBehavior, interval};
 use tokio::{fs, task};
 
 use crate::adapters::private_fs;
-use crate::domain::media::MediaFailure;
+use crate::domain::media::{MediaFailure, MediaUsage};
 
 const MAX_CACHE_BYTES: u64 = 512 * 1024 * 1024;
 const MAX_PLAYABLE_CACHE_BYTES: u64 = 512 * 1024 * 1024;
@@ -96,6 +97,32 @@ struct Mutation {
 
 type Index = HashMap<String, PathBuf>;
 
+fn survives_clear(key: &str) -> bool {
+    key.starts_with(super::AVATAR_KEY_PREFIX) || key.starts_with(super::STICKER_KEY_PREFIX)
+}
+
+fn reply<T>(ack: oneshot::Sender<T>, answer: T) {
+    if ack.send(answer).is_err() {
+        tracing::trace!("a media cache requester left before its answer");
+    }
+}
+
+async fn is_gone(path: &Path) -> bool {
+    let gone = !fs::try_exists(path).await.unwrap_or(true);
+    if gone {
+        tracing::debug!(
+            path = %path.display(),
+            "a clear removed this download's file before it was indexed"
+        );
+    }
+    gone
+}
+
+pub(crate) struct Cleared {
+    pub(crate) usage: MediaUsage,
+    pub(crate) left_behind: usize,
+}
+
 enum CacheCommand {
     Touch(String),
     Insert {
@@ -103,6 +130,11 @@ enum CacheCommand {
         path: PathBuf,
         bytes: u64,
         ack: oneshot::Sender<()>,
+    },
+    Usage(oneshot::Sender<MediaUsage>),
+    Clear {
+        keep: HashSet<PathBuf>,
+        ack: oneshot::Sender<Cleared>,
     },
     Stop(oneshot::Sender<()>),
 }
@@ -174,6 +206,20 @@ impl CacheHandle {
         if ack_rx.await.is_err() {
             tracing::trace!("media cache actor dropped insert before publishing");
         }
+    }
+
+    pub(super) async fn usage(&self) -> Option<MediaUsage> {
+        let (ack_tx, ack_rx) = oneshot::channel();
+        self.tx.send(CacheCommand::Usage(ack_tx)).ok()?;
+        ack_rx.await.ok()
+    }
+
+    pub(super) async fn clear(&self, keep: HashSet<PathBuf>) -> Option<Cleared> {
+        let (ack_tx, ack_rx) = oneshot::channel();
+        self.tx
+            .send(CacheCommand::Clear { keep, ack: ack_tx })
+            .ok()?;
+        ack_rx.await.ok()
     }
 
     pub(super) async fn stop(&self) {
@@ -264,14 +310,11 @@ impl CacheActor {
         let stopped = loop {
             tokio::select! {
                 maybe = rx.recv() => match maybe {
-                    Some(CacheCommand::Touch(key)) => self.touch(&key, &shared).await,
-                    Some(CacheCommand::Insert {
-                        key,
-                        path,
-                        bytes,
-                        ack,
-                    }) => self.publish_insert(key, path, bytes, ack, &shared).await,
-                    Some(CacheCommand::Stop(ack)) => break Some(ack),
+                    Some(command) => {
+                        if let ControlFlow::Break(ack) = self.handle(command, &shared).await {
+                            break Some(ack);
+                        }
+                    }
                     None => break None,
                 },
                 _ = ticker.tick() => {
@@ -284,11 +327,29 @@ impl CacheActor {
         if self.dirty {
             self.flush().await;
         }
-        if let Some(ack) = stopped
-            && ack.send(()).is_err()
-        {
-            tracing::trace!("media cache stop requester dropped before ack");
+        if let Some(ack) = stopped {
+            reply(ack, ());
         }
+    }
+
+    async fn handle(
+        &mut self,
+        command: CacheCommand,
+        shared: &RwLock<Index>,
+    ) -> ControlFlow<oneshot::Sender<()>> {
+        match command {
+            CacheCommand::Touch(key) => self.touch(&key, shared).await,
+            CacheCommand::Insert {
+                key,
+                path,
+                bytes,
+                ack,
+            } => self.publish_insert(key, path, bytes, ack, shared).await,
+            CacheCommand::Usage(ack) => reply(ack, self.usage()),
+            CacheCommand::Clear { keep, ack } => reply(ack, self.clear(&keep, shared).await),
+            CacheCommand::Stop(ack) => return ControlFlow::Break(ack),
+        }
+        ControlFlow::Continue(())
     }
 
     async fn touch(&mut self, key: &str, shared: &RwLock<Index>) {
@@ -317,6 +378,10 @@ impl CacheActor {
         ack: oneshot::Sender<()>,
         shared: &RwLock<Index>,
     ) {
+        if is_gone(&path).await {
+            reply(ack, ());
+            return;
+        }
         let mutation = self.insert(&key, path.clone(), bytes);
         if let Ok(mut guard) = shared.write() {
             guard.insert(key, path);
@@ -324,9 +389,7 @@ impl CacheActor {
                 guard.remove(evicted);
             }
         }
-        if ack.send(()).is_err() {
-            tracing::trace!("media cache insert requester dropped before ack");
-        }
+        reply(ack, ());
         self.delete_files(&mutation.removed_files).await;
         self.dirty = true;
     }
@@ -416,13 +479,54 @@ impl CacheActor {
         Some(entry.path)
     }
 
-    async fn delete_files(&self, paths: &[PathBuf]) {
+    async fn delete_files(&self, paths: &[PathBuf]) -> usize {
+        let mut left_behind = 0;
         for path in paths {
             if let Err(e) = fs::remove_file(path).await
                 && e.kind() != ErrorKind::NotFound
             {
                 tracing::debug!("failed to evict cached media {}: {e}", path.display());
+                left_behind += 1;
             }
+        }
+        left_behind
+    }
+
+    fn usage(&self) -> MediaUsage {
+        let mut usage = MediaUsage::default();
+        for (key, entry) in &self.entries {
+            let class = if survives_clear(key) {
+                &mut usage.kept
+            } else {
+                &mut usage.clearable
+            };
+            *class = class.saturating_add(entry.bytes);
+        }
+        usage
+    }
+
+    async fn clear(&mut self, keep: &HashSet<PathBuf>, shared: &RwLock<Index>) -> Cleared {
+        let victims: Vec<String> = self
+            .entries
+            .iter()
+            .filter(|(key, entry)| !survives_clear(key) && !keep.contains(&entry.path))
+            .map(|(key, _)| key.clone())
+            .collect();
+        if let Ok(mut guard) = shared.write() {
+            for key in &victims {
+                guard.remove(key);
+            }
+        }
+        let files: Vec<PathBuf> = victims
+            .iter()
+            .filter_map(|key| self.remove_entry(key))
+            .collect();
+        self.dirty = true;
+        let left_behind = self.delete_files(&files).await;
+        tracing::debug!(files = files.len(), left_behind, "cleared downloaded media");
+        Cleared {
+            usage: self.usage(),
+            left_behind,
         }
     }
 

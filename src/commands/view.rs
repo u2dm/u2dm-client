@@ -29,7 +29,7 @@ pub(crate) use self::security::{
     EncryptionActivity, EncryptionDialog, EncryptionStep, EncryptionView, LifecycleView,
     LoginActivity, LoginStep, LogoutView,
 };
-pub(crate) use self::settings::{SettingsDialog, SettingsPage, SettingsView};
+pub(crate) use self::settings::{DownloadedMedia, SettingsDialog, SettingsPage, SettingsView};
 use super::messages::{UserMessage, UserMessageKind};
 use super::ui::Draft;
 use crate::domain::auth::Session;
@@ -96,6 +96,7 @@ impl AppViewState {
             settings: SettingsView {
                 values: values.clone(),
                 dialog: None,
+                media_cleared: 0,
             },
             ..Self::default()
         }

@@ -88,6 +88,7 @@ pub enum SettingsCommand {
     ShowPage(SettingsPage),
     #[strum(to_string = "ChangeSetting")]
     Change(SettingChange),
+    ClearDownloadedMedia,
 }
 
 #[derive(StrumDisplay)]

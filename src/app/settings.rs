@@ -1,3 +1,4 @@
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use tokio::sync::watch;
@@ -7,18 +8,23 @@ use super::input::EventSender;
 use super::show_toast;
 use super::task_group::TaskGroup;
 use crate::commands::messages::{UserMessage, UserMessageKind};
-use crate::commands::view::{SettingsDialog, SettingsPage, SettingsView, Toast};
+use crate::commands::view::{DownloadedMedia, SettingsDialog, SettingsPage, SettingsView, Toast};
 use crate::domain::call::devices::DeviceChoices;
+use crate::domain::media::MediaUsage;
 use crate::domain::settings::{SettingChange, Settings};
+use crate::ports::matrix::MediaPort;
 use crate::ports::output::AppOutputPort;
 use crate::ports::settings::SettingsPort;
 
 pub(super) struct SettingsController {
     output: Arc<dyn AppOutputPort>,
+    events: EventSender,
     values: Settings,
     lane: Option<watch::Sender<Settings>>,
     saves: TaskGroup,
+    storage: TaskGroup,
     dialog: Option<SettingsDialog>,
+    media_cleared: u64,
 }
 
 impl SettingsController {
@@ -30,13 +36,16 @@ impl SettingsController {
     ) -> Self {
         let (lane, changes) = watch::channel(loaded.clone());
         let mut saves = TaskGroup::new("settings-saves");
-        saves.spawn(save_newest(port, events, changes));
+        saves.spawn(save_newest(port, events.clone(), changes));
         Self {
             output,
+            events,
             values: loaded,
             lane: Some(lane),
             saves,
+            storage: TaskGroup::new("settings-storage"),
             dialog: None,
+            media_cleared: 0,
         }
     }
 
@@ -61,7 +70,7 @@ impl SettingsController {
         self.publish();
     }
 
-    pub(super) fn show_page(&mut self, page: SettingsPage) {
+    pub(super) fn show_page(&mut self, page: SettingsPage, media: Option<Arc<dyn MediaPort>>) {
         let Some(dialog) = self.dialog.as_mut() else {
             return;
         };
@@ -70,6 +79,91 @@ impl SettingsController {
         }
         tracing::debug!(?page, "showing a settings page");
         dialog.page = page;
+        if page == SettingsPage::Media {
+            self.measure_media(media);
+        }
+        self.publish();
+    }
+
+    fn measure_media(&mut self, media: Option<Arc<dyn MediaPort>>) {
+        let Some(dialog) = self.dialog.as_mut() else {
+            return;
+        };
+        if matches!(dialog.storage, DownloadedMedia::Clearing(_)) {
+            return;
+        }
+        let Some(media) = media else {
+            dialog.storage = DownloadedMedia::Unknown;
+            return;
+        };
+        self.storage.spawn_reporting(&self.events, async move {
+            let usage = match media.cache_usage().await {
+                Ok(usage) => Some(usage),
+                Err(e) => {
+                    tracing::warn!("the downloaded media could not be measured: {e}");
+                    None
+                }
+            };
+            AppEvent::Settings(SettingsEvent::MediaMeasured(usage))
+        });
+    }
+
+    pub(super) fn media_measured(&mut self, usage: Option<MediaUsage>) {
+        let Some(dialog) = self
+            .dialog
+            .as_mut()
+            .filter(|dialog| !matches!(dialog.storage, DownloadedMedia::Clearing(_)))
+        else {
+            return;
+        };
+        dialog.storage = usage.map_or(DownloadedMedia::Unknown, DownloadedMedia::Measured);
+        self.publish();
+    }
+
+    pub(super) fn clear_media(&mut self, media: Option<Arc<dyn MediaPort>>, keep: Vec<PathBuf>) {
+        let Some(dialog) = self.dialog.as_mut() else {
+            return;
+        };
+        let (DownloadedMedia::Measured(usage), Some(media)) = (dialog.storage, media) else {
+            tracing::debug!("not clearing downloaded media that is not measured");
+            return;
+        };
+        tracing::info!(keeping = keep.len(), "clearing downloaded media");
+        dialog.storage = DownloadedMedia::Clearing(usage);
+        self.storage.spawn_reporting(&self.events, async move {
+            let outcome = media.clear_cache(keep).await.map_err(|e| {
+                tracing::warn!("the downloaded media could not be cleared: {e}");
+                UserMessageKind::DownloadedMediaNotCleared
+            });
+            AppEvent::Settings(SettingsEvent::MediaCleared(outcome))
+        });
+        self.publish();
+    }
+
+    pub(super) fn media_cleared(
+        &mut self,
+        outcome: Result<MediaUsage, UserMessageKind>,
+        media: Option<Arc<dyn MediaPort>>,
+    ) {
+        self.media_cleared = self.media_cleared.wrapping_add(1);
+        let clearing = self
+            .dialog
+            .as_mut()
+            .filter(|dialog| matches!(dialog.storage, DownloadedMedia::Clearing(_)));
+        match outcome {
+            Ok(usage) => {
+                if let Some(dialog) = clearing {
+                    dialog.storage = DownloadedMedia::Measured(usage);
+                }
+            }
+            Err(kind) => {
+                if let Some(dialog) = clearing {
+                    dialog.storage = DownloadedMedia::Measuring;
+                }
+                show_toast(self.output.as_ref(), Toast::Error(UserMessage::new(kind)));
+                self.measure_media(media);
+            }
+        }
         self.publish();
     }
 
@@ -96,6 +190,7 @@ impl SettingsController {
     }
 
     pub(super) fn close_with_session(&mut self) -> SettingsView {
+        self.storage.cancel_and_detach();
         self.dialog = None;
         self.view()
     }
@@ -103,6 +198,7 @@ impl SettingsController {
     pub(super) async fn shutdown(&mut self) {
         self.lane = None;
         self.saves.drain().await;
+        self.storage.shutdown().await;
     }
 
     fn save_and_publish(&self) {
@@ -116,6 +212,7 @@ impl SettingsController {
         SettingsView {
             values: self.values.clone(),
             dialog: self.dialog,
+            media_cleared: self.media_cleared,
         }
     }
 

@@ -319,6 +319,7 @@ pub fn to_driven(command: ProbeCommand, selected: Selection<'_>) -> Result<Drive
         }
         ProbeCommand::OpenSettings => SettingsCommand::OpenSettings.into(),
         ProbeCommand::CloseSettings => SettingsCommand::CloseSettings.into(),
+        ProbeCommand::ClearMediaCache => SettingsCommand::ClearDownloadedMedia.into(),
         ProbeCommand::ShowSettingsPage { page } => return settings_page(&page),
         ProbeCommand::SetSetting { name, value } => return setting_change(&name, &value),
         ProbeCommand::OpenAccount => AccountCommand::OpenAccount.into(),

@@ -16,6 +16,7 @@ pub(super) struct VideoController {
     tasks: TaskGroup,
     issued: u64,
     downloading: Option<u64>,
+    playing: Option<PathBuf>,
 }
 
 impl VideoController {
@@ -26,6 +27,7 @@ impl VideoController {
             tasks: TaskGroup::new("video"),
             issued: 0,
             downloading: None,
+            playing: None,
         }
     }
 
@@ -34,6 +36,7 @@ impl VideoController {
         self.issued = self.issued.saturating_add(1);
         let request = self.issued;
         self.downloading = Some(request);
+        self.playing = None;
         self.publish(VideoView {
             visible: true,
             loading: true,
@@ -64,6 +67,7 @@ impl VideoController {
             Ok(path) => (Some(path), UserMessageKind::None),
             Err(error) => (None, error),
         };
+        self.playing.clone_from(&path);
         self.publish(VideoView {
             visible: true,
             loading: false,
@@ -72,15 +76,21 @@ impl VideoController {
         });
     }
 
+    pub(super) fn playing_file(&self) -> Option<PathBuf> {
+        self.playing.clone()
+    }
+
     pub(super) fn close(&mut self) {
         self.tasks.cancel_and_detach();
         self.downloading = None;
+        self.playing = None;
         self.publish(VideoView::default());
     }
 
     pub(super) async fn restart(&mut self) {
         self.tasks.restart().await;
         self.downloading = None;
+        self.playing = None;
     }
 
     pub(super) async fn shutdown(&mut self) {

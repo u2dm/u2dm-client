@@ -9,6 +9,10 @@ export component PageHeader inherits HorizontalLayout {
     callback back();
     callback close();
 
+    public function take-focus() {
+        back-button.take-focus();
+    }
+
     spacing: Space.sm;
 
     init => {

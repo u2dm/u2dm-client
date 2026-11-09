@@ -1,19 +1,161 @@
+import { AppButton } from "../../../../components/button.slint";
 import { Hairline } from "../../../../components/divider.slint";
 import { SwitchRow } from "../../../../components/switch-row.slint";
 import { SectionLabel } from "../../../../components/text-roles.slint";
-import { SettingFlag } from "../../../../enums.slint";
+import { DownloadedMedia, SettingFlag } from "../../../../enums.slint";
 import { SettingsView } from "../../../../views.slint";
 import { Actions } from "../../../../actions.slint";
-import { Space } from "../../../../theme.slint";
+import { SettingsWords } from "../../../../messages.slint";
+import { AppStyle, Fonts, Space } from "../../../../theme.slint";
 import { PageHeader } from "./page-header.slint";
 
+component SizeLine inherits Rectangle {
+    in property <string> text;
+    in property <string> size;
+
+    height: line.preferred-height;
+    accessible-role: AccessibleRole.text;
+    accessible-label: @tr("{}: {}", root.text, root.size);
+
+    line := HorizontalLayout {
+        padding-left: Space.md;
+        padding-right: Space.md;
+        spacing: Space.lg;
+
+        Text {
+            horizontal-stretch: 1;
+            text: root.text;
+            font-size: Fonts.label;
+            wrap: word-wrap;
+            accessible-role: none;
+        }
+
+        Text {
+            horizontal-stretch: 0;
+            text: root.size;
+            font-size: Fonts.label;
+            color: AppStyle.foreground-muted;
+            accessible-role: none;
+        }
+    }
+}
+
+component StorageSection inherits VerticalLayout {
+    in-out property <bool> asking;
+
+    callback confirmed();
+
+    property <DownloadedMedia> storage: SettingsView.downloaded-media;
+    property <bool> clearing: root.storage == DownloadedMedia.clearing;
+    property <bool> can-clear: root.storage == DownloadedMedia.measured && SettingsView.has-clearable-media;
+    property <bool> refocus-button;
+    property <string> question: @tr("Remove {} of images, videos and audio from this device?", SettingsView.clearable-size);
+
+    spacing: Space.md;
+
+    SizeLine {
+        text: @tr("Images, videos and audio");
+        size: SettingsWords.storage-size(root.storage, SettingsView.clearable-size);
+    }
+
+    SizeLine {
+        text: @tr("Profile pictures, sticker packs and custom emoji");
+        size: SettingsWords.storage-size(root.storage, SettingsView.kept-size);
+    }
+
+    if !root.asking: HorizontalLayout {
+        padding-left: Space.md;
+        alignment: start;
+
+        AppButton {
+            above-modal: true;
+            text: @tr("Clear downloaded media");
+            description: @tr("Removes images, videos and audio from this device");
+            tint: AppStyle.danger-muted;
+            filled: false;
+            enabled: root.can-clear || root.clearing;
+            busy: root.clearing;
+            init => {
+                if root.refocus-button && root.can-clear {
+                    self.take-focus();
+                }
+            }
+            clicked => {
+                root.refocus-button = true;
+                root.asking = true;
+            }
+        }
+    }
+
+    if root.asking: Rectangle {
+        height: question.preferred-height;
+
+        question := VerticalLayout {
+            padding-left: Space.md;
+            padding-right: Space.md;
+            spacing: Space.md;
+
+            Text {
+                text: root.question;
+                font-size: Fonts.label;
+                wrap: word-wrap;
+            }
+
+            HorizontalLayout {
+                alignment: end;
+                spacing: Space.md;
+
+                AppButton {
+                    above-modal: true;
+                    text: @tr("Cancel");
+                    description: root.question;
+                    filled: false;
+                    init => {
+                        self.take-focus();
+                    }
+                    clicked => {
+                        root.asking = false;
+                    }
+                }
+
+                AppButton {
+                    above-modal: true;
+                    text: @tr("Clear");
+                    description: root.question;
+                    tint: AppStyle.danger-muted;
+                    clicked => {
+                        root.refocus-button = false;
+                        root.confirmed();
+                        root.asking = false;
+                        Actions.clear-downloaded-media();
+                    }
+                }
+            }
+        }
+    }
+
+    HorizontalLayout {
+        padding-left: Space.md;
+        padding-right: Space.md;
+
+        Text {
+            text: @tr("Anything you view again downloads again. Profile pictures, sticker packs, custom emoji and whatever is playing now stay.");
+            font-size: Fonts.body-small;
+            color: AppStyle.foreground-muted;
+            wrap: word-wrap;
+        }
+    }
+}
+
 export component MediaPage inherits VerticalLayout {
+    in-out property <bool> asking-clear;
+
     callback back();
     callback close();
 
     spacing: Space.lg;
 
-    PageHeader {
+    header := PageHeader {
         title: @tr("Media and storage");
         back => {
             root.back();
@@ -48,6 +190,17 @@ export component MediaPage inherits VerticalLayout {
         on: SettingsView.play-animations;
         toggled(on) => {
             Actions.set-setting-flag({ setting: SettingFlag.play-animations, on: on });
+        }
+    }
+
+    SectionLabel {
+        text: @tr("STORAGE");
+    }
+
+    StorageSection {
+        asking <=> root.asking-clear;
+        confirmed => {
+            header.take-focus();
         }
     }
 }

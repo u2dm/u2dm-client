@@ -10,6 +10,12 @@ pub enum MediaKind {
     Video,
 }
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct MediaUsage {
+    pub clearable: u64,
+    pub kept: u64,
+}
+
 #[derive(Debug)]
 pub enum AttachmentPick {
     Media,

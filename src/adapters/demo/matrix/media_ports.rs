@@ -7,10 +7,12 @@ use tokio::task::spawn_blocking;
 use tokio::time::sleep;
 
 use super::{DemoAuthed, unavailable_if};
-use crate::adapters::demo::{audio, data, media, message_menu, pinned, powers, stickers, videos};
+use crate::adapters::demo::{
+    audio, data, media, message_menu, pinned, powers, settings, stickers, videos,
+};
 use crate::adapters::video;
 use crate::domain::image_pack::PackId;
-use crate::domain::media::{MediaRendition, WaveformNeed};
+use crate::domain::media::{MediaRendition, MediaUsage, WaveformNeed};
 use crate::domain::message::{PinChange, PinnedMessage};
 use crate::domain::room::RoomId;
 use crate::error::{AppError, Result};
@@ -135,6 +137,18 @@ impl DemoAuthed {
 impl MediaPort for DemoAuthed {
     fn set_auto_load(&self, on: bool) {
         media::set_auto_load(on);
+    }
+
+    async fn cache_usage(&self) -> Result<MediaUsage> {
+        settings::pause_cache().await;
+        Ok(media::cache_usage())
+    }
+
+    async fn clear_cache(&self, keep: Vec<PathBuf>) -> Result<MediaUsage> {
+        settings::pause_cache().await;
+        unavailable_if(settings::clearing_fails(), "clearing downloaded media")?;
+        tracing::info!(?keep, "demo: the downloaded media is cleared");
+        Ok(media::clear_cache(&keep))
     }
 
     async fn download_media(

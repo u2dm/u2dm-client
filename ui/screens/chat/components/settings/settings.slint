@@ -120,10 +120,12 @@ component Overview inherits VerticalLayout {
 
 export component SettingsDialog inherits ModalHost {
     property <SettingsPage> came-from: SettingsPage.overview;
+    property <bool> asking-clear;
 
     function show(page: SettingsPage) {
         root.focus();
         scroll.content-y = 0;
+        root.asking-clear = false;
         Actions.show-settings-page({ page: page });
     }
 
@@ -139,6 +141,10 @@ export component SettingsDialog inherits ModalHost {
     dim-opacity: AppStyle.dialog-scrim;
     label: @tr("Settings");
     dismissed => {
+        if root.asking-clear && !root.dismissing-by-pointer {
+            root.asking-clear = false;
+            return;
+        }
         if SettingsView.page != SettingsPage.overview && !root.dismissing-by-pointer {
             root.back();
             return;
@@ -198,6 +204,7 @@ export component SettingsDialog inherits ModalHost {
         }
 
         if SettingsView.page == SettingsPage.media: MediaPage {
+            asking-clear <=> root.asking-clear;
             back => {
                 root.back();
             }

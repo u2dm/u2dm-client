@@ -198,6 +198,13 @@ impl AudioController {
         }
     }
 
+    pub(super) fn playing_file(&self) -> Option<PathBuf> {
+        match &self.now_playing.as_ref()?.file {
+            TrackFile::Ready(path) => Some(path.clone()),
+            TrackFile::Downloading => None,
+        }
+    }
+
     pub(super) fn close(&mut self) {
         self.tasks.cancel_and_detach();
         self.locating = None;

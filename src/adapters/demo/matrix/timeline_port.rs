@@ -170,7 +170,9 @@ impl DemoAuthed {
                     .messages
                     .iter()
                     .enumerate()
-                    .filter(|(_, message)| message.body.media().is_some())
+                    .filter(|(_, message)| {
+                        message.body.media().is_some() || message.body.audio().is_some()
+                    })
                     .map(|(offset, message)| {
                         (active.prepended.saturating_add(offset), message.clone())
                     }),
@@ -210,10 +212,20 @@ impl DemoAuthed {
     }
 
     async fn recheck_media(&self, timeline_tx: &mpsc::Sender<TimelineUpdate>) {
-        for (index, message) in self.media_rows() {
+        let rows = self.media_rows();
+        let cleared = media::take_cleared();
+        if cleared {
+            for content in rows.iter().filter_map(|(_, row)| thumbnail_content(row)) {
+                media::take_off_disk(&content);
+            }
+        }
+        let mut fetched = Vec::new();
+        for (index, message) in rows {
+            let content = thumbnail_content(&message);
             let withheld = !message.is_own
-                && thumbnail_content(&message)
-                    .is_some_and(|content| media::DemoMediaCache.withholds(&content));
+                && content
+                    .as_ref()
+                    .is_some_and(|content| media::DemoMediaCache.withholds(content));
             send_patch(
                 timeline_tx,
                 TimelinePatch::Set {
@@ -222,13 +234,24 @@ impl DemoAuthed {
                 },
             )
             .await;
-            if !withheld {
-                send_patch(
-                    timeline_tx,
-                    TimelinePatch::Enrich(thumbnail_ready(&message)),
-                )
-                .await;
+            if let Some(content) = content
+                && !withheld
+            {
+                fetched.push((content, message));
             }
+        }
+        if cleared {
+            settings::pause_media_load().await;
+        }
+        for (content, message) in fetched {
+            if cleared {
+                media::remember_downloaded(&content);
+            }
+            send_patch(
+                timeline_tx,
+                TimelinePatch::Enrich(thumbnail_ready(&message)),
+            )
+            .await;
         }
     }
 

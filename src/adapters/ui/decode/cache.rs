@@ -96,6 +96,10 @@ impl ImageCache {
         }
     }
 
+    fn forget_failures(&mut self) {
+        self.entries.retain(|_, entry| entry.image.is_ok());
+    }
+
     fn evict_to_budget(&mut self) {
         while self.total_bytes > IMAGE_CACHE_MAX_BYTES {
             let Some(victim) = self
@@ -170,6 +174,10 @@ pub(super) fn on_decoded(path: &Path, decoded: Result<Rgba, DecodeFailure>, epoc
         Err(failure) => DecodeOutcome::Failed(*failure),
     };
     waiters::deliver(path, outcome);
+}
+
+pub fn forget_failed_decodes() {
+    with_media(|media| media.images.forget_failures());
 }
 
 fn cached(path: &Path) -> Decoded {

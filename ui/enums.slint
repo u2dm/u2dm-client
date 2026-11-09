@@ -190,6 +190,7 @@ export enum UserMessageKind {
     deactivation-failed,
     account-page-opened,
     settings-not-saved,
+    downloaded-media-not-cleared,
     identity-reset-failed,
     encryption-setup-failed,
     key-export-failed,
@@ -669,6 +670,13 @@ export enum SettingsPage {
     notifications,
     calls,
     media,
+}
+
+export enum DownloadedMedia {
+    measuring,
+    measured,
+    clearing,
+    unknown,
 }
 
 export enum SendKey {

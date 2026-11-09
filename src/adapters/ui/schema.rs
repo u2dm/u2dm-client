@@ -20,6 +20,8 @@ macro_rules! string_props {
         UserId SessionView "SessionView" "user-id" set_user_id get_user_id;
         UserInitial SessionView "SessionView" "user-initial" set_user_initial get_user_initial;
         ToastDetail RoomView "RoomView" "toast-detail" set_toast_detail get_toast_detail;
+        SettingsClearableSize SettingsView "SettingsView" "clearable-size" set_clearable_size get_clearable_size;
+        SettingsKeptSize SettingsView "SettingsView" "kept-size" set_kept_size get_kept_size;
         VerificationSender VerificationView "VerificationView" "sender" set_sender get_sender;
         VerificationErrorDetail VerificationView "VerificationView" "error-detail" set_error_detail get_error_detail;
         EncryptionRecoveryKey EncryptionView "EncryptionView" "recovery-key" set_recovery_key get_recovery_key;
@@ -222,6 +224,8 @@ macro_rules! simple_callbacks {
             KeysCommand::ImportRoomKeys;
         on_open_settings "open-settings" open_settings plain SettingsCommand::OpenSettings;
         on_close_settings "close-settings" close_settings plain SettingsCommand::CloseSettings;
+        on_clear_downloaded_media "clear-downloaded-media" clear_downloaded_media plain
+            SettingsCommand::ClearDownloadedMedia;
         on_show_settings_page "show-settings-page" show_settings_page
             request(page "page" variant) SettingsCommand::ShowPage;
         on_set_theme "set-theme" set_theme request(choice "choice" variant) SettingsCommand::Change;
@@ -492,6 +496,7 @@ macro_rules! bool_props {
         SettingsCameraOnJoin SettingsView "SettingsView" "camera-on-join" set_camera_on_join get_camera_on_join;
         SettingsFollowSpeaker SettingsView "SettingsView" "follow-speaker" set_follow_speaker get_follow_speaker;
         SettingsAutoLoadMedia SettingsView "SettingsView" "auto-load-media" set_auto_load_media get_auto_load_media;
+        SettingsHasClearableMedia SettingsView "SettingsView" "has-clearable-media" set_has_clearable_media get_has_clearable_media;
         SettingsPlayAnimations SettingsView "SettingsView" "play-animations" set_play_animations get_play_animations;
         AccountVisible AccountView "AccountView" "visible" set_visible get_visible;
         AccountSessionsKnown AccountView "AccountView" "sessions-known" set_sessions_known get_sessions_known;
@@ -715,6 +720,8 @@ macro_rules! enum_props {
             EncryptionView "EncryptionView" "auth-error" set_auth_error get_auth_error;
         SettingsPage set_settings_page(SettingsPage)
             SettingsView "SettingsView" "page" set_page get_page;
+        DownloadedMedia set_downloaded_media(DownloadedMedia)
+            SettingsView "SettingsView" "downloaded-media" set_downloaded_media get_downloaded_media;
         AppearanceTheme set_appearance_theme(ThemeChoice)
             AppearanceView "AppearanceView" "theme" set_theme get_theme;
         MotionChoice set_motion_choice(MotionChoice)
@@ -1039,6 +1046,7 @@ macro_rules! slint_enums {
             account_steps AccountStep AccountStep;
             account_activities AccountActivity AccountActivity;
             settings_pages SettingsPage SettingsPage;
+            downloaded_media_states DownloadedMedia DownloadedMedia;
             theme_choices ThemeChoice ThemeChoice;
             motion_choices MotionChoice MotionChoice;
             send_keys SendKey SendKey;
@@ -1285,6 +1293,7 @@ macro_rules! user_message_kinds {
         DeactivationFailed        DeactivationFailed      "deactivation-failed";
         AccountPageOpened         AccountPageOpened       "account-page-opened";
         SettingsNotSaved          SettingsNotSaved        "settings-not-saved";
+        DownloadedMediaNotCleared DownloadedMediaNotCleared "downloaded-media-not-cleared";
         IdentityResetFailed       IdentityResetFailed     "identity-reset-failed";
         EncryptionSetupFailed     EncryptionSetupFailed   "encryption-setup-failed";
         KeyExportFailed           KeyExportFailed         "key-export-failed";
@@ -1698,6 +1707,16 @@ macro_rules! settings_pages {
     } };
 }
 pub(crate) use settings_pages;
+
+macro_rules! downloaded_media_states {
+    ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
+        Measuring   Measuring "measuring";
+        Measured(_) Measured  "measured";
+        Clearing(_) Clearing  "clearing";
+        Unknown     Unknown   "unknown";
+    } };
+}
+pub(crate) use downloaded_media_states;
 
 macro_rules! theme_choices {
     ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*

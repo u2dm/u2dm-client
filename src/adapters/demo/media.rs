@@ -1,12 +1,12 @@
 use std::collections::{BTreeMap, HashMap, HashSet};
-use std::env;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{LazyLock, Mutex};
+use std::{env, fs};
 
 use super::{attachments, data, room_info, space_index, stickers};
 use crate::adapters::body_emoji;
-use crate::domain::media::{ContentKey, MediaFailure, Waveform};
+use crate::domain::media::{ContentKey, MediaFailure, MediaUsage, Waveform};
 use crate::domain::message::{CustomEmoji, MessageBody};
 use crate::domain::user_info::localpart;
 use crate::ports::media::MediaCache;
@@ -15,6 +15,9 @@ const DATA_ENV: &str = "U2DM_DEMO_DATA";
 const AUDIO_ASSET_EXTENSIONS: &[&str] = &["ogg", "m4a", "mp3"];
 const IMAGE_ASSET_EXTENSIONS: &[&str] = &["gif", "webp", "png", "jpg", "heif"];
 const MXC_SCHEME: &str = "mxc://";
+const MEBIBYTE: u64 = 1024 * 1024;
+const CLEARABLE_AT_START: u64 = 412 * MEBIBYTE;
+const KEPT_BYTES: u64 = 18 * MEBIBYTE;
 
 const FAILURE_SUFFIXES: &[(&str, MediaFailure)] = &[
     ("-missing-download", MediaFailure::Download),
@@ -38,6 +41,9 @@ impl MediaCache for DemoMediaCache {
         let event_id = content.as_str();
         if let Some(sent) = attachments::preview_path(event_id) {
             return Some(sent);
+        }
+        if is_off_disk(content) {
+            return None;
         }
         let path = match data::sticker_asset_in(event_id) {
             Some(asset) => sticker_asset_path(asset),
@@ -134,9 +140,59 @@ pub(super) fn set_auto_load(on: bool) {
 }
 
 pub(super) fn remember_downloaded(content: &ContentKey) {
+    if let Ok(mut off_disk) = OFF_DISK.lock() {
+        off_disk.remove(content);
+    }
     if let Ok(mut downloaded) = DOWNLOADED_MEDIA.lock() {
         downloaded.insert(content.clone());
     }
+}
+
+static CLEARABLE_BYTES: AtomicU64 = AtomicU64::new(CLEARABLE_AT_START);
+
+static CLEARED_UNSEEN: AtomicBool = AtomicBool::new(false);
+
+static OFF_DISK: LazyLock<Mutex<HashSet<ContentKey>>> = LazyLock::new(Mutex::default);
+
+pub(super) fn cache_usage() -> MediaUsage {
+    MediaUsage {
+        clearable: CLEARABLE_BYTES.load(Ordering::Relaxed),
+        kept: KEPT_BYTES,
+    }
+}
+
+pub(super) fn clear_cache(keep: &[PathBuf]) -> MediaUsage {
+    let playing = keep
+        .iter()
+        .filter_map(|path| fs::metadata(path).ok())
+        .map(|file| file.len())
+        .sum();
+    CLEARABLE_BYTES.store(playing, Ordering::Relaxed);
+    if let Ok(mut downloaded) = DOWNLOADED_MEDIA.lock() {
+        downloaded.clear();
+    }
+    if let Ok(mut fetched) = FETCHED_AUDIO.lock() {
+        fetched
+            .retain(|event_id| audio_asset_path(event_id).is_some_and(|path| keep.contains(&path)));
+    }
+    CLEARED_UNSEEN.store(true, Ordering::Relaxed);
+    cache_usage()
+}
+
+pub(super) fn take_cleared() -> bool {
+    CLEARED_UNSEEN.swap(false, Ordering::Relaxed)
+}
+
+pub(super) fn take_off_disk(content: &ContentKey) {
+    if let Ok(mut off_disk) = OFF_DISK.lock() {
+        off_disk.insert(content.clone());
+    }
+}
+
+fn is_off_disk(content: &ContentKey) -> bool {
+    OFF_DISK
+        .lock()
+        .is_ok_and(|off_disk| off_disk.contains(content))
 }
 
 static LEARNED_WAVEFORMS: LazyLock<Mutex<HashMap<String, Waveform>>> =

@@ -63,6 +63,7 @@ const SETTINGS_SLINT: &str = "ui/screens/chat/components/settings/settings.slint
 
 const ENUM_COVERAGE: &[EnumCoverage] = &[
     covers("SettingsPage", SETTINGS_SLINT, &[]),
+    covers("DownloadedMedia", MESSAGES_SLINT, &["measured", "clearing"]),
     covers("ThemeChoice", MESSAGES_SLINT, &["system"]),
     covers("MotionChoice", MESSAGES_SLINT, &["system"]),
     covers("SendKey", MESSAGES_SLINT, &["enter"]),
@@ -160,6 +161,7 @@ const ENUM_TABLES: &[(&str, &str)] = &[
     ("AccountStep", "account_steps"),
     ("AccountActivity", "account_activities"),
     ("SettingsPage", "settings_pages"),
+    ("DownloadedMedia", "downloaded_media_states"),
     ("ThemeChoice", "theme_choices"),
     ("MotionChoice", "motion_choices"),
     ("SendKey", "send_keys"),

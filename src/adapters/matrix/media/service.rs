@@ -19,7 +19,7 @@ use self::downloads::{
     DOWNLOAD_TIMEOUT, FULL_DOWNLOAD_TIMEOUT, MAX_CONCURRENT_DOWNLOADS,
     MAX_CONCURRENT_FULL_DOWNLOADS, ext_from_magic,
 };
-use super::cache::{CacheHandle, FailureTracker};
+use super::cache::{CacheHandle, Cleared, FailureTracker};
 use super::flight::SingleFlight;
 use super::{
     AUDIO_DIR, AVATARS_DIR, STICKERS_DIR, ThumbnailRequest, VIDEOS_DIR, audio_key, mxc_avatar_key,
@@ -28,7 +28,9 @@ use super::{
 use crate::adapters::matrix::store::purge_dir;
 use crate::adapters::{container, private_fs, video};
 use crate::domain::account::AccountScope;
-use crate::domain::media::{ContentKey, MediaFailure, MediaResult, ThumbnailOutcome, Waveform};
+use crate::domain::media::{
+    ContentKey, MediaFailure, MediaResult, MediaUsage, ThumbnailOutcome, Waveform,
+};
 use crate::ports::matrix::CleanupReport;
 use crate::util::hex_encode_id;
 
@@ -224,16 +226,20 @@ impl MediaService {
         report
     }
 
-    pub(crate) async fn detach(&self) {
-        self.flights.clear();
+    fn forget_failures_and_admissions(&self) {
         if let Ok(mut failures) = self.failures.lock() {
             failures.clear();
         }
-        if let Ok(mut waveforms) = self.waveforms.lock() {
-            waveforms.clear();
-        }
         if let Ok(mut admitted) = self.admitted.lock() {
             admitted.clear();
+        }
+    }
+
+    pub(crate) async fn detach(&self) {
+        self.flights.clear();
+        self.forget_failures_and_admissions();
+        if let Ok(mut waveforms) = self.waveforms.lock() {
+            waveforms.clear();
         }
         let previous = self.session.write().ok().and_then(|mut guard| guard.take());
         let Some(session) = previous else {
@@ -283,6 +289,20 @@ impl MediaService {
         {
             waveforms.insert(content.clone(), waveform);
         }
+    }
+
+    pub(crate) async fn usage(&self) -> Option<MediaUsage> {
+        self.session()?.cache.usage().await
+    }
+
+    pub(crate) async fn clear_downloaded(&self, keep: Vec<PathBuf>) -> Option<Cleared> {
+        let cleared = self
+            .session()?
+            .cache
+            .clear(keep.into_iter().collect())
+            .await?;
+        self.forget_failures_and_admissions();
+        Some(cleared)
     }
 
     pub(crate) fn cache_get(&self, key: &str) -> Option<PathBuf> {

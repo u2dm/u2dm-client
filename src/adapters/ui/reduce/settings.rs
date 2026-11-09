@@ -1,12 +1,13 @@
 use slint::ComponentHandle;
 
 use super::run_change_handlers_next_frame;
-use crate::adapters::ui::decode::set_animations_paused;
-use crate::adapters::ui::props::{BoolProp, UiProps};
-use crate::commands::view::{SettingsPage, SettingsView};
+use crate::adapters::ui::decode::{forget_failed_decodes, set_animations_paused};
+use crate::adapters::ui::props::{BoolProp, StringProp, UiProps};
+use crate::commands::view::{DownloadedMedia, SettingsPage, SettingsView};
 use crate::domain::settings::{
     Alerts, Appearance, CallPreferences, MediaPreferences, Messaging, Settings,
 };
+use crate::util::format_bytes;
 
 pub(in crate::adapters::ui) fn seed_settings<W: UiProps>(w: &W, values: &Settings) {
     apply_values(w, values);
@@ -20,16 +21,38 @@ pub(super) fn apply_settings<W: UiProps + ComponentHandle>(
     if last == Some(view) {
         return;
     }
-    let SettingsView { values, dialog } = view;
+    let SettingsView {
+        values,
+        dialog,
+        media_cleared,
+    } = view;
     w.set_bool(BoolProp::SettingsVisible, dialog.is_some());
     w.set_settings_page(dialog.map_or(SettingsPage::default(), |dialog| dialog.page));
+    apply_storage(
+        w,
+        dialog.map_or(DownloadedMedia::default(), |dialog| dialog.storage),
+    );
     apply_values(w, values);
+    if last.is_some_and(|last| last.media_cleared != *media_cleared) {
+        forget_failed_decodes();
+    }
     if last.is_none_or(|last| {
         last.values.appearance.theme != values.appearance.theme
             || last.values.media.play_animations != values.media.play_animations
     }) {
         run_change_handlers_next_frame(w);
     }
+}
+
+fn apply_storage<W: UiProps>(w: &W, storage: DownloadedMedia) {
+    let usage = storage.usage().unwrap_or_default();
+    w.set_downloaded_media(storage);
+    w.set_text(
+        StringProp::SettingsClearableSize,
+        format_bytes(usage.clearable),
+    );
+    w.set_text(StringProp::SettingsKeptSize, format_bytes(usage.kept));
+    w.set_bool(BoolProp::SettingsHasClearableMedia, usage.clearable > 0);
 }
 
 fn apply_values<W: UiProps>(w: &W, values: &Settings) {

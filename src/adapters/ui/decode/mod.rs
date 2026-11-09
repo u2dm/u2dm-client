@@ -13,7 +13,8 @@ pub use animation::{
 };
 use cache::ImageCache;
 pub use cache::{
-    DecodeFailure, Decoded, load_attachment_preview, load_avatar_async, peek_avatar, peek_thumbnail,
+    DecodeFailure, Decoded, forget_failed_decodes, load_attachment_preview, load_avatar_async,
+    peek_avatar, peek_thumbnail,
 };
 use requests::{Needs, Request};
 pub use requests::{

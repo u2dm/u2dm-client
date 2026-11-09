@@ -146,7 +146,8 @@ pub(super) async fn load_row_media(
 
 pub(super) async fn recheck_media(items: &mut TimelineItems, ctx: &TimelineContext<'_>) {
     let rows = reconvert_rows(items, ctx, |_, message| {
-        message.is_some_and(|message| message.body.media().is_some())
+        message
+            .is_some_and(|message| message.body.media().is_some() || message.body.audio().is_some())
     });
     tracing::debug!(rows = rows.len(), "asking every media row again");
     if send_patch(ctx, bundled(rows)).await.is_break() {
