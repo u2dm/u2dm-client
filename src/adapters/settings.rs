@@ -8,7 +8,7 @@ use serde_json::Value;
 
 use super::private_fs;
 use crate::domain::settings::{
-    Appearance, Messaging, MotionChoice, ReceiptVisibility, SendKey, Settings, ThemeChoice,
+    Alerts, Appearance, Messaging, MotionChoice, ReceiptVisibility, SendKey, Settings, ThemeChoice,
 };
 use crate::error::Result;
 use crate::ports::settings::SettingsPort;
@@ -77,11 +77,25 @@ struct StoredMessaging {
 }
 
 #[derive(Default, Deserialize, Serialize)]
+struct StoredAlerts {
+    #[serde(default, deserialize_with = "lenient")]
+    desktop_notifications: Option<bool>,
+    #[serde(default, deserialize_with = "lenient")]
+    hide_message_text: Option<bool>,
+    #[serde(default, deserialize_with = "lenient")]
+    notification_sound: Option<bool>,
+    #[serde(default, deserialize_with = "lenient")]
+    ringtone: Option<bool>,
+}
+
+#[derive(Default, Deserialize, Serialize)]
 struct StoredSettings {
     #[serde(default, deserialize_with = "lenient")]
     appearance: Option<StoredAppearance>,
     #[serde(default, deserialize_with = "lenient")]
     messaging: Option<StoredMessaging>,
+    #[serde(default, deserialize_with = "lenient")]
+    alerts: Option<StoredAlerts>,
 }
 
 fn lenient<'de, D, T>(deserializer: D) -> result::Result<Option<T>, D::Error>
@@ -110,6 +124,13 @@ impl From<&Settings> for StoredSettings {
                     typing_notices,
                     share_presence,
                 },
+            alerts:
+                Alerts {
+                    desktop_notifications,
+                    hide_message_text,
+                    notification_sound,
+                    ringtone,
+                },
         } = *settings;
         Self {
             appearance: Some(StoredAppearance {
@@ -122,6 +143,12 @@ impl From<&Settings> for StoredSettings {
                 typing_notices: Some(typing_notices),
                 share_presence: Some(share_presence),
             }),
+            alerts: Some(StoredAlerts {
+                desktop_notifications: Some(desktop_notifications),
+                hide_message_text: Some(hide_message_text),
+                notification_sound: Some(notification_sound),
+                ringtone: Some(ringtone),
+            }),
         }
     }
 }
@@ -131,6 +158,7 @@ impl From<StoredSettings> for Settings {
         let defaults = Self::default();
         let appearance = stored.appearance.unwrap_or_default();
         let messaging = stored.messaging.unwrap_or_default();
+        let alerts = stored.alerts.unwrap_or_default();
         Self {
             appearance: Appearance {
                 theme: appearance
@@ -153,6 +181,18 @@ impl From<StoredSettings> for Settings {
                 share_presence: messaging
                     .share_presence
                     .unwrap_or(defaults.messaging.share_presence),
+            },
+            alerts: Alerts {
+                desktop_notifications: alerts
+                    .desktop_notifications
+                    .unwrap_or(defaults.alerts.desktop_notifications),
+                hide_message_text: alerts
+                    .hide_message_text
+                    .unwrap_or(defaults.alerts.hide_message_text),
+                notification_sound: alerts
+                    .notification_sound
+                    .unwrap_or(defaults.alerts.notification_sound),
+                ringtone: alerts.ringtone.unwrap_or(defaults.alerts.ringtone),
             },
         }
     }

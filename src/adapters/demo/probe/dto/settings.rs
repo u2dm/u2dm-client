@@ -2,7 +2,7 @@ use serde::Serialize;
 
 use crate::adapters::demo::probe::names;
 use crate::commands::view::SettingsView;
-use crate::domain::settings::{Appearance, Messaging, Settings};
+use crate::domain::settings::{Alerts, Appearance, Messaging, Settings};
 
 #[derive(Serialize)]
 pub(super) struct SettingsDto {
@@ -11,6 +11,7 @@ pub(super) struct SettingsDto {
 }
 
 #[derive(Serialize)]
+#[allow(clippy::struct_excessive_bools)]
 struct SettingsValuesDto {
     theme: &'static str,
     motion: &'static str,
@@ -18,6 +19,10 @@ struct SettingsValuesDto {
     receipts: &'static str,
     typing_notices: bool,
     share_presence: bool,
+    desktop_notifications: bool,
+    hide_message_text: bool,
+    notification_sound: bool,
+    ringtone: bool,
 }
 
 #[derive(Serialize)]
@@ -35,6 +40,13 @@ pub(super) fn settings(source: &SettingsView) -> SettingsDto {
                 typing_notices,
                 share_presence,
             },
+        alerts:
+            Alerts {
+                desktop_notifications,
+                hide_message_text,
+                notification_sound,
+                ringtone,
+            },
     } = source.values;
     SettingsDto {
         values: SettingsValuesDto {
@@ -44,6 +56,10 @@ pub(super) fn settings(source: &SettingsView) -> SettingsDto {
             receipts: names::receipt_visibility(receipts),
             typing_notices,
             share_presence,
+            desktop_notifications,
+            hide_message_text,
+            notification_sound,
+            ringtone,
         },
         dialog: source.dialog.map(|dialog| SettingsDialogDto {
             page: names::settings_page(dialog.page),

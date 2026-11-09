@@ -165,7 +165,7 @@ export component IncomingCallCard inherits PickerCard {
                 icon: IconSet.X;
                 size: Size.md;
                 above-modal: true;
-                label: CallWords.stop-ring(CallView.ring-quiet);
+                label: CallWords.stop-ring(!CallView.ring-sounds);
                 tip: self.label;
                 tip-scope: TipScope.ring;
                 clicked => {

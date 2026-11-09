@@ -32,6 +32,10 @@ pub enum ReceiptVisibility {
 pub enum SettingFlag {
     TypingNotices,
     SharePresence,
+    DesktopNotifications,
+    HideMessageText,
+    NotificationSound,
+    Ringtone,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -59,10 +63,31 @@ impl Default for Messaging {
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[allow(clippy::struct_excessive_bools)]
+pub struct Alerts {
+    pub desktop_notifications: bool,
+    pub hide_message_text: bool,
+    pub notification_sound: bool,
+    pub ringtone: bool,
+}
+
+impl Default for Alerts {
+    fn default() -> Self {
+        Self {
+            desktop_notifications: true,
+            hide_message_text: false,
+            notification_sound: true,
+            ringtone: true,
+        }
+    }
+}
+
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Settings {
     pub appearance: Appearance,
     pub messaging: Messaging,
+    pub alerts: Alerts,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -89,6 +114,10 @@ impl Settings {
         match flag {
             SettingFlag::TypingNotices => &mut self.messaging.typing_notices,
             SettingFlag::SharePresence => &mut self.messaging.share_presence,
+            SettingFlag::DesktopNotifications => &mut self.alerts.desktop_notifications,
+            SettingFlag::HideMessageText => &mut self.alerts.hide_message_text,
+            SettingFlag::NotificationSound => &mut self.alerts.notification_sound,
+            SettingFlag::Ringtone => &mut self.alerts.ringtone,
         }
     }
 }

@@ -17,4 +17,5 @@ pub enum SettingsPage {
     Overview,
     Appearance,
     Messages,
+    Notifications,
 }

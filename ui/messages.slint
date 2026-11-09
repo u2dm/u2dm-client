@@ -821,6 +821,10 @@ export global NotificationText {
         return @tr("{}: {}", sender, MessagePreview.label(kind, body));
     }
 
+    public pure function hidden-message() -> string {
+        return @tr("New message");
+    }
+
     public pure function service(kind: ServiceKind, actor: string, target: string) -> string {
         return ServiceLabel.label(kind, actor, target);
     }
@@ -1921,6 +1925,13 @@ export global SettingsWords {
         return receipts == ReceiptVisibility.private
             ? @tr("{} sends, private read receipts", root.send-key(key))
             : @tr("{} sends, public read receipts", root.send-key(key));
+    }
+
+    public pure function notifications-summary(shown: bool, hides-text: bool) -> string {
+        if !shown {
+            return @tr("Desktop notifications off");
+        }
+        return hides-text ? @tr("Message text hidden") : @tr("Desktop notifications on");
     }
 
     public pure function motion-detail(choice: MotionChoice) -> string {

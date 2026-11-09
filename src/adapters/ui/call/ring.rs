@@ -46,9 +46,9 @@ pub(super) fn apply_ring<B: UiBackend>(
     if last.is_none_or(|last| fresh || last.room_avatar_mxc != next.room_avatar_mxc) {
         show_ring_avatar(w, next, ctx.media);
     }
-    if next.quiet {
+    if !next.sounds {
         ringtone::stop_if(Tone::Incoming);
-    } else if fresh || last.is_some_and(|last| last.quiet) {
+    } else if fresh || last.is_some_and(|last| !last.sounds) {
         audio::pause(w);
         video::set_playing(w, false);
         ringtone::play(&w.as_weak(), Tone::Incoming);
@@ -82,6 +82,7 @@ fn show_card(w: &impl UiProps, ring: &RingView) {
     w.set_bool(BoolProp::RingDirect, ring.direct);
     w.set_bool(BoolProp::RingAnswerable, ring.answerable);
     w.set_bool(BoolProp::RingQuiet, ring.quiet);
+    w.set_bool(BoolProp::RingSounds, ring.sounds);
     if let Some(refusal) = ring.refusal {
         w.set_ring_refusal(refusal);
     }
@@ -125,6 +126,6 @@ fn compose_ring<B: UiBackend>(w: &B::Window, ring: &RingView, in_call: bool) -> 
             };
             w.get_string(label).to_string()
         }),
-        sound: ringtone::sounding().is_none(),
+        sound: ring.sounds && ringtone::sounding().is_none(),
     }
 }

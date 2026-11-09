@@ -74,6 +74,7 @@ scenario_env() {
     settings-appearance) echo 'U2DM_DEMO_WINDOW=900x760' ;;
     settings-messages) echo 'U2DM_DEMO_WINDOW=900x760' ;;
     settings-presence) echo 'U2DM_DEMO_PRESENCE=partners,status U2DM_DEMO_WINDOW=900x760' ;;
+    settings-notifications) echo 'U2DM_DEMO_NOTIFY=group,dm,mention U2DM_DEMO_WINDOW=900x760' ;;
     mentions)        echo 'U2DM_DEMO_ROOM_INFO=slow' ;;
     room-mention)    echo 'U2DM_DEMO_WINDOW=900x760' ;;
     display-names)   echo 'U2DM_DEMO_NAMES=all' ;;
@@ -1125,6 +1126,12 @@ scenario_steps() {
       echo 'sleep 1'
       echo '{"op":"select_subspace","subspace_id":"!space-rust-web:demo.local"}'
       echo 'sleep 2' ;;
+    settings-notifications)
+      echo '{"op":"window_focus","focused":false}'
+      echo '{"op":"set_setting","name":"hide-message-text","value":"true"}'
+      echo 'sleep 8'
+      echo '{"op":"set_setting","name":"desktop-notifications","value":"false"}'
+      echo 'sleep 2' ;;
     settings-presence)
       echo '{"op":"select_room","room_id":"!rust:demo.local"}'
       echo 'sleep 2'
@@ -1249,6 +1256,7 @@ scenario_note() {
     readers)         echo 'in !rust, the 123 readers of an older message load slowly, then the 121 readers of your newest message page in fifty at a time' ;;
     room-search)     echo 'in All Rooms, "design" lists the Design Team room, then the Design space' ;;
     room-search-open) echo '"web" matches only the Web space under Rust (Web Accessibility is too deep to open); opening it selects Rust and its Web subspace' ;;
+    settings-notifications) echo 'with the window unfocused and Hide message text on, each arrival notifies as "New message" (the log: demo: a desktop notification shows); Show notifications off withdraws them all while the rooms stay unread (notifications, directory.attention)' ;;
     settings-presence) echo 'Share your presence off says offline once with your status kept, and on again says online at once (the log: demo: presence reaches the homeserver)' ;;
     settings-messages) echo 'Messages and privacy: Ctrl+Enter sends, read receipts go private, typing notices stop (settings.values; the demo logs each receipt with its visibility)' ;;
     settings-appearance) echo 'Settings opens from the drawer on its overview, Appearance turns the theme dark at once and reduces motion (settings.values, settings.dialog.page; the shot is dark)' ;;
@@ -1403,7 +1411,7 @@ names() {
     encryption-unverified encryption-recovery-key encryption-new-account encryption-setup-refused \
     identity-reset identity-reset-oauth room-keys \
     account-sessions account-password account-sso account-oauth account-limits account-deactivate \
-    logout-warning settings-appearance settings-messages settings-presence
+    logout-warning settings-appearance settings-messages settings-presence settings-notifications
 }
 
 cmd_list() {

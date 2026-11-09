@@ -3,7 +3,7 @@ use slint::ComponentHandle;
 use super::run_change_handlers_next_frame;
 use crate::adapters::ui::props::{BoolProp, UiProps};
 use crate::commands::view::{SettingsPage, SettingsView};
-use crate::domain::settings::{Appearance, Messaging, Settings};
+use crate::domain::settings::{Alerts, Appearance, Messaging, Settings};
 
 pub(in crate::adapters::ui) fn seed_settings<W: UiProps>(w: &W, values: &Settings) {
     apply_values(w, values);
@@ -36,6 +36,13 @@ fn apply_values<W: UiProps>(w: &W, values: &Settings) {
                 typing_notices,
                 share_presence,
             },
+        alerts:
+            Alerts {
+                desktop_notifications,
+                hide_message_text,
+                notification_sound,
+                ringtone,
+            },
     } = *values;
     w.set_appearance_theme(theme);
     w.set_motion_choice(motion);
@@ -43,4 +50,11 @@ fn apply_values<W: UiProps>(w: &W, values: &Settings) {
     w.set_receipt_visibility(receipts);
     w.set_bool(BoolProp::SettingsTypingNotices, typing_notices);
     w.set_bool(BoolProp::SettingsSharePresence, share_presence);
+    w.set_bool(
+        BoolProp::SettingsDesktopNotifications,
+        desktop_notifications,
+    );
+    w.set_bool(BoolProp::SettingsHideMessageText, hide_message_text);
+    w.set_bool(BoolProp::SettingsNotificationSound, notification_sound);
+    w.set_bool(BoolProp::SettingsRingtone, ringtone);
 }

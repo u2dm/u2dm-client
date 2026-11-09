@@ -44,6 +44,7 @@ use crate::domain::call::media::MediaChoice;
 use crate::domain::call::ring::{CallSignal, OUTGOING_RING_LIFETIME_MS, Ring};
 use crate::domain::call::{CallIntent, DeviceId, MemberKey};
 use crate::domain::room::{Room, RoomId, UnreadFlags};
+use crate::domain::settings::Alerts;
 use crate::domain::user_info::UserId;
 use crate::ports::call::CallMediaPort;
 use crate::ports::matrix::{CallSignalPort, RtcMembershipPort};
@@ -167,6 +168,7 @@ pub(super) struct Calls {
     key_tasks: TaskGroup,
     own: Option<Own>,
     focus: WindowFocus,
+    alerts: Alerts,
     incoming: Option<Incoming>,
     rung: VecDeque<Ring>,
     serial: u64,
@@ -215,6 +217,7 @@ impl Calls {
             key_tasks: TaskGroup::new("call-keys"),
             own: None,
             focus: WindowFocus::default(),
+            alerts: Alerts::default(),
             incoming: None,
             rung: VecDeque::new(),
             serial: 0,
@@ -318,6 +321,14 @@ impl Calls {
             return;
         }
         self.focus = focus;
+        self.publish(directory);
+    }
+
+    pub(super) fn set_alerts(&mut self, alerts: Alerts, directory: &RoomDirectory) {
+        if self.alerts == alerts {
+            return;
+        }
+        self.alerts = alerts;
         self.publish(directory);
     }
 

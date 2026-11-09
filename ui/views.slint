@@ -436,6 +436,7 @@ export global CallView {
     in property <bool> ring-direct;
     in property <bool> ring-answerable;
     in property <bool> ring-quiet;
+    in property <bool> ring-sounds;
     in property <CallRefusal> ring-refusal;
     in property <bool> ring-has-avatar;
     in property <image> ring-avatar;
@@ -579,6 +580,10 @@ export global SettingsView {
     in property <ReceiptVisibility> receipts: ReceiptVisibility.public;
     in property <bool> typing-notices: true;
     in property <bool> share-presence: true;
+    in property <bool> desktop-notifications: true;
+    in property <bool> hide-message-text;
+    in property <bool> notification-sound: true;
+    in property <bool> ringtone: true;
 }
 
 export global AccountView {

@@ -122,6 +122,7 @@ pub mod verification_view {
 pub mod notification_text {
     pub const NAME: &str = "NotificationText";
     pub const MESSAGE: &str = "message";
+    pub const HIDDEN_MESSAGE: &str = "hidden-message";
     pub const SERVICE: &str = "service";
     pub const INVITE: &str = "invite";
     pub const RING: &str = "ring";

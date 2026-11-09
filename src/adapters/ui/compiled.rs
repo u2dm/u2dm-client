@@ -624,6 +624,7 @@ impl UiBackend for CompiledBackend {
             NoticeWords::Message { kind, body, sender } => {
                 text.invoke_message(kind.slint(), body.into(), sender.into())
             }
+            NoticeWords::HiddenMessage => text.invoke_hidden_message(),
             NoticeWords::Service {
                 kind,
                 actor,

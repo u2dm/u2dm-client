@@ -12,6 +12,7 @@ use crate::commands::ui::WindowFocus;
 use crate::commands::view::{NotificationsView, ShownNotice};
 use crate::domain::push::PushNotice;
 use crate::domain::room::{Room, RoomId};
+use crate::domain::settings::Alerts;
 use crate::ports::matrix::PushPort;
 use crate::ports::output::AppOutputPort;
 
@@ -27,6 +28,7 @@ pub(super) struct DesktopNotifications {
     output: Arc<dyn AppOutputPort>,
     events: EventSender,
     focus: WindowFocus,
+    alerts: Alerts,
     serial: u64,
     shown: Vec<ShownNotice>,
     held: Vec<Held>,
@@ -38,6 +40,7 @@ impl DesktopNotifications {
             output,
             events,
             focus: WindowFocus::default(),
+            alerts: Alerts::default(),
             serial: 0,
             shown: Vec::new(),
             held: Vec::new(),
@@ -61,14 +64,28 @@ impl DesktopNotifications {
         );
     }
 
-    pub(super) fn arrived(&mut self, notice: PushNotice, directory: &RoomDirectory) {
-        let room_id = notice.room_id.clone();
-        if self.focus == WindowFocus::Focused {
-            tracing::debug!(%room_id, "the window has focus; no notification");
+    pub(super) fn set_alerts(&mut self, alerts: Alerts) {
+        let turned_off = self.alerts.desktop_notifications && !alerts.desktop_notifications;
+        self.alerts = alerts;
+        if !turned_off {
             return;
         }
-        if self.supersedes(&notice) {
-            tracing::debug!(%room_id, "the room already notified a newer message");
+        tracing::debug!(
+            shown = self.shown.len(),
+            held = self.held.len(),
+            "desktop notifications turned off; withdrawing what shows"
+        );
+        self.held.clear();
+        if !self.shown.is_empty() {
+            self.shown.clear();
+            self.publish();
+        }
+    }
+
+    pub(super) fn arrived(&mut self, notice: PushNotice, directory: &RoomDirectory) {
+        let room_id = notice.room_id.clone();
+        if let Some(reason) = self.withholds(&notice) {
+            tracing::debug!(%room_id, reason, "no notification");
             return;
         }
         self.held.retain(|held| held.notice.room_id != room_id);
@@ -133,6 +150,17 @@ impl DesktopNotifications {
         self.held.clear();
     }
 
+    fn withholds(&self, notice: &PushNotice) -> Option<&'static str> {
+        if !self.alerts.desktop_notifications {
+            return Some("desktop notifications are off");
+        }
+        if self.focus == WindowFocus::Focused {
+            return Some("the window has focus");
+        }
+        self.supersedes(notice)
+            .then_some("the room already notified a newer message")
+    }
+
     fn supersedes(&self, notice: &PushNotice) -> bool {
         self.shown
             .iter()
@@ -164,7 +192,7 @@ impl DesktopNotifications {
         tracing::debug!(room_id = %notice.room_id, serial = self.serial, "a notification shows");
         self.shown.push(ShownNotice {
             serial: self.serial,
-            notice,
+            notice: notice.shaped_by(self.alerts),
         });
     }
 

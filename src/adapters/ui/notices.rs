@@ -21,6 +21,7 @@ pub enum NoticeWords<'a> {
         body: &'a str,
         sender: &'a str,
     },
+    HiddenMessage,
     Service {
         kind: ServiceKind,
         actor: &'a str,
@@ -83,6 +84,7 @@ fn compose<B: UiBackend>(w: &B::Window, notice: &PushNotice) -> DesktopNotice {
                 },
             )
         }
+        NoticeContent::HiddenMessage => B::notification_text(w, &NoticeWords::HiddenMessage),
         NoticeContent::Service { actor, event } => B::notification_text(
             w,
             &NoticeWords::Service {

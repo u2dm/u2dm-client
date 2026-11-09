@@ -140,6 +140,7 @@ pub(super) fn notifications(source: &NotificationsView) -> Vec<NotificationDto> 
             let notice = &shown.notice;
             let (kind, sender) = match &notice.content {
                 NoticeContent::Message { sender, .. } => ("message", sender.as_ref()),
+                NoticeContent::HiddenMessage => ("hidden-message", None),
                 NoticeContent::Service { actor, .. } => ("service", Some(actor)),
                 NoticeContent::Invite { inviter } => ("invite", inviter.as_ref()),
             };

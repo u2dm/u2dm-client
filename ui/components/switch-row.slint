@@ -1,7 +1,7 @@
 import { Palette } from "std-widgets.slint";
 
 import { ShadedClickArea } from "./state-layer.slint";
-import { AppStyle, Fonts, Metrics, Motion, Radius, Space, Weight } from "../theme.slint";
+import { AppStyle, Fonts, Metrics, Motion, Opacity, Radius, Space, Weight } from "../theme.slint";
 
 export component SwitchRow inherits ShadedClickArea {
     in property <string> text;
@@ -11,6 +11,7 @@ export component SwitchRow inherits ShadedClickArea {
     callback toggled(bool);
 
     height: max(Metrics.choice-row, content.preferred-height + Space.md);
+    opacity: root.enabled ? 1 : Opacity.disabled;
     border-radius: Radius.md;
     ring-radius: Radius.md;
     above-modal: true;

@@ -18,11 +18,14 @@ impl AppService {
                     typing_notices,
                     share_presence,
                 },
+            alerts,
         } = *self.settings.values();
         self.active_timeline.set_receipts(receipts);
         self.room_info.set_receipts(receipts);
         self.typing.set_notices(typing_notices);
         self.presence.set_sharing(share_presence);
+        self.notifications.set_alerts(alerts);
+        self.calls.set_alerts(alerts, &self.room_directory);
     }
 
     pub(super) fn handle_settings_command(&mut self, command: SettingsCommand) {

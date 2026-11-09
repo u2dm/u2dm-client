@@ -374,7 +374,10 @@ impl Calls {
             caller: incoming.ring.caller.clone(),
             video: incoming.ring.is_video(),
             quiet,
-            desktop: !quiet && self.focus == WindowFocus::Unfocused,
+            sounds: !quiet && self.alerts.ringtone,
+            desktop: !quiet
+                && self.alerts.desktop_notifications
+                && self.focus == WindowFocus::Unfocused,
             answerable: matches!(offer, JoinOffer::Join | JoinOffer::Start),
             refusal: match offer {
                 JoinOffer::Refused(refusal) => Some(refusal),

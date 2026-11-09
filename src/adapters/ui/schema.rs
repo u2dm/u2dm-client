@@ -457,6 +457,7 @@ macro_rules! bool_props {
         RingDirect CallView "CallView" "ring-direct" set_ring_direct get_ring_direct;
         RingAnswerable CallView "CallView" "ring-answerable" set_ring_answerable get_ring_answerable;
         RingQuiet CallView "CallView" "ring-quiet" set_ring_quiet get_ring_quiet;
+        RingSounds CallView "CallView" "ring-sounds" set_ring_sounds get_ring_sounds;
         HereVideo CallView "CallView" "here-video" set_here_video get_here_video;
         HereJoined CallView "CallView" "here-joined" set_here_joined get_here_joined;
         ActiveVisible CallView "CallView" "active" set_active get_active;
@@ -480,6 +481,10 @@ macro_rules! bool_props {
         SettingsVisible SettingsView "SettingsView" "visible" set_visible get_visible;
         SettingsTypingNotices SettingsView "SettingsView" "typing-notices" set_typing_notices get_typing_notices;
         SettingsSharePresence SettingsView "SettingsView" "share-presence" set_share_presence get_share_presence;
+        SettingsDesktopNotifications SettingsView "SettingsView" "desktop-notifications" set_desktop_notifications get_desktop_notifications;
+        SettingsHideMessageText SettingsView "SettingsView" "hide-message-text" set_hide_message_text get_hide_message_text;
+        SettingsNotificationSound SettingsView "SettingsView" "notification-sound" set_notification_sound get_notification_sound;
+        SettingsRingtone SettingsView "SettingsView" "ringtone" set_ringtone get_ringtone;
         AccountVisible AccountView "AccountView" "visible" set_visible get_visible;
         AccountSessionsKnown AccountView "AccountView" "sessions-known" set_sessions_known get_sessions_known;
         AccountFactsKnown AccountView "AccountView" "facts-known" set_facts_known get_facts_known;
@@ -1676,6 +1681,7 @@ macro_rules! settings_pages {
         Overview   Overview   "overview";
         Appearance Appearance "appearance";
         Messages   Messages   "messages";
+        Notifications Notifications "notifications";
     } };
 }
 pub(crate) use settings_pages;
@@ -1718,6 +1724,10 @@ macro_rules! setting_flags {
     ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
         TypingNotices TypingNotices "typing-notices";
         SharePresence SharePresence "share-presence";
+        DesktopNotifications DesktopNotifications "desktop-notifications";
+        HideMessageText HideMessageText "hide-message-text";
+        NotificationSound NotificationSound "notification-sound";
+        Ringtone Ringtone "ringtone";
     } };
 }
 pub(crate) use setting_flags;

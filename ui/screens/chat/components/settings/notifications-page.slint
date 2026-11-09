@@ -1,0 +1,73 @@
+import { Hairline } from "../../../../components/divider.slint";
+import { SwitchRow } from "../../../../components/switch-row.slint";
+import { SectionLabel } from "../../../../components/text-roles.slint";
+import { SettingFlag } from "../../../../enums.slint";
+import { SettingsView } from "../../../../views.slint";
+import { Actions } from "../../../../actions.slint";
+import { Space } from "../../../../theme.slint";
+import { PageHeader } from "./page-header.slint";
+
+export component NotificationsPage inherits VerticalLayout {
+    callback back();
+    callback close();
+
+    spacing: Space.lg;
+
+    PageHeader {
+        title: @tr("Notifications and sounds");
+        back => {
+            root.back();
+        }
+        close => {
+            root.close();
+        }
+    }
+
+    Hairline { }
+
+    SectionLabel {
+        text: @tr("DESKTOP NOTIFICATIONS");
+    }
+
+    SwitchRow {
+        text: @tr("Show notifications");
+        detail: @tr("New messages and invites appear on your desktop while this window is in the background");
+        on: SettingsView.desktop-notifications;
+        toggled(on) => {
+            Actions.set-setting-flag({ setting: SettingFlag.desktop-notifications, on: on });
+        }
+    }
+
+    SwitchRow {
+        text: @tr("Hide message text");
+        detail: @tr("Notifications name the room, but not the sender or the message");
+        enabled: SettingsView.desktop-notifications;
+        on: SettingsView.hide-message-text;
+        toggled(on) => {
+            Actions.set-setting-flag({ setting: SettingFlag.hide-message-text, on: on });
+        }
+    }
+
+    SectionLabel {
+        text: @tr("SOUNDS");
+    }
+
+    SwitchRow {
+        text: @tr("Notification sound");
+        detail: @tr("Desktop notifications play a sound when your notification rules ask for one");
+        enabled: SettingsView.desktop-notifications;
+        on: SettingsView.notification-sound;
+        toggled(on) => {
+            Actions.set-setting-flag({ setting: SettingFlag.notification-sound, on: on });
+        }
+    }
+
+    SwitchRow {
+        text: @tr("Ringtone");
+        detail: @tr("Incoming calls ring out loud. The call card appears either way");
+        on: SettingsView.ringtone;
+        toggled(on) => {
+            Actions.set-setting-flag({ setting: SettingFlag.ringtone, on: on });
+        }
+    }
+}

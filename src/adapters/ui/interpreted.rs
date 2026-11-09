@@ -188,6 +188,7 @@ impl UiBackend for InterpretedBackend {
                 notification_text::MESSAGE,
                 vec![enum_value(&kind), text_value(body), text_value(sender)],
             ),
+            NoticeWords::HiddenMessage => (notification_text::HIDDEN_MESSAGE, Vec::new()),
             NoticeWords::Service {
                 kind,
                 actor,
