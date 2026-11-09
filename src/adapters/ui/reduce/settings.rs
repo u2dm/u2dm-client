@@ -1,9 +1,12 @@
 use slint::ComponentHandle;
 
 use super::run_change_handlers_next_frame;
+use crate::adapters::ui::decode::set_animations_paused;
 use crate::adapters::ui::props::{BoolProp, UiProps};
 use crate::commands::view::{SettingsPage, SettingsView};
-use crate::domain::settings::{Alerts, Appearance, CallPreferences, Messaging, Settings};
+use crate::domain::settings::{
+    Alerts, Appearance, CallPreferences, MediaPreferences, Messaging, Settings,
+};
 
 pub(in crate::adapters::ui) fn seed_settings<W: UiProps>(w: &W, values: &Settings) {
     apply_values(w, values);
@@ -21,7 +24,10 @@ pub(super) fn apply_settings<W: UiProps + ComponentHandle>(
     w.set_bool(BoolProp::SettingsVisible, dialog.is_some());
     w.set_settings_page(dialog.map_or(SettingsPage::default(), |dialog| dialog.page));
     apply_values(w, values);
-    if last.is_none_or(|last| last.values.appearance.theme != values.appearance.theme) {
+    if last.is_none_or(|last| {
+        last.values.appearance.theme != values.appearance.theme
+            || last.values.media.play_animations != values.media.play_animations
+    }) {
         run_change_handlers_next_frame(w);
     }
 }
@@ -51,6 +57,10 @@ fn apply_values<W: UiProps>(w: &W, values: &Settings) {
                 follow_speaker,
             },
         remembered_devices: _,
+        media: MediaPreferences {
+            auto_load,
+            play_animations,
+        },
     } = *values;
     w.set_appearance_theme(theme);
     w.set_motion_choice(motion);
@@ -69,4 +79,7 @@ fn apply_values<W: UiProps>(w: &W, values: &Settings) {
     w.set_bool(BoolProp::SettingsCameraOnJoin, camera_on_join);
     w.set_call_layout(layout);
     w.set_bool(BoolProp::SettingsFollowSpeaker, follow_speaker);
+    w.set_bool(BoolProp::SettingsAutoLoadMedia, auto_load);
+    w.set_bool(BoolProp::SettingsPlayAnimations, play_animations);
+    set_animations_paused(!play_animations);
 }

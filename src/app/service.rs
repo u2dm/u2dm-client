@@ -744,6 +744,7 @@ impl AppService {
             UiCommand::EndPoll { event_id } => {
                 self.active_timeline.end_poll(event_id);
             }
+            UiCommand::LoadMedia { event_id } => self.active_timeline.load_media(event_id),
             UiCommand::OpenMedia { event_id } => {
                 self.open_media(event_id);
             }

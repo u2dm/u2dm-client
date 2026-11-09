@@ -19,4 +19,5 @@ pub enum SettingsPage {
     Messages,
     Notifications,
     Calls,
+    Media,
 }

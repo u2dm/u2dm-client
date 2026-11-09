@@ -76,6 +76,7 @@ scenario_env() {
     settings-presence) echo 'U2DM_DEMO_PRESENCE=partners,status U2DM_DEMO_WINDOW=900x760' ;;
     settings-notifications) echo 'U2DM_DEMO_NOTIFY=group,dm,mention U2DM_DEMO_WINDOW=900x760' ;;
     settings-calls) echo 'U2DM_DEMO_CALLS=active,speeches U2DM_DEMO_WINDOW=900x760' ;;
+    settings-media) echo 'U2DM_DEMO_SETTINGS=media-slow U2DM_DEMO_WINDOW=900x760' ;;
     mentions)        echo 'U2DM_DEMO_ROOM_INFO=slow' ;;
     room-mention)    echo 'U2DM_DEMO_WINDOW=900x760' ;;
     display-names)   echo 'U2DM_DEMO_NAMES=all' ;;
@@ -1127,6 +1128,16 @@ scenario_steps() {
       echo 'sleep 1'
       echo '{"op":"select_subspace","subspace_id":"!space-rust-web:demo.local"}'
       echo 'sleep 2' ;;
+    settings-media)
+      echo '{"op":"set_setting","name":"auto-load-media","value":"false"}'
+      echo '{"op":"select_room","room_id":"!sarah:demo.local"}'
+      echo 'sleep 2'
+      echo '{"op":"load_media","event_id":"demo-sarah-desk"}'
+      echo 'sleep 3'
+      echo '{"op":"select_room","room_id":"!stickers:demo.local"}'
+      echo 'sleep 1'
+      echo '{"op":"set_setting","name":"play-animations","value":"false"}'
+      echo 'sleep 1' ;;
     settings-calls)
       echo '{"op":"select_room","room_id":"!design:demo.local"}'
       echo 'sleep 1'
@@ -1269,6 +1280,7 @@ scenario_note() {
     readers)         echo 'in !rust, the 123 readers of an older message load slowly, then the 121 readers of your newest message page in fifty at a time' ;;
     room-search)     echo 'in All Rooms, "design" lists the Design Team room, then the Design space' ;;
     room-search-open) echo '"web" matches only the Web space under Rust (Web Accessibility is too deep to open); opening it selects Rust and its Web subspace' ;;
+    settings-media) echo "with Load media automatically off, other people's photos, video previews and stickers read not-loaded with a Load button (/timeline media_state), your own still load, and load_media brings one in; with Play animated images off, stickers and custom emoji hold their first frame" ;;
     settings-calls) echo 'Camera on for video calls proposes the camera and previews it in the sheet (/state .call.sheet: camera, preview); the microphone chosen there is remembered (.settings.values.remembered_devices), and the call opens as Call only following the speaker (.call.active.follows_speaker)' ;;
     settings-notifications) echo 'with the window unfocused and Hide message text on, each arrival notifies as "New message" (the log: demo: a desktop notification shows); Show notifications off withdraws them all while the rooms stay unread (notifications, directory.attention)' ;;
     settings-presence) echo 'Share your presence off says offline once with your status kept, and on again says online at once (the log: demo: presence reaches the homeserver)' ;;
@@ -1426,7 +1438,7 @@ names() {
     identity-reset identity-reset-oauth room-keys \
     account-sessions account-password account-sso account-oauth account-limits account-deactivate \
     logout-warning settings-appearance settings-messages settings-presence settings-notifications \
-    settings-calls
+    settings-calls settings-media
 }
 
 cmd_list() {

@@ -144,6 +144,10 @@ impl MediaCache for MaterializedMedia {
         self.service.failure(&thumb_key(content))
     }
 
+    fn withholds(&self, content: &ContentKey) -> bool {
+        self.service.withholds(content)
+    }
+
     fn user_avatar_path(&self, mxc: &str) -> Option<PathBuf> {
         self.service.cache_get(&mxc_avatar_key(mxc))
     }
@@ -282,6 +286,10 @@ impl MatrixMedia {
 
 #[async_trait]
 impl MediaPort for MatrixMedia {
+    fn set_auto_load(&self, on: bool) {
+        self.matrix.media().set_auto_load(on);
+    }
+
     async fn download_media(
         &self,
         room_id: &RoomId,

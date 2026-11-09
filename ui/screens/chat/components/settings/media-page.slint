@@ -1,0 +1,53 @@
+import { Hairline } from "../../../../components/divider.slint";
+import { SwitchRow } from "../../../../components/switch-row.slint";
+import { SectionLabel } from "../../../../components/text-roles.slint";
+import { SettingFlag } from "../../../../enums.slint";
+import { SettingsView } from "../../../../views.slint";
+import { Actions } from "../../../../actions.slint";
+import { Space } from "../../../../theme.slint";
+import { PageHeader } from "./page-header.slint";
+
+export component MediaPage inherits VerticalLayout {
+    callback back();
+    callback close();
+
+    spacing: Space.lg;
+
+    PageHeader {
+        title: @tr("Media and storage");
+        back => {
+            root.back();
+        }
+        close => {
+            root.close();
+        }
+    }
+
+    Hairline { }
+
+    SectionLabel {
+        text: @tr("DOWNLOADS");
+    }
+
+    SwitchRow {
+        text: @tr("Load media automatically");
+        detail: @tr("Images, stickers and video previews appear as they arrive. When off, you choose which to load. Profile pictures, custom emoji and your own messages always load");
+        on: SettingsView.auto-load-media;
+        toggled(on) => {
+            Actions.set-setting-flag({ setting: SettingFlag.auto-load-media, on: on });
+        }
+    }
+
+    SectionLabel {
+        text: @tr("ANIMATION");
+    }
+
+    SwitchRow {
+        text: @tr("Play animated images");
+        detail: @tr("GIFs, stickers and custom emoji move. When off, they stay on their first frame");
+        on: SettingsView.play-animations;
+        toggled(on) => {
+            Actions.set-setting-flag({ setting: SettingFlag.play-animations, on: on });
+        }
+    }
+}

@@ -207,6 +207,10 @@ pub enum TimelineCommand {
         request: u64,
         event_id: String,
     },
+    LoadMedia {
+        event_id: String,
+    },
+    RecheckMedia,
 }
 
 impl TimelineCommand {
@@ -222,7 +226,9 @@ impl TimelineCommand {
             | Self::JumpTo(_)
             | Self::LocateAudio { .. }
             | Self::LocateSource { .. }
-            | Self::LocateReaders { .. } => false,
+            | Self::LocateReaders { .. }
+            | Self::LoadMedia { .. }
+            | Self::RecheckMedia => false,
         }
     }
 }

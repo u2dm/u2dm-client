@@ -7,6 +7,7 @@ import { MediaState, MessageKind, SendState, Shield } from "../../../../../enums
 import { MediaFailures } from "../../../../../messages.slint";
 import { AppStyle, Fonts, IconSize, Metrics, Motion, Radius, Size, Space, Weight } from "../../../../../theme.slint";
 import { Actions } from "../../../../../actions.slint";
+import { SettingsView } from "../../../../../views.slint";
 import { TextMessage } from "./text-message.slint";
 import { MessageMeta } from "../message-meta.slint";
 
@@ -71,6 +72,34 @@ export component DurationChip inherits ScrimChip {
         text: root.duration;
         font-size: Fonts.body-small;
         color: Palette.foreground;
+        vertical-alignment: center;
+    }
+}
+
+export component LoadMediaPill inherits Pill {
+    in property <string> event-id;
+    in property <string> text;
+    in property <bool> icon-only;
+
+    height: Size.md;
+    pad: root.icon-only ? (Size.md - IconSize.sm) / 2 : Space.lg;
+    fill: AppStyle.overlay-hover;
+    label: root.text;
+    clicked => {
+        Actions.load-media(root.event-id);
+    }
+
+    IconDisplay {
+        icon: IconSet.Download;
+        size: IconSize.sm;
+        stroke: AppStyle.foreground-strong;
+    }
+
+    if !root.icon-only: Text {
+        text: root.text;
+        font-size: Fonts.body-small;
+        font-weight: Weight.semibold;
+        color: AppStyle.foreground-strong;
         vertical-alignment: center;
     }
 }
@@ -196,6 +225,9 @@ export component MediaFrame inherits VerticalLayout {
         || root.msg.send-state == SendState.uploading;
     property <bool> failed: root.msg.media-state == MediaState.failed;
     property <bool> idle: root.msg.media-state == MediaState.idle;
+    property <bool> not-loaded: root.msg.media-state == MediaState.not-loaded;
+    property <bool> frozen-gif: root.ready && !SettingsView.play-animations
+        && root.msg.mimetype.to-lowercase() == "image/gif";
     property <bool> has-caption: root.msg.body != "";
     property <bool> shielded: root.msg.shield != Shield.none;
     property <bool> is-decoded: root.msg.thumbnail.width > 0 && root.msg.thumbnail.height > 0;
@@ -243,7 +275,7 @@ export component MediaFrame inherits VerticalLayout {
                 }
             }
 
-            if !root.is-video && !root.ready && !root.failed: Spinner {
+            if !root.is-video && !root.ready && !root.failed && !root.not-loaded: Spinner {
                 x: (parent.width - self.width) / 2;
                 y: (parent.height - self.height) / 2;
                 indeterminate: true;
@@ -261,6 +293,26 @@ export component MediaFrame inherits VerticalLayout {
                 width: IconSize.md;
                 height: IconSize.md;
                 indeterminate: true;
+            }
+
+            if root.not-loaded: LoadMediaPill {
+                x: root.is-video ? parent.width - self.width - Space.md : (parent.width - self.width) / 2;
+                y: root.is-video ? Space.md : (parent.height - self.height) / 2;
+                event-id: root.msg.event-id;
+                text: root.is-video ? @tr("Load preview") : @tr("Load image");
+                icon-only: root.display-width < Metrics.media-failure-width-min;
+            }
+
+            if root.frozen-gif: ScrimChip {
+                x: Space.md;
+                y: parent.height - self.height - Space.md;
+
+                Text {
+                    text: @tr("GIF");
+                    font-size: Fonts.body-small;
+                    color: Palette.foreground;
+                    vertical-alignment: center;
+                }
             }
 
             if root.sending: UploadScrim {

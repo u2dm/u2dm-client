@@ -434,6 +434,7 @@ pub trait PinnedPort: Send + Sync {
 
 #[async_trait]
 pub trait MediaPort: Send + Sync {
+    fn set_auto_load(&self, on: bool);
     async fn download_media(
         &self,
         room_id: &RoomId,

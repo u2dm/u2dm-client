@@ -20,20 +20,21 @@ use self::window::{OpenedWindow, Paging};
 use super::timeline_tasks::{spawn_poll_activity, spawn_scenario_tasks, spawn_upload_progress};
 use super::{ActiveRoom, DemoAuthed, unavailable, unavailable_if, with_room_facts};
 use crate::adapters::demo::{
-    attachments, data, message_menu, powers, reactions, receipts, source, timeline,
+    attachments, data, media, message_menu, powers, reactions, receipts, settings, source, timeline,
 };
 use crate::adapters::draft_size::{self, MediaDraft};
 use crate::domain::emote::Emote;
-use crate::domain::media::OutgoingAttachment;
-use crate::domain::message::{MessageEdit, SendState};
+use crate::domain::media::{ContentKey, OutgoingAttachment, ThumbnailOutcome};
+use crate::domain::message::{MessageEdit, SendState, TimelineMessage};
 use crate::domain::poll::PollDraft;
 use crate::domain::room::RoomId;
 use crate::domain::timeline::{
-    AudioLookup, AudioTrack, EventSource, MessageReaders, PaginationDirection, PaginationOutcome,
-    TimelineCommand, TimelineFocus, TimelinePatch, TimelineUpdate, locate_audio,
+    AudioLookup, AudioTrack, EnrichmentDelta, EventSource, MessageReaders, PaginationDirection,
+    PaginationOutcome, TimelineCommand, TimelineFocus, TimelinePatch, TimelineUpdate, locate_audio,
 };
 use crate::error::{AppError, Result};
 use crate::ports::matrix::{AttachmentHandoff, TimelinePort};
+use crate::ports::media::MediaCache;
 
 impl DemoAuthed {
     fn with_active<T>(
@@ -151,8 +152,84 @@ impl DemoAuthed {
                         .await,
                 );
             }
+            TimelineCommand::LoadMedia { event_id } => {
+                self.load_media(&event_id, timeline_tx).await;
+            }
+            TimelineCommand::RecheckMedia => self.recheck_media(timeline_tx).await,
         }
         None
+    }
+
+    fn media_rows(&self) -> Vec<(usize, TimelineMessage)> {
+        let Ok(guard) = self.active.lock() else {
+            return Vec::new();
+        };
+        guard.iter().fold(Vec::new(), |mut rows, active| {
+            rows.extend(
+                active
+                    .messages
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, message)| message.body.media().is_some())
+                    .map(|(offset, message)| {
+                        (active.prepended.saturating_add(offset), message.clone())
+                    }),
+            );
+            rows
+        })
+    }
+
+    async fn load_media(&self, event_id: &str, timeline_tx: &mpsc::Sender<TimelineUpdate>) {
+        let Some((index, message)) = self
+            .media_rows()
+            .into_iter()
+            .find(|(_, message)| message.event_id.as_deref() == Some(event_id))
+        else {
+            tracing::debug!(event_id, "demo: no media to load in that row");
+            return;
+        };
+        let Some(content) = thumbnail_content(&message) else {
+            return;
+        };
+        tracing::info!(event_id, "demo: the media you asked for downloads");
+        media::remember_downloaded(&content);
+        send_patch(
+            timeline_tx,
+            TimelinePatch::Set {
+                index,
+                message: message.clone(),
+            },
+        )
+        .await;
+        settings::pause_media_load().await;
+        send_patch(
+            timeline_tx,
+            TimelinePatch::Enrich(thumbnail_ready(&message)),
+        )
+        .await;
+    }
+
+    async fn recheck_media(&self, timeline_tx: &mpsc::Sender<TimelineUpdate>) {
+        for (index, message) in self.media_rows() {
+            let withheld = !message.is_own
+                && thumbnail_content(&message)
+                    .is_some_and(|content| media::DemoMediaCache.withholds(&content));
+            send_patch(
+                timeline_tx,
+                TimelinePatch::Set {
+                    index,
+                    message: message.clone(),
+                },
+            )
+            .await;
+            if !withheld {
+                send_patch(
+                    timeline_tx,
+                    TimelinePatch::Enrich(thumbnail_ready(&message)),
+                )
+                .await;
+            }
+        }
     }
 
     fn locate_readers(&self, event_id: &str) -> Option<MessageReaders> {
@@ -251,6 +328,21 @@ impl DemoAuthed {
         }
 
         Ok(())
+    }
+}
+
+fn thumbnail_content(message: &TimelineMessage) -> Option<ContentKey> {
+    message.body.media()?.1.thumbnail.clone()
+}
+
+fn thumbnail_ready(message: &TimelineMessage) -> EnrichmentDelta {
+    EnrichmentDelta {
+        unique_id: message.unique_id.clone(),
+        thumbnail_content: thumbnail_content(message),
+        fingerprint: message.enrichment_fingerprint(),
+        thumbnail: ThumbnailOutcome::Ready,
+        avatar_mxc: None,
+        pronouns: None,
     }
 }
 

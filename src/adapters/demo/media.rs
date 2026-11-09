@@ -1,6 +1,7 @@
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::env;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{LazyLock, Mutex};
 
 use super::{attachments, data, room_info, space_index, stickers};
@@ -38,10 +39,14 @@ impl MediaCache for DemoMediaCache {
         if let Some(sent) = attachments::preview_path(event_id) {
             return Some(sent);
         }
-        match data::sticker_asset_in(event_id) {
+        let path = match data::sticker_asset_in(event_id) {
             Some(asset) => sticker_asset_path(asset),
             None => probe("thumbnail", event_id),
+        };
+        if path.is_some() && AUTO_LOAD.load(Ordering::Relaxed) {
+            remember_downloaded(content);
         }
+        path
     }
 
     fn thumbnail_failure(&self, content: &ContentKey) -> Option<MediaFailure> {
@@ -49,6 +54,15 @@ impl MediaCache for DemoMediaCache {
             .is_none()
             .then(|| demo_failure(content.as_str()))
             .flatten()
+    }
+
+    fn withholds(&self, content: &ContentKey) -> bool {
+        !AUTO_LOAD.load(Ordering::Relaxed)
+            && demo_failure(content.as_str()) != Some(MediaFailure::NoSource)
+            && attachments::preview_path(content.as_str()).is_none()
+            && !DOWNLOADED_MEDIA
+                .lock()
+                .is_ok_and(|downloaded| downloaded.contains(content))
     }
 
     fn user_avatar_path(&self, mxc: &str) -> Option<PathBuf> {
@@ -108,6 +122,20 @@ impl MediaCache for DemoMediaCache {
             .ok()?
             .get(content.as_str())
             .cloned()
+    }
+}
+
+static AUTO_LOAD: AtomicBool = AtomicBool::new(true);
+
+static DOWNLOADED_MEDIA: LazyLock<Mutex<HashSet<ContentKey>>> = LazyLock::new(Mutex::default);
+
+pub(super) fn set_auto_load(on: bool) {
+    AUTO_LOAD.store(on, Ordering::Relaxed);
+}
+
+pub(super) fn remember_downloaded(content: &ContentKey) {
+    if let Ok(mut downloaded) = DOWNLOADED_MEDIA.lock() {
+        downloaded.insert(content.clone());
     }
 }
 

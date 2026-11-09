@@ -1,7 +1,9 @@
 use std::path::PathBuf;
 use std::sync::{Arc, OnceLock};
+use std::time::Duration;
 
 use async_trait::async_trait;
+use tokio::time::sleep;
 
 use super::catalog::{Flag, Scenarios, scenario_from_env};
 use crate::adapters::settings::JsonSettings;
@@ -12,6 +14,7 @@ use crate::ports::settings::SettingsPort;
 const ENV_VAR: &str = "U2DM_DEMO_SETTINGS";
 const SHAPING: &str = "demo mode: shaping the settings store";
 const FILE_PREFIX: &str = "file=";
+const SLOW_MEDIA_LOAD: Duration = Duration::from_millis(1500);
 
 pub const CATALOG: Scenarios = Scenarios {
     env: ENV_VAR,
@@ -28,6 +31,11 @@ pub const CATALOG: Scenarios = Scenarios {
             effect: "every save fails, so a change raises the not-saved toast",
             note: "the change still applies for this run",
         },
+        Flag {
+            value: "media-slow",
+            effect: "media you ask to load takes 1.5 s, so its spinner shows",
+            note: "",
+        },
     ],
     notes: &[
         "unset, the settings start at the defaults and are not kept: a demo run never reads your real file",
@@ -38,6 +46,13 @@ pub const CATALOG: Scenarios = Scenarios {
 struct Scenario {
     file: Option<PathBuf>,
     save_fails: bool,
+    media_is_slow: bool,
+}
+
+pub async fn pause_media_load() {
+    if scenario().media_is_slow {
+        sleep(SLOW_MEDIA_LOAD).await;
+    }
 }
 
 fn scenario() -> Scenario {
@@ -50,6 +65,7 @@ fn scenario() -> Scenario {
 fn apply(scenario: &mut Scenario, flag: &str) {
     match flag {
         "save-fails" => scenario.save_fails = true,
+        "media-slow" => scenario.media_is_slow = true,
         preset if preset.starts_with(FILE_PREFIX) => {
             scenario.file = preset.strip_prefix(FILE_PREFIX).map(PathBuf::from);
         }
@@ -58,7 +74,9 @@ fn apply(scenario: &mut Scenario, flag: &str) {
 }
 
 pub fn port() -> Arc<dyn SettingsPort> {
-    let Scenario { file, save_fails } = scenario();
+    let Scenario {
+        file, save_fails, ..
+    } = scenario();
     Arc::new(DemoSettings {
         file: file.map(JsonSettings::new),
         save_fails,

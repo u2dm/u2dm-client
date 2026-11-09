@@ -72,6 +72,14 @@ impl ActiveTimeline {
         self.receipts = receipts;
     }
 
+    pub(super) fn recheck_media(&self) {
+        self.forward(TimelineCommand::RecheckMedia);
+    }
+
+    pub(super) fn load_media(&self, event_id: String) {
+        self.forward(TimelineCommand::LoadMedia { event_id });
+    }
+
     pub(super) async fn shutdown(&mut self) {
         self.tasks.shutdown().await;
         self.reset_state();

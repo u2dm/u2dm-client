@@ -415,6 +415,7 @@ macro_rules! simple_callbacks {
             request(event_id "event-id" text, answer_id "answer-id" text) VotePoll;
         on_end_poll "end-poll" end_poll event EndPoll;
         on_open_media "open-media" open_media event OpenMedia;
+        on_load_media "load-media" load_media event LoadMedia;
         on_open_video "open-video" open_video event OpenVideo;
         on_close_video "close-video" close_video plain CloseVideo;
         on_play_audio "play-audio" play_audio event PlayAudio;
@@ -490,6 +491,8 @@ macro_rules! bool_props {
         SettingsRememberDevices SettingsView "SettingsView" "remember-devices" set_remember_devices get_remember_devices;
         SettingsCameraOnJoin SettingsView "SettingsView" "camera-on-join" set_camera_on_join get_camera_on_join;
         SettingsFollowSpeaker SettingsView "SettingsView" "follow-speaker" set_follow_speaker get_follow_speaker;
+        SettingsAutoLoadMedia SettingsView "SettingsView" "auto-load-media" set_auto_load_media get_auto_load_media;
+        SettingsPlayAnimations SettingsView "SettingsView" "play-animations" set_play_animations get_play_animations;
         AccountVisible AccountView "AccountView" "visible" set_visible get_visible;
         AccountSessionsKnown AccountView "AccountView" "sessions-known" set_sessions_known get_sessions_known;
         AccountFactsKnown AccountView "AccountView" "facts-known" set_facts_known get_facts_known;
@@ -1691,6 +1694,7 @@ macro_rules! settings_pages {
         Messages   Messages   "messages";
         Notifications Notifications "notifications";
         Calls      Calls      "calls";
+        Media      Media      "media";
     } };
 }
 pub(crate) use settings_pages;
@@ -1750,6 +1754,8 @@ macro_rules! setting_flags {
         RememberDevices RememberDevices "remember-devices";
         CameraOnJoin CameraOnJoin "camera-on-join";
         FollowSpeaker FollowSpeaker "follow-speaker";
+        AutoLoadMedia AutoLoadMedia "auto-load-media";
+        PlayAnimations PlayAnimations "play-animations";
     } };
 }
 pub(crate) use setting_flags;
@@ -2115,6 +2121,7 @@ macro_rules! media_states {
         Idle   Idle   "idle";
         Ready  Ready  "ready";
         Failed Failed "failed";
+        NotLoaded NotLoaded "not-loaded";
     } };
 }
 pub(crate) use media_states;

@@ -3,7 +3,9 @@ use serde::Serialize;
 use crate::adapters::demo::probe::names;
 use crate::commands::view::SettingsView;
 use crate::domain::call::devices::{ByKind, DeviceChoice};
-use crate::domain::settings::{Alerts, Appearance, CallPreferences, Messaging, Settings};
+use crate::domain::settings::{
+    Alerts, Appearance, CallPreferences, MediaPreferences, Messaging, Settings,
+};
 
 #[derive(Serialize)]
 pub(super) struct SettingsDto {
@@ -29,6 +31,8 @@ struct SettingsValuesDto {
     call_layout: &'static str,
     follow_speaker: bool,
     remembered_devices: RememberedDevicesDto,
+    auto_load_media: bool,
+    play_animations: bool,
 }
 
 #[derive(Serialize)]
@@ -79,6 +83,10 @@ pub(super) fn settings(source: &SettingsView) -> SettingsDto {
                 follow_speaker,
             },
         ref remembered_devices,
+        media: MediaPreferences {
+            auto_load,
+            play_animations,
+        },
     } = source.values;
     SettingsDto {
         values: SettingsValuesDto {
@@ -97,6 +105,8 @@ pub(super) fn settings(source: &SettingsView) -> SettingsDto {
             call_layout: names::call_layout(layout),
             follow_speaker,
             remembered_devices: remembered_devices.into(),
+            auto_load_media: auto_load,
+            play_animations,
         },
         dialog: source.dialog.map(|dialog| SettingsDialogDto {
             page: names::settings_page(dialog.page),

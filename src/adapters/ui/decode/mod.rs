@@ -8,7 +8,9 @@ mod workers;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use animation::AnimationState;
-pub use animation::{advance_animations, load_thumbnail, set_animation_tick};
+pub use animation::{
+    advance_animations, is_animatable, load_thumbnail, set_animation_tick, set_animations_paused,
+};
 use cache::ImageCache;
 pub use cache::{
     DecodeFailure, Decoded, load_attachment_preview, load_avatar_async, peek_avatar, peek_thumbnail,

@@ -1,7 +1,8 @@
 import { ListView } from "std-widgets.slint";
 
 import { MessageBubble } from "./message-bubble.slint";
-import { RoomView } from "../../../../views.slint";
+import { RoomView, SettingsView } from "../../../../views.slint";
+import { MediaState } from "../../../../enums.slint";
 import { Actions } from "../../../../actions.slint";
 
 export component TimelineScroller inherits Rectangle {
@@ -435,10 +436,17 @@ export component TimelineScroller inherits Rectangle {
                     }
                 }
 
+                property <bool> animates: SettingsView.play-animations;
                 property <bool> holds-anchor: row == root.anchor-index && flickable.anchor-held;
                 property <length> anchor-drift: self.holds-anchor
                     ? self.absolute-position.y - root.absolute-position.y - root.top-inset
                     : 0px;
+
+                changed animates => {
+                    if self.animates && msg.media-state == MediaState.ready {
+                        Actions.request-media(msg.unique-id);
+                    }
+                }
 
                 changed holds-anchor => {
                     if self.holds-anchor {

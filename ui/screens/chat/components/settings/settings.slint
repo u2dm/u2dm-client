@@ -14,6 +14,7 @@ import { AppearancePage } from "./appearance-page.slint";
 import { MessagesPage } from "./messages-page.slint";
 import { NotificationsPage } from "./notifications-page.slint";
 import { CallsPage } from "./calls-page.slint";
+import { MediaPage } from "./media-page.slint";
 
 component Overview inherits VerticalLayout {
     in property <SettingsPage> came-from;
@@ -35,6 +36,9 @@ component Overview inherits VerticalLayout {
         }
         if root.came-from == SettingsPage.calls {
             calls.take-focus();
+        }
+        if root.came-from == SettingsPage.media {
+            media.take-focus();
         }
     }
 
@@ -97,6 +101,18 @@ component Overview inherits VerticalLayout {
             above-modal: true;
             clicked => {
                 root.open-page(SettingsPage.calls);
+            }
+        }
+
+        media := MenuRow {
+            height: Metrics.choice-row;
+            icon: IconSet.Image;
+            label: @tr("Media and storage");
+            detail: SettingsWords.media-summary(SettingsView.auto-load-media);
+            trailing: IconSet.ChevronRight;
+            above-modal: true;
+            clicked => {
+                root.open-page(SettingsPage.media);
             }
         }
     }
@@ -173,6 +189,15 @@ export component SettingsDialog inherits ModalHost {
         }
 
         if SettingsView.page == SettingsPage.calls: CallsPage {
+            back => {
+                root.back();
+            }
+            close => {
+                Actions.close-settings();
+            }
+        }
+
+        if SettingsView.page == SettingsPage.media: MediaPage {
             back => {
                 root.back();
             }

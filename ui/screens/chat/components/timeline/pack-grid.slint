@@ -6,7 +6,7 @@ import { IconButton } from "../../../../components/button.slint";
 import { Placement, TipCard } from "../../../../components/overlay.slint";
 import { SearchField } from "../../../../components/search-field.slint";
 import { PackRow, PackTabEntry } from "../../../../types.slint";
-import { PackView } from "../../../../views.slint";
+import { PackView, SettingsView } from "../../../../views.slint";
 import { Actions } from "../../../../actions.slint";
 import { AppStyle, Fonts, IconSize, Size, Space } from "../../../../theme.slint";
 import { PickerTab } from "./picker-tab.slint";
@@ -131,6 +131,14 @@ export component PackRowView inherits Rectangle {
         column: idx;
         label: entry.label;
         above-modal: root.above-modal;
+
+        property <bool> animates: SettingsView.play-animations;
+
+        changed animates => {
+            if self.animates && entry.media-state == MediaState.ready {
+                Actions.request-pack-cell(entry.key);
+            }
+        }
 
         init => {
             if entry.media-state == MediaState.idle {

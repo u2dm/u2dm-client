@@ -9,8 +9,8 @@ use serde_json::Value;
 use super::private_fs;
 use crate::domain::call::devices::{ByKind, DeviceChoice, DeviceKey, MediaDevice};
 use crate::domain::settings::{
-    Alerts, Appearance, CallLayout, CallPreferences, Messaging, MotionChoice, ReceiptVisibility,
-    SendKey, Settings, ThemeChoice,
+    Alerts, Appearance, CallLayout, CallPreferences, MediaPreferences, Messaging, MotionChoice,
+    ReceiptVisibility, SendKey, Settings, ThemeChoice,
 };
 use crate::error::Result;
 use crate::ports::settings::SettingsPort;
@@ -140,6 +140,14 @@ struct StoredCalls {
 }
 
 #[derive(Default, Deserialize, Serialize)]
+struct StoredMedia {
+    #[serde(default, deserialize_with = "lenient")]
+    auto_load: Option<bool>,
+    #[serde(default, deserialize_with = "lenient")]
+    play_animations: Option<bool>,
+}
+
+#[derive(Default, Deserialize, Serialize)]
 struct StoredSettings {
     #[serde(default, deserialize_with = "lenient")]
     appearance: Option<StoredAppearance>,
@@ -149,6 +157,8 @@ struct StoredSettings {
     alerts: Option<StoredAlerts>,
     #[serde(default, deserialize_with = "lenient")]
     calls: Option<StoredCalls>,
+    #[serde(default, deserialize_with = "lenient")]
+    media: Option<StoredMedia>,
 }
 
 fn lenient<'de, D, T>(deserializer: D) -> result::Result<Option<T>, D::Error>
@@ -211,6 +221,11 @@ impl From<&Settings> for StoredSettings {
                     follow_speaker,
                 },
             ref remembered_devices,
+            media:
+                MediaPreferences {
+                    auto_load,
+                    play_animations,
+                },
         } = *settings;
         Self {
             appearance: Some(StoredAppearance {
@@ -240,6 +255,10 @@ impl From<&Settings> for StoredSettings {
                     camera: stored_device(&remembered_devices.camera),
                 }),
             }),
+            media: Some(StoredMedia {
+                auto_load: Some(auto_load),
+                play_animations: Some(play_animations),
+            }),
         }
     }
 }
@@ -258,6 +277,7 @@ impl From<StoredSettings> for Settings {
             .devices
             .filter(|_| remember_devices)
             .unwrap_or_default();
+        let media = stored.media.unwrap_or_default();
         Self {
             appearance: Appearance {
                 theme: appearance
@@ -307,6 +327,12 @@ impl From<StoredSettings> for Settings {
                 microphone: device_choice(devices.microphone),
                 speaker: device_choice(devices.speaker),
                 camera: device_choice(devices.camera),
+            },
+            media: MediaPreferences {
+                auto_load: media.auto_load.unwrap_or(defaults.media.auto_load),
+                play_animations: media
+                    .play_animations
+                    .unwrap_or(defaults.media.play_animations),
             },
         }
     }

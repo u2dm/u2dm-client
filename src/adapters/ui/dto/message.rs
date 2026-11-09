@@ -5,8 +5,8 @@ use slint::{Image, SharedString, StyledText};
 use super::body::{BodyLineDto, message_body, preview_line, row_body_and_preview};
 use super::reactions::{ReactionDto, reaction_dtos};
 use crate::adapters::ui::decode::{
-    AvatarSlot, DecodeFailure, Decoded, MediaSlot, TimelineItemKey, load_avatar_async,
-    load_thumbnail, peek_avatar, peek_thumbnail, record_media_need,
+    AvatarSlot, DecodeFailure, Decoded, MediaSlot, TimelineItemKey, is_animatable,
+    load_avatar_async, load_thumbnail, peek_avatar, peek_thumbnail, record_media_need,
 };
 use crate::adapters::ui::present::{
     Delivery, MessageKind, PollPhase, ServiceKind, ShieldReason, avatar_color_index,
@@ -280,7 +280,7 @@ fn apply_media(
             .unwrap_or_default()
             .to_uppercase(),
     );
-    apply_thumbnail(dto, meta.thumbnail.as_ref(), item, media)
+    apply_thumbnail(dto, meta.thumbnail.as_ref(), item, m.is_own, media)
 }
 
 fn apply_kind_details(dto: &mut MessageDto, m: &TimelineMessage, media: &dyn MediaCache) {
@@ -310,6 +310,7 @@ fn apply_thumbnail(
     dto: &mut MessageDto,
     content: Option<&ContentKey>,
     item: &TimelineItemKey,
+    is_own: bool,
     media: &dyn MediaCache,
 ) -> Option<PathBuf> {
     let Some(content) = content else {
@@ -317,6 +318,10 @@ fn apply_thumbnail(
         dto.media_failure = MediaFailureKind::NoSource;
         return None;
     };
+    if !is_own && media.withholds(content) {
+        dto.media_state = MediaState::NotLoaded;
+        return None;
+    }
     let Some(path) = media.thumbnail_path(content) else {
         if let Some(reason) = media.thumbnail_failure(content) {
             dto.media_state = MediaState::Failed;
@@ -464,7 +469,10 @@ pub fn message_to_dto(m: &TimelineMessage, pinned: bool, media: &dyn MediaCache)
     let thumbnail_path = apply_media(&mut dto, m, &item, media);
     let avatar_path = apply_sender_avatar(&mut dto, m, media);
 
-    let thumbnail_undecoded = thumbnail_path.is_some() && dto.media_state == MediaState::Idle;
+    let thumbnail_undecoded = thumbnail_path.as_deref().is_some_and(|path| {
+        dto.media_state == MediaState::Idle
+            || (dto.media_state == MediaState::Ready && is_animatable(path))
+    });
     let avatar_undecoded = avatar_path.is_some() && !dto.has_avatar;
     dto.needs_media = thumbnail_undecoded || avatar_undecoded;
     record_media_need(&item, thumbnail_path.as_deref(), avatar_path.as_deref());

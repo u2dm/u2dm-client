@@ -279,8 +279,10 @@ pub fn keep_shown_enrichment<B: UiBackend>(shown: &B::Message, rebuilt: &mut B::
         rebuilt.set_avatar(shown.avatar());
         rebuilt.set_has_avatar(true);
     }
+    let rebuilt_state = rebuilt.media_state();
     if shown.media_state() == MediaState::Ready.ui_name()
-        && rebuilt.media_state() == MediaState::Idle.ui_name()
+        && (rebuilt_state == MediaState::Idle.ui_name()
+            || rebuilt_state == MediaState::NotLoaded.ui_name())
     {
         show_thumbnail::<B>(rebuilt, shown.thumbnail());
     }

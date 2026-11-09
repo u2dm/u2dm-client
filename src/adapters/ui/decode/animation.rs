@@ -1,4 +1,4 @@
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::collections::{HashMap, HashSet};
 use std::fs::File;
 use std::io::BufReader;
@@ -41,6 +41,7 @@ const GIF_DEFAULT_DELAY: Duration = Duration::from_millis(100);
 thread_local! {
     static ANIMATION_TIMER: Timer = Timer::default();
     static ANIMATION_TICK_FN: RefCell<Option<Rc<dyn Fn()>>> = const { RefCell::new(None) };
+    static ANIMATIONS_PAUSED: Cell<bool> = const { Cell::new(false) };
 }
 
 #[derive(Default)]
@@ -258,8 +259,19 @@ fn animated_format(path: &Path) -> Option<AnimatedFormat> {
     }
 }
 
-pub(super) fn is_animatable(path: &Path) -> bool {
+pub fn is_animatable(path: &Path) -> bool {
     animated_format(path).is_some()
+}
+
+fn plays(path: &Path) -> bool {
+    is_animatable(path) && !ANIMATIONS_PAUSED.get()
+}
+
+pub fn set_animations_paused(paused: bool) {
+    let was_paused = ANIMATIONS_PAUSED.replace(paused);
+    if paused && !was_paused && slint::invoke_from_event_loop(on_deadline).is_err() {
+        on_deadline();
+    }
 }
 
 fn animation_limits() -> image::Limits {
@@ -427,6 +439,12 @@ pub(super) fn on_decoded(path: &Path, decoded: Option<RawAnimation>, epoch: Epoc
         return;
     }
     let waiting = waiters::take_media(path);
+    if ANIMATIONS_PAUSED.get() {
+        for slot in waiting.media_slots() {
+            waiters::enqueue_media(path, slot, Lane::Static);
+        }
+        return;
+    }
     let surface = surface_paying_for(waiting.media_slots());
     let clip = with_animations(|state| {
         let remaining = ANIMATION_MEMORY_BUDGET.saturating_sub(state.retained_bytes(surface));
@@ -463,7 +481,7 @@ pub(super) fn on_decoded(path: &Path, decoded: Option<RawAnimation>, epoch: Epoc
 }
 
 pub(super) fn peek(path: &Path, slot: &MediaSlot) -> Peek {
-    if !is_animatable(path) {
+    if !plays(path) {
         return Peek::Still;
     }
     with_animations(|state| match state.clips.get(path) {
@@ -479,7 +497,7 @@ pub(super) fn peek(path: &Path, slot: &MediaSlot) -> Peek {
 
 pub fn load_thumbnail(path: &Path, slot: &MediaSlot) -> Decoded {
     with_media(|media| media.needs.expect_media(slot, Some(path)));
-    if !is_animatable(path) {
+    if !plays(path) {
         return cache::request_thumbnail(path, slot);
     }
     let animation = match with_animations(|state| state.clips.get(path).cloned()) {
@@ -515,19 +533,27 @@ pub fn load_thumbnail(path: &Path, slot: &MediaSlot) -> Decoded {
 fn due_frames(now: Instant) -> Tick {
     with_animations_and_needs(|state, needs| {
         let AnimationState { clips, playbacks } = state;
+        let paused = ANIMATIONS_PAUSED.get();
         let mut tick = Tick::default();
         for (slot, playback) in playbacks.iter_mut() {
             if !needs.expects_media(slot, &playback.path) {
                 tick.unexpected.push(slot.clone());
                 continue;
             }
-            if playback.next_at > now {
+            if playback.next_at > now && !paused {
                 continue;
             }
             let Some(animation) = clips.get(&playback.path).and_then(Clip::animation) else {
                 continue;
             };
-            playback.frame = (playback.frame + 1) % animation.frames.len();
+            if paused {
+                tick.unexpected.push(slot.clone());
+            }
+            playback.frame = if paused {
+                0
+            } else {
+                (playback.frame + 1) % animation.frames.len()
+            };
             playback.next_at = now + animation.delay(playback.frame);
             if let Some(frame) = animation.frame(playback.frame) {
                 tick.due.push(DueFrame {

@@ -330,6 +330,7 @@ pub(super) fn command_allowed(phase: AppPhase, cmd: &UiCommand) -> bool {
         | UiCommand::ConfirmVerification
         | UiCommand::DismissVerification
         | UiCommand::OpenMedia { .. }
+        | UiCommand::LoadMedia { .. }
         | UiCommand::OpenVideo { .. }
         | UiCommand::CloseVideo
         | UiCommand::PlayAudio { .. }

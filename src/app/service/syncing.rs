@@ -109,6 +109,7 @@ impl AppService {
             tracing::debug!("no authenticated session to sync, ignoring");
             return;
         };
+        self.tell_session_media_loading();
         self.room_directory.connect();
         self.output.publish(Box::new(|view| {
             view.lifecycle.activity = LoginActivity::Syncing;

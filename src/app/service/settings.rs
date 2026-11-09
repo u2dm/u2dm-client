@@ -1,7 +1,7 @@
 use super::AppService;
 use crate::app::event::SettingsEvent;
 use crate::commands::ui::SettingsCommand;
-use crate::domain::settings::{Appearance, Messaging, Settings};
+use crate::domain::settings::{Appearance, MediaPreferences, Messaging, Settings};
 
 impl AppService {
     pub(super) fn spread_settings(&mut self) {
@@ -21,6 +21,11 @@ impl AppService {
             alerts,
             calls,
             remembered_devices: _,
+            media:
+                MediaPreferences {
+                    auto_load: _,
+                    play_animations: _,
+                },
         } = *self.settings.values();
         self.active_timeline.set_receipts(receipts);
         self.room_info.set_receipts(receipts);
@@ -29,6 +34,15 @@ impl AppService {
         self.notifications.set_alerts(alerts);
         self.calls.set_alerts(alerts, &self.room_directory);
         self.calls.set_preferences(calls);
+        self.tell_session_media_loading();
+    }
+
+    pub(super) fn tell_session_media_loading(&self) {
+        if let Some(session) = self.held_session.running() {
+            session
+                .media
+                .set_auto_load(self.settings.values().media.auto_load);
+        }
     }
 
     pub(super) fn handle_settings_command(&mut self, command: SettingsCommand) {
@@ -37,8 +51,12 @@ impl AppService {
             SettingsCommand::CloseSettings => self.settings.close(),
             SettingsCommand::ShowPage(page) => self.settings.show_page(page),
             SettingsCommand::Change(change) => {
+                let loaded_automatically = self.settings.values().media.auto_load;
                 self.settings.change(change);
                 self.spread_settings();
+                if self.settings.values().media.auto_load != loaded_automatically {
+                    self.active_timeline.recheck_media();
+                }
             }
         }
     }

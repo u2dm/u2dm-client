@@ -133,6 +133,10 @@ impl DemoAuthed {
 
 #[async_trait]
 impl MediaPort for DemoAuthed {
+    fn set_auto_load(&self, on: bool) {
+        media::set_auto_load(on);
+    }
+
     async fn download_media(
         &self,
         _room_id: &RoomId,

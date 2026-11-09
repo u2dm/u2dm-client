@@ -498,6 +498,9 @@ pub enum ProbeCommand {
     CopyMessageLink {
         event_id: String,
     },
+    LoadMedia {
+        event_id: String,
+    },
     OpenEventSource {
         event_id: String,
     },

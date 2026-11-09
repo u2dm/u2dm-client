@@ -21,7 +21,7 @@ pub(super) use self::enrichment::{enrich_message, enrich_messages};
 use self::lookups::{report_audio, report_jump, report_readers, report_source};
 use self::opening::{InitialView, OpenedTimeline, open_timeline};
 use self::reactions::toggle_reaction;
-use self::row_fetches::{RowFetches, fetched_patch, send_patch};
+use self::row_fetches::{RowFetches, fetched_patch, load_row_media, recheck_media, send_patch};
 use super::commands::Commands;
 use super::diff::{diff_to_patch, stamp_editable_polls, stamp_read_marks};
 use super::edits::DiscardedEdits;
@@ -190,6 +190,14 @@ async fn handle_timeline_command(
         }
         TimelineCommand::LocateReaders { request, event_id } => {
             report_readers(request, &event_id, items, ctx).await;
+            return;
+        }
+        TimelineCommand::LoadMedia { event_id } => {
+            load_row_media(&event_id, items, ctx).await;
+            return;
+        }
+        TimelineCommand::RecheckMedia => {
+            recheck_media(items, ctx).await;
             return;
         }
     };

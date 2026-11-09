@@ -1944,6 +1944,10 @@ export global SettingsWords {
         return @tr("Layout: {}", root.call-layout(layout));
     }
 
+    public pure function media-summary(auto-load: bool) -> string {
+        return auto-load ? @tr("Loads automatically") : @tr("Loads when you ask");
+    }
+
     public pure function notifications-summary(shown: bool, hides-text: bool) -> string {
         if !shown {
             return @tr("Desktop notifications off");

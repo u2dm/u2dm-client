@@ -1,8 +1,9 @@
 mod downloads;
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex as StdMutex, RwLock as StdRwLock};
 use std::time::Duration;
 
@@ -167,6 +168,8 @@ pub(crate) struct MediaService {
     flights: SingleFlight,
     failures: StdMutex<FailureTracker>,
     waveforms: StdMutex<HashMap<ContentKey, Waveform>>,
+    auto_load: AtomicBool,
+    admitted: StdMutex<HashSet<ContentKey>>,
 }
 
 impl MediaService {
@@ -179,6 +182,8 @@ impl MediaService {
             flights: SingleFlight::default(),
             failures: StdMutex::new(FailureTracker::default()),
             waveforms: StdMutex::new(HashMap::new()),
+            auto_load: AtomicBool::new(true),
+            admitted: StdMutex::new(HashSet::new()),
         })
     }
 
@@ -226,6 +231,9 @@ impl MediaService {
         }
         if let Ok(mut waveforms) = self.waveforms.lock() {
             waveforms.clear();
+        }
+        if let Ok(mut admitted) = self.admitted.lock() {
+            admitted.clear();
         }
         let previous = self.session.write().ok().and_then(|mut guard| guard.take());
         let Some(session) = previous else {
@@ -416,6 +424,25 @@ impl MediaService {
 
     pub(crate) fn needs_thumbnail_download(&self, content: &ContentKey) -> bool {
         self.needs_download(&thumb_key(content))
+    }
+
+    pub(crate) fn set_auto_load(&self, on: bool) {
+        self.auto_load.store(on, Ordering::Relaxed);
+    }
+
+    pub(crate) fn admit(&self, content: ContentKey) {
+        if let Ok(mut admitted) = self.admitted.lock() {
+            admitted.insert(content);
+        }
+    }
+
+    pub(crate) fn withholds(&self, content: &ContentKey) -> bool {
+        !self.auto_load.load(Ordering::Relaxed)
+            && self.cache_get(&thumb_key(content)).is_none()
+            && !self
+                .admitted
+                .lock()
+                .is_ok_and(|admitted| admitted.contains(content))
     }
 
     pub(crate) fn needs_avatar_download(&self, mxc: &str) -> bool {

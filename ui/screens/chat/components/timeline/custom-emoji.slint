@@ -2,6 +2,7 @@ import { IconDisplay, IconSet } from "@lucide";
 
 import { EmojiArt } from "../../../../enums.slint";
 import { Actions } from "../../../../actions.slint";
+import { SettingsView } from "../../../../views.slint";
 import { AppStyle, Metrics, Radius } from "../../../../theme.slint";
 
 export global EmojiBox {
@@ -19,10 +20,18 @@ export component CustomEmojiImage inherits Rectangle {
     in property <length> size;
     in property <length> icon-size;
 
+    property <bool> animates: SettingsView.play-animations;
+
     width: root.size;
     height: root.size;
     border-radius: Radius.xs;
     background: root.art == EmojiArt.pending ? AppStyle.overlay-hover : transparent;
+
+    changed animates => {
+        if root.animates && root.art == EmojiArt.ready {
+            Actions.request-custom-emoji(root.key);
+        }
+    }
 
     init => {
         if root.art == EmojiArt.pending {

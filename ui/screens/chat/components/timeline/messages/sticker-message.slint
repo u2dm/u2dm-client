@@ -4,6 +4,7 @@ import { MessageEntry } from "../../../../../types.slint";
 import { MediaState } from "../../../../../enums.slint";
 import { MediaFailures } from "../../../../../messages.slint";
 import { AppStyle, Fonts, IconSize, Metrics, Motion, Radius, Space } from "../../../../../theme.slint";
+import { LoadMediaPill } from "./media-frame.slint";
 
 export component StickerMessage inherits HorizontalLayout {
     in property <MessageEntry> msg;
@@ -12,6 +13,7 @@ export component StickerMessage inherits HorizontalLayout {
     property <length> max-long-edge: Metrics.sticker-max-extent;
     property <bool> is-ready: root.msg.media-state == MediaState.ready;
     property <bool> is-failed: root.msg.media-state == MediaState.failed;
+    property <bool> not-loaded: root.msg.media-state == MediaState.not-loaded;
     property <bool> has-dimensions: root.msg.image-width > 0 && root.msg.image-height > 0;
     property <float> aspect: root.has-dimensions
         ? root.msg.image-width / max(root.msg.image-height, 1)
@@ -53,10 +55,18 @@ export component StickerMessage inherits HorizontalLayout {
             border-radius: Radius.sm;
             background: AppStyle.overlay-hover;
 
-            if !root.is-failed: Spinner {
+            if !root.is-failed && !root.not-loaded: Spinner {
                 x: (parent.width - self.width) / 2;
                 y: (parent.height - self.height) / 2;
                 indeterminate: true;
+            }
+
+            if root.not-loaded: LoadMediaPill {
+                x: (parent.width - self.width) / 2;
+                y: (parent.height - self.height) / 2;
+                event-id: root.msg.event-id;
+                text: @tr("Load sticker");
+                icon-only: true;
             }
 
             if root.is-failed: IconDisplay {

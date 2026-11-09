@@ -497,6 +497,7 @@ pub fn to_driven(command: ProbeCommand, selected: Selection<'_>) -> Result<Drive
         ProbeCommand::PreviousPinned { event_id } => UiCommand::PreviousPinned { event_id },
         ProbeCommand::NextPinned { event_id } => UiCommand::NextPinned { event_id },
         ProbeCommand::CopyMessageLink { event_id } => UiCommand::CopyMessageLink { event_id },
+        ProbeCommand::LoadMedia { event_id } => UiCommand::LoadMedia { event_id },
         ProbeCommand::OpenEventSource { event_id } => UiCommand::OpenEventSource { event_id },
         ProbeCommand::CloseEventSource => UiCommand::CloseEventSource,
         ProbeCommand::OpenReaders { event_id } => UiCommand::OpenReaders { event_id },

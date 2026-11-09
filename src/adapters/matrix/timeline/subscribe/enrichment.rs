@@ -26,6 +26,15 @@ fn needs_pronouns(msg: &TimelineMessage, pronouns: &PronounCache) -> bool {
     !msg.is_own && pronouns.needs_fetch(&msg.sender)
 }
 
+pub(super) fn fetches_unasked(
+    msg: &TimelineMessage,
+    request: &ThumbnailRequest,
+    media: &MediaService,
+) -> bool {
+    media.needs_thumbnail_download(&request.content)
+        && (msg.is_own || !media.withholds(&request.content))
+}
+
 struct EnrichmentJob {
     unique_id: String,
     thumbnail: Option<ThumbnailRequest>,
@@ -39,7 +48,7 @@ impl EnrichmentJob {
         Self {
             unique_id: msg.unique_id.clone(),
             thumbnail: ThumbnailRequest::of(msg, event_media(item))
-                .filter(|request| media.needs_thumbnail_download(&request.content)),
+                .filter(|request| fetches_unasked(msg, request, media)),
             sender_avatar: msg
                 .sender_avatar_url
                 .clone()
@@ -149,6 +158,42 @@ pub(in crate::adapters::matrix::timeline) fn enrich_messages<'a>(
     for (item, msg) in rendered {
         enrich_message(item, msg, ctx);
     }
+}
+
+pub(super) fn spawn_thumbnail_fetch(
+    ctx: &TimelineContext<'_>,
+    msg: &TimelineMessage,
+    request: ThumbnailRequest,
+) {
+    let client = ctx.client.clone();
+    let media = Arc::clone(ctx.media);
+    let semaphore = Arc::clone(&ctx.enrich.semaphore);
+    let token = ctx.enrich.token.clone();
+    let tx = ctx.timeline_tx.clone();
+    let unique_id = msg.unique_id.clone();
+    let fingerprint = msg.enrichment_fingerprint();
+    let fetch = async move {
+        let download = async {
+            let _permit = semaphore.acquire().await.ok()?;
+            Some(media.enrich_thumbnail(&client, &request).await)
+        };
+        let Some(thumbnail) = token.run_until_cancelled(download).await.flatten() else {
+            return;
+        };
+        let delta = EnrichmentDelta {
+            unique_id,
+            thumbnail_content: Some(request.content),
+            fingerprint,
+            thumbnail,
+            avatar_mxc: None,
+            pronouns: None,
+        };
+        drop(
+            tx.send(TimelineUpdate::patch(TimelinePatch::Enrich(delta)))
+                .await,
+        );
+    };
+    ctx.enrich.tracker.spawn(fetch.in_current_span());
 }
 
 pub(super) fn spawn_reply_detail_fetches(

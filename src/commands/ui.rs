@@ -331,6 +331,10 @@ pub enum UiCommand {
     OpenMedia {
         event_id: String,
     },
+    #[strum(to_string = "LoadMedia({event_id})")]
+    LoadMedia {
+        event_id: String,
+    },
     #[strum(to_string = "OpenVideo({event_id})")]
     OpenVideo {
         event_id: String,
@@ -505,6 +509,7 @@ impl UiCommand {
             | Self::ConfirmVerification
             | Self::DismissVerification
             | Self::OpenMedia { .. }
+            | Self::LoadMedia { .. }
             | Self::OpenVideo { .. }
             | Self::CloseVideo
             | Self::PlayAudio { .. }

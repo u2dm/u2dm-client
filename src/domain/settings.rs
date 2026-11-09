@@ -50,6 +50,8 @@ pub enum SettingFlag {
     RememberDevices,
     CameraOnJoin,
     FollowSpeaker,
+    AutoLoadMedia,
+    PlayAnimations,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -116,6 +118,21 @@ impl Default for CallPreferences {
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct MediaPreferences {
+    pub auto_load: bool,
+    pub play_animations: bool,
+}
+
+impl Default for MediaPreferences {
+    fn default() -> Self {
+        Self {
+            auto_load: true,
+            play_animations: true,
+        }
+    }
+}
+
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Settings {
     pub appearance: Appearance,
@@ -123,6 +140,7 @@ pub struct Settings {
     pub alerts: Alerts,
     pub calls: CallPreferences,
     pub remembered_devices: DeviceChoices,
+    pub media: MediaPreferences,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -168,6 +186,8 @@ impl Settings {
             SettingFlag::RememberDevices => &mut self.calls.remember_devices,
             SettingFlag::CameraOnJoin => &mut self.calls.camera_on_join,
             SettingFlag::FollowSpeaker => &mut self.calls.follow_speaker,
+            SettingFlag::AutoLoadMedia => &mut self.media.auto_load,
+            SettingFlag::PlayAnimations => &mut self.media.play_animations,
         }
     }
 }
