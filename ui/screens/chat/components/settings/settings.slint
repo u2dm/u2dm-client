@@ -1,0 +1,109 @@
+import { IconSet } from "@lucide";
+
+import { DialogHeader } from "../../../../components/dialog-header.slint";
+import { Hairline } from "../../../../components/divider.slint";
+import { MenuRow } from "../../../../components/menu-row.slint";
+import { ModalHost, ScrollingDialogCard } from "../../../../components/overlay.slint";
+import { SettingsPage } from "../../../../enums.slint";
+import { AppearanceView, SettingsView } from "../../../../views.slint";
+import { Actions } from "../../../../actions.slint";
+import { SettingsWords } from "../../../../messages.slint";
+import { MetaTip, Reactions } from "../../../../local.slint";
+import { AppStyle, Metrics, Space } from "../../../../theme.slint";
+import { AppearancePage } from "./appearance-page.slint";
+
+component Overview inherits VerticalLayout {
+    in property <SettingsPage> came-from;
+
+    callback open-page(SettingsPage);
+    callback close();
+
+    spacing: Space.lg;
+
+    init => {
+        if root.came-from == SettingsPage.appearance {
+            appearance.take-focus();
+        }
+    }
+
+    DialogHeader {
+        title: @tr("Settings");
+        copyable: false;
+        close-label: @tr("Close settings");
+        close-clicked => {
+            root.close();
+        }
+    }
+
+    Hairline { }
+
+    VerticalLayout {
+        spacing: Space.xs;
+
+        appearance := MenuRow {
+            height: Metrics.choice-row;
+            icon: IconSet.Palette;
+            label: @tr("Appearance");
+            detail: SettingsWords.theme(AppearanceView.theme);
+            trailing: IconSet.ChevronRight;
+            above-modal: true;
+            clicked => {
+                root.open-page(SettingsPage.appearance);
+            }
+        }
+    }
+}
+
+export component SettingsDialog inherits ModalHost {
+    property <SettingsPage> came-from: SettingsPage.overview;
+
+    function show(page: SettingsPage) {
+        root.focus();
+        scroll.content-y = 0;
+        Actions.show-settings-page({ page: page });
+    }
+
+    function open-page(page: SettingsPage) {
+        root.came-from = page;
+        root.show(page);
+    }
+
+    function back() {
+        root.show(SettingsPage.overview);
+    }
+
+    dim-opacity: AppStyle.dialog-scrim;
+    label: @tr("Settings");
+    dismissed => {
+        if SettingsView.page != SettingsPage.overview && !root.dismissing-by-pointer {
+            root.back();
+            return;
+        }
+        Actions.close-settings();
+    }
+    opened => {
+        Reactions.close();
+        MetaTip.clear();
+    }
+
+    scroll := ScrollingDialogCard {
+        if SettingsView.page == SettingsPage.overview: Overview {
+            came-from: root.came-from;
+            open-page(page) => {
+                root.open-page(page);
+            }
+            close => {
+                Actions.close-settings();
+            }
+        }
+
+        if SettingsView.page == SettingsPage.appearance: AppearancePage {
+            back => {
+                root.back();
+            }
+            close => {
+                Actions.close-settings();
+            }
+        }
+    }
+}

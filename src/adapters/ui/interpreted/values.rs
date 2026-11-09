@@ -36,8 +36,8 @@ use crate::commands::view::{
     CreateRoomStatus, DeviceStatus, DeviceTrouble, DirectChat, EncryptionActivity, EncryptionStep,
     HandView, InviteeState, JoinRefusal, LinkView, LoginActivity, LoginStep, MicrophoneView,
     PendingAnswer, PendingModeration, PeopleSearchStatus, PreviewTrouble, ReactionView,
-    ReadersStatus, RoomInfoPlacement, RoomPreviewSheet, RoomScope, RosterStatus, SourceState,
-    SpaceIndexStatus, UpgradeLink, VerifyOffer,
+    ReadersStatus, RoomInfoPlacement, RoomPreviewSheet, RoomScope, RosterStatus, SettingsPage,
+    SourceState, SpaceIndexStatus, UpgradeLink, VerifyOffer,
 };
 use crate::domain::auth::LoginMethod;
 use crate::domain::call::devices::DeviceKind;
@@ -55,6 +55,7 @@ use crate::domain::room::NotifyMode;
 use crate::domain::room_creation::{RoomAccess, RoomKind};
 use crate::domain::room_info::MemberRole;
 use crate::domain::room_log::LogLevel;
+use crate::domain::settings::{MotionChoice, ThemeChoice};
 use crate::domain::sync::ConnectionStatus;
 use crate::domain::timeline::{SourceEncryption, TimelineStatus};
 use crate::domain::user_info::{DeviceTrust, IdentityTrust, RoomMembership};

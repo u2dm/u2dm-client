@@ -37,6 +37,9 @@ import {
     RenameSessionRequest,
     ChangePasswordRequest,
     DeactivateRequest,
+    SettingsPageRequest,
+    ThemeRequest,
+    MotionRequest,
 } from "./types.slint";
 import { NotifyMode, PackSurface } from "./enums.slint";
 
@@ -52,6 +55,12 @@ export global Actions {
     callback logout();
     callback confirm-logout();
     callback cancel-logout();
+
+    callback open-settings();
+    callback close-settings();
+    callback show-settings-page(SettingsPageRequest);
+    callback set-theme(ThemeRequest);
+    callback set-motion(MotionRequest);
 
     callback open-account();
     callback close-account();

@@ -59,8 +59,12 @@ const INVITE_SLINT: &str = "ui/screens/chat/components/invite.slint";
 const REMOVAL_SLINT: &str = "ui/screens/chat/components/removal.slint";
 const CREATE_ROOM_SLINT: &str = "ui/screens/chat/components/create-room.slint";
 const INVITE_PEOPLE_SLINT: &str = "ui/screens/chat/components/invite-people.slint";
+const SETTINGS_SLINT: &str = "ui/screens/chat/components/settings/settings.slint";
 
 const ENUM_COVERAGE: &[EnumCoverage] = &[
+    covers("SettingsPage", SETTINGS_SLINT, &[]),
+    covers("ThemeChoice", MESSAGES_SLINT, &["system"]),
+    covers("MotionChoice", MESSAGES_SLINT, &["system"]),
     covers("CallPhase", MESSAGES_SLINT, &["live"]),
     covers("CallTileState", MESSAGES_SLINT, &["live"]),
     covers("CallNotice", MESSAGES_SLINT, &["none"]),
@@ -152,6 +156,9 @@ const ENUM_TABLES: &[(&str, &str)] = &[
     ("AuthStage", "auth_stages"),
     ("AccountStep", "account_steps"),
     ("AccountActivity", "account_activities"),
+    ("SettingsPage", "settings_pages"),
+    ("ThemeChoice", "theme_choices"),
+    ("MotionChoice", "motion_choices"),
     ("MemberRowKind", "member_row_kinds"),
     ("RoomRowKind", "room_row_kinds"),
     ("RoomCallMark", "room_call_marks"),
@@ -241,6 +248,7 @@ const SCENARIO_SOURCES: &[(&str, &[&str])] = &[
     ("src/adapters/demo/logout.rs", &[]),
     ("src/adapters/demo/sync.rs", &[]),
     ("src/adapters/demo/motion.rs", &[]),
+    ("src/adapters/demo/settings.rs", &["file=<path>"]),
     (
         "src/adapters/demo/attachments.rs",
         &["pick=<path>", "save-to=<dir>"],

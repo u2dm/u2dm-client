@@ -1,5 +1,6 @@
 import { Actions } from "./actions.slint";
 import { ModalHost, Placement } from "./components/overlay.slint";
+import { ThemeFollower } from "./components/theme-follower.slint";
 import { TipLayer } from "./components/tip.slint";
 import { CallPanel, CallSize, Shell } from "./local.slint";
 import { AppStyle, Metrics, Space } from "./theme.slint";
@@ -159,6 +160,8 @@ export component CallWindow inherits Window {
     min-width: Metrics.window-min-width;
     min-height: Metrics.window-min-height;
     background: AppStyle.call-band;
+
+    if root.ready: ThemeFollower { }
 
     if root.ready: CallContent {
         x: 0;

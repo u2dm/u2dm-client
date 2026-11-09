@@ -20,6 +20,8 @@ use crate::adapters::media::DesktopMediaFiles;
 #[cfg(feature = "matrix")]
 use crate::adapters::notifier;
 #[cfg(feature = "matrix")]
+use crate::adapters::settings::JsonSettings;
+#[cfg(feature = "matrix")]
 use crate::adapters::storage::SecureStorage;
 use crate::config::AppConfig;
 use crate::ports::appearance::AppearancePort;
@@ -31,6 +33,7 @@ use crate::ports::matrix::AuthPort;
 use crate::ports::matrix::LocalDataOwnership;
 use crate::ports::media::{MediaCache, MediaFilePort};
 use crate::ports::notifier::NotifierPort;
+use crate::ports::settings::SettingsPort;
 use crate::ports::storage::StoragePort;
 
 #[cfg(not(any(feature = "matrix", feature = "demo")))]
@@ -45,6 +48,7 @@ pub struct Backend {
     pub notifier: Arc<dyn NotifierPort>,
     pub handoff: Arc<dyn HandoffPort>,
     pub appearance: Arc<dyn AppearancePort>,
+    pub settings: Arc<dyn SettingsPort>,
     pub call_media: Option<Arc<dyn CallMediaPort>>,
     pub call_video: Option<Arc<dyn CallVideoPort>>,
 }
@@ -96,6 +100,7 @@ impl Backend {
             notifier: demo::notifier(),
             handoff: demo::handoff(),
             appearance: demo::appearance(),
+            settings: demo::settings(),
             call_media: Some(call_media),
             call_video: Some(call_video),
         }
@@ -122,6 +127,7 @@ impl Backend {
             notifier: notifier::desktop(),
             handoff,
             appearance: appearance::desktop(),
+            settings: Arc::new(JsonSettings::new(cfg.settings_file())),
             call_media: calls.media,
             call_video: calls.video,
         }

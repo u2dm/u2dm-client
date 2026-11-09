@@ -4,7 +4,7 @@ use std::time::Duration;
 use super::drafts::{CreateRoomOp, EmoteDto, message_edit, poll_draft, room_draft};
 use super::targets::{
     Selection, ban, in_room, in_space, kick, leave_space, moderation, person, room, room_notify,
-    target,
+    setting_change, settings_page, target,
 };
 use super::{ProbeCommand, Rejected};
 use crate::adapters::demo::attachments;
@@ -12,7 +12,7 @@ use crate::adapters::ui::dump::Poke;
 use crate::adapters::ui::{link_command, matrix_link, room_address_entry};
 use crate::commands::ui::{
     AccountCommand, AuthCommand, CallCommand, DepartureCommand, KeysCommand, MessageDraft,
-    ReplyDraft, UiCommand,
+    ReplyDraft, SettingsCommand, UiCommand,
 };
 use crate::domain::call::devices::DeviceKey;
 use crate::domain::call::media::MediaChoice;
@@ -317,6 +317,10 @@ pub fn to_driven(command: ProbeCommand, selected: Selection<'_>) -> Result<Drive
         ProbeCommand::ImportRoomKeys { passphrase } => {
             KeysCommand::ImportRoomKeys(KeyPassphrase::new(passphrase)).into()
         }
+        ProbeCommand::OpenSettings => SettingsCommand::OpenSettings.into(),
+        ProbeCommand::CloseSettings => SettingsCommand::CloseSettings.into(),
+        ProbeCommand::ShowSettingsPage { page } => return settings_page(&page),
+        ProbeCommand::SetSetting { name, value } => return setting_change(&name, &value),
         ProbeCommand::OpenAccount => AccountCommand::OpenAccount.into(),
         ProbeCommand::CloseAccount => AccountCommand::CloseAccount.into(),
         ProbeCommand::ShowAccountOverview => AccountCommand::ShowAccountOverview.into(),

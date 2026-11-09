@@ -88,6 +88,7 @@ pub mod room_preview;
 pub mod room_search;
 pub mod room_state;
 pub mod sessions;
+pub mod settings;
 pub mod space_index;
 pub mod sync;
 pub mod timeline;

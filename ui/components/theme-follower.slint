@@ -1,0 +1,24 @@
+import { Palette } from "std-widgets.slint";
+
+import { ThemeChoice } from "../enums.slint";
+import { AppearanceView } from "../views.slint";
+
+export component ThemeFollower {
+    property <ThemeChoice> choice: AppearanceView.theme;
+
+    function apply() {
+        Palette.color-scheme = root.choice == ThemeChoice.dark ? ColorScheme.dark
+            : root.choice == ThemeChoice.light ? ColorScheme.light
+            : ColorScheme.unknown;
+    }
+
+    init => {
+        if root.choice != ThemeChoice.system {
+            root.apply();
+        }
+    }
+
+    changed choice => {
+        root.apply();
+    }
+}

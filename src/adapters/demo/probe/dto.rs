@@ -2,6 +2,7 @@ mod account;
 mod calls;
 mod people;
 mod rooms;
+mod settings;
 mod timeline;
 
 use serde::Serialize;
@@ -21,6 +22,7 @@ use self::rooms::{
     directory, invite_people, invite_sheet, leave_space, removal_sheet, room_info, room_log,
     room_menu, room_preview, space_index, upgrade,
 };
+use self::settings::{SettingsDto, settings};
 use self::timeline::{
     AttachmentDto, LinkDto, NotificationDto, NowPlayingDto, PacksDto, PaginationDto, PinnedDto,
     SourceDto, UnsentDto, VideoDto, attachment, audio, event_source, image_packs, link,
@@ -60,6 +62,7 @@ pub struct ViewDto {
     notifications: Vec<NotificationDto>,
     encryption: EncryptionDto,
     account: Option<AccountDto>,
+    settings: SettingsDto,
     logout: Option<LogoutDto>,
     toast: ToastDto,
     message_link: LinkDto,
@@ -112,6 +115,7 @@ pub fn view(source: &AppViewState) -> ViewDto {
         notifications: notifications(&source.notifications),
         encryption: encryption(&source.encryption),
         account: account(&source.account),
+        settings: settings(&source.settings),
         logout: logout(source.logout),
         toast: toast(&source.toast),
         message_link: link(&source.message_link),

@@ -30,14 +30,15 @@ use super::call_window::{self, WindowHooks};
 use super::dto::{PackSurface, pack_surface_named};
 #[cfg(feature = "demo")]
 use super::dump;
-use super::motion;
 use super::notices::NoticeWords;
 #[cfg(feature = "demo")]
 use super::props::{BoolProp, UiProps};
 use super::schema::model_props;
 use super::session::active_models;
+use super::{motion, reduce};
 use crate::commands::effects::Effect;
 use crate::commands::view::AppViewState;
+use crate::domain::settings::Settings;
 use crate::error::{AppError, Result};
 use crate::ports::appearance::AppearancePort;
 use crate::ports::call::CallVideoPort;
@@ -269,6 +270,10 @@ impl SlintUiAdapter {
 
     pub fn follow_motion(&self, appearance: &dyn AppearancePort) {
         motion::follow_motion::<InterpretedBackend>(&self.instance, appearance);
+    }
+
+    pub fn seed_settings(&self, settings: &Settings) {
+        reduce::seed_settings(&self.instance, settings);
     }
 
     pub fn run(&self) -> Result<()> {

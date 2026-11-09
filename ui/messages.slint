@@ -1,4 +1,4 @@
-import { CallCamera, CallDeviceKind, CallDeviceStatus, CallDeviceTrouble, CallHand, CallLinkState, CallMic, CallNotice, CallPhase, CallPreviewTrouble, CallReaction, CallRefusal, CallScreen, CallScreenRefusal, CallSheetPreview, CallTestPhase, CallTileState, Delivery, EmojiArt, MediaFailure, PresenceLine, PreviewKind, RoomCallMark, ServiceKind, ShieldReason, UpgradeLink, UserMessageKind } from "./enums.slint";
+import { CallCamera, CallDeviceKind, CallDeviceStatus, CallDeviceTrouble, CallHand, CallLinkState, CallMic, CallNotice, CallPhase, CallPreviewTrouble, CallReaction, CallRefusal, CallScreen, CallScreenRefusal, CallSheetPreview, CallTestPhase, CallTileState, Delivery, EmojiArt, MediaFailure, MotionChoice, PresenceLine, PreviewKind, RoomCallMark, ServiceKind, ShieldReason, ThemeChoice, UpgradeLink, UserMessageKind } from "./enums.slint";
 import { CallStates } from "./call-states.slint";
 import { CallPersonEntry, CallTileEntry } from "./types.slint";
 
@@ -393,6 +393,9 @@ export global UserMessages {
         }
         if kind == UserMessageKind.account-page-opened {
             return @tr("Your homeserver's account page opened in your browser. Continue there.");
+        }
+        if kind == UserMessageKind.settings-not-saved {
+            return @tr("Your settings could not be saved. They apply until U2DM closes.");
         }
         if kind == UserMessageKind.identity-reset-failed {
             return @tr("Could not reset your identity. Please try again.");
@@ -1862,6 +1865,38 @@ export global PresenceWords {
             return @tr("Last seen {n} day ago" | "Last seen {n} days ago" % floor(minutes / 1440));
         }
         return @tr("Last seen over a month ago");
+    }
+}
+
+export global SettingsWords {
+    public pure function theme(choice: ThemeChoice) -> string {
+        if choice == ThemeChoice.light {
+            return @tr("Light");
+        }
+        if choice == ThemeChoice.dark {
+            return @tr("Dark");
+        }
+        return @tr("Follow system");
+    }
+
+    public pure function motion(choice: MotionChoice) -> string {
+        if choice == MotionChoice.reduced {
+            return @tr("Reduced");
+        }
+        if choice == MotionChoice.full {
+            return @tr("Full");
+        }
+        return @tr("Follow system");
+    }
+
+    public pure function motion-detail(choice: MotionChoice) -> string {
+        if choice == MotionChoice.reduced {
+            return @tr("Panels and menus appear without sliding");
+        }
+        if choice == MotionChoice.full {
+            return @tr("Panels and menus slide into place");
+        }
+        return @tr("Matches your desktop");
     }
 }
 

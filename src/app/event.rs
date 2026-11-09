@@ -3,6 +3,7 @@ mod people;
 mod rooms;
 mod security;
 mod session;
+mod settings;
 
 use std::path::PathBuf;
 
@@ -16,6 +17,7 @@ pub(super) use self::rooms::{
 };
 pub(super) use self::security::{AccountEvent, EncryptionEvent, IdentityEvent};
 pub(super) use self::session::SessionEvent;
+pub(super) use self::settings::SettingsEvent;
 use super::invites::Answer;
 use super::upgrades::UpgradeJoined;
 use crate::commands::messages::{UserMessage, UserMessageKind};
@@ -136,6 +138,7 @@ pub(super) enum AppEvent {
     Identity(IdentityEvent),
     Encryption(EncryptionEvent),
     Account(AccountEvent),
+    Settings(SettingsEvent),
     RoomLogGrew,
 }
 
@@ -182,6 +185,7 @@ impl AppEvent {
             Self::Identity(event) => event.label(),
             Self::Encryption(event) => event.label(),
             Self::Account(event) => event.label(),
+            Self::Settings(event) => event.label(),
             Self::RoomLogGrew => "RoomLogGrew",
         }
     }

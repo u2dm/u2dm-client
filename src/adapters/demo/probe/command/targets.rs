@@ -3,13 +3,31 @@ use serde::{Deserialize, Deserializer, de};
 use super::Rejected;
 use super::driven::Driven;
 use crate::adapters::demo::probe::names;
-use crate::commands::ui::{DepartureCommand, UiCommand};
+use crate::commands::ui::{DepartureCommand, SettingsCommand, UiCommand};
 use crate::domain::call::devices::DeviceKind;
 use crate::domain::departure::membership_reason;
 use crate::domain::room::RoomId;
+use crate::domain::settings::SettingChange;
 use crate::domain::user_info::UserId;
 
 pub type Selection<'a> = Option<&'a (String, i32)>;
+
+pub(super) fn settings_page(page: &str) -> Result<Driven, Rejected> {
+    names::settings_page_named(page)
+        .map(|page| Driven::Command(SettingsCommand::ShowPage(page).into()))
+        .ok_or_else(|| Rejected(format!("{page} is not a settings page")))
+}
+
+pub(super) fn setting_change(name: &str, value: &str) -> Result<Driven, Rejected> {
+    let change = match name {
+        "theme" => names::theme_choice_named(value).map(SettingChange::Theme),
+        "motion" => names::motion_choice_named(value).map(SettingChange::Motion),
+        _ => return Err(Rejected(format!("{name} is not a setting"))),
+    };
+    change
+        .map(|change| Driven::Command(SettingsCommand::Change(change).into()))
+        .ok_or_else(|| Rejected(format!("{value} is not a value of {name}")))
+}
 
 pub(super) struct Target {
     pub(super) room_id: RoomId,

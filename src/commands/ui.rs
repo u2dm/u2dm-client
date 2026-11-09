@@ -10,7 +10,7 @@ pub(crate) use self::activity::{
 };
 pub(crate) use self::drafts::{Draft, MessageDraft, ReplyDraft};
 pub(crate) use self::groups::{
-    AccountCommand, AuthCommand, CallCommand, DepartureCommand, KeysCommand,
+    AccountCommand, AuthCommand, CallCommand, DepartureCommand, KeysCommand, SettingsCommand,
 };
 use crate::domain::auth::LoginCredentials;
 use crate::domain::emote::ComposerText;
@@ -176,6 +176,8 @@ pub enum UiCommand {
     Keys(KeysCommand),
     #[strum(transparent)]
     Account(AccountCommand),
+    #[strum(transparent)]
+    Settings(SettingsCommand),
     #[strum(transparent)]
     Auth(AuthCommand),
     #[strum(to_string = "SendMessage({room_id})")]
@@ -470,6 +472,7 @@ impl UiCommand {
             | Self::RetryEncryptionSetup
             | Self::Keys(_)
             | Self::Account(_)
+            | Self::Settings(_)
             | Self::Auth(_)
             | Self::SuggestMentions { .. }
             | Self::EndMentions

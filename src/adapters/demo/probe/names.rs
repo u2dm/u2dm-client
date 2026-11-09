@@ -5,19 +5,20 @@ use crate::adapters::ui::schema::{
     connection_states, create_room_statuses, device_trusts, direct_chats, encryption_activities,
     encryption_standings, encryption_steps, enum_names, identity_alert_kinds, identity_trusts,
     invite_answers, invite_kinds, invitee_states, log_levels, login_activities, login_methods,
-    login_phases, member_roles, notify_modes, pending_moderations, people_search_statuses,
-    presence_lines, preview_kinds, readers_statuses, recovery_statuses, removal_kinds,
-    room_accesses, room_info_placements, room_kinds, room_memberships, room_preview_statuses,
-    room_scopes, roster_statuses, source_encryptions, source_statuses, space_index_statuses,
-    upgrade_links, user_message_kinds, variant_named, verify_offers,
+    login_phases, member_roles, motion_choices, notify_modes, pending_moderations,
+    people_search_statuses, presence_lines, preview_kinds, readers_statuses, recovery_statuses,
+    removal_kinds, room_accesses, room_info_placements, room_kinds, room_memberships,
+    room_preview_statuses, room_scopes, roster_statuses, settings_pages, source_encryptions,
+    source_statuses, space_index_statuses, theme_choices, upgrade_links, user_message_kinds,
+    variant_named, verify_offers,
 };
 use crate::commands::messages::UserMessageKind;
 use crate::commands::view::{
     AccountActivity, AccountStep, AttachmentKind, AuthStage, ChildAccess, CreateRoomStatus,
     DeviceStatus, DeviceTrouble, DirectChat, EncryptionActivity, EncryptionStep, InviteeState,
     LoginActivity, LoginStep, PendingAnswer, PendingModeration, PeopleSearchStatus, ReadersStatus,
-    RoomInfoPlacement, RoomPreviewSheet, RoomScope, RosterStatus, SourceState, SpaceIndexStatus,
-    UpgradeLink, VerifyOffer,
+    RoomInfoPlacement, RoomPreviewSheet, RoomScope, RosterStatus, SettingsPage, SourceState,
+    SpaceIndexStatus, UpgradeLink, VerifyOffer,
 };
 use crate::domain::auth::LoginMethod;
 use crate::domain::call::devices::DeviceKind;
@@ -31,6 +32,7 @@ use crate::domain::room::NotifyMode;
 use crate::domain::room_creation::{RoomAccess, RoomKind};
 use crate::domain::room_info::MemberRole;
 use crate::domain::room_log::LogLevel;
+use crate::domain::settings::{MotionChoice, ThemeChoice};
 use crate::domain::sync::ConnectionStatus;
 use crate::domain::timeline::SourceEncryption;
 use crate::domain::user_info::{DeviceTrust, IdentityTrust, RoomMembership};
@@ -75,6 +77,12 @@ encryption_activities!(enum_names val encryption_activity EncryptionActivity;);
 auth_stages!(enum_names val auth_stage AuthStage;);
 account_steps!(enum_names ref account_step AccountStep;);
 account_activities!(enum_names val account_activity AccountActivity;);
+settings_pages!(enum_names val settings_page SettingsPage;);
+settings_pages!(variant_named settings_page_named SettingsPage;);
+theme_choices!(enum_names val theme_choice ThemeChoice;);
+theme_choices!(variant_named theme_choice_named ThemeChoice;);
+motion_choices!(enum_names val motion_choice MotionChoice;);
+motion_choices!(variant_named motion_choice_named MotionChoice;);
 source_statuses!(enum_names ref source_status SourceState;);
 source_encryptions!(enum_names ref source_encryption SourceEncryption;);
 readers_statuses!(enum_names val readers_status ReadersStatus;);

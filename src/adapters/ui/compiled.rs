@@ -9,17 +9,18 @@ use slint::{Rgb8Pixel, SharedPixelBuffer};
 use tokio::runtime::Runtime;
 use tokio::sync::{mpsc, watch};
 use u2dm_ui::{
-    AccountView, Actions, AppWindow, AttachmentView, AudioView, BodyLine, BodyPiece,
-    CallConnectionEntry, CallDeviceEntry, CallPersonEntry, CallTileEntry, CallView, CallWindow,
-    ComposerDraft, CreateRoomView, DirectoryView, DraftVerdict as UiDraftVerdict, EmojiEntry,
-    EmojiRow, EmojiStore, EncryptionView, IdentityAlertView, InvitePeopleView, InviteView,
-    InviteeEntry, LeaveSpaceView, LogLineEntry, LoginView, LogoutView, MemberEntry, MentionWord,
-    MentionsView, MessageEntry, Motion, NotificationText, PackCell, PackRow, PackTabEntry,
-    PackView, PollAnswerEntry, PresenceView, ReactionEntry, ReactorAvatar, ReadersView,
-    RemovalView, ReplySwipe, RoomEntry, RoomInfoView, RoomLogView, RoomMenuView, RoomPreviewView,
-    RoomView, SessionView, SourceView, SpaceChildEntry, SpaceEntry, SpaceIndexView, SpoilerCover,
-    TextSplice, TouchpadView, TypingView, UnsentView, UpgradeView, UserDeviceEntry, UserInfoView,
-    UserMessage as UiUserMessage, VerificationEmoji, VerificationView, VideoView, WindowView,
+    AccountView, Actions, AppWindow, AppearanceView, AttachmentView, AudioView, BodyLine,
+    BodyPiece, CallConnectionEntry, CallDeviceEntry, CallPersonEntry, CallTileEntry, CallView,
+    CallWindow, ComposerDraft, CreateRoomView, DirectoryView, DraftVerdict as UiDraftVerdict,
+    EmojiEntry, EmojiRow, EmojiStore, EncryptionView, IdentityAlertView, InvitePeopleView,
+    InviteView, InviteeEntry, LeaveSpaceView, LogLineEntry, LoginView, LogoutView, MemberEntry,
+    MentionWord, MentionsView, MessageEntry, Motion, NotificationText, PackCell, PackRow,
+    PackTabEntry, PackView, PollAnswerEntry, PresenceView, ReactionEntry, ReactorAvatar,
+    ReadersView, RemovalView, ReplySwipe, RoomEntry, RoomInfoView, RoomLogView, RoomMenuView,
+    RoomPreviewView, RoomView, SessionView, SettingsView, SourceView, SpaceChildEntry, SpaceEntry,
+    SpaceIndexView, SpoilerCover, TextSplice, TouchpadView, TypingView, UnsentView, UpgradeView,
+    UserDeviceEntry, UserInfoView, UserMessage as UiUserMessage, VerificationEmoji,
+    VerificationView, VideoView, WindowView,
 };
 #[cfg(feature = "demo")]
 use u2dm_ui::{Probe, RoomMenu, WindowTitle};
@@ -67,7 +68,7 @@ use super::schema::{
 };
 use super::session::active_models;
 use super::video::{self, millis_to_duration};
-use super::{audio, drafts, emoji, emote, mention, motion, router};
+use super::{audio, drafts, emoji, emote, mention, motion, reduce, router};
 use crate::app::input::CommandSender;
 use crate::commands::effects::{Effect, VerificationActivity};
 use crate::commands::messages::{UserMessage, UserMessageKind};
@@ -78,7 +79,7 @@ use crate::commands::view::{
     EncryptionStep, HandView, InviteeState, JoinRefusal, LinkView, LoginActivity, LoginStep,
     MicrophoneView, PendingAnswer, PendingModeration, PeopleSearchStatus, PreviewTrouble,
     ReactionView, ReadersStatus, RoomInfoPlacement, RoomPreviewSheet, RoomScope, RosterStatus,
-    SourceState, SpaceIndexStatus, UpgradeLink, VerifyOffer,
+    SettingsPage, SourceState, SpaceIndexStatus, UpgradeLink, VerifyOffer,
 };
 use crate::domain::auth::LoginMethod;
 use crate::domain::call::devices::DeviceKind;
@@ -96,6 +97,7 @@ use crate::domain::room::NotifyMode;
 use crate::domain::room_creation::{RoomAccess, RoomKind};
 use crate::domain::room_info::MemberRole;
 use crate::domain::room_log::LogLevel;
+use crate::domain::settings::{MotionChoice, Settings, ThemeChoice};
 use crate::domain::sync::ConnectionStatus;
 use crate::domain::timeline::{SourceEncryption, TimelineStatus};
 use crate::domain::user_info::{DeviceTrust, IdentityTrust, RoomMembership};
@@ -905,6 +907,10 @@ impl SlintUiAdapter {
 
     pub fn follow_motion(&self, appearance: &dyn AppearancePort) {
         motion::follow_motion::<CompiledBackend>(&self.window, appearance);
+    }
+
+    pub fn seed_settings(&self, settings: &Settings) {
+        reduce::seed_settings(&self.window, settings);
     }
 
     pub fn run(&self) -> Result<()> {

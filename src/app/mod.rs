@@ -37,6 +37,7 @@ mod send_lanes;
 mod service;
 mod session;
 mod session_requests;
+mod settings;
 mod space_index;
 mod space_leave;
 mod space_order;

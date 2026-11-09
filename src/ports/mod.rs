@@ -7,4 +7,5 @@ pub mod media;
 pub mod notifier;
 pub mod output;
 pub mod room_log;
+pub mod settings;
 pub mod storage;

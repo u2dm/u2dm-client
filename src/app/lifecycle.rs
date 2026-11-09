@@ -286,6 +286,7 @@ pub(super) fn command_allowed(phase: AppPhase, cmd: &UiCommand) -> bool {
         | UiCommand::RetryEncryptionSetup
         | UiCommand::Keys(_)
         | UiCommand::Account(_)
+        | UiCommand::Settings(_)
         | UiCommand::Auth(_)
         | UiCommand::ConfirmLogout
         | UiCommand::CancelLogout

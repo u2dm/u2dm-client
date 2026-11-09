@@ -21,6 +21,7 @@ pub mod notifier;
 pub mod poll_content;
 pub mod private_fs;
 pub mod room_log;
+pub mod settings;
 #[cfg(feature = "matrix")]
 pub mod storage;
 pub mod ui;

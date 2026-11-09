@@ -1,5 +1,7 @@
 import { Palette } from "std-widgets.slint";
 
+import { MotionChoice } from "./enums.slint";
+
 export global Fonts {
     in property <string> emoji: "Twemoji";
     out property <string> mono: "monospace";
@@ -32,7 +34,10 @@ export global Radius {
 }
 
 export global Motion {
-    in property <bool> reduced: false;
+    in property <bool> desktop-reduced: false;
+    in property <MotionChoice> choice: MotionChoice.system;
+    out property <bool> reduced: root.choice == MotionChoice.reduced
+        || (root.choice == MotionChoice.system && root.desktop-reduced);
     out property <duration> fast: 120ms;
     out property <duration> normal: 150ms;
     out property <duration> slow: 200ms;
@@ -111,7 +116,9 @@ export global Size {
 }
 
 export global AppStyle {
-    out property <bool> dark: Palette.color-scheme == ColorScheme.dark;
+    property <float> dark-surface-below: 0.5;
+
+    out property <bool> dark: Palette.background.to-oklch().lightness < root.dark-surface-below;
     out property <float> dialog-scrim: root.dark ? Opacity.scrim-strong : Opacity.scrim;
     out property <color> scrim: Colors.black;
 
@@ -482,7 +489,7 @@ export global Metrics {
 
 export global Avatars {
     out property <[float]> hues: [357, 25, 253, 106, 181, 204, 333];
-    out property <bool> dark: Palette.color-scheme == ColorScheme.dark;
+    out property <bool> dark: AppStyle.dark;
     out property <float> saturation: root.dark ? 0.5 : 0.62;
     out property <float> brightness: root.dark ? 0.88 : 0.78;
 

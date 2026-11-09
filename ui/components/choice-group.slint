@@ -1,0 +1,52 @@
+import { RovingKeys } from "./a11y.slint";
+import { ChoiceRow } from "./choice-row.slint";
+import { Space } from "../theme.slint";
+
+export struct ChoiceOption {
+    text: string,
+    detail: string,
+}
+
+export component ChoiceGroup inherits Rectangle {
+    in property <[ChoiceOption]> options;
+    in property <int> selected: 0;
+    in property <string> label;
+
+    callback chose(int);
+
+    function choose(index: int) {
+        keys.cursor = index;
+        root.chose(index);
+    }
+
+    keys := RovingKeys {
+        count: root.options.length;
+        cursor: root.selected;
+        accessible-role: radio-button;
+        accessible-label: @tr("{}: {}", root.label, root.options[max(self.cursor, 0)].text);
+        accessible-checkable: true;
+        accessible-checked: self.cursor == root.selected;
+        accessible-action-default => {
+            root.choose(max(self.cursor, 0));
+        }
+        activated(index) => {
+            root.choose(index);
+        }
+    }
+
+    VerticalLayout {
+        spacing: Space.xs;
+
+        for option[index] in root.options: ChoiceRow {
+            text: option.text;
+            detail: option.detail;
+            checked: index == root.selected;
+            above-modal: true;
+            focusable: false;
+            roving-focus: keys.has-focus && keys.cursor == index;
+            clicked => {
+                root.choose(index);
+            }
+        }
+    }
+}

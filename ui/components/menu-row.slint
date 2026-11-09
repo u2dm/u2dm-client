@@ -28,6 +28,10 @@ export component MenuRow inherits Rectangle {
 
     property <bool> has-trailing: root.trailing.paths.length > 0;
 
+    public function take-focus() {
+        touch.take-focus();
+    }
+
     border-radius: Radius.sm;
     opacity: root.enabled || root.busy ? 1.0 : Opacity.disabled;
 

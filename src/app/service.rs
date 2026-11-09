@@ -8,6 +8,7 @@ mod people;
 mod room_panels;
 mod security;
 mod session_end;
+mod settings;
 mod sign_in;
 mod syncing;
 
@@ -46,6 +47,7 @@ use super::room_preview::RoomPreviews;
 use super::selection::Selection;
 use super::send_lanes::SendLanes;
 use super::session::{EndingSession, SessionController, SuspendedSession};
+use super::settings::SettingsController;
 use super::space_index::SpaceIndex;
 use super::space_leave::SpaceLeave;
 use super::submissions::Submissions;
@@ -66,6 +68,7 @@ use crate::domain::account::AccountScope;
 use crate::domain::message::PinChange;
 use crate::domain::room::RoomId;
 use crate::domain::room_creation::RoomKind;
+use crate::domain::settings::Settings;
 use crate::domain::timeline::FailedSend;
 use crate::domain::user_info::{IgnoreChange, Moderation};
 use crate::ports::browser::BrowserPort;
@@ -74,6 +77,7 @@ use crate::ports::matrix::{AuthPort, AuthenticatedSession};
 use crate::ports::media::MediaFilePort;
 use crate::ports::output::AppOutputPort;
 use crate::ports::room_log::RoomLogPort;
+use crate::ports::settings::SettingsPort;
 use crate::ports::storage::StoragePort;
 
 #[derive(PartialEq, Eq)]
@@ -155,6 +159,7 @@ pub struct AppService {
     identity_alerts: IdentityAlerts,
     encryption: Encryption,
     account: Account,
+    settings: SettingsController,
     media: MediaActions,
     audio: AudioController,
     video: VideoController,
@@ -197,6 +202,8 @@ impl AppService {
         browser: Arc<dyn BrowserPort>,
         room_logs: Arc<dyn RoomLogPort>,
         call_media: Option<Arc<dyn CallMediaPort>>,
+        settings: Arc<dyn SettingsPort>,
+        loaded_settings: Settings,
         commands: &CommandSender,
         dir_in_tx: mpsc::UnboundedSender<DirectoryUpdate>,
         output: Arc<dyn AppOutputPort>,
@@ -210,6 +217,12 @@ impl AppService {
                 Arc::clone(&browser),
             ),
             account: Account::new(Arc::clone(&output), events.clone(), Arc::clone(&browser)),
+            settings: SettingsController::new(
+                Arc::clone(&output),
+                events.clone(),
+                settings,
+                loaded_settings,
+            ),
             session: SessionController::new(
                 auth,
                 storage,
@@ -587,6 +600,7 @@ impl AppService {
             UiCommand::RetryEncryptionSetup => self.retry_encryption_setup(),
             UiCommand::Keys(command) => self.handle_key_command(command),
             UiCommand::Account(command) => self.handle_account_command(command),
+            UiCommand::Settings(command) => self.handle_settings_command(command),
             UiCommand::Auth(command) => self.handle_auth_command(command),
             UiCommand::RetryTimeline => {
                 self.retry_timeline().await;
@@ -859,6 +873,7 @@ impl AppService {
             AppEvent::Identity(event) => self.handle_identity(event),
             AppEvent::Encryption(event) => self.handle_encryption(event),
             AppEvent::Account(event) => self.handle_account(event).await,
+            AppEvent::Settings(event) => self.handle_settings_event(event),
             AppEvent::RoomLogGrew => self.room_log.reread(),
         }
     }

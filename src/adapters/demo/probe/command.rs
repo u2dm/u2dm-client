@@ -346,6 +346,15 @@ pub enum ProbeCommand {
     ImportRoomKeys {
         passphrase: String,
     },
+    OpenSettings,
+    CloseSettings,
+    ShowSettingsPage {
+        page: String,
+    },
+    SetSetting {
+        name: String,
+        value: String,
+    },
     OpenAccount,
     CloseAccount,
     ShowAccountOverview,

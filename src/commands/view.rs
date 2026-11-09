@@ -1,6 +1,7 @@
 mod call;
 mod rooms;
 mod security;
+mod settings;
 
 use std::collections::BTreeSet;
 use std::path::PathBuf;
@@ -28,6 +29,7 @@ pub(crate) use self::security::{
     EncryptionActivity, EncryptionDialog, EncryptionStep, EncryptionView, LifecycleView,
     LoginActivity, LoginStep, LogoutView,
 };
+pub(crate) use self::settings::{SettingsDialog, SettingsPage, SettingsView};
 use super::messages::{UserMessage, UserMessageKind};
 use super::ui::Draft;
 use crate::domain::auth::Session;
@@ -41,6 +43,7 @@ use crate::domain::push::PushNotice;
 use crate::domain::room::RoomId;
 use crate::domain::room_info::{Reader, RosterMember};
 use crate::domain::room_log::RoomLog;
+use crate::domain::settings::Settings;
 use crate::domain::sync::{ConnectionStatus, ReauthReason};
 use crate::domain::timeline::{EventSource, OlderHistory};
 use crate::domain::typing::Typists;
@@ -76,6 +79,7 @@ pub struct AppViewState {
     pub notifications: NotificationsView,
     pub encryption: EncryptionView,
     pub account: AccountView,
+    pub settings: SettingsView,
     pub logout: LogoutView,
     pub toast: Toast,
     pub message_link: CopiedLink,
@@ -87,6 +91,16 @@ pub struct AppViewState {
 }
 
 impl AppViewState {
+    pub fn seeded(values: &Settings) -> Self {
+        Self {
+            settings: SettingsView {
+                values: values.clone(),
+                dialog: None,
+            },
+            ..Self::default()
+        }
+    }
+
     pub fn logged_out() -> Self {
         Self {
             lifecycle: LifecycleView {

@@ -6,8 +6,8 @@ use super::{
     account, attachments, audio, calls, create_room, departures, encryption, identity,
     invite_people, invites, links, login, logout, message_menu, motion, msgtypes, names,
     notifications, pinned, polls, powers, presence, reactions, receipts, richtext, room_info,
-    shields, space_index, stickers, sync, timeline, typing, upgrades, user_info, verification,
-    videos,
+    settings, shields, space_index, stickers, sync, timeline, typing, upgrades, user_info,
+    verification, videos,
 };
 
 pub struct Flag {
@@ -61,6 +61,7 @@ pub fn all() -> &'static [&'static Scenarios] {
         &logout::CATALOG,
         &sync::CATALOG,
         &motion::CATALOG,
+        &settings::CATALOG,
         &verification::CATALOG,
         &WINDOW,
         &DATA,

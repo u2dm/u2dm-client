@@ -1,5 +1,6 @@
 mod call;
 mod drafts;
+mod settings;
 mod watches;
 
 pub(super) use self::call::{
@@ -10,6 +11,7 @@ pub(super) use self::drafts::{
     DraftVerdict, EditedRow, EditedText, edit_message, edit_poll, send_attachment, send_message,
     send_poll,
 };
+pub(super) use self::settings::{set_motion, set_theme, show_settings_page};
 pub(super) use self::watches::{
     composer_changed, scroll_position, timeline_visibility, user_activity, window_focus,
 };
@@ -18,7 +20,8 @@ use super::schema::{notify_modes, room_accesses, room_kinds, simple_callbacks, v
 use super::{clipboard, permalink};
 use crate::app::input::CommandSender;
 use crate::commands::ui::{
-    AccountCommand, AuthCommand, CallCommand, DepartureCommand, KeysCommand, UiCommand,
+    AccountCommand, AuthCommand, CallCommand, DepartureCommand, KeysCommand, SettingsCommand,
+    UiCommand,
 };
 use crate::domain::auth::LoginCredentials;
 use crate::domain::capabilities::AccountPage;

@@ -126,14 +126,12 @@ fn run(room_logs: Arc<RoomLogs>) -> Result<()> {
     rt.block_on(async {
         private_fs::restrict_existing(&cfg.data_dir).await;
         private_fs::restrict_existing(&cfg.cache_dir).await;
+        private_fs::restrict_existing(&cfg.config_dir).await;
     });
     let ui = SlintUiAdapter::compile(&rt)?;
 
     let (cmd_tx, inbox) = app::input::channel();
     let (ui_tx, ui_rx) = mpsc::channel::<Effect>(UI_EVENT_CHANNEL_CAP);
-
-    let (view_out_tx, view_out_rx) =
-        watch::channel::<Arc<AppViewState>>(Arc::new(AppViewState::default()));
 
     let (dir_in_tx, dir_in_rx) = mpsc::unbounded_channel::<DirectoryUpdate>();
     let (scroll_tx, scroll_rx) = watch::channel::<ViewportChanged>(ViewportChanged::initial());
@@ -153,6 +151,10 @@ fn run(room_logs: Arc<RoomLogs>) -> Result<()> {
 
     let enter_guard = rt.enter();
     let backend = Backend::select(&cfg, rt.handle());
+    let loaded_settings = backend.settings.load();
+    ui.seed_settings(&loaded_settings);
+    let (view_out_tx, view_out_rx) =
+        watch::channel::<Arc<AppViewState>>(Arc::new(AppViewState::seeded(&loaded_settings)));
     let media_files = Arc::clone(&backend.media_files);
     let browser = Arc::clone(&backend.browser);
     let probe_view_rx = view_out_tx.subscribe();
@@ -179,6 +181,8 @@ fn run(room_logs: Arc<RoomLogs>) -> Result<()> {
         browser,
         room_logs,
         backend.call_media,
+        backend.settings,
+        loaded_settings,
         &cmd_tx,
         dir_in_tx,
         output,

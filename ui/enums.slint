@@ -189,6 +189,7 @@ export enum UserMessageKind {
     password-changed-others-signed-out,
     deactivation-failed,
     account-page-opened,
+    settings-not-saved,
     identity-reset-failed,
     encryption-setup-failed,
     key-export-failed,
@@ -659,6 +660,23 @@ export enum AccountActivity {
     signing-out,
     changing-password,
     deactivating,
+}
+
+export enum SettingsPage {
+    overview,
+    appearance,
+}
+
+export enum ThemeChoice {
+    system,
+    light,
+    dark,
+}
+
+export enum MotionChoice {
+    system,
+    reduced,
+    full,
 }
 
 export enum MemberRowKind {

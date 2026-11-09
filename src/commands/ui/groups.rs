@@ -1,11 +1,13 @@
 use strum::Display as StrumDisplay;
 
 use super::UiCommand;
+use crate::commands::view::SettingsPage;
 use crate::domain::call::devices::{DeviceKey, DeviceKind};
 use crate::domain::call::media::MediaChoice;
 use crate::domain::capabilities::AccountPage;
 use crate::domain::encryption::KeyPassphrase;
 use crate::domain::room::RoomId;
+use crate::domain::settings::SettingChange;
 use crate::domain::uia::AccountPassword;
 
 #[derive(StrumDisplay)]
@@ -76,6 +78,16 @@ pub enum AccountCommand {
     DeactivateAccount {
         erase: bool,
     },
+}
+
+#[derive(Clone, Copy, StrumDisplay)]
+pub enum SettingsCommand {
+    OpenSettings,
+    CloseSettings,
+    #[strum(to_string = "ShowSettingsPage")]
+    ShowPage(SettingsPage),
+    #[strum(to_string = "ChangeSetting")]
+    Change(SettingChange),
 }
 
 #[derive(StrumDisplay)]
@@ -224,6 +236,7 @@ command_groups! {
     Departure(DepartureCommand),
     Keys(KeysCommand),
     Account(AccountCommand),
+    Settings(SettingsCommand),
     Auth(AuthCommand),
     Call(CallCommand),
 }

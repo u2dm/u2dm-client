@@ -220,6 +220,12 @@ macro_rules! simple_callbacks {
         on_start_key_import "start-key-import" start_key_import plain KeysCommand::StartKeyImport;
         on_import_room_keys "import-room-keys" import_room_keys manual_string
             KeysCommand::ImportRoomKeys;
+        on_open_settings "open-settings" open_settings plain SettingsCommand::OpenSettings;
+        on_close_settings "close-settings" close_settings plain SettingsCommand::CloseSettings;
+        on_show_settings_page "show-settings-page" show_settings_page
+            request(page "page" variant) SettingsCommand::ShowPage;
+        on_set_theme "set-theme" set_theme request(choice "choice" variant) SettingsCommand::Change;
+        on_set_motion "set-motion" set_motion request(choice "choice" variant) SettingsCommand::Change;
         on_open_account "open-account" open_account plain AccountCommand::OpenAccount;
         on_close_account "close-account" close_account plain AccountCommand::CloseAccount;
         on_show_account_overview "show-account-overview" show_account_overview plain
@@ -465,6 +471,7 @@ macro_rules! bool_props {
         EncryptionVisible EncryptionView "EncryptionView" "visible" set_visible get_visible;
         EncryptionVerifiedSessions EncryptionView "EncryptionView" "verified-sessions" set_verified_sessions get_verified_sessions;
         EncryptionKeyStorageOff EncryptionView "EncryptionView" "key-storage-off" set_key_storage_off get_key_storage_off;
+        SettingsVisible SettingsView "SettingsView" "visible" set_visible get_visible;
         AccountVisible AccountView "AccountView" "visible" set_visible get_visible;
         AccountSessionsKnown AccountView "AccountView" "sessions-known" set_sessions_known get_sessions_known;
         AccountFactsKnown AccountView "AccountView" "facts-known" set_facts_known get_facts_known;
@@ -534,7 +541,7 @@ macro_rules! bool_props {
         WindowActive WindowView "WindowView" "active" set_active get_active;
         CallWindowed WindowView "WindowView" "call-windowed" set_call_windowed get_call_windowed;
         ReplySwipeArmed ReplySwipe "ReplySwipe" "armed" set_armed get_armed;
-        ReducedMotion Motion "Motion" "reduced" set_reduced get_reduced;
+        ReducedMotion Motion "Motion" "desktop-reduced" set_desktop_reduced get_desktop_reduced;
         RoomInfoIsDirect RoomInfoView "RoomInfoView" "is-direct" set_is_direct get_is_direct;
         RoomInfoTopicHasLinks RoomInfoView "RoomInfoView" "topic-has-links" set_topic_has_links get_topic_has_links;
         RoomInfoNotifyBusy RoomInfoView "RoomInfoView" "notify-busy" set_notify_busy get_notify_busy;
@@ -685,6 +692,12 @@ macro_rules! enum_props {
             EncryptionView "EncryptionView" "auth-stage" set_auth_stage get_auth_stage;
         EncryptionAuthError set_encryption_auth_error(UserMessageKind)
             EncryptionView "EncryptionView" "auth-error" set_auth_error get_auth_error;
+        SettingsPage set_settings_page(SettingsPage)
+            SettingsView "SettingsView" "page" set_page get_page;
+        AppearanceTheme set_appearance_theme(ThemeChoice)
+            AppearanceView "AppearanceView" "theme" set_theme get_theme;
+        MotionChoice set_motion_choice(MotionChoice)
+            Motion "Motion" "choice" set_choice get_choice;
         AccountStep set_account_step(&AccountStep)
             AccountView "AccountView" "step" set_step get_step;
         AccountActivity set_account_activity(AccountActivity)
@@ -998,6 +1011,9 @@ macro_rules! slint_enums {
             auth_stages AuthStage AuthStage;
             account_steps AccountStep AccountStep;
             account_activities AccountActivity AccountActivity;
+            settings_pages SettingsPage SettingsPage;
+            theme_choices ThemeChoice ThemeChoice;
+            motion_choices MotionChoice MotionChoice;
             preview_kinds MessagePreviewKind PreviewKind;
             audio_kinds AudioKind AudioKind;
             service_kinds ServiceKind ServiceKind;
@@ -1237,6 +1253,7 @@ macro_rules! user_message_kinds {
         PasswordChangedOthersSignedOut PasswordChangedOthersSignedOut "password-changed-others-signed-out";
         DeactivationFailed        DeactivationFailed      "deactivation-failed";
         AccountPageOpened         AccountPageOpened       "account-page-opened";
+        SettingsNotSaved          SettingsNotSaved        "settings-not-saved";
         IdentityResetFailed       IdentityResetFailed     "identity-reset-failed";
         EncryptionSetupFailed     EncryptionSetupFailed   "encryption-setup-failed";
         KeyExportFailed           KeyExportFailed         "key-export-failed";
@@ -1638,6 +1655,32 @@ macro_rules! account_activities {
     } };
 }
 pub(crate) use account_activities;
+
+macro_rules! settings_pages {
+    ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
+        Overview   Overview   "overview";
+        Appearance Appearance "appearance";
+    } };
+}
+pub(crate) use settings_pages;
+
+macro_rules! theme_choices {
+    ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
+        System System "system";
+        Light  Light  "light";
+        Dark   Dark   "dark";
+    } };
+}
+pub(crate) use theme_choices;
+
+macro_rules! motion_choices {
+    ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
+        System  System  "system";
+        Reduced Reduced "reduced";
+        Full    Full    "full";
+    } };
+}
+pub(crate) use motion_choices;
 
 macro_rules! pending_moderations {
     ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*

@@ -16,7 +16,7 @@ import {
     CallConnectionEntry,
     UserDeviceEntry,
 } from "./types.slint";
-import { AccountActivity, AccountStep, AttachmentKind, AudioKind, AuthStage, CallCamera, CallDeviceKind, CallDeviceTrouble, CallHand, CallMic, CallNotice, CallOffer, CallPhase, CallPreviewTrouble, CallReaction, CallRefusal, CallScreen, CallScreenRefusal, CallSheetPreview, CallTestPhase, ChildAccess, ConnectionState, CreateRoomStatus, DirectChat, EncryptionActivity, EncryptionStanding, EncryptionStep, IdentityAlertKind, IdentityTrust, InviteAnswer, InviteKind, LoginActivity, LoginMethodKind, LoginPhase, MemberRole, Moderation, NotifyMode, PackSurface, PeopleSearchStatus, PresenceLine, PreviewKind, ReadersStatus, RecoveryStatus, RemovalKind, RoomInfoPlacement, RoomKind, RoomMembership, RoomPreviewStatus, RoomScope, RosterStatus, ServiceKind, SourceEncryption, SourceStatus, SpaceIndexStatus, TimelineState, UpgradeLink, UserMessageKind, VerificationActivity, VerificationPhase, VerifyOffer } from "./enums.slint";
+import { AccountActivity, AccountStep, AttachmentKind, AudioKind, AuthStage, CallCamera, CallDeviceKind, CallDeviceTrouble, CallHand, CallMic, CallNotice, CallOffer, CallPhase, CallPreviewTrouble, CallReaction, CallRefusal, CallScreen, CallScreenRefusal, CallSheetPreview, CallTestPhase, ChildAccess, ConnectionState, CreateRoomStatus, DirectChat, EncryptionActivity, EncryptionStanding, EncryptionStep, IdentityAlertKind, IdentityTrust, InviteAnswer, InviteKind, LoginActivity, LoginMethodKind, LoginPhase, MemberRole, Moderation, MotionChoice, NotifyMode, PackSurface, PeopleSearchStatus, PresenceLine, PreviewKind, ReadersStatus, RecoveryStatus, RemovalKind, RoomInfoPlacement, RoomKind, RoomMembership, RoomPreviewStatus, RoomScope, RosterStatus, ServiceKind, SettingsPage, SourceEncryption, SourceStatus, SpaceIndexStatus, ThemeChoice, TimelineState, UpgradeLink, UserMessageKind, VerificationActivity, VerificationPhase, VerifyOffer } from "./enums.slint";
 
 export global LoginView {
     in property <LoginPhase> step: LoginPhase.loading;
@@ -566,6 +566,15 @@ export global EncryptionView {
     in property <string> auth-error-detail;
     in property <UserMessageKind> error: UserMessageKind.none;
     in property <string> error-detail;
+}
+
+export global AppearanceView {
+    in property <ThemeChoice> theme: ThemeChoice.system;
+}
+
+export global SettingsView {
+    in property <bool> visible;
+    in property <SettingsPage> page: SettingsPage.overview;
 }
 
 export global AccountView {

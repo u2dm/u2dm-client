@@ -36,6 +36,7 @@ mod receipts;
 mod revisions;
 mod richtext;
 mod room_info;
+mod settings;
 mod shields;
 mod source;
 mod space_index;
@@ -61,6 +62,7 @@ use crate::ports::handoff::HandoffPort;
 use crate::ports::matrix::AuthPort;
 use crate::ports::media::{MediaCache, MediaFilePort};
 use crate::ports::notifier::NotifierPort;
+use crate::ports::settings::SettingsPort;
 use crate::ports::storage::StoragePort;
 
 const WINDOW_SIZE: (f32, f32) = (860.0, 1000.0);
@@ -115,6 +117,10 @@ pub fn handoff() -> Arc<dyn HandoffPort> {
 
 pub fn appearance() -> Arc<dyn AppearancePort> {
     motion::port()
+}
+
+pub fn settings() -> Arc<dyn SettingsPort> {
+    settings::port()
 }
 
 pub fn handoff_socket() -> Option<PathBuf> {

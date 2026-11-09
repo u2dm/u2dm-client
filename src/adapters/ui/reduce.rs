@@ -2,6 +2,7 @@ mod composer;
 mod directory;
 mod media;
 mod security;
+mod settings;
 mod sheets;
 mod timeline;
 
@@ -18,6 +19,8 @@ use self::security::{
     apply_account, apply_encryption, apply_lifecycle, apply_logout, apply_verification,
     reset_verification,
 };
+use self::settings::apply_settings;
+pub(super) use self::settings::seed_settings;
 use self::sheets::{
     apply_create_room, apply_invite, apply_invite_people, apply_leave_space, apply_removal,
     apply_room_info, apply_room_log, apply_room_preview, apply_user_info,
@@ -288,6 +291,7 @@ fn apply_snapshot<B: UiBackend>(
         notifications,
         encryption,
         account,
+        settings,
         logout,
         toast,
         message_link,
@@ -349,6 +353,7 @@ fn apply_snapshot<B: UiBackend>(
     apply_notices::<B>(w, last, notifications, call, ctx);
     apply_encryption(w, last.map(|l| &l.encryption), encryption);
     apply_account::<B>(w, last.map(|l| &l.account), account, ctx);
+    apply_settings(w, last.map(|l| &l.settings), settings);
     apply_logout(w, last.map(|l| &l.logout), logout);
     apply_toast(w, last.map(|l| &l.toast), toast);
     apply_copied_links(w, last, message_link, room_link);

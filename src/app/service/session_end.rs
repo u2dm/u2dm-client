@@ -188,7 +188,8 @@ impl AppService {
         }));
     }
 
-    async fn tear_down_session(&mut self, view: Box<AppViewState>) {
+    async fn tear_down_session(&mut self, mut view: Box<AppViewState>) {
+        view.settings = self.settings.close_with_session();
         self.attachments.clear();
         self.submissions.forget_all();
         self.message_actions.forget();
@@ -207,6 +208,7 @@ impl AppService {
     }
 
     pub(super) async fn handle_quit(&mut self) {
+        self.settings.shutdown().await;
         self.presence.sign_off();
         let farewell = Box::pin(say_goodbye_then_stop_syncing(
             &mut self.presence,

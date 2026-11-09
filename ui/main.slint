@@ -34,6 +34,8 @@ import {
     CallView,
     EncryptionView,
     AccountView,
+    AppearanceView,
+    SettingsView,
     LogoutView,
     WindowView,
     SourceView,
@@ -63,6 +65,7 @@ import { ChatScreen } from "./screens/chat/chat.slint";
 import { VerificationDialog } from "./screens/chat/components/verification.slint";
 import { EncryptionDialog } from "./screens/chat/components/encryption.slint";
 import { AccountDialog } from "./screens/chat/components/account.slint";
+import { SettingsDialog } from "./screens/chat/components/settings/settings.slint";
 import { LogoutWarningDialog } from "./screens/chat/components/logout-warning.slint";
 import { AttachmentDialog } from "./screens/chat/components/timeline/attachment-dialog.slint";
 import { PollDialog } from "./screens/chat/components/timeline/poll-dialog.slint";
@@ -83,6 +86,7 @@ import { CallSheet } from "./screens/chat/components/call/call-sheet.slint";
 import { CallDetailsDialog } from "./screens/chat/components/call/call-details.slint";
 import { CallDevicesMenu } from "./screens/chat/components/call/call-devices-menu.slint";
 import { ModalHost, Placement } from "./components/overlay.slint";
+import { ThemeFollower } from "./components/theme-follower.slint";
 import { TipLayer } from "./components/tip.slint";
 import { CallWindow } from "./call-window.slint";
 
@@ -90,7 +94,7 @@ export { EmojiStore }
 export { LoginPhase, ConnectionState, TimelineState, VerificationPhase, MediaState, MediaFailure }
 export { MessageKind, PreviewKind, ServiceKind, LoginMethodKind, AudioKind }
 export { LoginView, SessionView, DirectoryView, SpaceIndexView, RoomView, PackView, VerificationView }
-export { AttachmentView, VideoView, AudioView, UnsentView, IdentityAlertView, UpgradeView, TouchpadView, TypingView, PresenceView, CallView, EncryptionView, AccountView, LogoutView, WindowView, RoomInfoView, SourceView, RoomMenuView, RoomLogView, UserInfoView, InviteView, RemovalView, LeaveSpaceView, RoomPreviewView, CreateRoomView, InvitePeopleView, ReadersView, MentionsView }
+export { AttachmentView, VideoView, AudioView, UnsentView, IdentityAlertView, UpgradeView, TouchpadView, TypingView, PresenceView, CallView, EncryptionView, AccountView, AppearanceView, SettingsView, LogoutView, WindowView, RoomInfoView, SourceView, RoomMenuView, RoomLogView, UserInfoView, InviteView, RemovalView, LeaveSpaceView, RoomPreviewView, CreateRoomView, InvitePeopleView, ReadersView, MentionsView }
 export { Actions }
 export { Probe, ReplySwipe, RoomMenu }
 export { Motion }
@@ -153,6 +157,8 @@ export component AppWindow inherits Window {
         }
     }
 
+    ThemeFollower { }
+
     if LoginView.step == LoginPhase.loading: LoadingScreen { }
 
     if LoginView.step == LoginPhase.restore-paused: RestorePausedScreen { }
@@ -194,6 +200,7 @@ export component AppWindow inherits Window {
     if Shell.source-open: EventSourceDialog { }
     if LoginView.step == LoginPhase.logged-in && CallView.active && CallPanel.details-open: CallDetailsDialog { }
     if Shell.room-log-open: RoomLogDialog { }
+    if Shell.settings-open: SettingsDialog { }
     if Shell.account-open: AccountDialog { }
     if Shell.encryption-open: EncryptionDialog { }
     if Shell.logout-open: LogoutWarningDialog { }
