@@ -40,6 +40,9 @@ import {
     SettingsPageRequest,
     ThemeRequest,
     MotionRequest,
+    SendKeyRequest,
+    ReceiptsRequest,
+    SettingFlagRequest,
 } from "./types.slint";
 import { NotifyMode, PackSurface } from "./enums.slint";
 
@@ -61,6 +64,9 @@ export global Actions {
     callback show-settings-page(SettingsPageRequest);
     callback set-theme(ThemeRequest);
     callback set-motion(MotionRequest);
+    callback set-send-key(SendKeyRequest);
+    callback set-receipts(ReceiptsRequest);
+    callback set-setting-flag(SettingFlagRequest);
 
     callback open-account();
     callback close-account();

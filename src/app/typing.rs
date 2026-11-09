@@ -40,6 +40,7 @@ pub(super) struct Typing {
     typists: Typists,
     edits: i32,
     lane: Option<NoticeLane>,
+    tells_rooms: bool,
 }
 
 impl Typing {
@@ -54,6 +55,18 @@ impl Typing {
             typists: Typists::default(),
             edits: 0,
             lane: None,
+            tells_rooms: true,
+        }
+    }
+
+    pub(super) fn set_notices(&mut self, on: bool) {
+        if self.tells_rooms == on {
+            return;
+        }
+        tracing::debug!(on, "telling rooms that you type changed");
+        self.tells_rooms = on;
+        if !on {
+            self.stop_typing();
         }
     }
 
@@ -126,7 +139,7 @@ impl Typing {
         if stopped {
             self.stop_typing();
         }
-        let Some(room_id) = here.filter(|_| typed && activity.composing) else {
+        let Some(room_id) = here.filter(|_| typed && activity.composing && self.tells_rooms) else {
             return;
         };
         let Some(port) = port else {

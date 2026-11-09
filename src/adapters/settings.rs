@@ -7,7 +7,9 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use super::private_fs;
-use crate::domain::settings::{Appearance, MotionChoice, Settings, ThemeChoice};
+use crate::domain::settings::{
+    Appearance, Messaging, MotionChoice, ReceiptVisibility, SendKey, Settings, ThemeChoice,
+};
 use crate::error::Result;
 use crate::ports::settings::SettingsPort;
 
@@ -44,6 +46,16 @@ stored_choice!(StoredMotion MotionChoice;
     Full "full";
 );
 
+stored_choice!(StoredSendKey SendKey;
+    Enter "enter";
+    CtrlEnter "ctrl-enter";
+);
+
+stored_choice!(StoredReceipts ReceiptVisibility;
+    Public "public";
+    Private "private";
+);
+
 #[derive(Default, Deserialize, Serialize)]
 struct StoredAppearance {
     #[serde(default, deserialize_with = "lenient")]
@@ -53,9 +65,21 @@ struct StoredAppearance {
 }
 
 #[derive(Default, Deserialize, Serialize)]
+struct StoredMessaging {
+    #[serde(default, deserialize_with = "lenient")]
+    send_key: Option<StoredSendKey>,
+    #[serde(default, deserialize_with = "lenient")]
+    receipts: Option<StoredReceipts>,
+    #[serde(default, deserialize_with = "lenient")]
+    typing_notices: Option<bool>,
+}
+
+#[derive(Default, Deserialize, Serialize)]
 struct StoredSettings {
     #[serde(default, deserialize_with = "lenient")]
     appearance: Option<StoredAppearance>,
+    #[serde(default, deserialize_with = "lenient")]
+    messaging: Option<StoredMessaging>,
 }
 
 fn lenient<'de, D, T>(deserializer: D) -> result::Result<Option<T>, D::Error>
@@ -77,11 +101,22 @@ impl From<&Settings> for StoredSettings {
     fn from(settings: &Settings) -> Self {
         let Settings {
             appearance: Appearance { theme, motion },
+            messaging:
+                Messaging {
+                    send_key,
+                    receipts,
+                    typing_notices,
+                },
         } = *settings;
         Self {
             appearance: Some(StoredAppearance {
                 theme: Some(theme.into()),
                 motion: Some(motion.into()),
+            }),
+            messaging: Some(StoredMessaging {
+                send_key: Some(send_key.into()),
+                receipts: Some(receipts.into()),
+                typing_notices: Some(typing_notices),
             }),
         }
     }
@@ -91,6 +126,7 @@ impl From<StoredSettings> for Settings {
     fn from(stored: StoredSettings) -> Self {
         let defaults = Self::default();
         let appearance = stored.appearance.unwrap_or_default();
+        let messaging = stored.messaging.unwrap_or_default();
         Self {
             appearance: Appearance {
                 theme: appearance
@@ -99,6 +135,17 @@ impl From<StoredSettings> for Settings {
                 motion: appearance
                     .motion
                     .map_or(defaults.appearance.motion, Into::into),
+            },
+            messaging: Messaging {
+                send_key: messaging
+                    .send_key
+                    .map_or(defaults.messaging.send_key, Into::into),
+                receipts: messaging
+                    .receipts
+                    .map_or(defaults.messaging.receipts, Into::into),
+                typing_notices: messaging
+                    .typing_notices
+                    .unwrap_or(defaults.messaging.typing_notices),
             },
         }
     }

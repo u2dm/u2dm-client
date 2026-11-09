@@ -11,7 +11,7 @@ mod missing_keys;
 mod pinned;
 mod poll_ends;
 mod polls;
-mod receipts;
+pub(in crate::adapters::matrix) mod receipts;
 mod rowless_sends;
 mod send_gate;
 mod size_limit;

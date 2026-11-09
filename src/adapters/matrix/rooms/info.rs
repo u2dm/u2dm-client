@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use matrix_sdk::deserialized_responses::SyncOrStrippedState;
-use matrix_sdk::room::{Receipts, RoomMember};
+use matrix_sdk::room::RoomMember;
 use matrix_sdk::ruma::events::SyncStateEvent;
 use matrix_sdk::ruma::events::room::member::{MembershipChange, MembershipState};
 use matrix_sdk::ruma::events::room::topic::RoomTopicEventContent;
@@ -13,9 +13,11 @@ use super::build::{default_notification_mode, notification_mode_for};
 use crate::adapters::matrix::member_name::member_name;
 use crate::adapters::matrix::permissions::member_role;
 use crate::adapters::matrix::session::ClientHandle;
+use crate::adapters::matrix::timeline::receipts::read_up_to;
 use crate::domain::message::RichText;
 use crate::domain::room::{NotifyMode, RoomId};
 use crate::domain::room_info::{Reader, RoomAbout, RosterMember, RosterSection, sort_roster};
+use crate::domain::settings::ReceiptVisibility;
 use crate::error::{AppError, Result};
 use crate::ports::matrix::RoomInfoPort;
 
@@ -89,16 +91,13 @@ impl RoomInfoPort for MatrixRoomInfo {
         written.map_err(AppError::other)
     }
 
-    async fn mark_read(&self, room_id: &RoomId) -> Result<()> {
+    async fn mark_read(&self, room_id: &RoomId, visibility: ReceiptVisibility) -> Result<()> {
         let room = self.matrix.room(room_id).await?;
         let event_id = newest_event_id(&room)
             .await
             .ok_or_else(|| AppError::Other("the room has no event to mark as read".to_owned()))?;
         tracing::info!(%room_id, %event_id, "marking the room as read");
-        let receipts = Receipts::new()
-            .public_read_receipt(event_id.clone())
-            .fully_read_marker(event_id);
-        room.send_multiple_receipts(receipts)
+        room.send_multiple_receipts(read_up_to(event_id, visibility))
             .await
             .map_err(AppError::other)
     }

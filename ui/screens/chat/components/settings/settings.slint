@@ -11,6 +11,7 @@ import { SettingsWords } from "../../../../messages.slint";
 import { MetaTip, Reactions } from "../../../../local.slint";
 import { AppStyle, Metrics, Space } from "../../../../theme.slint";
 import { AppearancePage } from "./appearance-page.slint";
+import { MessagesPage } from "./messages-page.slint";
 
 component Overview inherits VerticalLayout {
     in property <SettingsPage> came-from;
@@ -23,6 +24,9 @@ component Overview inherits VerticalLayout {
     init => {
         if root.came-from == SettingsPage.appearance {
             appearance.take-focus();
+        }
+        if root.came-from == SettingsPage.messages {
+            messages.take-focus();
         }
     }
 
@@ -49,6 +53,18 @@ component Overview inherits VerticalLayout {
             above-modal: true;
             clicked => {
                 root.open-page(SettingsPage.appearance);
+            }
+        }
+
+        messages := MenuRow {
+            height: Metrics.choice-row;
+            icon: IconSet.MessageSquareText;
+            label: @tr("Messages and privacy");
+            detail: SettingsWords.messages-summary(SettingsView.send-key, SettingsView.receipts);
+            trailing: IconSet.ChevronRight;
+            above-modal: true;
+            clicked => {
+                root.open-page(SettingsPage.messages);
             }
         }
     }
@@ -98,6 +114,15 @@ export component SettingsDialog inherits ModalHost {
         }
 
         if SettingsView.page == SettingsPage.appearance: AppearancePage {
+            back => {
+                root.back();
+            }
+            close => {
+                Actions.close-settings();
+            }
+        }
+
+        if SettingsView.page == SettingsPage.messages: MessagesPage {
             back => {
                 root.back();
             }

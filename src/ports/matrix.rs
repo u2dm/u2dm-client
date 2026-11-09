@@ -39,6 +39,7 @@ use crate::domain::room_creation::{CreateResult, RoomBlueprint};
 use crate::domain::room_info::{Reader, RoomAbout, RosterMember};
 use crate::domain::room_preview::PreviewResult;
 use crate::domain::sessions::{LogoutRisks, OwnSessions};
+use crate::domain::settings::ReceiptVisibility;
 use crate::domain::space_index::HierarchyPage;
 use crate::domain::sync::{SyncEvent, SyncOutcome};
 use crate::domain::timeline::{TimelineCommand, TimelineFocus, TimelineUpdate};
@@ -364,7 +365,7 @@ pub trait RoomInfoPort: Send + Sync {
     async fn roster(&self, room_id: &RoomId) -> Result<Vec<RosterMember>>;
     async fn readers(&self, room_id: &RoomId, user_ids: &[String]) -> Result<Vec<Reader>>;
     async fn set_notify(&self, room_id: &RoomId, mode: NotifyMode) -> Result<()>;
-    async fn mark_read(&self, room_id: &RoomId) -> Result<()>;
+    async fn mark_read(&self, room_id: &RoomId, visibility: ReceiptVisibility) -> Result<()>;
     async fn fetch_avatars(&self, mxcs: &[String]) -> usize;
     async fn room_link(&self, room_id: &RoomId) -> Result<String>;
     async fn event_link(&self, room_id: &RoomId, event_id: &str) -> Result<String>;

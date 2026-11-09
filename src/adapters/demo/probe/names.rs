@@ -6,11 +6,11 @@ use crate::adapters::ui::schema::{
     encryption_standings, encryption_steps, enum_names, identity_alert_kinds, identity_trusts,
     invite_answers, invite_kinds, invitee_states, log_levels, login_activities, login_methods,
     login_phases, member_roles, motion_choices, notify_modes, pending_moderations,
-    people_search_statuses, presence_lines, preview_kinds, readers_statuses, recovery_statuses,
-    removal_kinds, room_accesses, room_info_placements, room_kinds, room_memberships,
-    room_preview_statuses, room_scopes, roster_statuses, settings_pages, source_encryptions,
-    source_statuses, space_index_statuses, theme_choices, upgrade_links, user_message_kinds,
-    variant_named, verify_offers,
+    people_search_statuses, presence_lines, preview_kinds, readers_statuses, receipt_visibilities,
+    recovery_statuses, removal_kinds, room_accesses, room_info_placements, room_kinds,
+    room_memberships, room_preview_statuses, room_scopes, roster_statuses, send_keys,
+    setting_flags, settings_pages, source_encryptions, source_statuses, space_index_statuses,
+    theme_choices, upgrade_links, user_message_kinds, variant_named, verify_offers,
 };
 use crate::commands::messages::UserMessageKind;
 use crate::commands::view::{
@@ -32,7 +32,7 @@ use crate::domain::room::NotifyMode;
 use crate::domain::room_creation::{RoomAccess, RoomKind};
 use crate::domain::room_info::MemberRole;
 use crate::domain::room_log::LogLevel;
-use crate::domain::settings::{MotionChoice, ThemeChoice};
+use crate::domain::settings::{MotionChoice, ReceiptVisibility, SendKey, SettingFlag, ThemeChoice};
 use crate::domain::sync::ConnectionStatus;
 use crate::domain::timeline::SourceEncryption;
 use crate::domain::user_info::{DeviceTrust, IdentityTrust, RoomMembership};
@@ -83,6 +83,11 @@ theme_choices!(enum_names val theme_choice ThemeChoice;);
 theme_choices!(variant_named theme_choice_named ThemeChoice;);
 motion_choices!(enum_names val motion_choice MotionChoice;);
 motion_choices!(variant_named motion_choice_named MotionChoice;);
+send_keys!(enum_names val send_key SendKey;);
+send_keys!(variant_named send_key_named SendKey;);
+receipt_visibilities!(enum_names val receipt_visibility ReceiptVisibility;);
+receipt_visibilities!(variant_named receipt_visibility_named ReceiptVisibility;);
+setting_flags!(variant_named setting_flag_named SettingFlag;);
 source_statuses!(enum_names ref source_status SourceState;);
 source_encryptions!(enum_names ref source_encryption SourceEncryption;);
 readers_statuses!(enum_names val readers_status ReadersStatus;);

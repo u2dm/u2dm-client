@@ -39,6 +39,10 @@ impl SettingsController {
         }
     }
 
+    pub(super) const fn values(&self) -> &Settings {
+        &self.values
+    }
+
     pub(super) fn open(&mut self) {
         if self.dialog.is_some() {
             return;

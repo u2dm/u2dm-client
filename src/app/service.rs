@@ -209,7 +209,7 @@ impl AppService {
         output: Arc<dyn AppOutputPort>,
     ) -> Self {
         let events = commands.events();
-        Self {
+        let mut service = Self {
             encryption: Encryption::new(
                 Arc::clone(&output),
                 events.clone(),
@@ -272,7 +272,9 @@ impl AppService {
             lifecycle: Lifecycle::new(),
             held_session: HeldSession::None,
             blocked: None,
-        }
+        };
+        service.spread_settings();
+        service
     }
 
     pub async fn run(

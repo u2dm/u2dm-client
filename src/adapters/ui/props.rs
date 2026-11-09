@@ -31,7 +31,7 @@ use crate::domain::presence::PresenceLine;
 use crate::domain::room::NotifyMode;
 use crate::domain::room_creation::RoomKind;
 use crate::domain::room_info::MemberRole;
-use crate::domain::settings::{MotionChoice, ThemeChoice};
+use crate::domain::settings::{MotionChoice, ReceiptVisibility, SendKey, ThemeChoice};
 use crate::domain::sync::ConnectionStatus;
 use crate::domain::timeline::{SourceEncryption, TimelineStatus};
 use crate::domain::user_info::{IdentityTrust, RoomMembership};

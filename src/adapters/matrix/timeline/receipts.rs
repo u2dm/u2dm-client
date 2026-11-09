@@ -7,8 +7,16 @@ use tokio::sync::watch;
 use tokio_util::task::AbortOnDropHandle;
 use tracing::Instrument;
 
+use crate::domain::settings::ReceiptVisibility;
+
+#[derive(Clone)]
+struct ReceiptTarget {
+    event_id: OwnedEventId,
+    visibility: ReceiptVisibility,
+}
+
 pub(in crate::adapters::matrix) struct ReceiptLane {
-    latest_target: watch::Sender<Option<OwnedEventId>>,
+    latest_target: watch::Sender<Option<ReceiptTarget>>,
     task: AbortOnDropHandle<()>,
 }
 
@@ -22,9 +30,12 @@ impl ReceiptLane {
         }
     }
 
-    pub(super) async fn mark_read(&self, timeline: &Timeline) {
+    pub(super) async fn mark_read(&self, timeline: &Timeline, visibility: ReceiptVisibility) {
         if let Some(event_id) = timeline.latest_event_id().await {
-            self.latest_target.send_replace(Some(event_id));
+            self.latest_target.send_replace(Some(ReceiptTarget {
+                event_id,
+                visibility,
+            }));
         }
     }
 
@@ -33,22 +44,35 @@ impl ReceiptLane {
     }
 }
 
+pub(in crate::adapters::matrix) fn read_up_to(
+    event_id: OwnedEventId,
+    visibility: ReceiptVisibility,
+) -> Receipts {
+    let receipts = Receipts::new().fully_read_marker(event_id.clone());
+    match visibility {
+        ReceiptVisibility::Public => receipts.public_read_receipt(event_id),
+        ReceiptVisibility::Private => receipts.private_read_receipt(event_id),
+    }
+}
+
 async fn send_in_order(
     timeline: Arc<Timeline>,
-    mut targets: watch::Receiver<Option<OwnedEventId>>,
+    mut targets: watch::Receiver<Option<ReceiptTarget>>,
 ) {
     while targets.changed().await.is_ok() {
         let target = targets.borrow_and_update().clone();
-        if let Some(event_id) = target {
-            send_receipts(&timeline, event_id).await;
+        if let Some(target) = target {
+            send_receipts(&timeline, target).await;
         }
     }
 }
 
-async fn send_receipts(timeline: &Timeline, event_id: OwnedEventId) {
-    let receipts = Receipts::new()
-        .public_read_receipt(event_id.clone())
-        .fully_read_marker(event_id.clone());
+async fn send_receipts(timeline: &Timeline, target: ReceiptTarget) {
+    let ReceiptTarget {
+        event_id,
+        visibility,
+    } = target;
+    let receipts = read_up_to(event_id.clone(), visibility);
     match timeline.send_multiple_receipts(receipts).await {
         Ok(()) => tracing::debug!(%event_id, "sent the read receipt"),
         Err(e) => tracing::warn!(%event_id, "failed to mark the room as read: {e}"),

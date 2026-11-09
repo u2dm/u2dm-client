@@ -1,6 +1,7 @@
 use crate::domain::media::{AudioKind, AudioMeta, ContentKey, ThumbnailOutcome};
 use crate::domain::message::{MessageEdit, TimelineMessage};
 use crate::domain::poll::{PollAction, PollDraft};
+use crate::domain::settings::ReceiptVisibility;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct UnreadAnchor {
@@ -176,7 +177,7 @@ impl TimelinePatch {
 pub enum TimelineCommand {
     PaginateBackwards,
     PaginateForwards,
-    MarkRead,
+    MarkRead(ReceiptVisibility),
     JumpTo(String),
     ToggleReaction {
         event_id: String,
@@ -217,7 +218,7 @@ impl TimelineCommand {
             | Self::EditPoll { .. } => true,
             Self::PaginateBackwards
             | Self::PaginateForwards
-            | Self::MarkRead
+            | Self::MarkRead(_)
             | Self::JumpTo(_)
             | Self::LocateAudio { .. }
             | Self::LocateSource { .. }

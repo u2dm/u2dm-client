@@ -147,8 +147,8 @@ async fn handle_timeline_command(
             PaginationDirection::Forwards,
             paginate_forwards(timeline).await,
         ),
-        TimelineCommand::MarkRead => {
-            ctx.receipts.mark_read(timeline).await;
+        TimelineCommand::MarkRead(visibility) => {
+            ctx.receipts.mark_read(timeline, visibility).await;
             return;
         }
         TimelineCommand::JumpTo(event_id) => {

@@ -14,6 +14,7 @@ use crate::commands::messages::UserMessage;
 use crate::commands::view::{RoomCard, RoomInfoPlacement, RoomInfoView, RoomMenuTarget, RosterRow};
 use crate::domain::room::{NotifyMode, Room, RoomId, Space};
 use crate::domain::room_info::{MemberQuery, RoomAbout};
+use crate::domain::settings::ReceiptVisibility;
 use crate::ports::matrix::RoomInfoPort;
 use crate::ports::output::AppOutputPort;
 
@@ -91,6 +92,7 @@ pub(super) struct RoomInfo {
     leaving: HashSet<RoomId>,
     marking: HashSet<RoomId>,
     links: LinkRequests,
+    receipts: ReceiptVisibility,
 }
 
 impl RoomInfo {
@@ -110,7 +112,12 @@ impl RoomInfo {
             leaving: HashSet::new(),
             marking: HashSet::new(),
             links: LinkRequests::default(),
+            receipts: ReceiptVisibility::default(),
         }
+    }
+
+    pub(super) const fn set_receipts(&mut self, receipts: ReceiptVisibility) {
+        self.receipts = receipts;
     }
 
     pub(super) fn open(&mut self, port: Arc<dyn RoomInfoPort>, room: Option<&Room>) {

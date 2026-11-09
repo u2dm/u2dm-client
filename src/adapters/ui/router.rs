@@ -11,7 +11,9 @@ pub(super) use self::drafts::{
     DraftVerdict, EditedRow, EditedText, edit_message, edit_poll, send_attachment, send_message,
     send_poll,
 };
-pub(super) use self::settings::{set_motion, set_theme, show_settings_page};
+pub(super) use self::settings::{
+    set_motion, set_receipts, set_send_key, set_setting_flag, set_theme, show_settings_page,
+};
 pub(super) use self::watches::{
     composer_changed, scroll_position, timeline_visibility, user_activity, window_focus,
 };

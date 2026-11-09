@@ -4,6 +4,8 @@ import { Icon, IconDisplay, IconSet } from "@lucide";
 import { TextSplice } from "../../../../types.slint";
 import { Actions } from "../../../../actions.slint";
 import { EmojiStore } from "../../../../emoji-store.slint";
+import { SendKey } from "../../../../enums.slint";
+import { SettingsView } from "../../../../views.slint";
 import { AppStyle, Fonts, IconSize, Metrics, Opacity, Radius, Size, Space } from "../../../../theme.slint";
 import { ClickArea, Interaction } from "../../../../components/a11y.slint";
 import { DotPulse } from "../../../../components/dot-pulse.slint";
@@ -178,6 +180,13 @@ export component ComposerField inherits Rectangle {
         }
     }
 
+    pure function sends-on(event: KeyEvent) -> bool {
+        if event.text != Key.Return {
+            return false;
+        }
+        return SettingsView.send-key == SendKey.ctrl-enter ? event.modifiers.control : !event.modifiers.shift;
+    }
+
     pure function is-paste(event: KeyEvent) -> bool {
         event.modifiers.control && !event.modifiers.shift && event.text == "v"
     }
@@ -234,7 +243,7 @@ export component ComposerField inherits Rectangle {
                     if root.key-captured(event) == EventResult.accept {
                         return accept;
                     }
-                    if event.text == Key.Return && !event.modifiers.shift {
+                    if root.sends-on(event) {
                         root.send();
                         return accept;
                     }

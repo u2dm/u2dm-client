@@ -16,6 +16,7 @@ use crate::domain::room::{NotifyMode, RoomId};
 use crate::domain::room_info::{
     MemberRole, Reader, RoomAbout, RosterMember, RosterSection, sort_roster,
 };
+use crate::domain::settings::ReceiptVisibility;
 use crate::domain::user_info::{
     GlobalProfile, IdentityTrust, IgnoreChange, Moderation, RoomMembership, UserId, UserProfile,
     UserTrust, localpart,
@@ -312,10 +313,10 @@ impl RoomInfoPort for DemoAuthed {
         Ok(())
     }
 
-    async fn mark_read(&self, room_id: &RoomId) -> Result<()> {
+    async fn mark_read(&self, room_id: &RoomId, visibility: ReceiptVisibility) -> Result<()> {
         room_info::pause().await;
         unavailable_if(room_info::scenario().read_fails, "marking rooms as read")?;
-        tracing::debug!(%room_id, "demo: marking a room as read");
+        tracing::debug!(%room_id, ?visibility, "demo: marking a room as read");
         self.change_lists(|lists| {
             lists.overrides.read.insert(room_id.to_string());
         });

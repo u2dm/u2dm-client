@@ -96,7 +96,9 @@ impl DemoAuthed {
         match command {
             TimelineCommand::PaginateBackwards => return Some(PaginationDirection::Backwards),
             TimelineCommand::PaginateForwards => return Some(PaginationDirection::Forwards),
-            TimelineCommand::MarkRead => {}
+            TimelineCommand::MarkRead(visibility) => {
+                tracing::debug!(?visibility, "demo: a read receipt goes out");
+            }
             TimelineCommand::JumpTo(event_id) => {
                 let target = self.loaded_row_of(&event_id);
                 drop(

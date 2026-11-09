@@ -1,0 +1,94 @@
+import { ChoiceGroup } from "../../../../components/choice-group.slint";
+import { Hairline } from "../../../../components/divider.slint";
+import { SwitchRow } from "../../../../components/switch-row.slint";
+import { SectionLabel } from "../../../../components/text-roles.slint";
+import { ReceiptVisibility, SendKey, SettingFlag } from "../../../../enums.slint";
+import { SettingsView } from "../../../../views.slint";
+import { Actions } from "../../../../actions.slint";
+import { SettingsWords } from "../../../../messages.slint";
+import { Space } from "../../../../theme.slint";
+import { PageHeader } from "./page-header.slint";
+
+export component MessagesPage inherits VerticalLayout {
+    callback back();
+    callback close();
+
+    pure function send-key-at(index: int) -> SendKey {
+        return index == 1 ? SendKey.ctrl-enter : SendKey.enter;
+    }
+
+    pure function receipts-at(index: int) -> ReceiptVisibility {
+        return index == 1 ? ReceiptVisibility.private : ReceiptVisibility.public;
+    }
+
+    spacing: Space.lg;
+
+    PageHeader {
+        title: @tr("Messages and privacy");
+        back => {
+            root.back();
+        }
+        close => {
+            root.close();
+        }
+    }
+
+    Hairline { }
+
+    SectionLabel {
+        text: @tr("SEND MESSAGES WITH");
+    }
+
+    ChoiceGroup {
+        label: @tr("Send messages with");
+        options: [
+            {
+                text: SettingsWords.send-key(SendKey.enter),
+                detail: SettingsWords.send-key-detail(SendKey.enter),
+            },
+            {
+                text: SettingsWords.send-key(SendKey.ctrl-enter),
+                detail: SettingsWords.send-key-detail(SendKey.ctrl-enter),
+            },
+        ];
+        selected: SettingsView.send-key == SendKey.ctrl-enter ? 1 : 0;
+        chose(index) => {
+            Actions.set-send-key({ choice: root.send-key-at(index) });
+        }
+    }
+
+    SectionLabel {
+        text: @tr("READ RECEIPTS");
+    }
+
+    ChoiceGroup {
+        label: @tr("Read receipts");
+        options: [
+            {
+                text: SettingsWords.receipts(ReceiptVisibility.public),
+                detail: SettingsWords.receipts-detail(ReceiptVisibility.public),
+            },
+            {
+                text: SettingsWords.receipts(ReceiptVisibility.private),
+                detail: SettingsWords.receipts-detail(ReceiptVisibility.private),
+            },
+        ];
+        selected: SettingsView.receipts == ReceiptVisibility.private ? 1 : 0;
+        chose(index) => {
+            Actions.set-receipts({ choice: root.receipts-at(index) });
+        }
+    }
+
+    SectionLabel {
+        text: @tr("PRIVACY");
+    }
+
+    SwitchRow {
+        text: @tr("Show when you are typing");
+        detail: @tr("People in the room see a typing notice");
+        on: SettingsView.typing-notices;
+        toggled(on) => {
+            Actions.set-setting-flag({ setting: SettingFlag.typing-notices, on: on });
+        }
+    }
+}

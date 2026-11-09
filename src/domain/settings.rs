@@ -15,20 +15,60 @@ pub enum MotionChoice {
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum SendKey {
+    #[default]
+    Enter,
+    CtrlEnter,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum ReceiptVisibility {
+    #[default]
+    Public,
+    Private,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SettingFlag {
+    TypingNotices,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct Appearance {
     pub theme: ThemeChoice,
     pub motion: MotionChoice,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Messaging {
+    pub send_key: SendKey,
+    pub receipts: ReceiptVisibility,
+    pub typing_notices: bool,
+}
+
+impl Default for Messaging {
+    fn default() -> Self {
+        Self {
+            send_key: SendKey::default(),
+            receipts: ReceiptVisibility::default(),
+            typing_notices: true,
+        }
+    }
+}
+
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Settings {
     pub appearance: Appearance,
+    pub messaging: Messaging,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum SettingChange {
     Theme(ThemeChoice),
     Motion(MotionChoice),
+    SendKey(SendKey),
+    Receipts(ReceiptVisibility),
+    Flag(SettingFlag, bool),
 }
 
 impl Settings {
@@ -36,6 +76,15 @@ impl Settings {
         match change {
             SettingChange::Theme(theme) => replaced(&mut self.appearance.theme, theme),
             SettingChange::Motion(motion) => replaced(&mut self.appearance.motion, motion),
+            SettingChange::SendKey(key) => replaced(&mut self.messaging.send_key, key),
+            SettingChange::Receipts(receipts) => replaced(&mut self.messaging.receipts, receipts),
+            SettingChange::Flag(flag, on) => replaced(self.flag_mut(flag), on),
+        }
+    }
+
+    const fn flag_mut(&mut self, flag: SettingFlag) -> &mut bool {
+        match flag {
+            SettingFlag::TypingNotices => &mut self.messaging.typing_notices,
         }
     }
 }

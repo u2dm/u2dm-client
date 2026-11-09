@@ -226,6 +226,12 @@ macro_rules! simple_callbacks {
             request(page "page" variant) SettingsCommand::ShowPage;
         on_set_theme "set-theme" set_theme request(choice "choice" variant) SettingsCommand::Change;
         on_set_motion "set-motion" set_motion request(choice "choice" variant) SettingsCommand::Change;
+        on_set_send_key "set-send-key" set_send_key request(choice "choice" variant)
+            SettingsCommand::Change;
+        on_set_receipts "set-receipts" set_receipts request(choice "choice" variant)
+            SettingsCommand::Change;
+        on_set_setting_flag "set-setting-flag" set_setting_flag
+            request(setting "setting" variant, on "on" flag) SettingsCommand::Change;
         on_open_account "open-account" open_account plain AccountCommand::OpenAccount;
         on_close_account "close-account" close_account plain AccountCommand::CloseAccount;
         on_show_account_overview "show-account-overview" show_account_overview plain
@@ -472,6 +478,7 @@ macro_rules! bool_props {
         EncryptionVerifiedSessions EncryptionView "EncryptionView" "verified-sessions" set_verified_sessions get_verified_sessions;
         EncryptionKeyStorageOff EncryptionView "EncryptionView" "key-storage-off" set_key_storage_off get_key_storage_off;
         SettingsVisible SettingsView "SettingsView" "visible" set_visible get_visible;
+        SettingsTypingNotices SettingsView "SettingsView" "typing-notices" set_typing_notices get_typing_notices;
         AccountVisible AccountView "AccountView" "visible" set_visible get_visible;
         AccountSessionsKnown AccountView "AccountView" "sessions-known" set_sessions_known get_sessions_known;
         AccountFactsKnown AccountView "AccountView" "facts-known" set_facts_known get_facts_known;
@@ -698,6 +705,10 @@ macro_rules! enum_props {
             AppearanceView "AppearanceView" "theme" set_theme get_theme;
         MotionChoice set_motion_choice(MotionChoice)
             Motion "Motion" "choice" set_choice get_choice;
+        SendKey set_send_key(SendKey)
+            SettingsView "SettingsView" "send-key" set_send_key get_send_key;
+        ReceiptVisibility set_receipt_visibility(ReceiptVisibility)
+            SettingsView "SettingsView" "receipts" set_receipts get_receipts;
         AccountStep set_account_step(&AccountStep)
             AccountView "AccountView" "step" set_step get_step;
         AccountActivity set_account_activity(AccountActivity)
@@ -1014,6 +1025,9 @@ macro_rules! slint_enums {
             settings_pages SettingsPage SettingsPage;
             theme_choices ThemeChoice ThemeChoice;
             motion_choices MotionChoice MotionChoice;
+            send_keys SendKey SendKey;
+            receipt_visibilities ReceiptVisibility ReceiptVisibility;
+            setting_flags SettingFlag SettingFlag;
             preview_kinds MessagePreviewKind PreviewKind;
             audio_kinds AudioKind AudioKind;
             service_kinds ServiceKind ServiceKind;
@@ -1660,6 +1674,7 @@ macro_rules! settings_pages {
     ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
         Overview   Overview   "overview";
         Appearance Appearance "appearance";
+        Messages   Messages   "messages";
     } };
 }
 pub(crate) use settings_pages;
@@ -1681,6 +1696,29 @@ macro_rules! motion_choices {
     } };
 }
 pub(crate) use motion_choices;
+
+macro_rules! send_keys {
+    ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
+        Enter     Enter    "enter";
+        CtrlEnter CtrlEnter "ctrl-enter";
+    } };
+}
+pub(crate) use send_keys;
+
+macro_rules! receipt_visibilities {
+    ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
+        Public  Public  "public";
+        Private Private "private";
+    } };
+}
+pub(crate) use receipt_visibilities;
+
+macro_rules! setting_flags {
+    ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
+        TypingNotices TypingNotices "typing-notices";
+    } };
+}
+pub(crate) use setting_flags;
 
 macro_rules! pending_moderations {
     ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*

@@ -22,11 +22,19 @@ pub(super) fn setting_change(name: &str, value: &str) -> Result<Driven, Rejected
     let change = match name {
         "theme" => names::theme_choice_named(value).map(SettingChange::Theme),
         "motion" => names::motion_choice_named(value).map(SettingChange::Motion),
-        _ => return Err(Rejected(format!("{name} is not a setting"))),
+        "send_key" => names::send_key_named(value).map(SettingChange::SendKey),
+        "receipts" => names::receipt_visibility_named(value).map(SettingChange::Receipts),
+        flag => setting_flag_change(flag, value)?,
     };
     change
         .map(|change| Driven::Command(SettingsCommand::Change(change).into()))
         .ok_or_else(|| Rejected(format!("{value} is not a value of {name}")))
+}
+
+fn setting_flag_change(name: &str, value: &str) -> Result<Option<SettingChange>, Rejected> {
+    let flag = names::setting_flag_named(name)
+        .ok_or_else(|| Rejected(format!("{name} is not a setting")))?;
+    Ok(value.parse().ok().map(|on| SettingChange::Flag(flag, on)))
 }
 
 pub(super) struct Target {

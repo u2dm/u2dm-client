@@ -177,9 +177,10 @@ impl RoomInfo {
             return;
         }
         let name = room.display_name.clone();
+        let receipts = self.receipts;
         self.actions.spawn_reporting(&self.events, async move {
             let outcome = ActionOutcome::of(
-                port.mark_read(&room_id).await,
+                port.mark_read(&room_id, receipts).await,
                 |e| tracing::warn!(%room_id, "failed to mark the room as read: {e}"),
             );
             let settled = RoomActionEvent::ReadSettled {

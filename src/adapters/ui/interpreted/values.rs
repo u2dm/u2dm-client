@@ -55,7 +55,7 @@ use crate::domain::room::NotifyMode;
 use crate::domain::room_creation::{RoomAccess, RoomKind};
 use crate::domain::room_info::MemberRole;
 use crate::domain::room_log::LogLevel;
-use crate::domain::settings::{MotionChoice, ThemeChoice};
+use crate::domain::settings::{MotionChoice, ReceiptVisibility, SendKey, SettingFlag, ThemeChoice};
 use crate::domain::sync::ConnectionStatus;
 use crate::domain::timeline::{SourceEncryption, TimelineStatus};
 use crate::domain::user_info::{DeviceTrust, IdentityTrust, RoomMembership};

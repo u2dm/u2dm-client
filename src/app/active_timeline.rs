@@ -14,6 +14,7 @@ use crate::commands::ui::TimelineVisibility;
 use crate::commands::view::Toast;
 use crate::domain::poll::{PollAction, PollDraft};
 use crate::domain::room::RoomId;
+use crate::domain::settings::ReceiptVisibility;
 use crate::domain::timeline::{
     AudioLookup, FailedSend, PaginationDirection, PaginationOutcome, TimelineAdvance,
     TimelineCommand, TimelineFocus, TimelinePatch, TimelineStatus, TimelineUpdate,
@@ -44,6 +45,7 @@ pub(super) struct ActiveTimeline {
     visibility: TimelineVisibility,
     receipt_withheld: bool,
     read_boundary: ReadBoundary,
+    receipts: ReceiptVisibility,
 }
 
 impl ActiveTimeline {
@@ -62,7 +64,12 @@ impl ActiveTimeline {
             visibility: TimelineVisibility::default(),
             receipt_withheld: false,
             read_boundary: ReadBoundary::Resolved,
+            receipts: ReceiptVisibility::default(),
         }
+    }
+
+    pub(super) const fn set_receipts(&mut self, receipts: ReceiptVisibility) {
+        self.receipts = receipts;
     }
 
     pub(super) async fn shutdown(&mut self) {
@@ -476,7 +483,7 @@ impl ActiveTimeline {
         };
         self.receipt_withheld = false;
         tracing::debug!("marking the room read");
-        if tx.send(TimelineCommand::MarkRead).is_err() {
+        if tx.send(TimelineCommand::MarkRead(self.receipts)).is_err() {
             tracing::debug!("timeline command channel closed");
         }
     }

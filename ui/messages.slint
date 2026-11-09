@@ -1,4 +1,4 @@
-import { CallCamera, CallDeviceKind, CallDeviceStatus, CallDeviceTrouble, CallHand, CallLinkState, CallMic, CallNotice, CallPhase, CallPreviewTrouble, CallReaction, CallRefusal, CallScreen, CallScreenRefusal, CallSheetPreview, CallTestPhase, CallTileState, Delivery, EmojiArt, MediaFailure, MotionChoice, PresenceLine, PreviewKind, RoomCallMark, ServiceKind, ShieldReason, ThemeChoice, UpgradeLink, UserMessageKind } from "./enums.slint";
+import { CallCamera, CallDeviceKind, CallDeviceStatus, CallDeviceTrouble, CallHand, CallLinkState, CallMic, CallNotice, CallPhase, CallPreviewTrouble, CallReaction, CallRefusal, CallScreen, CallScreenRefusal, CallSheetPreview, CallTestPhase, CallTileState, Delivery, EmojiArt, MediaFailure, MotionChoice, PresenceLine, PreviewKind, ReceiptVisibility, RoomCallMark, SendKey, ServiceKind, ShieldReason, ThemeChoice, UpgradeLink, UserMessageKind } from "./enums.slint";
 import { CallStates } from "./call-states.slint";
 import { CallPersonEntry, CallTileEntry } from "./types.slint";
 
@@ -1887,6 +1887,40 @@ export global SettingsWords {
             return @tr("Full");
         }
         return @tr("Follow system");
+    }
+
+    public pure function send-key(choice: SendKey) -> string {
+        if choice == SendKey.ctrl-enter {
+            return @tr("Ctrl+Enter");
+        }
+        return @tr("Enter");
+    }
+
+    public pure function send-key-detail(choice: SendKey) -> string {
+        if choice == SendKey.ctrl-enter {
+            return @tr("Enter starts a new line");
+        }
+        return @tr("Shift+Enter starts a new line");
+    }
+
+    public pure function receipts(choice: ReceiptVisibility) -> string {
+        if choice == ReceiptVisibility.private {
+            return @tr("Private");
+        }
+        return @tr("Public");
+    }
+
+    public pure function receipts-detail(choice: ReceiptVisibility) -> string {
+        if choice == ReceiptVisibility.private {
+            return @tr("Only your own sessions know what you have read");
+        }
+        return @tr("People in the room can see what you have read");
+    }
+
+    public pure function messages-summary(key: SendKey, receipts: ReceiptVisibility) -> string {
+        return receipts == ReceiptVisibility.private
+            ? @tr("{} sends, private read receipts", root.send-key(key))
+            : @tr("{} sends, public read receipts", root.send-key(key));
     }
 
     public pure function motion-detail(choice: MotionChoice) -> string {
