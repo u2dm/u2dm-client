@@ -70,6 +70,12 @@ impl Default for Stage {
 }
 
 impl Stage {
+    pub(super) fn following_speaker(on: bool) -> Self {
+        let mut stage = Self::default();
+        stage.follow_speaker(on);
+        stage
+    }
+
     pub(super) const fn self_view(&self) -> bool {
         self.self_view
     }

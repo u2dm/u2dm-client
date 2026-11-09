@@ -33,8 +33,9 @@ impl Sheet {
         video: bool,
         serial: i32,
         draft: Option<DeviceChoices>,
+        camera_on_join: bool,
     ) -> Self {
-        let proposed = proposed_media(room);
+        let proposed = proposed_media(room, video, camera_on_join);
         Self {
             room_id: room.id.clone(),
             serial,
@@ -82,9 +83,10 @@ impl Sheet {
     }
 }
 
-fn proposed_media(room: &Room) -> MediaChoice {
+fn proposed_media(room: &Room, video: bool, camera_on_join: bool) -> MediaChoice {
+    let call = room.call.as_deref();
     MediaChoice {
-        microphone: room.is_direct || room.call.is_none(),
-        camera: false,
+        microphone: room.is_direct || call.is_none(),
+        camera: camera_on_join && call.map_or(video, RoomCall::is_video),
     }
 }

@@ -40,7 +40,13 @@ impl Calls {
         self.stop_previous_sheets_test();
         self.sheet_serial = self.sheet_serial.wrapping_add(1);
         let draft = self.joined.is_some().then(|| self.devices.clone());
-        self.sheet = Some(Sheet::open(room, video, self.sheet_serial, draft));
+        self.sheet = Some(Sheet::open(
+            room,
+            video,
+            self.sheet_serial,
+            draft,
+            self.preferences.camera_on_join,
+        ));
         if self.joined.is_none() {
             self.list_devices();
         }
@@ -337,14 +343,14 @@ impl Calls {
                 return;
             };
             tracing::info!(%kind, "choosing a call device for the next call");
-            *self.devices.of_mut(kind) = choice;
+            self.adopt_device(kind, choice);
             self.publish(directory);
             return;
         };
         let span = joined.span.clone();
         let _in_call = span.enter();
         if let Some(choice) = joined.use_device(kind, key) {
-            *self.devices.of_mut(kind) = choice;
+            self.adopt_device(kind, choice);
         }
         self.publish(directory);
     }

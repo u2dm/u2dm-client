@@ -31,7 +31,7 @@ use self::media::MEDIA_TURN_SHARES;
 use self::offer::Transports;
 use self::preview::Preview;
 use self::sheet::Sheet;
-use super::event::{AppEvent, CallEvent};
+use super::event::{AppEvent, CallEvent, SettingsEvent};
 use super::input::EventSender;
 use super::room_directory::RoomDirectory;
 use super::show_toast;
@@ -39,12 +39,12 @@ use super::task_group::TaskGroup;
 use crate::commands::messages::{UserMessage, UserMessageKind};
 use crate::commands::ui::WindowFocus;
 use crate::commands::view::{CallFailure, CallView, JoinRefusal, Toast};
-use crate::domain::call::devices::{DeviceChoices, DeviceLists};
+use crate::domain::call::devices::{DeviceChoice, DeviceChoices, DeviceKind, DeviceLists};
 use crate::domain::call::media::MediaChoice;
 use crate::domain::call::ring::{CallSignal, OUTGOING_RING_LIFETIME_MS, Ring};
 use crate::domain::call::{CallIntent, DeviceId, MemberKey};
 use crate::domain::room::{Room, RoomId, UnreadFlags};
-use crate::domain::settings::Alerts;
+use crate::domain::settings::{Alerts, CallPreferences};
 use crate::domain::user_info::UserId;
 use crate::ports::call::CallMediaPort;
 use crate::ports::matrix::{CallSignalPort, RtcMembershipPort};
@@ -169,6 +169,7 @@ pub(super) struct Calls {
     own: Option<Own>,
     focus: WindowFocus,
     alerts: Alerts,
+    preferences: CallPreferences,
     incoming: Option<Incoming>,
     rung: VecDeque<Ring>,
     serial: u64,
@@ -204,6 +205,7 @@ impl Calls {
         output: Arc<dyn AppOutputPort>,
         events: EventSender,
         media: Option<Arc<dyn CallMediaPort>>,
+        devices: DeviceChoices,
     ) -> Self {
         Self {
             output,
@@ -218,6 +220,7 @@ impl Calls {
             own: None,
             focus: WindowFocus::default(),
             alerts: Alerts::default(),
+            preferences: CallPreferences::default(),
             incoming: None,
             rung: VecDeque::new(),
             serial: 0,
@@ -240,7 +243,7 @@ impl Calls {
             testing: None,
             tests: 0,
             test_tasks: TaskGroup::new("call-device-test"),
-            devices: DeviceChoices::default(),
+            devices,
             listed: None,
             listings: 0,
             generation: 0,
@@ -330,6 +333,34 @@ impl Calls {
         }
         self.alerts = alerts;
         self.publish(directory);
+    }
+
+    pub(super) fn set_preferences(&mut self, preferences: CallPreferences) {
+        let remembers_again = preferences.remember_devices && !self.preferences.remember_devices;
+        self.preferences = preferences;
+        if remembers_again {
+            self.offer_devices_to_remember();
+        }
+    }
+
+    fn adopt_device(&mut self, kind: DeviceKind, choice: DeviceChoice) {
+        let mut devices = self.devices.clone();
+        *devices.of_mut(kind) = choice;
+        self.adopt_devices(devices);
+    }
+
+    fn adopt_devices(&mut self, devices: DeviceChoices) {
+        if self.devices != devices {
+            self.devices = devices;
+            self.offer_devices_to_remember();
+        }
+    }
+
+    fn offer_devices_to_remember(&self) {
+        let chosen = SettingsEvent::DevicesChosen(Box::new(self.devices.clone()));
+        if self.events.send(AppEvent::Settings(chosen)).is_err() {
+            tracing::debug!("the app stopped before remembering the call devices");
+        }
     }
 
     pub(super) fn selected(&mut self, room_id: Option<&RoomId>, directory: &RoomDirectory) {

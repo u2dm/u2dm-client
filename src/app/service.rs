@@ -209,6 +209,7 @@ impl AppService {
         output: Arc<dyn AppOutputPort>,
     ) -> Self {
         let events = commands.events();
+        let remembered_devices = loaded_settings.remembered_devices.clone();
         let mut service = Self {
             encryption: Encryption::new(
                 Arc::clone(&output),
@@ -249,7 +250,12 @@ impl AppService {
             invite_people: InvitePeople::new(Arc::clone(&output), events.clone()),
             typing: Typing::new(Arc::clone(&output), events.clone()),
             presence: Presence::new(Arc::clone(&output), events.clone()),
-            calls: Calls::new(Arc::clone(&output), events.clone(), call_media),
+            calls: Calls::new(
+                Arc::clone(&output),
+                events.clone(),
+                call_media,
+                remembered_devices,
+            ),
             notifications: DesktopNotifications::new(Arc::clone(&output), events.clone()),
             room_info: RoomInfo::new(Arc::clone(&output), events.clone()),
             user_info: UserInfo::new(Arc::clone(&output), events.clone()),

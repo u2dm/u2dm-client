@@ -98,7 +98,7 @@ use crate::domain::room_creation::{RoomAccess, RoomKind};
 use crate::domain::room_info::MemberRole;
 use crate::domain::room_log::LogLevel;
 use crate::domain::settings::{
-    MotionChoice, ReceiptVisibility, SendKey, SettingFlag, Settings, ThemeChoice,
+    CallLayout, MotionChoice, ReceiptVisibility, SendKey, SettingFlag, Settings, ThemeChoice,
 };
 use crate::domain::sync::ConnectionStatus;
 use crate::domain::timeline::{SourceEncryption, TimelineStatus};

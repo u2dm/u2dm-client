@@ -1,4 +1,4 @@
-import { Delivery, LoginPhase, MessageKind, PollPhase, ReactionSend, RoomInfoPlacement, Shield } from "./enums.slint";
+import { CallLayout, Delivery, LoginPhase, MessageKind, PollPhase, ReactionSend, RoomInfoPlacement, Shield } from "./enums.slint";
 import { AccountView, AttachmentView, CallView, CreateRoomView, DirectoryView, EncryptionView, InvitePeopleView, InviteView, LeaveSpaceView, LoginView, LogoutView, ReadersView, RemovalView, RoomInfoView, RoomLogView, RoomMenuView, RoomPreviewView, RoomView, SettingsView, SourceView, UserInfoView, VerificationView, VideoView, WindowView } from "./views.slint";
 import { Actions } from "./actions.slint";
 import { EditedMessage, MessageEntry, ReactionEntry, ReplyDraft } from "./types.slint";
@@ -292,10 +292,23 @@ export global CallPanel {
         root.turn = CallSurface.chat;
     }
 
+    pure function starting-mode(video: bool) -> CallMode {
+        if SettingsView.call-layout == CallLayout.call-and-chat {
+            return CallMode.call-and-chat;
+        }
+        if SettingsView.call-layout == CallLayout.call-only {
+            return CallMode.call-only;
+        }
+        if SettingsView.call-layout == CallLayout.chat-only {
+            return CallMode.chat-only;
+        }
+        return video ? CallMode.call-and-chat : CallMode.chat-only;
+    }
+
     public function begin(video: bool) {
         root.take-over();
-        root.mode = video ? CallMode.call-and-chat : CallMode.chat-only;
-        root.last-call-mode = CallMode.call-and-chat;
+        root.mode = root.starting-mode(video);
+        root.last-call-mode = root.mode == CallMode.call-only ? CallMode.call-only : CallMode.call-and-chat;
         root.turn = CallSurface.call;
         root.fits-videos = false;
         root.hides-strip = false;

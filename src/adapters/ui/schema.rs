@@ -230,6 +230,8 @@ macro_rules! simple_callbacks {
             SettingsCommand::Change;
         on_set_receipts "set-receipts" set_receipts request(choice "choice" variant)
             SettingsCommand::Change;
+        on_set_call_layout "set-call-layout" set_call_layout request(choice "choice" variant)
+            SettingsCommand::Change;
         on_set_setting_flag "set-setting-flag" set_setting_flag
             request(setting "setting" variant, on "on" flag) SettingsCommand::Change;
         on_open_account "open-account" open_account plain AccountCommand::OpenAccount;
@@ -485,6 +487,9 @@ macro_rules! bool_props {
         SettingsHideMessageText SettingsView "SettingsView" "hide-message-text" set_hide_message_text get_hide_message_text;
         SettingsNotificationSound SettingsView "SettingsView" "notification-sound" set_notification_sound get_notification_sound;
         SettingsRingtone SettingsView "SettingsView" "ringtone" set_ringtone get_ringtone;
+        SettingsRememberDevices SettingsView "SettingsView" "remember-devices" set_remember_devices get_remember_devices;
+        SettingsCameraOnJoin SettingsView "SettingsView" "camera-on-join" set_camera_on_join get_camera_on_join;
+        SettingsFollowSpeaker SettingsView "SettingsView" "follow-speaker" set_follow_speaker get_follow_speaker;
         AccountVisible AccountView "AccountView" "visible" set_visible get_visible;
         AccountSessionsKnown AccountView "AccountView" "sessions-known" set_sessions_known get_sessions_known;
         AccountFactsKnown AccountView "AccountView" "facts-known" set_facts_known get_facts_known;
@@ -715,6 +720,8 @@ macro_rules! enum_props {
             SettingsView "SettingsView" "send-key" set_send_key get_send_key;
         ReceiptVisibility set_receipt_visibility(ReceiptVisibility)
             SettingsView "SettingsView" "receipts" set_receipts get_receipts;
+        CallLayout set_call_layout(CallLayout)
+            SettingsView "SettingsView" "call-layout" set_call_layout get_call_layout;
         AccountStep set_account_step(&AccountStep)
             AccountView "AccountView" "step" set_step get_step;
         AccountActivity set_account_activity(AccountActivity)
@@ -1033,6 +1040,7 @@ macro_rules! slint_enums {
             motion_choices MotionChoice MotionChoice;
             send_keys SendKey SendKey;
             receipt_visibilities ReceiptVisibility ReceiptVisibility;
+            call_layouts CallLayout CallLayout;
             setting_flags SettingFlag SettingFlag;
             preview_kinds MessagePreviewKind PreviewKind;
             audio_kinds AudioKind AudioKind;
@@ -1682,6 +1690,7 @@ macro_rules! settings_pages {
         Appearance Appearance "appearance";
         Messages   Messages   "messages";
         Notifications Notifications "notifications";
+        Calls      Calls      "calls";
     } };
 }
 pub(crate) use settings_pages;
@@ -1720,6 +1729,16 @@ macro_rules! receipt_visibilities {
 }
 pub(crate) use receipt_visibilities;
 
+macro_rules! call_layouts {
+    ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
+        Automatic   Automatic   "automatic";
+        CallAndChat CallAndChat "call-and-chat";
+        CallOnly    CallOnly    "call-only";
+        ChatOnly    ChatOnly    "chat-only";
+    } };
+}
+pub(crate) use call_layouts;
+
 macro_rules! setting_flags {
     ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
         TypingNotices TypingNotices "typing-notices";
@@ -1728,6 +1747,9 @@ macro_rules! setting_flags {
         HideMessageText HideMessageText "hide-message-text";
         NotificationSound NotificationSound "notification-sound";
         Ringtone Ringtone "ringtone";
+        RememberDevices RememberDevices "remember-devices";
+        CameraOnJoin CameraOnJoin "camera-on-join";
+        FollowSpeaker FollowSpeaker "follow-speaker";
     } };
 }
 pub(crate) use setting_flags;

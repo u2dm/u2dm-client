@@ -12,7 +12,8 @@ pub(super) use self::drafts::{
     send_poll,
 };
 pub(super) use self::settings::{
-    set_motion, set_receipts, set_send_key, set_setting_flag, set_theme, show_settings_page,
+    set_call_layout, set_motion, set_receipts, set_send_key, set_setting_flag, set_theme,
+    show_settings_page,
 };
 pub(super) use self::watches::{
     composer_changed, scroll_position, timeline_visibility, user_activity, window_focus,

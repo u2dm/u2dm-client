@@ -144,7 +144,7 @@ impl Calls {
         self.reaction_wake = None;
         if let Some(draft) = self.sheet.as_mut().and_then(|sheet| sheet.draft.take()) {
             tracing::info!("the call sheet's devices are chosen, now that no call runs");
-            self.devices = draft;
+            self.adopt_devices(draft);
             self.list_devices();
         }
         if let Some(ended) = ended {

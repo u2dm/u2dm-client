@@ -1,3 +1,5 @@
+use crate::domain::call::devices::DeviceChoices;
+
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum ThemeChoice {
     #[default]
@@ -28,6 +30,15 @@ pub enum ReceiptVisibility {
     Private,
 }
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum CallLayout {
+    #[default]
+    Automatic,
+    CallAndChat,
+    CallOnly,
+    ChatOnly,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum SettingFlag {
     TypingNotices,
@@ -36,6 +47,9 @@ pub enum SettingFlag {
     HideMessageText,
     NotificationSound,
     Ringtone,
+    RememberDevices,
+    CameraOnJoin,
+    FollowSpeaker,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -83,11 +97,32 @@ impl Default for Alerts {
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct CallPreferences {
+    pub remember_devices: bool,
+    pub camera_on_join: bool,
+    pub layout: CallLayout,
+    pub follow_speaker: bool,
+}
+
+impl Default for CallPreferences {
+    fn default() -> Self {
+        Self {
+            remember_devices: true,
+            camera_on_join: false,
+            layout: CallLayout::default(),
+            follow_speaker: false,
+        }
+    }
+}
+
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Settings {
     pub appearance: Appearance,
     pub messaging: Messaging,
     pub alerts: Alerts,
+    pub calls: CallPreferences,
+    pub remembered_devices: DeviceChoices,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -96,6 +131,7 @@ pub enum SettingChange {
     Motion(MotionChoice),
     SendKey(SendKey),
     Receipts(ReceiptVisibility),
+    CallLayout(CallLayout),
     Flag(SettingFlag, bool),
 }
 
@@ -106,8 +142,19 @@ impl Settings {
             SettingChange::Motion(motion) => replaced(&mut self.appearance.motion, motion),
             SettingChange::SendKey(key) => replaced(&mut self.messaging.send_key, key),
             SettingChange::Receipts(receipts) => replaced(&mut self.messaging.receipts, receipts),
-            SettingChange::Flag(flag, on) => replaced(self.flag_mut(flag), on),
+            SettingChange::CallLayout(layout) => replaced(&mut self.calls.layout, layout),
+            SettingChange::Flag(flag, on) => {
+                let changed = replaced(self.flag_mut(flag), on);
+                if !self.calls.remember_devices {
+                    self.remembered_devices = DeviceChoices::default();
+                }
+                changed
+            }
         }
+    }
+
+    pub fn remember_devices(&mut self, devices: DeviceChoices) -> bool {
+        self.calls.remember_devices && replaced(&mut self.remembered_devices, devices)
     }
 
     const fn flag_mut(&mut self, flag: SettingFlag) -> &mut bool {
@@ -118,6 +165,9 @@ impl Settings {
             SettingFlag::HideMessageText => &mut self.alerts.hide_message_text,
             SettingFlag::NotificationSound => &mut self.alerts.notification_sound,
             SettingFlag::Ringtone => &mut self.alerts.ringtone,
+            SettingFlag::RememberDevices => &mut self.calls.remember_devices,
+            SettingFlag::CameraOnJoin => &mut self.calls.camera_on_join,
+            SettingFlag::FollowSpeaker => &mut self.calls.follow_speaker,
         }
     }
 }

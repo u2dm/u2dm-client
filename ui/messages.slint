@@ -1,4 +1,4 @@
-import { CallCamera, CallDeviceKind, CallDeviceStatus, CallDeviceTrouble, CallHand, CallLinkState, CallMic, CallNotice, CallPhase, CallPreviewTrouble, CallReaction, CallRefusal, CallScreen, CallScreenRefusal, CallSheetPreview, CallTestPhase, CallTileState, Delivery, EmojiArt, MediaFailure, MotionChoice, PresenceLine, PreviewKind, ReceiptVisibility, RoomCallMark, SendKey, ServiceKind, ShieldReason, ThemeChoice, UpgradeLink, UserMessageKind } from "./enums.slint";
+import { CallCamera, CallDeviceKind, CallDeviceStatus, CallDeviceTrouble, CallHand, CallLayout, CallLinkState, CallMic, CallNotice, CallPhase, CallPreviewTrouble, CallReaction, CallRefusal, CallScreen, CallScreenRefusal, CallSheetPreview, CallTestPhase, CallTileState, Delivery, EmojiArt, MediaFailure, MotionChoice, PresenceLine, PreviewKind, ReceiptVisibility, RoomCallMark, SendKey, ServiceKind, ShieldReason, ThemeChoice, UpgradeLink, UserMessageKind } from "./enums.slint";
 import { CallStates } from "./call-states.slint";
 import { CallPersonEntry, CallTileEntry } from "./types.slint";
 
@@ -1925,6 +1925,23 @@ export global SettingsWords {
         return receipts == ReceiptVisibility.private
             ? @tr("{} sends, private read receipts", root.send-key(key))
             : @tr("{} sends, public read receipts", root.send-key(key));
+    }
+
+    public pure function call-layout(choice: CallLayout) -> string {
+        if choice == CallLayout.call-and-chat {
+            return @tr("Call and chat");
+        }
+        if choice == CallLayout.call-only {
+            return @tr("Call only");
+        }
+        if choice == CallLayout.chat-only {
+            return @tr("Chat only");
+        }
+        return @tr("Automatic");
+    }
+
+    public pure function calls-summary(layout: CallLayout) -> string {
+        return @tr("Layout: {}", root.call-layout(layout));
     }
 
     public pure function notifications-summary(shown: bool, hides-text: bool) -> string {

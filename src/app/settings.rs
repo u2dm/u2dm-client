@@ -8,6 +8,7 @@ use super::show_toast;
 use super::task_group::TaskGroup;
 use crate::commands::messages::{UserMessage, UserMessageKind};
 use crate::commands::view::{SettingsDialog, SettingsPage, SettingsView, Toast};
+use crate::domain::call::devices::DeviceChoices;
 use crate::domain::settings::{SettingChange, Settings};
 use crate::ports::output::AppOutputPort;
 use crate::ports::settings::SettingsPort;
@@ -77,10 +78,14 @@ impl SettingsController {
             return;
         }
         tracing::info!(?change, "a setting changed");
-        if let Some(lane) = &self.lane {
-            lane.send_replace(self.values.clone());
+        self.save_and_publish();
+    }
+
+    pub(super) fn remember_devices(&mut self, devices: DeviceChoices) {
+        if self.values.remember_devices(devices) {
+            tracing::debug!("remembering the call devices you chose");
+            self.save_and_publish();
         }
-        self.publish();
     }
 
     pub(super) fn save_failed(&self) {
@@ -98,6 +103,13 @@ impl SettingsController {
     pub(super) async fn shutdown(&mut self) {
         self.lane = None;
         self.saves.drain().await;
+    }
+
+    fn save_and_publish(&self) {
+        if let Some(lane) = &self.lane {
+            lane.send_replace(self.values.clone());
+        }
+        self.publish();
     }
 
     fn view(&self) -> SettingsView {

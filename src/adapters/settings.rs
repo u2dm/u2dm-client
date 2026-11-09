@@ -7,8 +7,10 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use super::private_fs;
+use crate::domain::call::devices::{ByKind, DeviceChoice, DeviceKey, MediaDevice};
 use crate::domain::settings::{
-    Alerts, Appearance, Messaging, MotionChoice, ReceiptVisibility, SendKey, Settings, ThemeChoice,
+    Alerts, Appearance, CallLayout, CallPreferences, Messaging, MotionChoice, ReceiptVisibility,
+    SendKey, Settings, ThemeChoice,
 };
 use crate::error::Result;
 use crate::ports::settings::SettingsPort;
@@ -56,6 +58,13 @@ stored_choice!(StoredReceipts ReceiptVisibility;
     Private "private";
 );
 
+stored_choice!(StoredCallLayout CallLayout;
+    Automatic "automatic";
+    CallAndChat "call-and-chat";
+    CallOnly "call-only";
+    ChatOnly "chat-only";
+);
+
 #[derive(Default, Deserialize, Serialize)]
 struct StoredAppearance {
     #[serde(default, deserialize_with = "lenient")]
@@ -88,6 +97,48 @@ struct StoredAlerts {
     ringtone: Option<bool>,
 }
 
+#[derive(Deserialize, Serialize)]
+struct StoredDevice {
+    key: String,
+    name: String,
+}
+
+#[derive(Default, Deserialize, Serialize)]
+struct StoredDevices {
+    #[serde(
+        default,
+        deserialize_with = "lenient",
+        skip_serializing_if = "Option::is_none"
+    )]
+    microphone: Option<StoredDevice>,
+    #[serde(
+        default,
+        deserialize_with = "lenient",
+        skip_serializing_if = "Option::is_none"
+    )]
+    speaker: Option<StoredDevice>,
+    #[serde(
+        default,
+        deserialize_with = "lenient",
+        skip_serializing_if = "Option::is_none"
+    )]
+    camera: Option<StoredDevice>,
+}
+
+#[derive(Default, Deserialize, Serialize)]
+struct StoredCalls {
+    #[serde(default, deserialize_with = "lenient")]
+    remember_devices: Option<bool>,
+    #[serde(default, deserialize_with = "lenient")]
+    camera_on_join: Option<bool>,
+    #[serde(default, deserialize_with = "lenient")]
+    layout: Option<StoredCallLayout>,
+    #[serde(default, deserialize_with = "lenient")]
+    follow_speaker: Option<bool>,
+    #[serde(default, deserialize_with = "lenient")]
+    devices: Option<StoredDevices>,
+}
+
 #[derive(Default, Deserialize, Serialize)]
 struct StoredSettings {
     #[serde(default, deserialize_with = "lenient")]
@@ -96,6 +147,8 @@ struct StoredSettings {
     messaging: Option<StoredMessaging>,
     #[serde(default, deserialize_with = "lenient")]
     alerts: Option<StoredAlerts>,
+    #[serde(default, deserialize_with = "lenient")]
+    calls: Option<StoredCalls>,
 }
 
 fn lenient<'de, D, T>(deserializer: D) -> result::Result<Option<T>, D::Error>
@@ -110,6 +163,25 @@ where
             tracing::warn!("a setting could not be read, so it keeps its default: {e}");
             None
         }
+    })
+}
+
+fn stored_device(choice: &DeviceChoice) -> Option<StoredDevice> {
+    match choice {
+        DeviceChoice::Default => None,
+        DeviceChoice::Device(device) => Some(StoredDevice {
+            key: device.key.to_string(),
+            name: device.name.clone(),
+        }),
+    }
+}
+
+fn device_choice(stored: Option<StoredDevice>) -> DeviceChoice {
+    stored.map_or(DeviceChoice::Default, |device| {
+        DeviceChoice::Device(MediaDevice {
+            key: DeviceKey::new(device.key),
+            name: device.name,
+        })
     })
 }
 
@@ -131,6 +203,14 @@ impl From<&Settings> for StoredSettings {
                     notification_sound,
                     ringtone,
                 },
+            calls:
+                CallPreferences {
+                    remember_devices,
+                    camera_on_join,
+                    layout,
+                    follow_speaker,
+                },
+            ref remembered_devices,
         } = *settings;
         Self {
             appearance: Some(StoredAppearance {
@@ -149,6 +229,17 @@ impl From<&Settings> for StoredSettings {
                 notification_sound: Some(notification_sound),
                 ringtone: Some(ringtone),
             }),
+            calls: Some(StoredCalls {
+                remember_devices: Some(remember_devices),
+                camera_on_join: Some(camera_on_join),
+                layout: Some(layout.into()),
+                follow_speaker: Some(follow_speaker),
+                devices: Some(StoredDevices {
+                    microphone: stored_device(&remembered_devices.microphone),
+                    speaker: stored_device(&remembered_devices.speaker),
+                    camera: stored_device(&remembered_devices.camera),
+                }),
+            }),
         }
     }
 }
@@ -159,6 +250,14 @@ impl From<StoredSettings> for Settings {
         let appearance = stored.appearance.unwrap_or_default();
         let messaging = stored.messaging.unwrap_or_default();
         let alerts = stored.alerts.unwrap_or_default();
+        let calls = stored.calls.unwrap_or_default();
+        let remember_devices = calls
+            .remember_devices
+            .unwrap_or(defaults.calls.remember_devices);
+        let devices = calls
+            .devices
+            .filter(|_| remember_devices)
+            .unwrap_or_default();
         Self {
             appearance: Appearance {
                 theme: appearance
@@ -193,6 +292,21 @@ impl From<StoredSettings> for Settings {
                     .notification_sound
                     .unwrap_or(defaults.alerts.notification_sound),
                 ringtone: alerts.ringtone.unwrap_or(defaults.alerts.ringtone),
+            },
+            calls: CallPreferences {
+                remember_devices,
+                camera_on_join: calls
+                    .camera_on_join
+                    .unwrap_or(defaults.calls.camera_on_join),
+                layout: calls.layout.map_or(defaults.calls.layout, Into::into),
+                follow_speaker: calls
+                    .follow_speaker
+                    .unwrap_or(defaults.calls.follow_speaker),
+            },
+            remembered_devices: ByKind {
+                microphone: device_choice(devices.microphone),
+                speaker: device_choice(devices.speaker),
+                camera: device_choice(devices.camera),
             },
         }
     }

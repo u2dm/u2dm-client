@@ -75,6 +75,7 @@ scenario_env() {
     settings-messages) echo 'U2DM_DEMO_WINDOW=900x760' ;;
     settings-presence) echo 'U2DM_DEMO_PRESENCE=partners,status U2DM_DEMO_WINDOW=900x760' ;;
     settings-notifications) echo 'U2DM_DEMO_NOTIFY=group,dm,mention U2DM_DEMO_WINDOW=900x760' ;;
+    settings-calls) echo 'U2DM_DEMO_CALLS=active,speeches U2DM_DEMO_WINDOW=900x760' ;;
     mentions)        echo 'U2DM_DEMO_ROOM_INFO=slow' ;;
     room-mention)    echo 'U2DM_DEMO_WINDOW=900x760' ;;
     display-names)   echo 'U2DM_DEMO_NAMES=all' ;;
@@ -1126,6 +1127,18 @@ scenario_steps() {
       echo 'sleep 1'
       echo '{"op":"select_subspace","subspace_id":"!space-rust-web:demo.local"}'
       echo 'sleep 2' ;;
+    settings-calls)
+      echo '{"op":"select_room","room_id":"!design:demo.local"}'
+      echo 'sleep 1'
+      echo '{"op":"set_setting","name":"camera-on-join","value":"true"}'
+      echo '{"op":"set_setting","name":"follow-speaker","value":"true"}'
+      echo '{"op":"set_setting","name":"call_layout","value":"call-only"}'
+      echo '{"op":"open_call_sheet","room_id":"!design:demo.local","video":true}'
+      echo 'sleep 2'
+      echo '{"op":"use_call_device","kind":"microphone","key":"USB Headset"}'
+      echo 'sleep 1'
+      echo '{"op":"join_call","room_id":"!design:demo.local","microphone":true,"camera":true}'
+      echo 'sleep 4' ;;
     settings-notifications)
       echo '{"op":"window_focus","focused":false}'
       echo '{"op":"set_setting","name":"hide-message-text","value":"true"}'
@@ -1256,6 +1269,7 @@ scenario_note() {
     readers)         echo 'in !rust, the 123 readers of an older message load slowly, then the 121 readers of your newest message page in fifty at a time' ;;
     room-search)     echo 'in All Rooms, "design" lists the Design Team room, then the Design space' ;;
     room-search-open) echo '"web" matches only the Web space under Rust (Web Accessibility is too deep to open); opening it selects Rust and its Web subspace' ;;
+    settings-calls) echo 'Camera on for video calls proposes the camera and previews it in the sheet (/state .call.sheet: camera, preview); the microphone chosen there is remembered (.settings.values.remembered_devices), and the call opens as Call only following the speaker (.call.active.follows_speaker)' ;;
     settings-notifications) echo 'with the window unfocused and Hide message text on, each arrival notifies as "New message" (the log: demo: a desktop notification shows); Show notifications off withdraws them all while the rooms stay unread (notifications, directory.attention)' ;;
     settings-presence) echo 'Share your presence off says offline once with your status kept, and on again says online at once (the log: demo: presence reaches the homeserver)' ;;
     settings-messages) echo 'Messages and privacy: Ctrl+Enter sends, read receipts go private, typing notices stop (settings.values; the demo logs each receipt with its visibility)' ;;
@@ -1411,7 +1425,8 @@ names() {
     encryption-unverified encryption-recovery-key encryption-new-account encryption-setup-refused \
     identity-reset identity-reset-oauth room-keys \
     account-sessions account-password account-sso account-oauth account-limits account-deactivate \
-    logout-warning settings-appearance settings-messages settings-presence settings-notifications
+    logout-warning settings-appearance settings-messages settings-presence settings-notifications \
+    settings-calls
 }
 
 cmd_list() {

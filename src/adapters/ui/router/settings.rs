@@ -1,13 +1,13 @@
 use super::Tx;
 use crate::adapters::ui::props::send_command;
 use crate::adapters::ui::schema::{
-    motion_choices, receipt_visibilities, send_keys, setting_flags, settings_pages, theme_choices,
-    variant_named,
+    call_layouts, motion_choices, receipt_visibilities, send_keys, setting_flags, settings_pages,
+    theme_choices, variant_named,
 };
 use crate::commands::ui::SettingsCommand;
 use crate::commands::view::SettingsPage;
 use crate::domain::settings::{
-    MotionChoice, ReceiptVisibility, SendKey, SettingChange, SettingFlag, ThemeChoice,
+    CallLayout, MotionChoice, ReceiptVisibility, SendKey, SettingChange, SettingFlag, ThemeChoice,
 };
 
 settings_pages!(variant_named settings_page_named SettingsPage;);
@@ -15,6 +15,7 @@ theme_choices!(variant_named theme_choice_named ThemeChoice;);
 motion_choices!(variant_named motion_choice_named MotionChoice;);
 send_keys!(variant_named send_key_named SendKey;);
 receipt_visibilities!(variant_named receipt_visibility_named ReceiptVisibility;);
+call_layouts!(variant_named call_layout_named CallLayout;);
 setting_flags!(variant_named setting_flag_named SettingFlag;);
 
 pub fn show_settings_page(tx: &Tx, page: &str) {
@@ -57,6 +58,17 @@ pub fn set_receipts(tx: &Tx, choice: &str) {
     send_command(
         tx,
         SettingsCommand::Change(SettingChange::Receipts(receipts)),
+    );
+}
+
+pub fn set_call_layout(tx: &Tx, choice: &str) {
+    let Some(layout) = call_layout_named(choice) else {
+        tracing::warn!(choice, "ignoring an unknown call layout");
+        return;
+    };
+    send_command(
+        tx,
+        SettingsCommand::Change(SettingChange::CallLayout(layout)),
     );
 }
 

@@ -299,7 +299,7 @@ impl Calls {
             .and_then(|sheet| sheet.draft)
         {
             tracing::info!("the call opens on the devices chosen in its sheet");
-            self.devices = draft;
+            self.adopt_devices(draft);
         }
         if let Some(draft) = self
             .incoming
@@ -308,7 +308,7 @@ impl Calls {
             .and_then(|incoming| incoming.devices.take())
         {
             tracing::info!("the call opens on the devices chosen while it rang");
-            self.devices = draft;
+            self.adopt_devices(draft);
         }
     }
 
@@ -392,6 +392,7 @@ impl Calls {
             media: request.media,
             devices: self.devices.clone(),
             outgoing,
+            follow_speaker: self.preferences.follow_speaker,
         })
     }
 

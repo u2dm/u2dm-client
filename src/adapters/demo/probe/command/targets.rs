@@ -24,6 +24,7 @@ pub(super) fn setting_change(name: &str, value: &str) -> Result<Driven, Rejected
         "motion" => names::motion_choice_named(value).map(SettingChange::Motion),
         "send_key" => names::send_key_named(value).map(SettingChange::SendKey),
         "receipts" => names::receipt_visibility_named(value).map(SettingChange::Receipts),
+        "call_layout" => names::call_layout_named(value).map(SettingChange::CallLayout),
         flag => setting_flag_change(flag, value)?,
     };
     change

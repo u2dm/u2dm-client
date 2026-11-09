@@ -167,6 +167,7 @@ pub(super) struct Joining {
     pub(super) media: MediaChoice,
     pub(super) devices: DeviceChoices,
     pub(super) outgoing: Option<RingKind>,
+    pub(super) follow_speaker: bool,
 }
 
 pub(super) struct Joined {
@@ -267,7 +268,7 @@ impl Joined {
             changes_cancelled: 0,
             outgoing_kind: joining.outgoing,
             outgoing: None,
-            stage: Stage::default(),
+            stage: Stage::following_speaker(joining.follow_speaker),
             devices: Devices::new(joining.devices),
             unheard: BTreeSet::new(),
             unheard_sent: Vec::new(),

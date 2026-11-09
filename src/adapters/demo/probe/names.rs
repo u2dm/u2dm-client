@@ -1,7 +1,7 @@
 use crate::adapters::ui::IdentityAlertKind;
 use crate::adapters::ui::schema::{
     account_activities, account_steps, attachment_kinds, audio_kinds, auth_stages,
-    call_device_kinds, call_device_statuses, call_device_troubles, child_accesses,
+    call_device_kinds, call_device_statuses, call_device_troubles, call_layouts, child_accesses,
     connection_states, create_room_statuses, device_trusts, direct_chats, encryption_activities,
     encryption_standings, encryption_steps, enum_names, identity_alert_kinds, identity_trusts,
     invite_answers, invite_kinds, invitee_states, log_levels, login_activities, login_methods,
@@ -32,7 +32,9 @@ use crate::domain::room::NotifyMode;
 use crate::domain::room_creation::{RoomAccess, RoomKind};
 use crate::domain::room_info::MemberRole;
 use crate::domain::room_log::LogLevel;
-use crate::domain::settings::{MotionChoice, ReceiptVisibility, SendKey, SettingFlag, ThemeChoice};
+use crate::domain::settings::{
+    CallLayout, MotionChoice, ReceiptVisibility, SendKey, SettingFlag, ThemeChoice,
+};
 use crate::domain::sync::ConnectionStatus;
 use crate::domain::timeline::SourceEncryption;
 use crate::domain::user_info::{DeviceTrust, IdentityTrust, RoomMembership};
@@ -87,6 +89,8 @@ send_keys!(enum_names val send_key SendKey;);
 send_keys!(variant_named send_key_named SendKey;);
 receipt_visibilities!(enum_names val receipt_visibility ReceiptVisibility;);
 receipt_visibilities!(variant_named receipt_visibility_named ReceiptVisibility;);
+call_layouts!(enum_names val call_layout CallLayout;);
+call_layouts!(variant_named call_layout_named CallLayout;);
 setting_flags!(variant_named setting_flag_named SettingFlag;);
 source_statuses!(enum_names ref source_status SourceState;);
 source_encryptions!(enum_names ref source_encryption SourceEncryption;);

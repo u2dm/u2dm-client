@@ -19,6 +19,8 @@ impl AppService {
                     share_presence,
                 },
             alerts,
+            calls,
+            remembered_devices: _,
         } = *self.settings.values();
         self.active_timeline.set_receipts(receipts);
         self.room_info.set_receipts(receipts);
@@ -26,6 +28,7 @@ impl AppService {
         self.presence.set_sharing(share_presence);
         self.notifications.set_alerts(alerts);
         self.calls.set_alerts(alerts, &self.room_directory);
+        self.calls.set_preferences(calls);
     }
 
     pub(super) fn handle_settings_command(&mut self, command: SettingsCommand) {
@@ -40,9 +43,10 @@ impl AppService {
         }
     }
 
-    pub(super) fn handle_settings_event(&self, event: SettingsEvent) {
+    pub(super) fn handle_settings_event(&mut self, event: SettingsEvent) {
         match event {
             SettingsEvent::SaveFailed => self.settings.save_failed(),
+            SettingsEvent::DevicesChosen(devices) => self.settings.remember_devices(*devices),
         }
     }
 }
