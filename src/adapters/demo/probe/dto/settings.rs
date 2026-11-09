@@ -17,6 +17,7 @@ struct SettingsValuesDto {
     send_key: &'static str,
     receipts: &'static str,
     typing_notices: bool,
+    share_presence: bool,
 }
 
 #[derive(Serialize)]
@@ -32,6 +33,7 @@ pub(super) fn settings(source: &SettingsView) -> SettingsDto {
                 send_key,
                 receipts,
                 typing_notices,
+                share_presence,
             },
     } = source.values;
     SettingsDto {
@@ -41,6 +43,7 @@ pub(super) fn settings(source: &SettingsView) -> SettingsDto {
             send_key: names::send_key(send_key),
             receipts: names::receipt_visibility(receipts),
             typing_notices,
+            share_presence,
         },
         dialog: source.dialog.map(|dialog| SettingsDialogDto {
             page: names::settings_page(dialog.page),

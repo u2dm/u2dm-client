@@ -34,6 +34,7 @@ fn apply_values<W: UiProps>(w: &W, values: &Settings) {
                 send_key,
                 receipts,
                 typing_notices,
+                share_presence,
             },
     } = *values;
     w.set_appearance_theme(theme);
@@ -41,4 +42,5 @@ fn apply_values<W: UiProps>(w: &W, values: &Settings) {
     w.set_send_key(send_key);
     w.set_receipt_visibility(receipts);
     w.set_bool(BoolProp::SettingsTypingNotices, typing_notices);
+    w.set_bool(BoolProp::SettingsSharePresence, share_presence);
 }

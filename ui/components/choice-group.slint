@@ -1,6 +1,6 @@
 import { RovingKeys } from "./a11y.slint";
 import { ChoiceRow } from "./choice-row.slint";
-import { Space } from "../theme.slint";
+import { Metrics, Space } from "../theme.slint";
 
 export struct ChoiceOption {
     text: string,
@@ -40,6 +40,8 @@ export component ChoiceGroup inherits Rectangle {
         for option[index] in root.options: ChoiceRow {
             text: option.text;
             detail: option.detail;
+            wraps: true;
+            height: max(Metrics.choice-row, self.content-height + Space.md);
             checked: index == root.selected;
             above-modal: true;
             focusable: false;

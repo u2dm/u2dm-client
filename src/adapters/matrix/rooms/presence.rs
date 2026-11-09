@@ -46,6 +46,22 @@ impl PresencePort for MatrixPresence {
             .await
     }
 
+    async fn hold_sync_offline(&self) {
+        let client = match self.matrix.client().await {
+            Ok(client) => client,
+            Err(e) => {
+                tracing::debug!("no session to keep your sync requests offline on: {e}");
+                return;
+            }
+        };
+        if let Err(e) = client
+            .set_presence(PresenceState::Offline, None, false)
+            .await
+        {
+            tracing::debug!("the sliding sync requests could not take your presence: {e}");
+        }
+    }
+
     async fn presence_of(&self, user_id: &UserId) -> LookupResult {
         let client = self.matrix.client().await.map_err(|e| {
             tracing::debug!(%user_id, "no session to read presence with: {e}");

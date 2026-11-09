@@ -27,6 +27,27 @@ const UNSTATED_THROTTLE: Duration = Duration::from_secs(10);
 const RETRY_AFTER_FAILURE: Duration = Duration::from_secs(5);
 const MAX_DOUBLINGS: u32 = 8;
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum LaneWant {
+    Say(Availability),
+    Quiet,
+}
+
+impl LaneWant {
+    const FAREWELL: Self = Self::Say(Availability::Offline);
+
+    const fn said(self) -> Availability {
+        match self {
+            Self::Say(availability) => availability,
+            Self::Quiet => Availability::Offline,
+        }
+    }
+
+    const fn cuts_a_throttle_short(self) -> bool {
+        matches!(self, Self::Quiet | Self::FAREWELL)
+    }
+}
+
 #[derive(Clone, PartialEq, Eq)]
 struct Shown {
     line: PresenceLine,
@@ -38,8 +59,9 @@ pub(super) struct Presence {
     events: EventSender,
     beacon: TaskGroup,
     lookups: TaskGroup,
-    lane: Option<watch::Sender<Availability>>,
+    lane: Option<watch::Sender<LaneWant>>,
     farewell: bool,
+    sharing: bool,
     attention: WindowAttention,
     disabled: bool,
     watch: u64,
@@ -59,6 +81,7 @@ impl Presence {
             lookups: TaskGroup::new("presence-lookups"),
             lane: None,
             farewell: false,
+            sharing: true,
             attention: WindowAttention::default(),
             disabled: false,
             watch: 0,
@@ -70,12 +93,27 @@ impl Presence {
         }
     }
 
+    pub(super) const fn shares(&self) -> bool {
+        self.sharing
+    }
+
+    pub(super) fn set_sharing(&mut self, on: bool) {
+        if self.sharing == on {
+            return;
+        }
+        tracing::debug!(on, "sharing your presence changed");
+        self.sharing = on;
+        if let Some(lane) = self.lane.as_ref().filter(|_| !self.farewell) {
+            lane.send_replace(self.lane_want());
+        }
+    }
+
     pub(super) fn begin_session(&mut self, port: Arc<dyn PresencePort>, session: u64, own: UserId) {
         self.disabled = false;
         self.farewell = false;
-        let availability = wanted(self.attention.activity);
-        tracing::debug!(?availability, "keeping your presence");
-        let (lane, wanted_rx) = watch::channel(availability);
+        let want = self.lane_want();
+        tracing::debug!(?want, "keeping your presence");
+        let (lane, wanted_rx) = watch::channel(want);
         let beacon = Beacon {
             port,
             events: self.events.clone(),
@@ -99,8 +137,12 @@ impl Presence {
         let before = mem::replace(&mut self.attention, attention);
         if before.activity != attention.activity {
             tracing::debug!(activity = ?attention.activity, "your activity changed");
-            if let Some(lane) = self.lane.as_ref().filter(|_| !self.farewell) {
-                lane.send_replace(wanted(attention.activity));
+            if let Some(lane) = self
+                .lane
+                .as_ref()
+                .filter(|_| !self.farewell && self.sharing)
+            {
+                lane.send_replace(self.lane_want());
             }
         }
         if before.focus == attention.focus {
@@ -168,12 +210,12 @@ impl Presence {
     }
 
     pub(super) fn sign_off(&mut self) {
-        if self.farewell {
+        if self.farewell || !self.sharing {
             return;
         }
         if let Some(lane) = &self.lane {
             tracing::debug!("saying offline");
-            lane.send_replace(Availability::Offline);
+            lane.send_replace(LaneWant::FAREWELL);
             self.farewell = true;
         }
     }
@@ -200,6 +242,14 @@ impl Presence {
             shut_beacon(&mut self.beacon, farewell),
             self.lookups.shutdown()
         );
+    }
+
+    const fn lane_want(&self) -> LaneWant {
+        if self.sharing {
+            LaneWant::Say(wanted(self.attention.activity))
+        } else {
+            LaneWant::Quiet
+        }
     }
 
     fn subjects(&self) -> Vec<UserId> {
@@ -311,55 +361,107 @@ enum Rest {
     Stop,
 }
 
-async fn keep_announcing(beacon: &Beacon, mut wanted: watch::Receiver<Availability>) {
-    let mut status: Option<String> = None;
-    let mut accepted = false;
-    let mut failures: u32 = 0;
+struct Pause {
+    wait: Duration,
+    only_farewell: bool,
+}
+
+enum Beat {
+    Rest(Pause),
+    SettledQuiet,
+    Ended,
+}
+
+#[derive(Default)]
+struct LaneMemory {
+    status: Option<String>,
+    accepted: bool,
+    failures: u32,
+}
+
+async fn keep_announcing(beacon: &Beacon, mut wanted: watch::Receiver<LaneWant>) {
+    let mut memory = LaneMemory::default();
+    let mut quiet = *wanted.borrow_and_update() == LaneWant::Quiet;
     loop {
-        let farewell = *wanted.borrow() == Availability::Offline;
-        if !farewell && let Some(own) = beacon.read_own(&mut wanted).await {
-            if accepted && own.says_nothing() {
-                beacon.disable("your own presence reads offline right after an accepted update");
-                return;
-            }
-            status = own.status;
+        if quiet
+            && wanted
+                .wait_for(|asked| *asked != LaneWant::Quiet)
+                .await
+                .is_err()
+        {
+            return;
         }
-        let availability = *wanted.borrow_and_update();
-        let (pause, only_farewell) =
-            match beacon.port.announce(availability, status.as_deref()).await {
-                Ok(()) => {
-                    accepted = true;
-                    failures = 0;
-                    (HEARTBEAT, false)
-                }
-                Err(BeaconFailure::Refused) => {
-                    beacon.disable("the homeserver refuses presence");
+        match beat(beacon, &mut wanted, &mut memory).await {
+            Beat::Ended => return,
+            Beat::SettledQuiet => quiet = true,
+            Beat::Rest(pause) => {
+                quiet = false;
+                if matches!(rest(&mut wanted, pause).await, Rest::Stop) {
                     return;
                 }
-                Err(BeaconFailure::Throttled(wait)) => {
-                    let wait = wait.unwrap_or(UNSTATED_THROTTLE).min(HEARTBEAT);
-                    tracing::debug!(
-                        ?wait,
-                        "the homeserver asks for a pause between presence updates"
-                    );
-                    (wait, true)
-                }
-                Err(BeaconFailure::Failed) => {
-                    failures = failures.saturating_add(1);
-                    (backoff(failures), false)
-                }
-            };
-        if availability == Availability::Offline {
-            return;
-        }
-        if matches!(rest(&mut wanted, pause, only_farewell).await, Rest::Stop) {
-            return;
+            }
         }
     }
 }
 
+async fn beat(
+    beacon: &Beacon,
+    wanted: &mut watch::Receiver<LaneWant>,
+    memory: &mut LaneMemory,
+) -> Beat {
+    let farewell = *wanted.borrow() == LaneWant::FAREWELL;
+    if !farewell && let Some(own) = beacon.read_own(wanted).await {
+        if memory.accepted && own.says_nothing() {
+            beacon.disable("your own presence reads offline right after an accepted update");
+            return Beat::Ended;
+        }
+        memory.status = own.status;
+    }
+    let asked = *wanted.borrow_and_update();
+    let said = asked.said();
+    let pause = match beacon.port.announce(said, memory.status.as_deref()).await {
+        Ok(()) => {
+            memory.accepted = said != Availability::Offline;
+            memory.failures = 0;
+            if asked == LaneWant::Quiet {
+                return Beat::SettledQuiet;
+            }
+            Pause {
+                wait: HEARTBEAT,
+                only_farewell: false,
+            }
+        }
+        Err(BeaconFailure::Refused) => {
+            beacon.disable("the homeserver refuses presence");
+            return Beat::Ended;
+        }
+        Err(BeaconFailure::Throttled(wait)) => {
+            let wait = wait.unwrap_or(UNSTATED_THROTTLE).min(HEARTBEAT);
+            tracing::debug!(
+                ?wait,
+                "the homeserver asks for a pause between presence updates"
+            );
+            Pause {
+                wait,
+                only_farewell: true,
+            }
+        }
+        Err(BeaconFailure::Failed) => {
+            memory.failures = memory.failures.saturating_add(1);
+            Pause {
+                wait: backoff(memory.failures),
+                only_farewell: false,
+            }
+        }
+    };
+    if asked == LaneWant::FAREWELL {
+        return Beat::Ended;
+    }
+    Beat::Rest(pause)
+}
+
 impl Beacon {
-    async fn read_own(&self, wanted: &mut watch::Receiver<Availability>) -> Option<PresenceReport> {
+    async fn read_own(&self, wanted: &mut watch::Receiver<LaneWant>) -> Option<PresenceReport> {
         tokio::select! {
             biased;
             () = farewell_wanted(wanted) => None,
@@ -378,9 +480,9 @@ impl Beacon {
     }
 }
 
-async fn farewell_wanted(wanted: &mut watch::Receiver<Availability>) {
+async fn farewell_wanted(wanted: &mut watch::Receiver<LaneWant>) {
     let offline = wanted
-        .wait_for(|availability| *availability == Availability::Offline)
+        .wait_for(|asked| *asked == LaneWant::FAREWELL)
         .await
         .is_ok();
     if !offline {
@@ -388,12 +490,8 @@ async fn farewell_wanted(wanted: &mut watch::Receiver<Availability>) {
     }
 }
 
-async fn rest(
-    wanted: &mut watch::Receiver<Availability>,
-    pause: Duration,
-    only_farewell: bool,
-) -> Rest {
-    let until = sleep(pause);
+async fn rest(wanted: &mut watch::Receiver<LaneWant>, pause: Pause) -> Rest {
+    let until = sleep(pause.wait);
     tokio::pin!(until);
     loop {
         tokio::select! {
@@ -402,8 +500,7 @@ async fn rest(
                 if changed.is_err() {
                     return Rest::Stop;
                 }
-                let farewell = *wanted.borrow() == Availability::Offline;
-                if farewell || !only_farewell {
+                if wanted.borrow().cuts_a_throttle_short() || !pause.only_farewell {
                     return Rest::Beat;
                 }
             }

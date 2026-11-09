@@ -31,6 +31,7 @@ pub enum ReceiptVisibility {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum SettingFlag {
     TypingNotices,
+    SharePresence,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -44,6 +45,7 @@ pub struct Messaging {
     pub send_key: SendKey,
     pub receipts: ReceiptVisibility,
     pub typing_notices: bool,
+    pub share_presence: bool,
 }
 
 impl Default for Messaging {
@@ -52,6 +54,7 @@ impl Default for Messaging {
             send_key: SendKey::default(),
             receipts: ReceiptVisibility::default(),
             typing_notices: true,
+            share_presence: true,
         }
     }
 }
@@ -85,6 +88,7 @@ impl Settings {
     const fn flag_mut(&mut self, flag: SettingFlag) -> &mut bool {
         match flag {
             SettingFlag::TypingNotices => &mut self.messaging.typing_notices,
+            SettingFlag::SharePresence => &mut self.messaging.share_presence,
         }
     }
 }

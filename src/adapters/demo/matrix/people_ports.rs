@@ -273,6 +273,10 @@ impl PresencePort for DemoAuthed {
         self.presence.announce(availability, status).await
     }
 
+    async fn hold_sync_offline(&self) {
+        tracing::debug!("demo: the sync requests say offline");
+    }
+
     async fn presence_of(&self, user_id: &UserId) -> LookupResult {
         self.presence.presence_of(user_id).await
     }

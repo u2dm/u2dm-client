@@ -91,4 +91,13 @@ export component MessagesPage inherits VerticalLayout {
             Actions.set-setting-flag({ setting: SettingFlag.typing-notices, on: on });
         }
     }
+
+    SwitchRow {
+        text: @tr("Share your presence");
+        detail: @tr("People in your rooms see when you are online");
+        on: SettingsView.share-presence;
+        toggled(on) => {
+            Actions.set-setting-flag({ setting: SettingFlag.share-presence, on: on });
+        }
+    }
 }

@@ -479,6 +479,7 @@ macro_rules! bool_props {
         EncryptionKeyStorageOff EncryptionView "EncryptionView" "key-storage-off" set_key_storage_off get_key_storage_off;
         SettingsVisible SettingsView "SettingsView" "visible" set_visible get_visible;
         SettingsTypingNotices SettingsView "SettingsView" "typing-notices" set_typing_notices get_typing_notices;
+        SettingsSharePresence SettingsView "SettingsView" "share-presence" set_share_presence get_share_presence;
         AccountVisible AccountView "AccountView" "visible" set_visible get_visible;
         AccountSessionsKnown AccountView "AccountView" "sessions-known" set_sessions_known get_sessions_known;
         AccountFactsKnown AccountView "AccountView" "facts-known" set_facts_known get_facts_known;
@@ -1716,6 +1717,7 @@ pub(crate) use receipt_visibilities;
 macro_rules! setting_flags {
     ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
         TypingNotices TypingNotices "typing-notices";
+        SharePresence SharePresence "share-presence";
     } };
 }
 pub(crate) use setting_flags;

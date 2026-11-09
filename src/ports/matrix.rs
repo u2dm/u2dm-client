@@ -312,6 +312,7 @@ pub trait TypingPort: Send + Sync {
 #[async_trait]
 pub trait PresencePort: Send + Sync {
     async fn announce(&self, availability: Availability, status: Option<&str>) -> BeaconResult;
+    async fn hold_sync_offline(&self);
     async fn presence_of(&self, user_id: &UserId) -> LookupResult;
 }
 

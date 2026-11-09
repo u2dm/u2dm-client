@@ -128,6 +128,11 @@ impl AppService {
         self.notifications
             .spawn_listener(&mut self.background, push, session);
         self.set_connection(ConnectionStatus::Connecting);
+        if !self.presence.shares()
+            && let Some(presence) = self.port(|a| &a.presence)
+        {
+            presence.hold_sync_offline().await;
+        }
         RoomDirectory::spawn_sync_pipeline(
             &mut self.background,
             sync,

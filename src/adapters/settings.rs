@@ -72,6 +72,8 @@ struct StoredMessaging {
     receipts: Option<StoredReceipts>,
     #[serde(default, deserialize_with = "lenient")]
     typing_notices: Option<bool>,
+    #[serde(default, deserialize_with = "lenient")]
+    share_presence: Option<bool>,
 }
 
 #[derive(Default, Deserialize, Serialize)]
@@ -106,6 +108,7 @@ impl From<&Settings> for StoredSettings {
                     send_key,
                     receipts,
                     typing_notices,
+                    share_presence,
                 },
         } = *settings;
         Self {
@@ -117,6 +120,7 @@ impl From<&Settings> for StoredSettings {
                 send_key: Some(send_key.into()),
                 receipts: Some(receipts.into()),
                 typing_notices: Some(typing_notices),
+                share_presence: Some(share_presence),
             }),
         }
     }
@@ -146,6 +150,9 @@ impl From<StoredSettings> for Settings {
                 typing_notices: messaging
                     .typing_notices
                     .unwrap_or(defaults.messaging.typing_notices),
+                share_presence: messaging
+                    .share_presence
+                    .unwrap_or(defaults.messaging.share_presence),
             },
         }
     }
