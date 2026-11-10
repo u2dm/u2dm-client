@@ -24,17 +24,20 @@ Early development.
 - Video and audio playback
 - Pronouns ([MSC4247](https://github.com/matrix-org/matrix-spec-proposals/pull/4247))
 - Touch gestures
+- Calls
+- Space and rooms management
 
 ## Planned
 
-- Settings
 - More gestures
-- Calls
 - Multiple accounts
-- User, room and space management
+- User settings
 - More responsive layouts
 - Android support
+- Web support
 - Theming
+- A11y improvements
+- More space and rooms settings
 
 ## Building
 
