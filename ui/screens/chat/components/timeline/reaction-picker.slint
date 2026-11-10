@@ -2,6 +2,7 @@ import { IconDisplay, IconSet } from "@lucide";
 
 import { EmojiPicker } from "./emoji-picker.slint";
 import { ClickArea } from "../../../../components/a11y.slint";
+import { LinkButton } from "../../../../components/button.slint";
 import { PickerCard } from "../../../../components/overlay.slint";
 import { UnencryptedNotice } from "./picker-grid.slint";
 import { QuickReactions, StripCell } from "./quick-reactions.slint";
@@ -16,7 +17,7 @@ export component ReactionStrip inherits PickerCard {
     property <length> cell: Metrics.reaction-strip-cell;
     property <length> pitch: root.cell + root.gap;
     property <float> cells-when-open: 4.5;
-    property <int> cell-count: QuickReactions.keys.length + 1;
+    property <int> cell-count: QuickReactions.count + 1;
     property <length> content-height: root.cell-count * root.pitch - root.gap;
     property <length> open-height: root.cells-when-open * root.pitch - root.gap;
     property <int> focused-cells: 0;
@@ -101,12 +102,12 @@ export component ReactionStrip inherits PickerCard {
                     }
                 }
 
-                for key[index] in QuickReactions.keys: StripCell {
-                    key: key;
-                    label: key;
-                    enabled: root.open || index == QuickReactions.default-index;
+                for index in QuickReactions.count: StripCell {
+                    key: QuickReactions.strip-key(index);
+                    label: self.key;
+                    enabled: root.open || index == QuickReactions.strip-default;
                     clicked => {
-                        root.picked(key);
+                        root.picked(self.key);
                     }
                     changed has-focus => {
                         root.track-focus(self.has-focus);
@@ -120,6 +121,7 @@ export component ReactionStrip inherits PickerCard {
 export component ReactionPicker inherits PickerCard {
     callback picked(string);
     callback emote-picked(string, string);
+    callback edit-quick-reactions(bool);
 
     in property <bool> encrypted: false;
 
@@ -139,6 +141,21 @@ export component ReactionPicker inherits PickerCard {
             }
             emote-picked(pack-id, shortcode) => {
                 root.emote-picked(pack-id, shortcode);
+            }
+        }
+
+        HorizontalLayout {
+            alignment: end;
+
+            LinkButton {
+                height: Size.sm;
+                pad: Space.lg;
+                text: @tr("Edit quick reactions");
+                label: self.text;
+                accessible-description: @tr("Opens Settings at Reactions");
+                clicked => {
+                    root.edit-quick-reactions(self.has-focus);
+                }
             }
         }
     }

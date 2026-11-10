@@ -1889,6 +1889,12 @@ export global SettingsWords {
         if key == SettingKey.send-key {
             return @tr("Send messages with");
         }
+        if key == SettingKey.quick-reactions {
+            return @tr("Quick reactions");
+        }
+        if key == SettingKey.skin-tone {
+            return @tr("Skin tone");
+        }
         if key == SettingKey.desktop-notifications {
             return @tr("Show notifications");
         }
@@ -1947,6 +1953,12 @@ export global SettingsWords {
     }
 
     public pure function detail(key: SettingKey) -> string {
+        if key == SettingKey.quick-reactions {
+            return @tr("They appear beside a message you hover and at the top of its menu. The starred one is sent in one click");
+        }
+        if key == SettingKey.skin-tone {
+            return @tr("Emoji that come in skin tones show this one in the emoji picker");
+        }
         if key == SettingKey.desktop-notifications {
             return @tr("New messages and invites appear on your desktop while this window is in the background");
         }
@@ -2035,6 +2047,10 @@ export global SettingsWords {
 
     public pure function send-key-summary(key: SendKey) -> string {
         return @tr("{} sends", root.send-key(key));
+    }
+
+    public pure function reactions-summary(one-click: string) -> string {
+        return @tr("{} in one click", one-click);
     }
 
     public pure function privacy-summary(receipts: ReceiptVisibility, typing: bool, presence: bool) -> string {

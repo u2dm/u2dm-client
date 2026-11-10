@@ -4,17 +4,18 @@ use super::run_change_handlers_next_frame;
 use crate::adapters::ui::backend::{UiBackend, UiEventContext};
 use crate::adapters::ui::decode::{forget_failed_decodes, set_animations_paused};
 use crate::adapters::ui::dto::{ignored_person_to_dto, keyword_to_dto};
-use crate::adapters::ui::props::{BoolProp, StringProp, UiProps};
+use crate::adapters::ui::props::{BoolProp, IntProp, StringProp, UiProps};
 use crate::commands::view::{
     DownloadedMedia, IgnoredUsersView, NotificationRulesView, SettingsPage, SettingsView,
 };
 use crate::domain::settings::{
-    Alerts, Appearance, CallPreferences, MediaPreferences, Messaging, Settings,
+    Alerts, Appearance, CallPreferences, MediaPreferences, Messaging, ReactionPreferences, Settings,
 };
-use crate::util::format_bytes;
+use crate::util::{format_bytes, saturating_i32};
 
 pub(in crate::adapters::ui) fn seed_settings<W: UiProps>(w: &W, values: &Settings) {
     apply_values(w, values);
+    w.apply_quick_reactions(&values.reactions.quick);
 }
 
 pub(super) fn apply_settings<W: UiProps + ComponentHandle>(
@@ -49,6 +50,9 @@ pub(super) fn apply_settings<W: UiProps + ComponentHandle>(
         dialog.map_or(DownloadedMedia::default(), |dialog| dialog.storage),
     );
     apply_values(w, values);
+    if last.is_none_or(|last| last.values.reactions.quick.keys() != values.reactions.quick.keys()) {
+        w.apply_quick_reactions(&values.reactions.quick);
+    }
     if last.is_some_and(|last| last.media_cleared != *media_cleared) {
         forget_failed_decodes();
     }
@@ -138,6 +142,10 @@ fn apply_values<W: UiProps>(w: &W, values: &Settings) {
                 typing_notices,
                 share_presence,
             },
+        reactions: ReactionPreferences {
+            ref quick,
+            skin_tone,
+        },
         alerts:
             Alerts {
                 desktop_notifications,
@@ -162,6 +170,12 @@ fn apply_values<W: UiProps>(w: &W, values: &Settings) {
     w.set_motion_choice(motion);
     w.set_send_key(send_key);
     w.set_receipt_visibility(receipts);
+    w.set_int(
+        IntProp::OneClickReaction,
+        saturating_i32(quick.one_click().index()),
+    );
+    w.set_bool(BoolProp::SettingsQuickReactionsCustom, !quick.is_default());
+    w.set_int(IntProp::SkinTone, i32::from(skin_tone.index()));
     w.set_bool(BoolProp::SettingsTypingNotices, typing_notices);
     w.set_bool(BoolProp::SettingsSharePresence, share_presence);
     w.set_bool(

@@ -6,8 +6,9 @@ use crate::commands::view::{
     SettingsView,
 };
 use crate::domain::call::devices::{ByKind, DeviceChoice};
+use crate::domain::settings::quick_reactions::QuickReaction;
 use crate::domain::settings::{
-    Alerts, Appearance, CallPreferences, MediaPreferences, Messaging, Settings,
+    Alerts, Appearance, CallPreferences, MediaPreferences, Messaging, ReactionPreferences, Settings,
 };
 
 #[derive(Serialize)]
@@ -101,6 +102,9 @@ struct SettingsValuesDto {
     receipts: &'static str,
     typing_notices: bool,
     share_presence: bool,
+    quick_reactions: Vec<String>,
+    one_click: usize,
+    skin_tone: u8,
     desktop_notifications: bool,
     hide_message_text: bool,
     notification_sound: bool,
@@ -169,6 +173,10 @@ pub(super) fn settings(source: &SettingsView) -> SettingsDto {
                 typing_notices,
                 share_presence,
             },
+        reactions: ReactionPreferences {
+            ref quick,
+            skin_tone,
+        },
         alerts:
             Alerts {
                 desktop_notifications,
@@ -198,6 +206,14 @@ pub(super) fn settings(source: &SettingsView) -> SettingsDto {
             receipts: names::receipt_visibility(receipts),
             typing_notices,
             share_presence,
+            quick_reactions: quick
+                .keys()
+                .iter()
+                .map(QuickReaction::as_str)
+                .map(ToOwned::to_owned)
+                .collect(),
+            one_click: quick.one_click().index(),
+            skin_tone: skin_tone.index(),
             desktop_notifications,
             hide_message_text,
             notification_sound,

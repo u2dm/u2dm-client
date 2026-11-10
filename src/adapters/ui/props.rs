@@ -32,6 +32,7 @@ use crate::domain::room::NotifyMode;
 use crate::domain::room_creation::RoomKind;
 use crate::domain::room_info::MemberRole;
 use crate::domain::server_rules::RoomDefault;
+use crate::domain::settings::quick_reactions::QuickReactions;
 use crate::domain::settings::{CallLayout, MotionChoice, ReceiptVisibility, SendKey, ThemeChoice};
 use crate::domain::sync::ConnectionStatus;
 use crate::domain::timeline::{SourceEncryption, TimelineStatus};
@@ -129,6 +130,7 @@ pub trait UiProps {
     message_props!(declare_message_setter);
     fn apply_room_info_topic(&self, topic: StyledText);
     fn apply_login_messages(&self, messages: &[UserMessage]);
+    fn apply_quick_reactions(&self, reactions: &QuickReactions);
     fn apply_emoji_model(&self, emojis: &[DomainVerificationEmoji]);
     fn clear_emoji_model(&self);
     fn clear_text_inputs(&self);

@@ -17,6 +17,8 @@ const DEMO_ASSETS_SCRIPT: &str = "scripts/gen-demo-assets.sh";
 const DEMO_DATA: &str = "assets/demo/data.json";
 const CALL_REACTIONS_DOMAIN: &str = "src/domain/call/reactions.rs";
 const CALL_REACTIONS_MENU: &str = "ui/screens/chat/components/call/call-reactions-menu.slint";
+const QUICK_REACTIONS_DOMAIN: &str = "src/domain/settings/quick_reactions.rs";
+const QUICK_REACTIONS_VIEW: &str = "ui/views.slint";
 
 struct EnumCoverage {
     slint_enum: &'static str,
@@ -217,6 +219,7 @@ fn main() {
     check_enum_branch_coverage();
     check_scenario_catalogs();
     check_call_reaction_options();
+    check_default_quick_reactions();
     check_generated_ui_stays_in_its_adapter();
     sync_lucide_lsp_lib();
 
@@ -339,6 +342,57 @@ fn check_call_reaction_options() {
         sent == offered,
         "{CALL_REACTIONS_MENU} offers {offered:?}, but {CALL_REACTIONS_DOMAIN} sends {sent:?}: the \
          menu must list REACTION_OPTIONS' names and emoji, in its order"
+    );
+}
+
+fn check_default_quick_reactions() {
+    println!("cargo::rerun-if-changed={QUICK_REACTIONS_DOMAIN}");
+    println!("cargo::rerun-if-changed={QUICK_REACTIONS_VIEW}");
+    let (Ok(domain), Ok(view)) = (
+        fs::read_to_string(QUICK_REACTIONS_DOMAIN),
+        fs::read_to_string(QUICK_REACTIONS_VIEW),
+    ) else {
+        panic!(
+            "failed to read {QUICK_REACTIONS_DOMAIN} or {QUICK_REACTIONS_VIEW}, so the default \
+             quick reactions cannot be compared"
+        );
+    };
+    let stored: Vec<&str> = quoted_literals(section(
+        &domain,
+        QUICK_REACTIONS_DOMAIN,
+        ("pub const DEFAULT_QUICK_REACTIONS", "];"),
+        "the default quick reactions",
+    ))
+    .collect();
+    let shown: Vec<&str> = quoted_literals(section(
+        &view,
+        QUICK_REACTIONS_VIEW,
+        ("in property <[string]> quick-reactions: [", "];"),
+        "the quick reactions Slint shows before the settings arrive",
+    ))
+    .collect();
+    assert!(
+        stored == shown,
+        "{QUICK_REACTIONS_VIEW} starts with the quick reactions {shown:?}, but \
+         {QUICK_REACTIONS_DOMAIN} defaults to {stored:?}: SettingsView.quick-reactions must start \
+         as DEFAULT_QUICK_REACTIONS, in its order"
+    );
+    let starred = section(
+        &domain,
+        QUICK_REACTIONS_DOMAIN,
+        ("pub const DEFAULT_ONE_CLICK: usize = ", ";"),
+        "the default one-click reaction",
+    );
+    let shown_starred = section(
+        &view,
+        QUICK_REACTIONS_VIEW,
+        ("in property <int> one-click-reaction: ", ";"),
+        "the one-click reaction Slint shows before the settings arrive",
+    );
+    assert!(
+        starred.trim() == shown_starred.trim(),
+        "{QUICK_REACTIONS_VIEW} starts with one-click-reaction {shown_starred}, but \
+         {QUICK_REACTIONS_DOMAIN} defaults DEFAULT_ONE_CLICK to {starred}: they must be equal"
     );
 }
 

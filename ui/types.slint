@@ -324,6 +324,19 @@ export struct SettingFlagRequest {
     on: bool,
 }
 
+export struct SkinToneRequest {
+    tone: int,
+}
+
+export struct QuickReactionRequest {
+    slot: int,
+    key: string,
+}
+
+export struct OneClickReactionRequest {
+    slot: int,
+}
+
 export struct CallDeviceRequest {
     kind: CallDeviceKind,
     key: string,

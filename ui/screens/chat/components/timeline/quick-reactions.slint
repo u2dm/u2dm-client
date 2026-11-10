@@ -1,10 +1,19 @@
 import { ClickArea } from "../../../../components/a11y.slint";
+import { SettingsView } from "../../../../views.slint";
 import { AppStyle, Fonts, Glyph, Metrics } from "../../../../theme.slint";
 
 export global QuickReactions {
-    out property <[string]> keys: ["❤️", "😕", "🎉", "😭", "😄", "👎", "👍", "🫃"];
-    out property <int> default-index: root.keys.length - 1;
+    out property <[string]> keys: SettingsView.quick-reactions;
+    out property <int> count: root.keys.length;
+    out property <int> default-index: SettingsView.one-click-reaction;
     out property <string> default-key: root.keys[root.default-index];
+    out property <int> strip-default: root.count - 1;
+
+    public pure function strip-key(index: int) -> string {
+        return index == root.strip-default ? root.default-key
+            : index < root.default-index ? root.keys[index]
+            : root.keys[index + 1];
+    }
 }
 
 export component StripCell inherits ClickArea {

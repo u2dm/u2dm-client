@@ -45,6 +45,9 @@ import {
     ReceiptsRequest,
     CallLayoutRequest,
     SettingFlagRequest,
+    SkinToneRequest,
+    QuickReactionRequest,
+    OneClickReactionRequest,
     RoomDefaultRequest,
     AccountNotificationsRequest,
 } from "./types.slint";
@@ -64,6 +67,7 @@ export global Actions {
     callback cancel-logout();
 
     callback open-settings();
+    callback open-settings-page(SettingsPageRequest);
     callback close-settings();
     callback clear-downloaded-media();
     callback set-account-notifications(AccountNotificationsRequest);
@@ -80,6 +84,10 @@ export global Actions {
     callback set-receipts(ReceiptsRequest);
     callback set-call-layout(CallLayoutRequest);
     callback set-setting-flag(SettingFlagRequest);
+    callback set-skin-tone(SkinToneRequest);
+    callback set-quick-reaction(QuickReactionRequest);
+    callback set-one-click-reaction(OneClickReactionRequest);
+    callback reset-quick-reactions();
 
     callback open-account();
     callback close-account();

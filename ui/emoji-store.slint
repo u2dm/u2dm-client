@@ -4,7 +4,7 @@ export global EmojiStore {
     in property <[EmojiRow]> rows: [];
     in property <[int]> header-rows: [];
     in property <[EmojiRow]> result-rows: [];
-    in-out property <int> tone: 0;
+    in property <int> tone: 0;
     callback layout(int);
     callback search(string);
     pure callback insert(string, int, string) -> TextSplice;

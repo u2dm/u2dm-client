@@ -224,6 +224,8 @@ macro_rules! simple_callbacks {
         on_import_room_keys "import-room-keys" import_room_keys manual_string
             KeysCommand::ImportRoomKeys;
         on_open_settings "open-settings" open_settings manual SettingsCommand::Open;
+        on_open_settings_page "open-settings-page" open_settings_page
+            request(page "page" variant) SettingsCommand::Open;
         on_close_settings "close-settings" close_settings plain SettingsCommand::CloseSettings;
         on_clear_downloaded_media "clear-downloaded-media" clear_downloaded_media plain
             SettingsCommand::ClearDownloadedMedia;
@@ -249,6 +251,14 @@ macro_rules! simple_callbacks {
             SettingsCommand::Change;
         on_set_setting_flag "set-setting-flag" set_setting_flag
             request(setting "setting" variant, on "on" flag) SettingsCommand::Change;
+        on_set_skin_tone "set-skin-tone" set_skin_tone request(tone "tone" int)
+            SettingsCommand::Change;
+        on_set_quick_reaction "set-quick-reaction" set_quick_reaction
+            request(slot "slot" int, key "key" str) SettingsCommand::QuickReactions;
+        on_set_one_click_reaction "set-one-click-reaction" set_one_click_reaction
+            request(slot "slot" int) SettingsCommand::QuickReactions;
+        on_reset_quick_reactions "reset-quick-reactions" reset_quick_reactions manual
+            SettingsCommand::QuickReactions;
         on_open_account "open-account" open_account plain AccountCommand::OpenAccount;
         on_close_account "close-account" close_account plain AccountCommand::CloseAccount;
         on_show_account_overview "show-account-overview" show_account_overview plain
@@ -515,6 +525,7 @@ macro_rules! bool_props {
         SettingsMediaClearFailed SettingsView "SettingsView" "media-clear-failed" set_media_clear_failed get_media_clear_failed;
         SettingsHasClearableMedia SettingsView "SettingsView" "has-clearable-media" set_has_clearable_media get_has_clearable_media;
         SettingsPlayAnimations SettingsView "SettingsView" "play-animations" set_play_animations get_play_animations;
+        SettingsQuickReactionsCustom SettingsView "SettingsView" "quick-reactions-custom" set_quick_reactions_custom get_quick_reactions_custom;
         AccountVisible AccountView "AccountView" "visible" set_visible get_visible;
         AccountSessionsKnown AccountView "AccountView" "sessions-known" set_sessions_known get_sessions_known;
         AccountFactsKnown AccountView "AccountView" "facts-known" set_facts_known get_facts_known;
@@ -693,6 +704,8 @@ macro_rules! int_props {
         LogoutUnsent LogoutView "LogoutView" "unsent" set_unsent get_unsent;
         EncryptionKeysCount EncryptionView "EncryptionView" "keys-count" set_keys_count get_keys_count;
         EncryptionKeysTotal EncryptionView "EncryptionView" "keys-total" set_keys_total get_keys_total;
+        OneClickReaction SettingsView "SettingsView" "one-click-reaction" set_one_click_reaction get_one_click_reaction;
+        SkinTone EmojiStore "EmojiStore" "tone" set_tone get_tone;
     } };
 }
 pub(crate) use int_props;
@@ -1730,6 +1743,7 @@ macro_rules! settings_pages {
     ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
         Appearance Appearance "appearance";
         Messages   Messages   "messages";
+        Reactions  Reactions  "reactions";
         Notifications Notifications "notifications";
         Privacy    Privacy    "privacy";
         Calls      Calls      "calls";

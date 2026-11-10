@@ -9,6 +9,7 @@ use crate::domain::encryption::KeyPassphrase;
 use crate::domain::room::RoomId;
 use crate::domain::server_rules::{Keyword, RoomClass, RoomDefault};
 use crate::domain::settings::SettingChange;
+use crate::domain::settings::quick_reactions::QuickReactionChange;
 use crate::domain::uia::AccountPassword;
 use crate::domain::user_info::UserId;
 
@@ -95,6 +96,8 @@ pub enum SettingsCommand {
     Layout(SettingsLayout),
     #[strum(to_string = "ChangeSetting")]
     Change(SettingChange),
+    #[strum(to_string = "ChangeQuickReactions")]
+    QuickReactions(QuickReactionChange),
     ClearDownloadedMedia,
     #[strum(to_string = "ChangeNotificationRule")]
     Rule(RuleCommand),

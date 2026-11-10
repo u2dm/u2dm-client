@@ -1,16 +1,19 @@
 use std::path::{Path, PathBuf};
-use std::{fs, io, result};
+use std::{array, fs, io, result};
 
 use async_trait::async_trait;
 use serde::de::{DeserializeOwned, Deserializer};
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
+use serde_json::{Value, json};
 
 use super::private_fs;
 use crate::domain::call::devices::{ByKind, DeviceChoice, DeviceKey, MediaDevice};
+use crate::domain::settings::quick_reactions::{
+    QUICK_REACTION_COUNT, QuickReaction, QuickReactions, ReactionSlot,
+};
 use crate::domain::settings::{
     Alerts, Appearance, CallLayout, CallPreferences, MediaPreferences, Messaging, MotionChoice,
-    ReceiptVisibility, SendKey, Settings, ThemeChoice,
+    ReactionPreferences, ReceiptVisibility, SendKey, Settings, SkinTone, ThemeChoice,
 };
 use crate::error::Result;
 use crate::ports::settings::SettingsPort;
@@ -153,6 +156,8 @@ struct StoredSettings {
     appearance: Option<StoredAppearance>,
     #[serde(default, deserialize_with = "lenient")]
     messaging: Option<StoredMessaging>,
+    #[serde(default)]
+    reactions: Value,
     #[serde(default, deserialize_with = "lenient")]
     alerts: Option<StoredAlerts>,
     #[serde(default, deserialize_with = "lenient")]
@@ -174,6 +179,92 @@ where
             None
         }
     })
+}
+
+fn stored_reactions(reactions: &ReactionPreferences) -> Value {
+    let ReactionPreferences { quick, skin_tone } = reactions;
+    let keys: Vec<&str> = quick.keys().iter().map(QuickReaction::as_str).collect();
+    json!({
+        "quick": keys,
+        "one_click": quick.one_click().index(),
+        "skin_tone": skin_tone.index(),
+    })
+}
+
+fn read_reactions(stored: &Value) -> ReactionPreferences {
+    if !stored.is_null() && !stored.is_object() {
+        tracing::warn!("the reactions are not a group of settings, so they keep their defaults");
+    }
+    ReactionPreferences {
+        quick: read_quick_reactions(stored.get("quick"), stored.get("one_click")),
+        skin_tone: read_skin_tone(stored.get("skin_tone")),
+    }
+}
+
+fn read_quick_reactions(quick: Option<&Value>, one_click: Option<&Value>) -> QuickReactions {
+    let defaults = QuickReactions::default();
+    let one_click = one_click.map_or(defaults.one_click(), |value| {
+        let slot = value
+            .as_u64()
+            .and_then(|index| usize::try_from(index).ok())
+            .and_then(ReactionSlot::new);
+        if slot.is_none() {
+            tracing::warn!("the one-click reaction names no quick reaction, so it is the last one");
+        }
+        slot.unwrap_or(defaults.one_click())
+    });
+    let Some(read) = quick.and_then(read_quick_keys) else {
+        return QuickReactions::from_slots(array::from_fn(|_| None), one_click);
+    };
+    let restored = QuickReactions::from_slots(read.clone(), one_click);
+    for (slot, (read, kept)) in read.iter().zip(restored.keys()).enumerate() {
+        if read.as_ref().is_some_and(|read| read != kept) {
+            tracing::warn!(
+                slot,
+                "a quick reaction repeats an earlier one, so its slot takes a default"
+            );
+        }
+    }
+    restored
+}
+
+fn read_quick_keys(value: &Value) -> Option<[Option<QuickReaction>; QUICK_REACTION_COUNT]> {
+    let Some(items) = value
+        .as_array()
+        .filter(|items| items.len() == QUICK_REACTION_COUNT)
+    else {
+        tracing::warn!(
+            "the quick reactions are not a list of {QUICK_REACTION_COUNT}, so they take the defaults"
+        );
+        return None;
+    };
+    let read: [Option<QuickReaction>; QUICK_REACTION_COUNT] = array::from_fn(|slot| {
+        items
+            .get(slot)
+            .and_then(Value::as_str)
+            .and_then(QuickReaction::parse)
+    });
+    for (slot, _) in read.iter().enumerate().filter(|(_, key)| key.is_none()) {
+        tracing::warn!(
+            slot,
+            "a quick reaction is not an emoji, so its slot takes a default"
+        );
+    }
+    Some(read)
+}
+
+fn read_skin_tone(value: Option<&Value>) -> SkinTone {
+    let Some(value) = value else {
+        return SkinTone::default();
+    };
+    let tone = value
+        .as_u64()
+        .and_then(|index| u8::try_from(index).ok())
+        .and_then(SkinTone::new);
+    if tone.is_none() {
+        tracing::warn!("the skin tone is not one of the six, so emoji show without one");
+    }
+    tone.unwrap_or_default()
 }
 
 fn stored_device(choice: &DeviceChoice) -> Option<StoredDevice> {
@@ -206,6 +297,7 @@ impl From<&Settings> for StoredSettings {
                     typing_notices,
                     share_presence,
                 },
+            ref reactions,
             alerts:
                 Alerts {
                     desktop_notifications,
@@ -238,6 +330,7 @@ impl From<&Settings> for StoredSettings {
                 typing_notices: Some(typing_notices),
                 share_presence: Some(share_presence),
             }),
+            reactions: stored_reactions(reactions),
             alerts: Some(StoredAlerts {
                 desktop_notifications: Some(desktop_notifications),
                 hide_message_text: Some(hide_message_text),
@@ -301,6 +394,7 @@ impl From<StoredSettings> for Settings {
                     .share_presence
                     .unwrap_or(defaults.messaging.share_presence),
             },
+            reactions: read_reactions(&stored.reactions),
             alerts: Alerts {
                 desktop_notifications: alerts
                     .desktop_notifications

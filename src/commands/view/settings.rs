@@ -41,6 +41,7 @@ pub enum SettingsPage {
     #[default]
     Appearance,
     Messages,
+    Reactions,
     Notifications,
     Privacy,
     Calls,

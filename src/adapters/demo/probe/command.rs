@@ -376,6 +376,14 @@ pub enum ProbeCommand {
         name: String,
         value: String,
     },
+    SetQuickReaction {
+        slot: i64,
+        key: String,
+    },
+    SetOneClickReaction {
+        slot: i64,
+    },
+    ResetQuickReactions,
     OpenAccount,
     CloseAccount,
     ShowAccountOverview,

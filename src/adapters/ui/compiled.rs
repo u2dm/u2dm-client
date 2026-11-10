@@ -99,6 +99,7 @@ use crate::domain::room_creation::{RoomAccess, RoomKind};
 use crate::domain::room_info::MemberRole;
 use crate::domain::room_log::LogLevel;
 use crate::domain::server_rules::{RoomClass, RoomDefault};
+use crate::domain::settings::quick_reactions::QuickReactions;
 use crate::domain::settings::{
     CallLayout, MotionChoice, ReceiptVisibility, SendKey, SettingFlag, Settings, ThemeChoice,
 };
@@ -281,6 +282,8 @@ macro_rules! bind_compiled_callbacks {
         $actions.$on(move |arg| router::$fn(&tx, arg.to_string()));
     }};
     (@field $req:ident $field:ident text) => { $req.$field.to_string() };
+    (@field $req:ident $field:ident str) => { $req.$field.as_str() };
+    (@field $req:ident $field:ident int) => { $req.$field };
     (@field $req:ident $field:ident flag) => { $req.$field };
     (@field $req:ident $field:ident list) => { $req.$field.iter().map(String::from).collect() };
     (@field $req:ident $field:ident variant) => { $req.$field.slint_name() };
@@ -353,6 +356,16 @@ impl UiProps for AppWindow {
             .collect();
         self.global::<LoginView>()
             .set_messages(ModelRc::new(VecModel::from(entries)));
+    }
+
+    fn apply_quick_reactions(&self, reactions: &QuickReactions) {
+        let keys = reactions
+            .keys()
+            .iter()
+            .map(|key| SharedString::from(key.as_str()))
+            .collect();
+        self.global::<SettingsView>()
+            .set_quick_reactions(string_model(keys));
     }
 
     fn apply_emoji_model(&self, emojis: &[DomainVerificationEmoji]) {

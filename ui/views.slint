@@ -584,6 +584,9 @@ export global SettingsView {
     in property <bool> listing;
     in property <SendKey> send-key: SendKey.enter;
     in property <ReceiptVisibility> receipts: ReceiptVisibility.public;
+    in property <[string]> quick-reactions: ["❤️", "😕", "🎉", "😭", "😄", "👎", "👍", "🫃"];
+    in property <int> one-click-reaction: 7;
+    in property <bool> quick-reactions-custom;
     in property <bool> typing-notices: true;
     in property <bool> share-presence: true;
     in property <bool> desktop-notifications: true;

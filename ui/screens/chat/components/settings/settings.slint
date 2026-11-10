@@ -18,12 +18,15 @@ import { NotificationsPage } from "./notifications-page.slint";
 import { CallsPage } from "./calls-page.slint";
 import { MediaPage } from "./media-page.slint";
 import { PrivacyPage } from "./privacy-page.slint";
+import { ReactionsPage } from "./reactions-page.slint";
+import { QuickReactions } from "../timeline/quick-reactions.slint";
 import { SettingsHeader, UnsavedBanner } from "./page-header.slint";
 
 export global SettingsPages {
     out property <[SettingsPage]> all: [
         SettingsPage.appearance,
         SettingsPage.messages,
+        SettingsPage.reactions,
         SettingsPage.notifications,
         SettingsPage.privacy,
         SettingsPage.calls,
@@ -32,16 +35,20 @@ export global SettingsPages {
 
     public pure function position(page: SettingsPage) -> int {
         return page == SettingsPage.messages ? 1
-            : page == SettingsPage.notifications ? 2
-            : page == SettingsPage.privacy ? 3
-            : page == SettingsPage.calls ? 4
-            : page == SettingsPage.media ? 5
+            : page == SettingsPage.reactions ? 2
+            : page == SettingsPage.notifications ? 3
+            : page == SettingsPage.privacy ? 4
+            : page == SettingsPage.calls ? 5
+            : page == SettingsPage.media ? 6
             : 0;
     }
 
     public pure function title(page: SettingsPage) -> string {
         if page == SettingsPage.messages {
             return @tr("Messages");
+        }
+        if page == SettingsPage.reactions {
+            return @tr("Reactions");
         }
         if page == SettingsPage.notifications {
             return @tr("Notifications");
@@ -62,6 +69,9 @@ export global SettingsPages {
         if page == SettingsPage.messages {
             return IconSet.MessageSquareText;
         }
+        if page == SettingsPage.reactions {
+            return IconSet.SmilePlus;
+        }
         if page == SettingsPage.notifications {
             return IconSet.Bell;
         }
@@ -80,6 +90,9 @@ export global SettingsPages {
     public pure function summary(page: SettingsPage) -> string {
         if page == SettingsPage.messages {
             return SettingsWords.send-key-summary(SettingsView.send-key);
+        }
+        if page == SettingsPage.reactions {
+            return SettingsWords.reactions-summary(QuickReactions.default-key);
         }
         if page == SettingsPage.notifications {
             return SettingsWords.notifications-summary(SettingsView.desktop-notifications, SettingsView.hide-message-text);
@@ -294,6 +307,8 @@ component SettingsNav inherits Rectangle {
 
 export component SettingsDialog inherits ModalHost {
     property <bool> asking-clear;
+    property <int> picking-slot: -1;
+    property <int> picker-peels;
     property <bool> wide: root.width >= Metrics.settings-split-min;
     property <bool> listing: !root.wide && SettingsView.listing;
     property <SettingsPage> page: SettingsView.page;
@@ -340,6 +355,7 @@ export component SettingsDialog inherits ModalHost {
 
     function open-page(page: SettingsPage, by-keys: bool) {
         root.asking-clear = false;
+        root.picking-slot = -1;
         root.keyed = by-keys;
         if !root.wide {
             root.focus();
@@ -362,12 +378,17 @@ export component SettingsDialog inherits ModalHost {
     function list(by-keys: bool) {
         root.focus();
         root.asking-clear = false;
+        root.picking-slot = -1;
         root.keyed = by-keys;
         root.returning = true;
         Actions.show-settings-list();
     }
 
     changed page => {
+        pane.content-y = 0;
+    }
+
+    changed picking-slot => {
         pane.content-y = 0;
     }
 
@@ -388,6 +409,12 @@ export component SettingsDialog inherits ModalHost {
     dismissed => {
         if root.asking-clear && !root.dismissing-by-pointer {
             root.asking-clear = false;
+            return;
+        }
+        if root.picking-slot >= 0 && !root.dismissing-by-pointer {
+            root.focus();
+            root.picking-slot = -1;
+            root.picker-peels += 1;
             return;
         }
         if !root.wide && !SettingsView.listing && !root.dismissing-by-pointer {
@@ -508,6 +535,15 @@ export component SettingsDialog inherits ModalHost {
                         if !root.listing && root.page == SettingsPage.appearance: AppearancePage { }
 
                         if !root.listing && root.page == SettingsPage.messages: MessagesPage { }
+
+                        if !root.listing && root.page == SettingsPage.reactions: ReactionsPage {
+                            room: pane.height - Space.lg - root.pad;
+                            peels: root.picker-peels;
+                            picking <=> root.picking-slot;
+                            park-focus => {
+                                root.park-focus();
+                            }
+                        }
 
                         if !root.listing && root.page == SettingsPage.notifications: NotificationsPage { }
 

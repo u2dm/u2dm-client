@@ -3,8 +3,9 @@ use std::time::Duration;
 
 use super::drafts::{CreateRoomOp, EmoteDto, message_edit, poll_draft, room_draft};
 use super::targets::{
-    Selection, ban, in_room, in_space, keyword_rule, kick, leave_space, moderation, open_settings,
-    person, room, room_default, room_notify, setting_change, settings_page, target,
+    Selection, ban, in_room, in_space, keyword_rule, kick, leave_space, moderation,
+    one_click_reaction, open_settings, person, quick_reaction, room, room_default, room_notify,
+    setting_change, settings_page, target,
 };
 use super::{ProbeCommand, Rejected};
 use crate::adapters::demo::attachments;
@@ -24,6 +25,7 @@ use crate::domain::matrix_link::{RoomAddress, RoomLink};
 use crate::domain::media::AttachmentPick;
 use crate::domain::message::EditTarget;
 use crate::domain::room::RoomId;
+use crate::domain::settings::quick_reactions::QuickReactionChange;
 use crate::domain::sync::{ReauthReason, SessionLoss};
 use crate::domain::uia::AccountPassword;
 use crate::domain::user_info::UserId;
@@ -334,6 +336,11 @@ pub fn to_driven(command: ProbeCommand, selected: Selection<'_>) -> Result<Drive
         ProbeCommand::ShowSettingsPage { page } => return settings_page(&page),
         ProbeCommand::ShowSettingsList => SettingsCommand::ShowList.into(),
         ProbeCommand::SetSetting { name, value } => return setting_change(&name, &value),
+        ProbeCommand::SetQuickReaction { slot, key } => return quick_reaction(slot, &key),
+        ProbeCommand::SetOneClickReaction { slot } => return one_click_reaction(slot),
+        ProbeCommand::ResetQuickReactions => {
+            SettingsCommand::QuickReactions(QuickReactionChange::Reset).into()
+        }
         ProbeCommand::OpenAccount => AccountCommand::OpenAccount.into(),
         ProbeCommand::CloseAccount => AccountCommand::CloseAccount.into(),
         ProbeCommand::ShowAccountOverview => AccountCommand::ShowAccountOverview.into(),

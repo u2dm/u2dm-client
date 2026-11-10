@@ -7,8 +7,10 @@ use crate::adapters::ui::schema::{
 use crate::commands::ui::{RuleCommand, SettingsCommand};
 use crate::commands::view::{SettingsLayout, SettingsPage};
 use crate::domain::server_rules::{Keyword, RoomClass, RoomDefault};
+use crate::domain::settings::quick_reactions::{QuickReaction, QuickReactionChange, ReactionSlot};
 use crate::domain::settings::{
-    CallLayout, MotionChoice, ReceiptVisibility, SendKey, SettingChange, SettingFlag, ThemeChoice,
+    CallLayout, MotionChoice, ReceiptVisibility, SendKey, SettingChange, SettingFlag, SkinTone,
+    ThemeChoice,
 };
 
 settings_pages!(variant_named settings_page_named SettingsPage;);
@@ -24,6 +26,14 @@ room_defaults!(variant_named room_default_named RoomDefault;);
 
 pub fn open_settings(tx: &Tx) {
     send_command(tx, SettingsCommand::Open(None));
+}
+
+pub fn open_settings_page(tx: &Tx, page: &str) {
+    let Some(page) = settings_page_named(page) else {
+        tracing::warn!(page, "ignoring an unknown settings page");
+        return;
+    };
+    send_command(tx, SettingsCommand::Open(Some(page)));
 }
 
 pub fn settings_layout(tx: &Tx, layout: &str) {
@@ -94,6 +104,60 @@ pub fn set_setting_flag(tx: &Tx, setting: &str, on: bool) {
         return;
     };
     send_command(tx, SettingsCommand::Change(SettingChange::Flag(flag, on)));
+}
+
+pub fn set_skin_tone(tx: &Tx, tone: i32) {
+    let Some(tone) = u8::try_from(tone).ok().and_then(SkinTone::new) else {
+        tracing::warn!(tone, "ignoring an unknown skin tone");
+        return;
+    };
+    send_command(tx, SettingsCommand::Change(SettingChange::SkinTone(tone)));
+}
+
+pub fn set_quick_reaction(tx: &Tx, slot: i32, key: &str) {
+    let Some(slot) = reaction_slot(slot) else {
+        tracing::warn!(
+            slot,
+            "ignoring a quick reaction for a slot that does not exist"
+        );
+        return;
+    };
+    let Some(key) = QuickReaction::parse(key) else {
+        tracing::warn!(
+            slot = slot.index(),
+            "ignoring a quick reaction that is not an emoji"
+        );
+        return;
+    };
+    send_command(
+        tx,
+        SettingsCommand::QuickReactions(QuickReactionChange::Place(slot, key)),
+    );
+}
+
+pub fn set_one_click_reaction(tx: &Tx, slot: i32) {
+    let Some(slot) = reaction_slot(slot) else {
+        tracing::warn!(
+            slot,
+            "ignoring a one-click reaction for a slot that does not exist"
+        );
+        return;
+    };
+    send_command(
+        tx,
+        SettingsCommand::QuickReactions(QuickReactionChange::OneClick(slot)),
+    );
+}
+
+pub fn reset_quick_reactions(tx: &Tx) {
+    send_command(
+        tx,
+        SettingsCommand::QuickReactions(QuickReactionChange::Reset),
+    );
+}
+
+fn reaction_slot(slot: i32) -> Option<ReactionSlot> {
+    usize::try_from(slot).ok().and_then(ReactionSlot::new)
 }
 
 pub fn set_room_default(tx: &Tx, rooms: &str, mode: &str) {

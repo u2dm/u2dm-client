@@ -1,0 +1,69 @@
+import { Palette } from "std-widgets.slint";
+
+import { ClickArea } from "../../../../components/a11y.slint";
+import { AppStyle, Metrics, Size, Stroke } from "../../../../theme.slint";
+
+export global SkinTones {
+    out property <[color]> colors: [
+        #FFCC4D,
+        #F7DECE,
+        #F3D2A2,
+        #D5AB88,
+        #AF7E57,
+        #7C533E,
+    ];
+
+    public pure function label(index: int) -> string {
+        if index == 1 {
+            return @tr("Light skin tone");
+        }
+        if index == 2 {
+            return @tr("Medium-light skin tone");
+        }
+        if index == 3 {
+            return @tr("Medium skin tone");
+        }
+        if index == 4 {
+            return @tr("Medium-dark skin tone");
+        }
+        if index == 5 {
+            return @tr("Dark skin tone");
+        }
+        return @tr("Default skin tone");
+    }
+}
+
+export component ToneSwatch inherits Rectangle {
+    in property <color> swatch;
+    in property <bool> selected;
+    in property <string> label;
+    in property <bool> above-modal;
+    in property <bool> focusable: true;
+    in property <bool> roving-focus;
+    in property <length> size: Size.xs;
+    callback clicked();
+
+    width: root.size;
+    height: root.size;
+    border-radius: self.width / 2;
+    background: root.swatch;
+    border-width: root.selected ? Stroke.emphasis : Stroke.hairline;
+    border-color: root.selected
+        ? Palette.accent-background
+        : AppStyle.foreground-faint;
+
+    ClickArea {
+        label: root.label;
+        above-modal: root.above-modal;
+        focusable: root.focusable;
+        roving-focus: root.roving-focus;
+        ring-inset: -Metrics.ring-outset;
+        ring-radius: root.size / 2 + Metrics.ring-outset;
+        accessible-role: radio-button;
+        accessible-checkable: true;
+        accessible-checked: root.selected;
+        clicked => {
+            root.clicked();
+        }
+    }
+}

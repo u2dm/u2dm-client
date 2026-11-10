@@ -132,6 +132,8 @@ macro_rules! bind_interpreted_callbacks {
         bind_void($inst, $lit, move |args| router::$fn(&tx, string_arg(args, 0)))
     }};
     (@field $s:ident $name:literal text) => { field($s, $name) };
+    (@field $s:ident $name:literal str) => { &field($s, $name) };
+    (@field $s:ident $name:literal int) => { number($s, $name) };
     (@field $s:ident $name:literal flag) => { flag($s, $name) };
     (@field $s:ident $name:literal list) => { strings($s, $name) };
     (@field $s:ident $name:literal variant) => { variant_of($s.get_field($name)) };

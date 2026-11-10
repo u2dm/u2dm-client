@@ -22,6 +22,7 @@ use crate::domain::call::devices::DeviceChoices;
 use crate::domain::media::MediaUsage;
 use crate::domain::member_name::MemberName;
 use crate::domain::server_rules::ServerRules;
+use crate::domain::settings::quick_reactions::QuickReactionChange;
 use crate::domain::settings::{SettingChange, Settings};
 use crate::domain::user_info::UserId;
 use crate::ports::matrix::{MediaPort, ServerRulesPort, UserInfoPort};
@@ -353,6 +354,14 @@ impl SettingsController {
             return;
         }
         tracing::info!(?change, "a setting changed");
+        self.save_and_publish();
+    }
+
+    pub(super) fn change_quick_reactions(&mut self, change: &QuickReactionChange) {
+        if !self.values.change_quick_reactions(change.clone()) {
+            return;
+        }
+        tracing::info!(?change, "the quick reactions changed");
         self.save_and_publish();
     }
 

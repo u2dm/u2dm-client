@@ -2,7 +2,9 @@ use super::AppService;
 use crate::app::event::{ActionOutcome, SettingsEvent};
 use crate::app::settings::PagePorts;
 use crate::commands::ui::SettingsCommand;
-use crate::domain::settings::{Appearance, MediaPreferences, Messaging, Settings};
+use crate::domain::settings::{
+    Appearance, MediaPreferences, Messaging, ReactionPreferences, Settings,
+};
 use crate::domain::user_info::IgnoreChange;
 
 impl AppService {
@@ -19,6 +21,11 @@ impl AppService {
                     receipts,
                     typing_notices,
                     share_presence,
+                },
+            reactions:
+                ReactionPreferences {
+                    quick: _,
+                    skin_tone: _,
                 },
             alerts,
             calls,
@@ -86,6 +93,9 @@ impl AppService {
                 let playing = [self.audio.playing_file(), self.video.playing_file()];
                 self.settings
                     .clear_media(media, playing.into_iter().flatten().collect());
+            }
+            SettingsCommand::QuickReactions(change) => {
+                self.settings.change_quick_reactions(&change);
             }
             SettingsCommand::Change(change) => {
                 let loaded_automatically = self.settings.values().media.auto_load;

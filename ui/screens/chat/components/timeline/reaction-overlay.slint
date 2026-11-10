@@ -2,9 +2,10 @@ import { ReactionPicker, ReactionStrip } from "./reaction-picker.slint";
 import { ReactionDetail } from "./reaction-detail.slint";
 import { PollVoters } from "./poll-voters.slint";
 import { ModalHost, Placement, TipCard } from "../../../../components/overlay.slint";
-import { MetaMark, MetaTip, ReactionPopup, Reactions, Shell } from "../../../../local.slint";
+import { MetaMark, MetaTip, ReactionPopup, Reactions, SettingsEntry, Shell } from "../../../../local.slint";
 import { Actions } from "../../../../actions.slint";
 import { Deliveries, DeliveryStatus, ShieldReasons } from "../../../../messages.slint";
+import { SettingsPage } from "../../../../enums.slint";
 import { PackView, RoomView } from "../../../../views.slint";
 import { Metrics, Motion, Space } from "../../../../theme.slint";
 
@@ -131,6 +132,12 @@ export component ReactionOverlay inherits Rectangle {
                 Actions.react-with-emote(Reactions.anchor.event-id, pack-id, shortcode);
                 Reactions.close();
                 root.closed();
+            }
+            edit-quick-reactions(by-keys) => {
+                Reactions.close();
+                root.closed();
+                SettingsEntry.by-keys = by-keys;
+                Actions.open-settings-page({ page: SettingsPage.reactions });
             }
         }
     }

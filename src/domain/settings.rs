@@ -1,4 +1,9 @@
+pub mod quick_reactions;
+
+use self::quick_reactions::{QuickReactionChange, QuickReactions};
 use crate::domain::call::devices::DeviceChoices;
+
+pub const SKIN_TONE_COUNT: u8 = 6;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum ThemeChoice {
@@ -39,6 +44,23 @@ pub enum CallLayout {
     ChatOnly,
 }
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct SkinTone(u8);
+
+impl SkinTone {
+    pub const fn new(index: u8) -> Option<Self> {
+        if index < SKIN_TONE_COUNT {
+            Some(Self(index))
+        } else {
+            None
+        }
+    }
+
+    pub const fn index(self) -> u8 {
+        self.0
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum SettingFlag {
     TypingNotices,
@@ -77,6 +99,12 @@ impl Default for Messaging {
             share_presence: true,
         }
     }
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct ReactionPreferences {
+    pub quick: QuickReactions,
+    pub skin_tone: SkinTone,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -137,6 +165,7 @@ impl Default for MediaPreferences {
 pub struct Settings {
     pub appearance: Appearance,
     pub messaging: Messaging,
+    pub reactions: ReactionPreferences,
     pub alerts: Alerts,
     pub calls: CallPreferences,
     pub remembered_devices: DeviceChoices,
@@ -150,6 +179,7 @@ pub enum SettingChange {
     SendKey(SendKey),
     Receipts(ReceiptVisibility),
     CallLayout(CallLayout),
+    SkinTone(SkinTone),
     Flag(SettingFlag, bool),
 }
 
@@ -161,6 +191,7 @@ impl Settings {
             SettingChange::SendKey(key) => replaced(&mut self.messaging.send_key, key),
             SettingChange::Receipts(receipts) => replaced(&mut self.messaging.receipts, receipts),
             SettingChange::CallLayout(layout) => replaced(&mut self.calls.layout, layout),
+            SettingChange::SkinTone(tone) => replaced(&mut self.reactions.skin_tone, tone),
             SettingChange::Flag(flag, on) => {
                 let changed = replaced(self.flag_mut(flag), on);
                 if !self.calls.remember_devices {
@@ -169,6 +200,10 @@ impl Settings {
                 changed
             }
         }
+    }
+
+    pub fn change_quick_reactions(&mut self, change: QuickReactionChange) -> bool {
+        self.reactions.quick.apply(change)
     }
 
     pub fn remember_devices(&mut self, devices: DeviceChoices) -> bool {

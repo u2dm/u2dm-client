@@ -4,8 +4,8 @@ use slint::{Rgb8Pixel, SharedPixelBuffer};
 use slint_interpreter::{ComponentInstance, SharedString, Value};
 
 use super::names::{
-    login_view, room_info_view, user_message, verification_emoji, verification_view, video_view,
-    window_props,
+    login_view, room_info_view, settings_view, user_message, verification_emoji, verification_view,
+    video_view, window_props,
 };
 #[cfg(feature = "demo")]
 use super::values::variant_of;
@@ -43,6 +43,7 @@ use crate::domain::room::NotifyMode;
 use crate::domain::room_creation::RoomKind;
 use crate::domain::room_info::MemberRole;
 use crate::domain::server_rules::RoomDefault;
+use crate::domain::settings::quick_reactions::QuickReactions;
 use crate::domain::settings::{CallLayout, MotionChoice, ReceiptVisibility, SendKey, ThemeChoice};
 use crate::domain::sync::ConnectionStatus;
 use crate::domain::timeline::{SourceEncryption, TimelineStatus};
@@ -206,6 +207,20 @@ impl UiProps for ComponentInstance {
             login_view::NAME,
             login_view::MESSAGES,
             model_value(entries),
+        );
+    }
+
+    fn apply_quick_reactions(&self, reactions: &QuickReactions) {
+        let keys = reactions
+            .keys()
+            .iter()
+            .map(|key| text_value(key.as_str()))
+            .collect();
+        set_global(
+            self,
+            settings_view::NAME,
+            settings_view::QUICK_REACTIONS,
+            model_value(keys),
         );
     }
 

@@ -73,6 +73,7 @@ scenario_env() {
     reduced-motion)  echo 'U2DM_DEMO_MOTION=reduced U2DM_DEMO_WINDOW=900x760' ;;
     settings-appearance) echo 'U2DM_DEMO_WINDOW=900x760' ;;
     settings-narrow) echo 'U2DM_DEMO_WINDOW=600x760' ;;
+    settings-reactions) echo 'U2DM_DEMO_WINDOW=900x760' ;;
     settings-messages) echo 'U2DM_DEMO_WINDOW=900x760' ;;
     settings-presence) echo 'U2DM_DEMO_PRESENCE=partners,status U2DM_DEMO_WINDOW=900x760' ;;
     settings-notifications) echo 'U2DM_DEMO_NOTIFY=group,dm,mention U2DM_DEMO_WINDOW=900x760' ;;
@@ -1222,6 +1223,19 @@ scenario_steps() {
       echo 'sleep 2'
       echo '{"op":"show_settings_list"}'
       echo 'sleep 1' ;;
+    settings-reactions)
+      echo '{"op":"select_room","room_id":"!rust:demo.local"}'
+      echo 'sleep 1'
+      echo '{"op":"open_settings","page":"reactions"}'
+      echo 'sleep 1'
+      echo '{"op":"set_quick_reaction","slot":0,"key":"🔥"}'
+      echo 'sleep 1'
+      echo '{"op":"set_one_click_reaction","slot":0}'
+      echo 'sleep 1'
+      echo '{"op":"set_quick_reaction","slot":3,"key":"🔥"}'
+      echo 'sleep 1'
+      echo '{"op":"set_setting","name":"skin_tone","value":"3"}'
+      echo 'sleep 1' ;;
     settings-appearance)
       echo '{"op":"select_room","room_id":"!rust:demo.local"}'
       echo 'sleep 1'
@@ -1335,6 +1349,7 @@ scenario_note() {
     settings-presence) echo 'Share your presence off says offline once with your status kept, and on again says online at once (the log: demo: presence reaches the homeserver)' ;;
     settings-messages) echo 'Messages: Ctrl+Enter sends; Privacy and safety: read receipts go private and typing notices stop (settings.values; the demo logs each receipt with its visibility)' ;;
     settings-appearance) echo 'Settings opens on Appearance beside its categories, and Appearance turns the theme dark at once and reduces motion (settings.values, settings.dialog.page and layout; the shot is dark)' ;;
+    settings-reactions) echo 'Reactions: 🔥 goes into the first slot and takes the star, then into the fourth, which swaps it with 😭; the star stays with the first slot, so 😭 is the one-click reaction (settings.values.quick_reactions and one_click), and the skin tone is medium (skin_tone 3)' ;;
     settings-narrow) echo 'At 600 px Settings opens on its list of pages; Notifications shows with a back arrow and follows the homeserver'"'"'s rules while it shows, and back on the list the follow stops (settings.dialog.listing and layout, settings.rules.known)' ;;
     reduced-motion)  echo 'the desktop asks for reduced motion: the log says the UI follows it with reduced=true, and the rail marker, the drawer and every other movement jump while fades run (target/visual-system/motion.sh measures the marker)' ;;
     subspace-tabs)   echo 'Rust lists its sub-spaces as tabs above its rooms (All in Rust, Web, Infra) instead of a second rail; picking Web lists its rooms and names it in the header (directory.space_name, subspace_id, listed_space)' ;;
@@ -1488,7 +1503,8 @@ names() {
     identity-reset identity-reset-oauth room-keys \
     account-sessions account-password account-sso account-oauth account-limits account-deactivate \
     logout-warning settings-appearance settings-messages settings-presence settings-notifications \
-    settings-calls settings-media settings-cache settings-rules settings-ignored settings-narrow
+    settings-calls settings-media settings-cache settings-rules settings-ignored settings-narrow \
+    settings-reactions
 }
 
 cmd_list() {

@@ -1,0 +1,423 @@
+import { Palette } from "std-widgets.slint";
+import { IconDisplay, IconSet } from "@lucide";
+
+import { FocusReveal, RovingKeys } from "../../../../components/a11y.slint";
+import { LinkButton } from "../../../../components/button.slint";
+import { ShadedClickArea } from "../../../../components/state-layer.slint";
+import { SettingKey } from "../../../../enums.slint";
+import { EmojiStore } from "../../../../emoji-store.slint";
+import { SettingsView } from "../../../../views.slint";
+import { Actions } from "../../../../actions.slint";
+import { SettingsWords } from "../../../../messages.slint";
+import { Shell } from "../../../../local.slint";
+import { AppStyle, Fonts, Glyph, IconSize, Metrics, Radius, Size, Space, Weight } from "../../../../theme.slint";
+import { EmojiPicker } from "../timeline/emoji-picker.slint";
+import { QuickReactions } from "../timeline/quick-reactions.slint";
+import { SkinTones, ToneSwatch } from "../timeline/tone-swatch.slint";
+import { SettingsGroup } from "./group.slint";
+
+component SlotCell inherits ShadedClickArea {
+    in property <string> key;
+    in property <bool> choosing;
+
+    width: Metrics.settings-reaction-slot;
+    height: Metrics.settings-reaction-slot;
+    focusable: false;
+    above-modal: true;
+    border-radius: Radius.sm;
+    ring-radius: Radius.sm;
+    background: root.choosing ? AppStyle.accent-background-soft : transparent;
+
+    Text {
+        x: 0;
+        y: 0;
+        width: parent.width;
+        height: parent.height;
+        text: root.key;
+        font-family: Fonts.emoji;
+        font-size: Glyph.xl;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+        accessible-role: none;
+    }
+}
+
+component StarCell inherits ShadedClickArea {
+    in property <bool> starred;
+
+    width: Metrics.settings-reaction-slot;
+    height: Metrics.settings-reaction-star;
+    focusable: false;
+    above-modal: true;
+    border-radius: Radius.sm;
+    ring-radius: Radius.sm;
+    accessible-role: radio-button;
+    accessible-checkable: true;
+    accessible-checked: root.starred;
+
+    IconDisplay {
+        x: (parent.width - self.width) / 2;
+        y: (parent.height - self.height) / 2;
+        icon: IconSet.Star;
+        size: IconSize.sm;
+        stroke: root.starred ? Palette.accent-background : AppStyle.overlay-foreground-muted;
+        stroke-fill: root.starred ? Palette.accent-background : transparent;
+    }
+}
+
+component QuickReactionsRow inherits Rectangle {
+    in property <int> choosing: -1;
+
+    callback choose(int, bool);
+
+    property <int> count: QuickReactions.count;
+    property <length> slot: Metrics.settings-reaction-slot;
+    property <length> gap: Space.sm;
+    property <length> inset: Space.lg;
+    property <length> grid-width: root.width - 2 * root.inset;
+    property <bool> one-line: root.grid-width >= root.count * root.slot + (root.count - 1) * root.gap;
+    property <int> columns: root.one-line ? root.count : ceil(root.count / 2);
+    property <int> lines: ceil(root.count / root.columns);
+    property <length> pitch: root.grid-width / root.columns;
+    property <length> line: root.slot + Metrics.settings-reaction-star;
+
+    public function focus-slot(index: int) {
+        slots.cursor = index;
+        slots.focus();
+    }
+
+    function reveal() {
+        FocusReveal.ask(root.absolute-position.x, root.absolute-position.y, root.height);
+    }
+
+    pure function slot-label(index: int) -> string {
+        return @tr("Change {}, quick reaction {} of {}", QuickReactions.keys[index], index + 1, root.count);
+    }
+
+    pure function star-label(index: int) -> string {
+        return @tr("Send {} in one click", QuickReactions.keys[index]);
+    }
+
+    pure function star-cursor(cursor: int) -> int {
+        return cursor < 0 ? QuickReactions.default-index : cursor;
+    }
+
+    height: layout.preferred-height;
+    background: AppStyle.control;
+
+    layout := VerticalLayout {
+        padding-left: root.inset;
+        padding-right: root.inset;
+        padding-top: Space.md;
+        padding-bottom: Space.md;
+        spacing: Space.sm;
+
+        HorizontalLayout {
+            spacing: Space.md;
+
+            Text {
+                horizontal-stretch: 1;
+                text: SettingsWords.label(SettingKey.quick-reactions);
+                font-size: Fonts.label;
+                font-weight: Weight.semibold;
+                vertical-alignment: center;
+                wrap: word-wrap;
+                accessible-role: none;
+            }
+
+            LinkButton {
+                horizontal-stretch: 0;
+                height: Size.sm;
+                pad: Space.md;
+                above-modal: true;
+                text: @tr("Reset to defaults");
+                label: self.text;
+                accessible-description: @tr("Puts back the quick reactions you started with, the last one starred");
+                enabled: SettingsView.quick-reactions-custom;
+                clicked => {
+                    if self.has-focus {
+                        root.focus-slot(0);
+                    }
+                    Actions.reset-quick-reactions();
+                }
+            }
+        }
+
+        Rectangle {
+            height: root.lines * root.line + (root.lines - 1) * root.gap;
+
+            for index in root.count: Rectangle {
+                x: mod(index, root.columns) * root.pitch + (root.pitch - root.slot) / 2;
+                y: floor(index / root.columns) * (root.line + root.gap);
+                width: root.slot;
+                height: root.line;
+
+                SlotCell {
+                    x: 0;
+                    y: 0;
+                    key: QuickReactions.keys[index];
+                    choosing: index == root.choosing;
+                    label: root.slot-label(index);
+                    roving-focus: slots.has-focus && slots.cursor == index;
+                    clicked => {
+                        root.choose(index, false);
+                    }
+                }
+
+                StarCell {
+                    x: 0;
+                    y: root.slot;
+                    starred: index == QuickReactions.default-index;
+                    label: root.star-label(index);
+                    roving-focus: stars.has-focus && stars.cursor == index;
+                    clicked => {
+                        Actions.set-one-click-reaction({ slot: index });
+                    }
+                }
+            }
+        }
+
+        Text {
+            text: SettingsWords.detail(SettingKey.quick-reactions);
+            font-size: Fonts.body-small;
+            color: AppStyle.overlay-foreground-muted;
+            wrap: word-wrap;
+            accessible-role: none;
+        }
+    }
+
+    slots := RovingKeys {
+        count: root.count;
+        horizontal: true;
+        accessible-label: root.slot-label(max(self.cursor, 0));
+        accessible-description: SettingsWords.detail(SettingKey.quick-reactions);
+        accessible-action-default => {
+            root.choose(max(self.cursor, 0), true);
+        }
+        activated(index) => {
+            root.choose(index, true);
+        }
+        changed has-focus => {
+            if self.has-focus {
+                root.reveal();
+            }
+        }
+    }
+
+    stars := RovingKeys {
+        count: root.count;
+        horizontal: true;
+        start-at: QuickReactions.default-index;
+        accessible-role: radio-button;
+        accessible-label: root.star-label(root.star-cursor(self.cursor));
+        accessible-checkable: true;
+        accessible-checked: root.star-cursor(self.cursor) == QuickReactions.default-index;
+        accessible-action-default => {
+            Actions.set-one-click-reaction({ slot: root.star-cursor(self.cursor) });
+        }
+        activated(index) => {
+            Actions.set-one-click-reaction({ slot: index });
+        }
+        changed has-focus => {
+            if self.has-focus {
+                root.reveal();
+            }
+        }
+    }
+
+}
+
+component SkinToneRow inherits Rectangle {
+    property <string> label: SettingsWords.label(SettingKey.skin-tone);
+
+    pure function tone-cursor(cursor: int) -> int {
+        return cursor < 0 ? EmojiStore.tone : cursor;
+    }
+
+    height: layout.preferred-height;
+    background: AppStyle.control;
+
+    tones := RovingKeys {
+        count: SkinTones.colors.length;
+        horizontal: true;
+        start-at: EmojiStore.tone;
+        accessible-role: radio-button;
+        accessible-label: @tr("{}: {}", root.label, SkinTones.label(root.tone-cursor(self.cursor)));
+        accessible-checkable: true;
+        accessible-checked: root.tone-cursor(self.cursor) == EmojiStore.tone;
+        accessible-description: SettingsWords.detail(SettingKey.skin-tone);
+        accessible-action-default => {
+            Actions.set-skin-tone({ tone: root.tone-cursor(self.cursor) });
+        }
+        activated(index) => {
+            Actions.set-skin-tone({ tone: index });
+        }
+        changed has-focus => {
+            if self.has-focus {
+                FocusReveal.ask(root.absolute-position.x, root.absolute-position.y, root.height);
+            }
+        }
+    }
+
+    layout := VerticalLayout {
+        padding-left: Space.lg;
+        padding-right: Space.lg;
+        padding-top: Space.md;
+        padding-bottom: Space.md;
+        spacing: Space.md;
+
+        Text {
+            text: root.label;
+            font-size: Fonts.label;
+            font-weight: Weight.semibold;
+            wrap: word-wrap;
+            accessible-role: none;
+        }
+
+        HorizontalLayout {
+            alignment: start;
+            spacing: Space.lg;
+
+            for swatch[index] in SkinTones.colors: ToneSwatch {
+                size: Metrics.settings-tone-swatch;
+                swatch: swatch;
+                selected: index == EmojiStore.tone;
+                label: SkinTones.label(index);
+                above-modal: true;
+                focusable: false;
+                roving-focus: tones.has-focus && tones.cursor == index;
+                clicked => {
+                    Actions.set-skin-tone({ tone: index });
+                }
+            }
+        }
+
+        Text {
+            text: SettingsWords.detail(SettingKey.skin-tone);
+            font-size: Fonts.body-small;
+            color: AppStyle.overlay-foreground-muted;
+            wrap: word-wrap;
+            accessible-role: none;
+        }
+    }
+}
+
+export component ReactionsPage inherits VerticalLayout {
+    in property <length> room;
+    in property <int> peels;
+    in-out property <int> picking: -1;
+
+    callback park-focus();
+
+    property <bool> keyed;
+    property <int> chosen: -1;
+
+    function choose(index: int, by-keys: bool) {
+        Shell.picker-open = false;
+        if !by-keys && root.picking < 0 {
+            root.park-focus();
+        }
+        root.keyed = by-keys;
+        root.chosen = index;
+        root.picking = index;
+    }
+
+    function return-focus() {
+        if root.chosen < 0 {
+            return;
+        }
+        if root.keyed {
+            slots-row.focus-slot(root.chosen);
+        } else {
+            root.park-focus();
+        }
+        root.chosen = -1;
+    }
+
+    function pick(glyph: string) {
+        Actions.set-quick-reaction({ slot: root.picking, key: glyph });
+        root.return-focus();
+        root.picking = -1;
+    }
+
+    changed peels => {
+        root.return-focus();
+    }
+
+    spacing: Space.xl;
+
+    slots-group := SettingsGroup {
+        slots-row := QuickReactionsRow {
+            choosing: root.picking;
+            choose(index, by-keys) => {
+                root.choose(index, by-keys);
+            }
+        }
+    }
+
+    if root.picking >= 0: Rectangle {
+        height: chooser.preferred-height;
+
+        chooser := VerticalLayout {
+            spacing: Space.md;
+
+            question := HorizontalLayout {
+                spacing: Space.md;
+
+                Text {
+                    horizontal-stretch: 1;
+                    text: @tr("Choose quick reaction {} of {}", root.picking + 1, QuickReactions.count);
+                    font-size: Fonts.label;
+                    vertical-alignment: center;
+                    wrap: word-wrap;
+                }
+
+                LinkButton {
+                    horizontal-stretch: 0;
+                    height: Size.sm;
+                    pad: Space.md;
+                    above-modal: true;
+                    text: @tr("Cancel");
+                    label: self.text;
+                    accessible-description: @tr("Keeps quick reaction {} as it is", root.picking + 1);
+                    clicked => {
+                        root.return-focus();
+                        root.picking = -1;
+                    }
+                }
+            }
+
+            Rectangle {
+                height: max(Metrics.settings-picker-min,
+                    root.room - slots-group.preferred-height - root.spacing - question.preferred-height - chooser.spacing);
+                border-radius: Radius.md;
+                background: AppStyle.control;
+                clip: true;
+
+                EmojiPicker {
+                    width: 100%;
+                    height: 100%;
+                    shows-packs: false;
+                    notice: false;
+                    above-modal: true;
+                    init => {
+                        if root.keyed {
+                            self.focus-search();
+                        }
+                    }
+                    picked(glyph) => {
+                        root.pick(glyph);
+                    }
+                }
+            }
+        }
+    }
+
+    if root.picking < 0: Rectangle {
+        height: tone-group.preferred-height;
+
+        tone-group := SettingsGroup {
+            SkinToneRow { }
+        }
+    }
+}

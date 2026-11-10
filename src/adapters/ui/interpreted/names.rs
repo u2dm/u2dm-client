@@ -110,6 +110,11 @@ pub mod room_info_view {
     pub const TOPIC_STYLED: &str = "topic-styled";
 }
 
+pub mod settings_view {
+    pub const NAME: &str = "SettingsView";
+    pub const QUICK_REACTIONS: &str = "quick-reactions";
+}
+
 pub mod login_view {
     pub const NAME: &str = "LoginView";
     pub const MESSAGES: &str = "messages";
