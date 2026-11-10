@@ -6,7 +6,7 @@ import { ClickArea } from "../../../components/a11y.slint";
 import { ModalHost } from "../../../components/overlay.slint";
 import { StateLayer } from "../../../components/state-layer.slint";
 import { AppStyle, Fonts, Glyph, IconSize, Metrics, Motion, Radius, Size, Space, Stroke, Weight } from "../../../theme.slint";
-import { ConnectionState, EncryptionStanding } from "../../../enums.slint";
+import { ConnectionState } from "../../../enums.slint";
 import { EncryptionView, SessionView } from "../../../views.slint";
 import { Actions } from "../../../actions.slint";
 
@@ -70,9 +70,6 @@ export component Drawer inherits Rectangle {
     property <bool> accounts-expanded: false;
     property <int> action-rows: 7;
     property <length> accounts-height: root.accounts-expanded ? Metrics.drawer-accounts-row : 0;
-    property <bool> encryption-needs-you: EncryptionView.standing == EncryptionStanding.unverified
-        || EncryptionView.standing == EncryptionStanding.setup-refused
-        || EncryptionView.standing == EncryptionStanding.setup-failed;
 
     function dismiss() {
         root.open = false;
@@ -321,10 +318,10 @@ export component Drawer inherits Rectangle {
                     x: 0;
                     y: actions.content-height - 2 * self.height;
                     width: 100%;
-                    icon: root.encryption-needs-you ? IconSet.ShieldAlert : IconSet.ShieldCheck;
-                    icon-tint: root.encryption-needs-you ? AppStyle.warning : Palette.foreground;
+                    icon: EncryptionView.needs-you ? IconSet.ShieldAlert : IconSet.ShieldCheck;
+                    icon-tint: EncryptionView.needs-you ? AppStyle.warning : Palette.foreground;
                     label: @tr("Encryption");
-                    description: root.encryption-needs-you
+                    description: EncryptionView.needs-you
                         ? @tr("Encryption, this session needs your attention")
                         : @tr("Encryption");
                     clicked => {

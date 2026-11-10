@@ -13,7 +13,6 @@ import { SettingsView } from "../../../../views.slint";
 import { Actions } from "../../../../actions.slint";
 import { AppStyle, Fonts, Size, Space } from "../../../../theme.slint";
 import { NotifyModes } from "../notify-modes.slint";
-import { PageHeader } from "./page-header.slint";
 
 component KeywordLine inherits Rectangle {
     in property <KeywordEntry> entry;
@@ -118,9 +117,6 @@ component KeywordsSection inherits VerticalLayout {
 }
 
 export component RulesPage inherits VerticalLayout {
-    callback back();
-    callback close();
-
     pure function default-index(mode: RoomDefault) -> int {
         return mode == RoomDefault.mentions-and-keywords ? 1 : 0;
     }
@@ -130,16 +126,6 @@ export component RulesPage inherits VerticalLayout {
     }
 
     spacing: Space.lg;
-
-    PageHeader {
-        title: @tr("Notification rules");
-        back => {
-            root.back();
-        }
-        close => {
-            root.close();
-        }
-    }
 
     if !SettingsView.rules-known: DialogNote {
         text: @tr("Reading your rules...");

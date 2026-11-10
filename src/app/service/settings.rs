@@ -47,17 +47,29 @@ impl AppService {
         }
     }
 
+    fn page_ports(&self) -> PagePorts {
+        PagePorts {
+            media: self.port(|session| &session.media),
+            rules: self.port(|session| &session.server_rules),
+            people: self.port(|session| &session.user_info),
+        }
+    }
+
     pub(super) fn handle_settings_command(&mut self, command: SettingsCommand) {
         match command {
-            SettingsCommand::OpenSettings => self.settings.open(),
+            SettingsCommand::Open(page) => {
+                let ports = self.page_ports();
+                self.settings.open(page, ports);
+            }
             SettingsCommand::CloseSettings => self.settings.close(),
             SettingsCommand::ShowPage(page) => {
-                let ports = PagePorts {
-                    media: self.port(|session| &session.media),
-                    rules: self.port(|session| &session.server_rules),
-                    people: self.port(|session| &session.user_info),
-                };
+                let ports = self.page_ports();
                 self.settings.show_page(page, ports);
+            }
+            SettingsCommand::ShowList => self.settings.show_list(),
+            SettingsCommand::Layout(layout) => {
+                let ports = self.page_ports();
+                self.settings.set_layout(layout, ports);
             }
             SettingsCommand::Rule(command) => {
                 if let Some(port) = self.port(|session| &session.server_rules) {

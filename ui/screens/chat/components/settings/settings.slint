@@ -1,15 +1,17 @@
-import { IconSet } from "@lucide";
+import { Palette, ScrollView } from "std-widgets.slint";
+import { IconDisplay, IconSet, Icon } from "@lucide";
 
-import { DialogHeader } from "../../../../components/dialog-header.slint";
-import { Hairline } from "../../../../components/divider.slint";
-import { MenuRow } from "../../../../components/menu-row.slint";
-import { ModalHost, ScrollingDialogCard } from "../../../../components/overlay.slint";
-import { SettingsPage } from "../../../../enums.slint";
-import { AppearanceView, SettingsView } from "../../../../views.slint";
+import { ClickArea, FocusReveal, RovingKeys } from "../../../../components/a11y.slint";
+import { Hairline, MenuDivider } from "../../../../components/divider.slint";
+import { MenuScroll } from "../../../../components/menu.slint";
+import { FixedDialogCard, ModalHost } from "../../../../components/overlay.slint";
+import { StateLayer } from "../../../../components/state-layer.slint";
+import { SettingsLayout, SettingsPage } from "../../../../enums.slint";
+import { AppearanceView, EncryptionView, SettingsView } from "../../../../views.slint";
 import { Actions } from "../../../../actions.slint";
 import { SettingsWords } from "../../../../messages.slint";
-import { MetaTip, Reactions } from "../../../../local.slint";
-import { AppStyle, Metrics, Space } from "../../../../theme.slint";
+import { MetaTip, Reactions, SettingsEntry } from "../../../../local.slint";
+import { AppStyle, Fonts, IconSize, Metrics, Radius, Space, Weight } from "../../../../theme.slint";
 import { AppearancePage } from "./appearance-page.slint";
 import { MessagesPage } from "./messages-page.slint";
 import { NotificationsPage } from "./notifications-page.slint";
@@ -17,160 +19,377 @@ import { CallsPage } from "./calls-page.slint";
 import { MediaPage } from "./media-page.slint";
 import { RulesPage } from "./rules-page.slint";
 import { IgnoredPage } from "./ignored-page.slint";
-import { UnsavedBanner } from "./page-header.slint";
+import { SettingsHeader, UnsavedBanner } from "./page-header.slint";
 
-component Overview inherits VerticalLayout {
-    in property <SettingsPage> came-from;
+export global SettingsPages {
+    out property <[SettingsPage]> all: [
+        SettingsPage.appearance,
+        SettingsPage.messages,
+        SettingsPage.notifications,
+        SettingsPage.calls,
+        SettingsPage.media,
+        SettingsPage.rules,
+        SettingsPage.ignored,
+    ];
 
-    callback open-page(SettingsPage);
-    callback close();
+    public pure function position(page: SettingsPage) -> int {
+        return page == SettingsPage.messages ? 1
+            : page == SettingsPage.notifications ? 2
+            : page == SettingsPage.calls ? 3
+            : page == SettingsPage.media ? 4
+            : page == SettingsPage.rules ? 5
+            : page == SettingsPage.ignored ? 6
+            : 0;
+    }
 
-    spacing: Space.lg;
+    public pure function title(page: SettingsPage) -> string {
+        if page == SettingsPage.messages {
+            return @tr("Messages and privacy");
+        }
+        if page == SettingsPage.notifications {
+            return @tr("Notifications and sounds");
+        }
+        if page == SettingsPage.calls {
+            return @tr("Calls");
+        }
+        if page == SettingsPage.media {
+            return @tr("Media and storage");
+        }
+        if page == SettingsPage.rules {
+            return @tr("Notification rules");
+        }
+        if page == SettingsPage.ignored {
+            return @tr("Ignored users");
+        }
+        return @tr("Appearance");
+    }
 
-    init => {
-        if root.came-from == SettingsPage.appearance {
-            appearance.take-focus();
+    public pure function icon(page: SettingsPage) -> Icon {
+        if page == SettingsPage.messages {
+            return IconSet.MessageSquareText;
         }
-        if root.came-from == SettingsPage.messages {
-            messages.take-focus();
+        if page == SettingsPage.notifications {
+            return IconSet.Bell;
         }
-        if root.came-from == SettingsPage.notifications {
-            notifications.take-focus();
+        if page == SettingsPage.calls {
+            return IconSet.Phone;
         }
-        if root.came-from == SettingsPage.calls {
-            calls.take-focus();
+        if page == SettingsPage.media {
+            return IconSet.Image;
         }
-        if root.came-from == SettingsPage.media {
-            media.take-focus();
+        if page == SettingsPage.rules {
+            return IconSet.BellRing;
         }
-        if root.came-from == SettingsPage.rules {
-            rules.take-focus();
+        if page == SettingsPage.ignored {
+            return IconSet.EyeOff;
         }
-        if root.came-from == SettingsPage.ignored {
-            ignored.take-focus();
+        return IconSet.Palette;
+    }
+
+    public pure function summary(page: SettingsPage) -> string {
+        if page == SettingsPage.messages {
+            return SettingsWords.messages-summary(SettingsView.send-key, SettingsView.receipts);
+        }
+        if page == SettingsPage.notifications {
+            return SettingsWords.notifications-summary(SettingsView.desktop-notifications, SettingsView.hide-message-text);
+        }
+        if page == SettingsPage.calls {
+            return SettingsWords.calls-summary(SettingsView.call-layout);
+        }
+        if page == SettingsPage.media {
+            return SettingsWords.media-summary(SettingsView.auto-load-media);
+        }
+        if page == SettingsPage.rules || page == SettingsPage.ignored {
+            return @tr("Kept on your homeserver");
+        }
+        return SettingsWords.theme(AppearanceView.theme);
+    }
+}
+
+component SettingsNavRow inherits Rectangle {
+    in property <Icon> icon;
+    in property <color> icon-tint: AppStyle.foreground-muted;
+    in property <string> label;
+    in property <string> description;
+    in property <string> detail;
+    in property <bool> selected;
+    in property <bool> roving-focus;
+    in property <Icon> trailing;
+
+    callback clicked();
+
+    property <bool> has-trailing: root.trailing.paths.length > 0;
+
+    border-radius: Radius.sm;
+    background: root.selected ? AppStyle.accent-background-soft : transparent;
+
+    StateLayer {
+        border-radius: root.border-radius;
+        hovered: touch.has-hover;
+        pressed: touch.pressed;
+    }
+
+    touch := ClickArea {
+        above-modal: true;
+        focusable: false;
+        roving-focus: root.roving-focus;
+        ring-radius: root.border-radius;
+        label: root.label;
+        accessible-description: root.description != "" ? root.description : root.detail;
+        clicked => {
+            root.clicked();
         }
     }
 
-    DialogHeader {
-        title: @tr("Settings");
-        copyable: false;
-        close-label: @tr("Close settings");
-        close-clicked => {
-            root.close();
+    HorizontalLayout {
+        padding-left: Space.md;
+        padding-right: Space.md;
+        spacing: Space.md;
+
+        IconDisplay {
+            cross-axis-self-alignment: center;
+            icon: root.icon;
+            size: IconSize.md;
+            stroke: root.selected ? Palette.foreground : root.icon-tint;
+        }
+
+        VerticalLayout {
+            horizontal-stretch: 1;
+            alignment: center;
+
+            Text {
+                text: root.label;
+                font-size: Fonts.body;
+                font-weight: root.selected ? Weight.semibold : Weight.regular;
+                overflow: elide;
+                accessible-role: none;
+            }
+
+            if root.detail != "": Text {
+                text: root.detail;
+                font-size: Fonts.caption;
+                color: AppStyle.foreground-muted;
+                overflow: elide;
+                accessible-role: none;
+            }
+        }
+
+        if root.has-trailing: IconDisplay {
+            cross-axis-self-alignment: center;
+            icon: root.trailing;
+            size: IconSize.sm;
+            stroke: AppStyle.foreground-muted;
+        }
+    }
+}
+
+component SettingsNav inherits Rectangle {
+    in property <bool> listing;
+    in property <int> selected;
+
+    callback picked(int, bool);
+
+    property <int> pages: SettingsPages.all.length;
+    property <int> account: root.pages;
+    property <int> encryption: root.pages + 1;
+    property <length> row-height: root.listing ? Metrics.choice-row : Metrics.settings-nav-row;
+    property <length> pitch: root.row-height + Space.xs;
+    property <length> gap: Space.lg;
+    property <string> account-label: @tr("Account and sessions");
+    property <string> encryption-label: EncryptionView.needs-you
+        ? @tr("Encryption, this session needs your attention")
+        : @tr("Encryption");
+
+    public function take-focus(ring: bool) {
+        keys.cursor = ring ? root.selected : -1;
+        keys.focus();
+        if ring {
+            root.reveal(root.selected);
         }
     }
 
-    Hairline { }
+    pure function label-at(index: int) -> string {
+        if index == root.account {
+            return root.account-label;
+        }
+        if index == root.encryption {
+            return root.encryption-label;
+        }
+        return SettingsPages.title(SettingsPages.all[index]);
+    }
 
-    if SettingsView.unsaved: UnsavedBanner { }
+    pure function row-top(index: int) -> length {
+        return index < root.pages
+            ? index * root.pitch
+            : root.pages * root.pitch + root.gap + Space.xs + (index - root.pages) * root.pitch;
+    }
 
-    VerticalLayout {
-        spacing: Space.xs;
+    function reveal(index: int) {
+        scroll.reveal(root.row-top(index), root.row-height);
+    }
 
-        appearance := MenuRow {
-            height: Metrics.choice-row;
-            icon: IconSet.Palette;
-            label: @tr("Appearance");
-            detail: SettingsWords.theme(AppearanceView.theme);
-            trailing: IconSet.ChevronRight;
-            above-modal: true;
+    keys := RovingKeys {
+        count: root.pages + 2;
+        start-at: root.selected;
+        accessible-role: tab;
+        accessible-label: root.label-at(max(self.cursor, 0));
+        accessible-item-selected: max(self.cursor, 0) == root.selected;
+        accessible-action-default => {
+            root.picked(max(self.cursor, 0), true);
+        }
+        intercept(event) => {
+            if self.cursor < 0 && (event.text == Key.DownArrow || event.text == Key.UpArrow) {
+                self.cursor = root.selected;
+                root.reveal(root.selected);
+                return accept;
+            }
+            return reject;
+        }
+        moved(index) => {
+            root.reveal(index);
+        }
+        activated(index) => {
+            root.picked(index, true);
+        }
+    }
+
+    scroll := MenuScroll {
+        y: 0;
+        height: root.height;
+
+        for page[index] in SettingsPages.all: SettingsNavRow {
+            height: root.row-height;
+            icon: SettingsPages.icon(page);
+            label: SettingsPages.title(page);
+            detail: root.listing ? SettingsPages.summary(page) : "";
+            selected: !root.listing && index == root.selected;
+            roving-focus: keys.has-focus && keys.cursor == index;
+            trailing: root.listing ? IconSet.ChevronRight : { };
             clicked => {
-                root.open-page(SettingsPage.appearance);
+                root.picked(index, false);
             }
         }
 
-        messages := MenuRow {
-            height: Metrics.choice-row;
-            icon: IconSet.MessageSquareText;
-            label: @tr("Messages and privacy");
-            detail: SettingsWords.messages-summary(SettingsView.send-key, SettingsView.receipts);
-            trailing: IconSet.ChevronRight;
-            above-modal: true;
+        MenuDivider {
+            height: root.gap;
+        }
+
+        SettingsNavRow {
+            height: root.row-height;
+            icon: IconSet.UserRoundCog;
+            label: root.account-label;
+            description: @tr("Opens its own dialog");
+            roving-focus: keys.has-focus && keys.cursor == root.account;
+            trailing: IconSet.ArrowUpRight;
             clicked => {
-                root.open-page(SettingsPage.messages);
+                root.picked(root.account, false);
             }
         }
 
-        notifications := MenuRow {
-            height: Metrics.choice-row;
-            icon: IconSet.Bell;
-            label: @tr("Notifications and sounds");
-            detail: SettingsWords.notifications-summary(SettingsView.desktop-notifications, SettingsView.hide-message-text);
-            trailing: IconSet.ChevronRight;
-            above-modal: true;
+        SettingsNavRow {
+            height: root.row-height;
+            icon: EncryptionView.needs-you ? IconSet.ShieldAlert : IconSet.ShieldCheck;
+            icon-tint: EncryptionView.needs-you ? AppStyle.warning : AppStyle.foreground-muted;
+            label: root.encryption-label;
+            description: @tr("Opens its own dialog");
+            roving-focus: keys.has-focus && keys.cursor == root.encryption;
+            trailing: IconSet.ArrowUpRight;
             clicked => {
-                root.open-page(SettingsPage.notifications);
-            }
-        }
-
-        calls := MenuRow {
-            height: Metrics.choice-row;
-            icon: IconSet.Phone;
-            label: @tr("Calls");
-            detail: SettingsWords.calls-summary(SettingsView.call-layout);
-            trailing: IconSet.ChevronRight;
-            above-modal: true;
-            clicked => {
-                root.open-page(SettingsPage.calls);
-            }
-        }
-
-        media := MenuRow {
-            height: Metrics.choice-row;
-            icon: IconSet.Image;
-            label: @tr("Media and storage");
-            detail: SettingsWords.media-summary(SettingsView.auto-load-media);
-            trailing: IconSet.ChevronRight;
-            above-modal: true;
-            clicked => {
-                root.open-page(SettingsPage.media);
-            }
-        }
-
-        rules := MenuRow {
-            height: Metrics.choice-row;
-            icon: IconSet.BellRing;
-            label: @tr("Notification rules");
-            detail: @tr("Kept on your homeserver");
-            trailing: IconSet.ChevronRight;
-            above-modal: true;
-            clicked => {
-                root.open-page(SettingsPage.rules);
-            }
-        }
-
-        ignored := MenuRow {
-            height: Metrics.choice-row;
-            icon: IconSet.EyeOff;
-            label: @tr("Ignored users");
-            detail: @tr("Kept on your homeserver");
-            trailing: IconSet.ChevronRight;
-            above-modal: true;
-            clicked => {
-                root.open-page(SettingsPage.ignored);
+                root.picked(root.encryption, false);
             }
         }
     }
 }
 
 export component SettingsDialog inherits ModalHost {
-    property <SettingsPage> came-from: SettingsPage.overview;
     property <bool> asking-clear;
+    property <bool> wide: root.width >= Metrics.settings-split-min;
+    property <bool> listing: !root.wide && SettingsView.listing;
+    property <SettingsPage> page: SettingsView.page;
+    property <bool> keyed;
+    property <bool> arriving;
+    property <bool> returning;
+    property <length> pad: Space.xxl;
+    property <length> nav-x: Space.lg;
+    property <length> pane-x: root.wide ? root.pad + Metrics.settings-sidebar : root.pad;
+    property <length> nav-width: root.wide
+        ? Metrics.settings-sidebar
+        : root.listing ? card.shown-width - 2 * root.nav-x : 0;
+    property <int> reveal-serial: FocusReveal.serial;
 
-    function show(page: SettingsPage) {
-        root.focus();
-        scroll.content-y = 0;
+    function reveal-focus() {
+        let top = pane.absolute-position.y;
+        let left = pane.absolute-position.x;
+        let start = top + pane.content-y;
+        if root.listing || header.holds-focus
+            || FocusReveal.x < left || FocusReveal.x >= left + pane.width
+            || FocusReveal.y < start || FocusReveal.y >= start + pane.content-height {
+            return;
+        }
+        let above = top - FocusReveal.y;
+        let below = FocusReveal.y + FocusReveal.height - top - pane.visible-height;
+        if above > 0 {
+            pane.content-y = min(0px, pane.content-y + above);
+        } else if below > 0 {
+            pane.content-y = max(pane.visible-height - pane.content-height, pane.content-y - below);
+        }
+    }
+
+    function report-layout() {
+        Actions.settings-layout({ layout: root.wide ? SettingsLayout.side-by-side : SettingsLayout.stacked });
+    }
+
+    function park-focus() {
+        if root.wide {
+            nav.take-focus(false);
+        } else {
+            root.focus();
+        }
+    }
+
+    function open-page(page: SettingsPage, by-keys: bool) {
         root.asking-clear = false;
+        root.keyed = by-keys;
+        if !root.wide {
+            root.focus();
+            root.arriving = true;
+        } else if !by-keys {
+            nav.take-focus(false);
+        }
         Actions.show-settings-page({ page: page });
     }
 
-    function open-page(page: SettingsPage) {
-        root.came-from = page;
-        root.show(page);
+    function follow-link(account: bool) {
+        Actions.close-settings();
+        if account {
+            Actions.open-account();
+        } else {
+            Actions.open-encryption();
+        }
     }
 
-    function back() {
-        root.show(SettingsPage.overview);
+    function list(by-keys: bool) {
+        root.focus();
+        root.asking-clear = false;
+        root.keyed = by-keys;
+        root.returning = true;
+        Actions.show-settings-list();
+    }
+
+    changed page => {
+        pane.content-y = 0;
+    }
+
+    changed reveal-serial => {
+        root.reveal-focus();
+    }
+
+    changed wide => {
+        root.focus();
+        root.report-layout();
+        if root.wide || SettingsView.listing {
+            nav.take-focus(false);
+        }
     }
 
     dim-opacity: AppStyle.dialog-scrim;
@@ -180,8 +399,8 @@ export component SettingsDialog inherits ModalHost {
             root.asking-clear = false;
             return;
         }
-        if SettingsView.page != SettingsPage.overview && !root.dismissing-by-pointer {
-            root.back();
+        if !root.wide && !SettingsView.listing && !root.dismissing-by-pointer {
+            root.list(true);
             return;
         }
         Actions.close-settings();
@@ -189,80 +408,136 @@ export component SettingsDialog inherits ModalHost {
     opened => {
         Reactions.close();
         MetaTip.clear();
+        root.keyed = SettingsEntry.by-keys;
+        SettingsEntry.by-keys = false;
+        root.report-layout();
+        if root.wide || SettingsView.listing {
+            nav.take-focus(root.keyed);
+        } else if root.keyed {
+            header.focus-back();
+        }
     }
 
-    scroll := ScrollingDialogCard {
-        if SettingsView.page == SettingsPage.overview: Overview {
-            came-from: root.came-from;
-            open-page(page) => {
-                root.open-page(page);
-            }
-            close => {
-                Actions.close-settings();
-            }
-        }
-
-        if SettingsView.page == SettingsPage.appearance: AppearancePage {
-            back => {
-                root.back();
-            }
-            close => {
-                Actions.close-settings();
+    if !root.wide && SettingsView.listing: Rectangle {
+        width: 0;
+        height: 0;
+        init => {
+            if root.returning {
+                root.returning = false;
+                nav.take-focus(root.keyed);
             }
         }
+    }
 
-        if SettingsView.page == SettingsPage.messages: MessagesPage {
-            back => {
-                root.back();
-            }
-            close => {
-                Actions.close-settings();
+    if !root.wide && !SettingsView.listing: Rectangle {
+        width: 0;
+        height: 0;
+        init => {
+            if root.arriving {
+                root.arriving = false;
+                if root.keyed {
+                    header.focus-back();
+                }
             }
         }
+    }
 
-        if SettingsView.page == SettingsPage.notifications: NotificationsPage {
-            back => {
-                root.back();
-            }
-            close => {
-                Actions.close-settings();
-            }
-        }
+    card := FixedDialogCard {
+        card-width: root.wide ? Metrics.settings-width : AppStyle.card-width-wide;
+        card-height: Metrics.settings-height;
 
-        if SettingsView.page == SettingsPage.calls: CallsPage {
-            back => {
-                root.back();
-            }
-            close => {
-                Actions.close-settings();
-            }
-        }
+        VerticalLayout {
+            HorizontalLayout {
+                padding-left: root.pad;
+                padding-right: root.pad;
+                padding-top: Space.md;
 
-        if SettingsView.page == SettingsPage.media: MediaPage {
-            asking-clear <=> root.asking-clear;
-            back => {
-                root.back();
+                header := SettingsHeader {
+                    wide: root.wide;
+                    listing: SettingsView.listing;
+                    title: SettingsPages.title(root.page);
+                    back(by-keys) => {
+                        root.list(by-keys);
+                    }
+                    close => {
+                        Actions.close-settings();
+                    }
+                }
             }
-            close => {
-                Actions.close-settings();
-            }
-        }
 
-        if SettingsView.page == SettingsPage.rules: RulesPage {
-            back => {
-                root.back();
-            }
-            close => {
-                Actions.close-settings();
-            }
-        }
+            HorizontalLayout {
+                padding-left: root.pad;
+                padding-right: root.pad;
 
-        if SettingsView.page == SettingsPage.ignored: IgnoredPage {
-            back => {
-                root.back();
+                Hairline { }
             }
-            close => {
-                Actions.close-settings();
+
+            if SettingsView.unsaved: HorizontalLayout {
+                padding-left: root.pad;
+                padding-right: root.pad;
+                padding-top: Space.lg;
+
+                UnsavedBanner { }
+            }
+
+            Rectangle {
+                vertical-stretch: 1;
+
+                nav := SettingsNav {
+                    x: root.nav-x;
+                    y: Space.md;
+                    width: root.nav-width;
+                    height: parent.height - Space.md;
+                    visible: root.wide || root.listing;
+                    listing: root.listing;
+                    selected: SettingsPages.position(root.page);
+                    picked(index, by-keys) => {
+                        if index < SettingsPages.all.length {
+                            root.open-page(SettingsPages.all[index], by-keys);
+                        } else {
+                            root.follow-link(index == SettingsPages.all.length);
+                        }
+                    }
+                }
+
+                pane := ScrollView {
+                    x: root.pane-x;
+                    width: card.shown-width - root.pane-x;
+                    height: parent.height;
+                    visible: !root.listing;
+                    content-width: self.visible-width;
+                    content-height: page-body.preferred-height;
+
+                    page-body := VerticalLayout {
+                        width: pane.visible-width;
+                        padding-top: Space.lg;
+                        padding-right: root.pad;
+                        padding-bottom: root.pad;
+
+                        if !root.listing && root.page == SettingsPage.appearance: AppearancePage { }
+
+                        if !root.listing && root.page == SettingsPage.messages: MessagesPage { }
+
+                        if !root.listing && root.page == SettingsPage.notifications: NotificationsPage { }
+
+                        if !root.listing && root.page == SettingsPage.calls: CallsPage { }
+
+                        if !root.listing && root.page == SettingsPage.media: MediaPage {
+                            asking-clear <=> root.asking-clear;
+                            park-focus => {
+                                root.park-focus();
+                            }
+                        }
+
+                        if !root.listing && root.page == SettingsPage.rules: RulesPage { }
+
+                        if !root.listing && root.page == SettingsPage.ignored: IgnoredPage {
+                            park-focus => {
+                                root.park-focus();
+                            }
+                        }
+                    }
+                }
             }
         }
     }

@@ -135,6 +135,8 @@ impl From<&ByKind<DeviceChoice>> for RememberedDevicesDto {
 #[derive(Serialize)]
 struct SettingsDialogDto {
     page: &'static str,
+    listing: bool,
+    layout: &'static str,
     storage: StorageDto,
     clear_failed: bool,
 }
@@ -210,6 +212,8 @@ pub(super) fn settings(source: &SettingsView) -> SettingsDto {
         },
         dialog: source.dialog.map(|dialog| SettingsDialogDto {
             page: names::settings_page(dialog.page),
+            listing: dialog.listing,
+            layout: names::settings_layout(dialog.layout),
             storage: dialog.storage.into(),
             clear_failed: dialog.clear_failed,
         }),

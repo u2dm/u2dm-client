@@ -31,7 +31,7 @@ pub(crate) use self::security::{
 };
 pub(crate) use self::settings::{
     AccountRule, DownloadedMedia, IgnoredPerson, IgnoredUsersView, KeywordRow,
-    NotificationRulesView, SettingsDialog, SettingsPage, SettingsView,
+    NotificationRulesView, SettingsDialog, SettingsLayout, SettingsPage, SettingsView,
 };
 use super::messages::{UserMessage, UserMessageKind};
 use super::ui::Draft;

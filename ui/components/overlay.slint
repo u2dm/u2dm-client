@@ -88,6 +88,28 @@ export component ScrollingDialogCard inherits ScrollView {
     }
 }
 
+export component FixedDialogCard inherits Rectangle {
+    in property <length> card-width;
+    in property <length> card-height;
+    out property <length> shown-width: min(root.card-width, root.width - AppStyle.card-inset);
+    out property <length> shown-height: min(root.card-height, root.height - AppStyle.card-inset);
+
+    x: 0;
+    y: 0;
+    width: 100%;
+    height: 100%;
+
+    DialogCard {
+        x: (root.width - self.width) / 2;
+        y: (root.height - self.height) / 2;
+        width: root.shown-width;
+        height: root.shown-height;
+        clip: true;
+
+        @children
+    }
+}
+
 export component ModalHost inherits Rectangle {
     in property <bool> dim: true;
     in property <float> dim-opacity: Opacity.scrim;

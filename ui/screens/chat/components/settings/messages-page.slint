@@ -6,12 +6,8 @@ import { SettingsView } from "../../../../views.slint";
 import { Actions } from "../../../../actions.slint";
 import { SettingsWords } from "../../../../messages.slint";
 import { Space } from "../../../../theme.slint";
-import { PageHeader } from "./page-header.slint";
 
 export component MessagesPage inherits VerticalLayout {
-    callback back();
-    callback close();
-
     pure function send-key-at(index: int) -> SendKey {
         return index == 1 ? SendKey.ctrl-enter : SendKey.enter;
     }
@@ -21,16 +17,6 @@ export component MessagesPage inherits VerticalLayout {
     }
 
     spacing: Space.lg;
-
-    PageHeader {
-        title: @tr("Messages and privacy");
-        back => {
-            root.back();
-        }
-        close => {
-            root.close();
-        }
-    }
 
     SectionLabel {
         text: @tr("SEND MESSAGES WITH");

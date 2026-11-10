@@ -1,4 +1,4 @@
-import { RovingKeys } from "./a11y.slint";
+import { FocusReveal, RovingKeys } from "./a11y.slint";
 import { ChoiceRow } from "./choice-row.slint";
 import { Metrics, Space } from "../theme.slint";
 
@@ -31,6 +31,11 @@ export component ChoiceGroup inherits Rectangle {
         }
         activated(index) => {
             root.choose(index);
+        }
+        changed has-focus => {
+            if self.has-focus {
+                FocusReveal.ask(root.absolute-position.x, root.absolute-position.y, root.height);
+            }
         }
     }
 

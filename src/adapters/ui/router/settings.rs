@@ -2,16 +2,17 @@ use super::Tx;
 use crate::adapters::ui::props::send_command;
 use crate::adapters::ui::schema::{
     call_layouts, motion_choices, receipt_visibilities, room_classes, room_defaults, send_keys,
-    setting_flags, settings_pages, theme_choices, variant_named,
+    setting_flags, settings_layouts, settings_pages, theme_choices, variant_named,
 };
 use crate::commands::ui::{RuleCommand, SettingsCommand};
-use crate::commands::view::SettingsPage;
+use crate::commands::view::{SettingsLayout, SettingsPage};
 use crate::domain::server_rules::{Keyword, RoomClass, RoomDefault};
 use crate::domain::settings::{
     CallLayout, MotionChoice, ReceiptVisibility, SendKey, SettingChange, SettingFlag, ThemeChoice,
 };
 
 settings_pages!(variant_named settings_page_named SettingsPage;);
+settings_layouts!(variant_named settings_layout_named SettingsLayout;);
 theme_choices!(variant_named theme_choice_named ThemeChoice;);
 motion_choices!(variant_named motion_choice_named MotionChoice;);
 send_keys!(variant_named send_key_named SendKey;);
@@ -20,6 +21,18 @@ call_layouts!(variant_named call_layout_named CallLayout;);
 setting_flags!(variant_named setting_flag_named SettingFlag;);
 room_classes!(variant_named room_class_named RoomClass;);
 room_defaults!(variant_named room_default_named RoomDefault;);
+
+pub fn open_settings(tx: &Tx) {
+    send_command(tx, SettingsCommand::Open(None));
+}
+
+pub fn settings_layout(tx: &Tx, layout: &str) {
+    let Some(layout) = settings_layout_named(layout) else {
+        tracing::warn!(layout, "ignoring an unknown settings layout");
+        return;
+    };
+    send_command(tx, SettingsCommand::Layout(layout));
+}
 
 pub fn show_settings_page(tx: &Tx, page: &str) {
     let Some(page) = settings_page_named(page) else {

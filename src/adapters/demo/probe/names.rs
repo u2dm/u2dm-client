@@ -9,9 +9,9 @@ use crate::adapters::ui::schema::{
     notify_modes, pending_moderations, people_search_statuses, presence_lines, preview_kinds,
     readers_statuses, receipt_visibilities, recovery_statuses, removal_kinds, room_accesses,
     room_classes, room_defaults, room_info_placements, room_kinds, room_memberships,
-    room_preview_statuses, room_scopes, roster_statuses, send_keys, setting_flags, settings_pages,
-    source_encryptions, source_statuses, space_index_statuses, theme_choices, upgrade_links,
-    user_message_kinds, variant_named, verify_offers,
+    room_preview_statuses, room_scopes, roster_statuses, send_keys, setting_flags,
+    settings_layouts, settings_pages, source_encryptions, source_statuses, space_index_statuses,
+    theme_choices, upgrade_links, user_message_kinds, variant_named, verify_offers,
 };
 use crate::commands::messages::UserMessageKind;
 use crate::commands::view::{
@@ -19,7 +19,8 @@ use crate::commands::view::{
     CreateRoomStatus, DeviceStatus, DeviceTrouble, DirectChat, DownloadedMedia, EncryptionActivity,
     EncryptionStep, InviteeState, LoginActivity, LoginStep, PendingAnswer, PendingModeration,
     PeopleSearchStatus, ReadersStatus, RoomInfoPlacement, RoomPreviewSheet, RoomScope,
-    RosterStatus, SettingsPage, SourceState, SpaceIndexStatus, UpgradeLink, VerifyOffer,
+    RosterStatus, SettingsLayout, SettingsPage, SourceState, SpaceIndexStatus, UpgradeLink,
+    VerifyOffer,
 };
 use crate::domain::auth::LoginMethod;
 use crate::domain::call::devices::DeviceKind;
@@ -83,6 +84,7 @@ account_steps!(enum_names ref account_step AccountStep;);
 account_activities!(enum_names val account_activity AccountActivity;);
 settings_pages!(enum_names val settings_page SettingsPage;);
 settings_pages!(variant_named settings_page_named SettingsPage;);
+settings_layouts!(enum_names val settings_layout SettingsLayout;);
 downloaded_media_states!(enum_names val downloaded_media_state DownloadedMedia;);
 account_rules!(enum_names val account_rule AccountRule;);
 room_defaults!(enum_names val room_default RoomDefault;);

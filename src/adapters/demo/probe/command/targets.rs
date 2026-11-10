@@ -13,6 +13,16 @@ use crate::domain::user_info::UserId;
 
 pub type Selection<'a> = Option<&'a (String, i32)>;
 
+pub(super) fn open_settings(page: Option<&str>) -> Result<Driven, Rejected> {
+    let page = page
+        .map(|page| {
+            names::settings_page_named(page)
+                .ok_or_else(|| Rejected(format!("{page} is not a settings page")))
+        })
+        .transpose()?;
+    Ok(Driven::Command(SettingsCommand::Open(page).into()))
+}
+
 pub(super) fn settings_page(page: &str) -> Result<Driven, Rejected> {
     names::settings_page_named(page)
         .map(|page| Driven::Command(SettingsCommand::ShowPage(page).into()))

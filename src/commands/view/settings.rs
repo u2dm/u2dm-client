@@ -17,14 +17,28 @@ pub struct SettingsView {
 #[derive(Clone, Copy, Default, PartialEq, Eq)]
 pub struct SettingsDialog {
     pub page: SettingsPage,
+    pub listing: bool,
+    pub layout: SettingsLayout,
     pub storage: DownloadedMedia,
     pub clear_failed: bool,
+}
+
+impl SettingsDialog {
+    pub fn shows(&self, page: SettingsPage) -> bool {
+        !self.listing && self.page == page
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum SettingsLayout {
+    #[default]
+    Stacked,
+    SideBySide,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum SettingsPage {
     #[default]
-    Overview,
     Appearance,
     Messages,
     Notifications,

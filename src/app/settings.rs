@@ -2,7 +2,6 @@ mod change;
 mod ignored;
 mod rules;
 
-use std::mem;
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -16,7 +15,9 @@ use super::show_toast;
 use super::task_group::TaskGroup;
 use crate::commands::messages::{UserMessage, UserMessageKind};
 use crate::commands::ui::RuleCommand;
-use crate::commands::view::{DownloadedMedia, SettingsDialog, SettingsPage, SettingsView, Toast};
+use crate::commands::view::{
+    DownloadedMedia, SettingsDialog, SettingsLayout, SettingsPage, SettingsView, Toast,
+};
 use crate::domain::call::devices::DeviceChoices;
 use crate::domain::media::MediaUsage;
 use crate::domain::member_name::MemberName;
@@ -42,6 +43,7 @@ pub(super) struct SettingsController {
     saves: TaskGroup,
     storage: TaskGroup,
     dialog: Option<SettingsDialog>,
+    last_page: SettingsPage,
     media_cleared: u64,
     rules: NotificationRules,
     ignored: IgnoredUsers,
@@ -68,6 +70,7 @@ impl SettingsController {
             saves,
             storage: TaskGroup::new("settings-storage"),
             dialog: None,
+            last_page: SettingsPage::default(),
             media_cleared: 0,
         }
     }
@@ -76,12 +79,24 @@ impl SettingsController {
         &self.values
     }
 
-    pub(super) fn open(&mut self) {
+    pub(super) fn open(&mut self, at: Option<SettingsPage>, ports: PagePorts) {
         if self.dialog.is_some() {
+            if let Some(page) = at {
+                self.show_page(page, ports);
+            }
             return;
         }
-        tracing::debug!("opening the settings dialog");
-        self.dialog = Some(SettingsDialog::default());
+        let page = at.unwrap_or(self.last_page);
+        tracing::debug!(?page, listing = at.is_none(), "opening the settings dialog");
+        self.dialog = Some(SettingsDialog {
+            page,
+            listing: at.is_none(),
+            ..SettingsDialog::default()
+        });
+        if at.is_some() {
+            self.last_page = page;
+            self.enter(page, ports);
+        }
         self.publish();
     }
 
@@ -99,17 +114,58 @@ impl SettingsController {
         let Some(dialog) = self.dialog.as_mut() else {
             return;
         };
-        if dialog.page == page {
+        if dialog.shows(page) {
             return;
         }
         tracing::debug!(?page, "showing a settings page");
-        let left = mem::replace(&mut dialog.page, page);
+        let left = (!dialog.listing).then_some(dialog.page);
+        dialog.page = page;
+        dialog.listing = false;
         dialog.clear_failed = false;
-        match left {
-            SettingsPage::Rules => self.rules.stop(),
-            SettingsPage::Ignored => self.ignored.stop(),
-            _ => {}
+        self.last_page = page;
+        if let Some(left) = left {
+            self.leave(left);
         }
+        self.enter(page, ports);
+        self.publish();
+    }
+
+    pub(super) fn show_list(&mut self) {
+        let Some(dialog) = self
+            .dialog
+            .as_mut()
+            .filter(|dialog| !dialog.listing && dialog.layout == SettingsLayout::Stacked)
+        else {
+            return;
+        };
+        tracing::debug!("showing the list of settings pages");
+        dialog.listing = true;
+        dialog.clear_failed = false;
+        let left = dialog.page;
+        self.leave(left);
+        self.publish();
+    }
+
+    pub(super) fn set_layout(&mut self, layout: SettingsLayout, ports: PagePorts) {
+        let Some(dialog) = self.dialog.as_mut() else {
+            return;
+        };
+        if dialog.layout == layout {
+            return;
+        }
+        tracing::debug!(?layout, "the settings dialog changed its layout");
+        dialog.layout = layout;
+        let entered = (layout == SettingsLayout::SideBySide && dialog.listing).then(|| {
+            dialog.listing = false;
+            dialog.page
+        });
+        if let Some(page) = entered {
+            self.enter(page, ports);
+        }
+        self.publish();
+    }
+
+    fn enter(&mut self, page: SettingsPage, ports: PagePorts) {
         match (page, ports) {
             (SettingsPage::Media, PagePorts { media, .. }) => self.measure_media(media),
             (
@@ -126,7 +182,14 @@ impl SettingsController {
             ) => self.ignored.start(port),
             _ => {}
         }
-        self.publish();
+    }
+
+    fn leave(&mut self, page: SettingsPage) {
+        match page {
+            SettingsPage::Rules => self.rules.stop(),
+            SettingsPage::Ignored => self.ignored.stop(),
+            _ => {}
+        }
     }
 
     pub(super) fn stop_ignoring(&mut self, port: Arc<dyn UserInfoPort>, user_id: UserId) {
@@ -277,7 +340,7 @@ impl SettingsController {
         let Some(dialog) = self
             .dialog
             .as_mut()
-            .filter(|dialog| dialog.page == SettingsPage::Media)
+            .filter(|dialog| dialog.shows(SettingsPage::Media))
         else {
             return false;
         };
@@ -322,6 +385,7 @@ impl SettingsController {
         self.rules.forget_session();
         self.ignored.forget_session();
         self.dialog = None;
+        self.last_page = SettingsPage::default();
         self.view()
     }
 

@@ -1,7 +1,7 @@
 use strum::Display as StrumDisplay;
 
 use super::UiCommand;
-use crate::commands::view::SettingsPage;
+use crate::commands::view::{SettingsLayout, SettingsPage};
 use crate::domain::call::devices::{DeviceKey, DeviceKind};
 use crate::domain::call::media::MediaChoice;
 use crate::domain::capabilities::AccountPage;
@@ -84,10 +84,15 @@ pub enum AccountCommand {
 
 #[derive(StrumDisplay)]
 pub enum SettingsCommand {
-    OpenSettings,
+    #[strum(to_string = "OpenSettings")]
+    Open(Option<SettingsPage>),
     CloseSettings,
     #[strum(to_string = "ShowSettingsPage")]
     ShowPage(SettingsPage),
+    #[strum(to_string = "ShowSettingsList")]
+    ShowList,
+    #[strum(to_string = "SettingsLayout")]
+    Layout(SettingsLayout),
     #[strum(to_string = "ChangeSetting")]
     Change(SettingChange),
     ClearDownloadedMedia,

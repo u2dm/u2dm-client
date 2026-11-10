@@ -346,7 +346,10 @@ pub enum ProbeCommand {
     ImportRoomKeys {
         passphrase: String,
     },
-    OpenSettings,
+    OpenSettings {
+        #[serde(default)]
+        page: Option<String>,
+    },
     CloseSettings,
     ClearMediaCache,
     SetAccountNotifications {
@@ -368,6 +371,7 @@ pub enum ProbeCommand {
     ShowSettingsPage {
         page: String,
     },
+    ShowSettingsList,
     SetSetting {
         name: String,
         value: String,

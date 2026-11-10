@@ -30,6 +30,20 @@ export global Interaction {
     }
 }
 
+export global FocusReveal {
+    out property <length> x;
+    out property <length> y;
+    out property <length> height;
+    out property <int> serial;
+
+    public function ask(x: length, y: length, height: length) {
+        root.x = x;
+        root.y = y;
+        root.height = height;
+        root.serial += 1;
+    }
+}
+
 export global FocusTrail {
     in-out property <length> x;
     in-out property <length> y;
@@ -198,6 +212,7 @@ export component ClickArea inherits Rectangle {
         focus-on-tab-navigation: root.actionable && root.focusable;
         focus-gained(reason) => {
             root.focus-by-tab = reason == FocusReason.tab-navigation;
+            FocusReveal.ask(root.absolute-position.x, root.absolute-position.y, root.height);
         }
         focus-lost(reason) => {
             FocusTrail.leave();
@@ -272,6 +287,7 @@ export component RovingKeys inherits FocusScope {
     in property <bool> horizontal: false;
     in property <bool> ring-on-any-focus: false;
     in property <bool> paused: false;
+    in property <int> start-at: 0;
     in-out property <int> cursor: -1;
 
     callback activated(int);
@@ -291,7 +307,7 @@ export component RovingKeys inherits FocusScope {
 
     focus-gained(reason) => {
         if root.cursor < 0 && (root.ring-on-any-focus || reason == FocusReason.tab-navigation) {
-            root.cursor = 0;
+            root.cursor = root.start-at;
         }
     }
 

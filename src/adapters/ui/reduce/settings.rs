@@ -37,6 +37,10 @@ pub(super) fn apply_settings<W: UiProps + ComponentHandle>(
     w.set_bool(BoolProp::SettingsUnsaved, *unsaved);
     w.set_settings_page(dialog.map_or(SettingsPage::default(), |dialog| dialog.page));
     w.set_bool(
+        BoolProp::SettingsListing,
+        dialog.is_some_and(|dialog| dialog.listing),
+    );
+    w.set_bool(
         BoolProp::SettingsMediaClearFailed,
         dialog.is_some_and(|dialog| dialog.clear_failed),
     );

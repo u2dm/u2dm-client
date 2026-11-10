@@ -8,7 +8,6 @@ import { IgnoredPersonEntry } from "../../../../types.slint";
 import { SettingsView } from "../../../../views.slint";
 import { Actions } from "../../../../actions.slint";
 import { AppStyle, Fonts, Metrics, Space, Weight } from "../../../../theme.slint";
-import { PageHeader } from "./page-header.slint";
 
 component IgnoredLine inherits Rectangle {
     in property <IgnoredPersonEntry> person;
@@ -63,20 +62,9 @@ component IgnoredLine inherits Rectangle {
 }
 
 export component IgnoredPage inherits VerticalLayout {
-    callback back();
-    callback close();
+    callback park-focus();
 
     spacing: Space.lg;
-
-    header := PageHeader {
-        title: @tr("Ignored users");
-        back => {
-            root.back();
-        }
-        close => {
-            root.close();
-        }
-    }
 
     if SettingsView.unignore-failed != "": ErrorBanner {
         messages: [{ kind: UserMessageKind.unignore-failed, detail: SettingsView.unignore-failed }];
@@ -105,7 +93,7 @@ export component IgnoredPage inherits VerticalLayout {
     for person in SettingsView.ignored-people: IgnoredLine {
         person: person;
         stop-ignoring => {
-            header.take-focus();
+            root.park-focus();
             Actions.stop-ignoring(person.user-id);
         }
     }

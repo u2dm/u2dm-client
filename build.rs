@@ -161,6 +161,7 @@ const ENUM_TABLES: &[(&str, &str)] = &[
     ("AccountStep", "account_steps"),
     ("AccountActivity", "account_activities"),
     ("SettingsPage", "settings_pages"),
+    ("SettingsLayout", "settings_layouts"),
     ("DownloadedMedia", "downloaded_media_states"),
     ("AccountRule", "account_rules"),
     ("RoomDefault", "room_defaults"),

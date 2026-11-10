@@ -2,66 +2,75 @@ import { IconSet } from "@lucide";
 
 import { ErrorBanner } from "../../../../components/banner.slint";
 import { IconButton } from "../../../../components/button.slint";
-import { Hairline } from "../../../../components/divider.slint";
 import { UserMessageKind } from "../../../../enums.slint";
-import { SettingsView } from "../../../../views.slint";
-import { Fonts, Size, Space, Weight } from "../../../../theme.slint";
+import { Fonts, Metrics, Size, Space, Weight } from "../../../../theme.slint";
 
 export component UnsavedBanner inherits ErrorBanner {
     messages: [{ kind: UserMessageKind.settings-not-saved, detail: "" }];
 }
 
-export component PageHeader inherits VerticalLayout {
-    in property <string> title;
+component HeaderTitle inherits Text {
+    font-size: Fonts.title;
+    font-weight: Weight.bold;
+    vertical-alignment: center;
+    overflow: elide;
+}
 
-    callback back();
+export component SettingsHeader inherits Rectangle {
+    in property <bool> wide;
+    in property <bool> listing;
+    in property <string> title;
+    out property <bool> holds-focus: back-button.has-focus || close-button.has-focus;
+
+    callback back(bool);
     callback close();
 
-    public function take-focus() {
+    public function focus-back() {
         back-button.take-focus();
     }
 
-    spacing: Space.lg;
+    property <bool> backs: !root.wide && !root.listing;
+    property <length> close-x: root.width - Size.md;
+    property <length> page-x: root.wide ? Metrics.settings-sidebar : root.backs ? Size.md + Space.md : 0;
 
-    init => {
-        back-button.take-focus();
+    height: Metrics.settings-header;
+
+    if root.wide || root.listing: HeaderTitle {
+        x: 0;
+        width: (root.wide ? Metrics.settings-sidebar : root.close-x) - Space.md;
+        height: root.height;
+        text: @tr("Settings");
     }
 
-    HorizontalLayout {
-        spacing: Space.sm;
-
-        back-button := IconButton {
-            cross-axis-self-alignment: center;
-            size: Size.md;
-            icon: IconSet.ArrowLeft;
-            above-modal: true;
-            label: @tr("Back to Settings");
-            clicked => {
-                root.back();
-            }
-        }
-
-        Text {
-            horizontal-stretch: 1;
-            text: root.title;
-            font-size: Fonts.title;
-            font-weight: Weight.bold;
-            vertical-alignment: center;
-        }
-
-        IconButton {
-            cross-axis-self-alignment: center;
-            size: Size.md;
-            icon: IconSet.X;
-            above-modal: true;
-            label: @tr("Close settings");
-            clicked => {
-                root.close();
-            }
+    back-button := IconButton {
+        x: 0;
+        y: (root.height - self.height) / 2;
+        visible: root.backs;
+        size: Size.md;
+        icon: IconSet.ArrowLeft;
+        above-modal: true;
+        label: @tr("Back to Settings");
+        clicked => {
+            root.back(self.has-focus);
         }
     }
 
-    Hairline { }
+    if root.wide || !root.listing: HeaderTitle {
+        x: root.page-x;
+        width: max(0, root.close-x - Space.md - root.page-x);
+        height: root.height;
+        text: root.title;
+    }
 
-    if SettingsView.unsaved: UnsavedBanner { }
+    close-button := IconButton {
+        x: root.close-x;
+        y: (root.height - self.height) / 2;
+        size: Size.md;
+        icon: IconSet.X;
+        above-modal: true;
+        label: @tr("Close settings");
+        clicked => {
+            root.close();
+        }
+    }
 }

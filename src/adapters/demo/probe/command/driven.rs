@@ -3,8 +3,8 @@ use std::time::Duration;
 
 use super::drafts::{CreateRoomOp, EmoteDto, message_edit, poll_draft, room_draft};
 use super::targets::{
-    Selection, ban, in_room, in_space, keyword_rule, kick, leave_space, moderation, person, room,
-    room_default, room_notify, setting_change, settings_page, target,
+    Selection, ban, in_room, in_space, keyword_rule, kick, leave_space, moderation, open_settings,
+    person, room, room_default, room_notify, setting_change, settings_page, target,
 };
 use super::{ProbeCommand, Rejected};
 use crate::adapters::demo::attachments;
@@ -317,7 +317,7 @@ pub fn to_driven(command: ProbeCommand, selected: Selection<'_>) -> Result<Drive
         ProbeCommand::ImportRoomKeys { passphrase } => {
             KeysCommand::ImportRoomKeys(KeyPassphrase::new(passphrase)).into()
         }
-        ProbeCommand::OpenSettings => SettingsCommand::OpenSettings.into(),
+        ProbeCommand::OpenSettings { page } => return open_settings(page.as_deref()),
         ProbeCommand::CloseSettings => SettingsCommand::CloseSettings.into(),
         ProbeCommand::ClearMediaCache => SettingsCommand::ClearDownloadedMedia.into(),
         ProbeCommand::SetAccountNotifications { on } => {
@@ -332,6 +332,7 @@ pub fn to_driven(command: ProbeCommand, selected: Selection<'_>) -> Result<Drive
             });
         }
         ProbeCommand::ShowSettingsPage { page } => return settings_page(&page),
+        ProbeCommand::ShowSettingsList => SettingsCommand::ShowList.into(),
         ProbeCommand::SetSetting { name, value } => return setting_change(&name, &value),
         ProbeCommand::OpenAccount => AccountCommand::OpenAccount.into(),
         ProbeCommand::CloseAccount => AccountCommand::CloseAccount.into(),

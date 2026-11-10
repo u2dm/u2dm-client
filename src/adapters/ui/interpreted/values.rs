@@ -37,7 +37,8 @@ use crate::commands::view::{
     EncryptionActivity, EncryptionStep, HandView, InviteeState, JoinRefusal, LinkView,
     LoginActivity, LoginStep, MicrophoneView, PendingAnswer, PendingModeration, PeopleSearchStatus,
     PreviewTrouble, ReactionView, ReadersStatus, RoomInfoPlacement, RoomPreviewSheet, RoomScope,
-    RosterStatus, SettingsPage, SourceState, SpaceIndexStatus, UpgradeLink, VerifyOffer,
+    RosterStatus, SettingsLayout, SettingsPage, SourceState, SpaceIndexStatus, UpgradeLink,
+    VerifyOffer,
 };
 use crate::domain::auth::LoginMethod;
 use crate::domain::call::devices::DeviceKind;

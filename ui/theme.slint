@@ -310,6 +310,12 @@ export global Metrics {
     out property <int> room-preview-topic-lines: 4;
     out property <length> create-room-tab: Size.lg;
     out property <length> choice-row: Size.target + Space.md;
+    out property <length> settings-width: 760px;
+    out property <length> settings-height: 600px;
+    out property <length> settings-sidebar: 220px;
+    out property <length> settings-split-min: root.settings-sidebar + AppStyle.card-width-wide + AppStyle.card-inset;
+    out property <length> settings-header: root.header-row;
+    out property <length> settings-nav-row: Size.xl;
     out property <length> invite-people-max-height: root.user-info-max-height;
     out property <length> invitee-row: root.room-info-row;
     out property <length> invitee-avatar: root.room-info-member-avatar;

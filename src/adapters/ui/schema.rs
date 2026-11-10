@@ -223,7 +223,7 @@ macro_rules! simple_callbacks {
         on_start_key_import "start-key-import" start_key_import plain KeysCommand::StartKeyImport;
         on_import_room_keys "import-room-keys" import_room_keys manual_string
             KeysCommand::ImportRoomKeys;
-        on_open_settings "open-settings" open_settings plain SettingsCommand::OpenSettings;
+        on_open_settings "open-settings" open_settings manual SettingsCommand::Open;
         on_close_settings "close-settings" close_settings plain SettingsCommand::CloseSettings;
         on_clear_downloaded_media "clear-downloaded-media" clear_downloaded_media plain
             SettingsCommand::ClearDownloadedMedia;
@@ -235,6 +235,10 @@ macro_rules! simple_callbacks {
         on_stop_ignoring "stop-ignoring" stop_ignoring user SettingsCommand::StopIgnoring;
         on_show_settings_page "show-settings-page" show_settings_page
             request(page "page" variant) SettingsCommand::ShowPage;
+        on_show_settings_list "show-settings-list" show_settings_list plain
+            SettingsCommand::ShowList;
+        on_settings_layout "settings-layout" settings_layout
+            request(layout "layout" variant) SettingsCommand::Layout;
         on_set_theme "set-theme" set_theme request(choice "choice" variant) SettingsCommand::Change;
         on_set_motion "set-motion" set_motion request(choice "choice" variant) SettingsCommand::Change;
         on_set_send_key "set-send-key" set_send_key request(choice "choice" variant)
@@ -493,6 +497,7 @@ macro_rules! bool_props {
         EncryptionVerifiedSessions EncryptionView "EncryptionView" "verified-sessions" set_verified_sessions get_verified_sessions;
         EncryptionKeyStorageOff EncryptionView "EncryptionView" "key-storage-off" set_key_storage_off get_key_storage_off;
         SettingsVisible SettingsView "SettingsView" "visible" set_visible get_visible;
+        SettingsListing SettingsView "SettingsView" "listing" set_listing get_listing;
         SettingsTypingNotices SettingsView "SettingsView" "typing-notices" set_typing_notices get_typing_notices;
         SettingsSharePresence SettingsView "SettingsView" "share-presence" set_share_presence get_share_presence;
         SettingsDesktopNotifications SettingsView "SettingsView" "desktop-notifications" set_desktop_notifications get_desktop_notifications;
@@ -1066,6 +1071,7 @@ macro_rules! slint_enums {
             account_steps AccountStep AccountStep;
             account_activities AccountActivity AccountActivity;
             settings_pages SettingsPage SettingsPage;
+            settings_layouts SettingsLayout SettingsLayout;
             downloaded_media_states DownloadedMedia DownloadedMedia;
             account_rules AccountRule AccountRule;
             room_defaults RoomDefault RoomDefault;
@@ -1722,7 +1728,6 @@ pub(crate) use account_activities;
 
 macro_rules! settings_pages {
     ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
-        Overview   Overview   "overview";
         Appearance Appearance "appearance";
         Messages   Messages   "messages";
         Notifications Notifications "notifications";
@@ -1733,6 +1738,14 @@ macro_rules! settings_pages {
     } };
 }
 pub(crate) use settings_pages;
+
+macro_rules! settings_layouts {
+    ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
+        Stacked    Stacked    "stacked";
+        SideBySide SideBySide "side-by-side";
+    } };
+}
+pub(crate) use settings_layouts;
 
 macro_rules! downloaded_media_states {
     ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*

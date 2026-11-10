@@ -6,12 +6,8 @@ import { SettingsView } from "../../../../views.slint";
 import { Actions } from "../../../../actions.slint";
 import { CallWords, SettingsWords } from "../../../../messages.slint";
 import { Space } from "../../../../theme.slint";
-import { PageHeader } from "./page-header.slint";
 
 export component CallsPage inherits VerticalLayout {
-    callback back();
-    callback close();
-
     pure function layout-at(index: int) -> CallLayout {
         return index == 1 ? CallLayout.call-and-chat
             : index == 2 ? CallLayout.call-only
@@ -20,16 +16,6 @@ export component CallsPage inherits VerticalLayout {
     }
 
     spacing: Space.lg;
-
-    PageHeader {
-        title: @tr("Calls");
-        back => {
-            root.back();
-        }
-        close => {
-            root.close();
-        }
-    }
 
     SectionLabel {
         text: @tr("DEVICES");

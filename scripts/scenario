@@ -72,6 +72,7 @@ scenario_env() {
     subspace-tabs)   echo 'U2DM_DEMO_WINDOW=900x760' ;;
     reduced-motion)  echo 'U2DM_DEMO_MOTION=reduced U2DM_DEMO_WINDOW=900x760' ;;
     settings-appearance) echo 'U2DM_DEMO_WINDOW=900x760' ;;
+    settings-narrow) echo 'U2DM_DEMO_WINDOW=600x760' ;;
     settings-messages) echo 'U2DM_DEMO_WINDOW=900x760' ;;
     settings-presence) echo 'U2DM_DEMO_PRESENCE=partners,status U2DM_DEMO_WINDOW=900x760' ;;
     settings-notifications) echo 'U2DM_DEMO_NOTIFY=group,dm,mention U2DM_DEMO_WINDOW=900x760' ;;
@@ -1212,6 +1213,13 @@ scenario_steps() {
       echo 'sleep 1'
       echo '{"op":"set_setting","name":"typing-notices","value":"false"}'
       echo 'sleep 1' ;;
+    settings-narrow)
+      echo '{"op":"open_settings"}'
+      echo 'sleep 1'
+      echo '{"op":"show_settings_page","page":"rules"}'
+      echo 'sleep 2'
+      echo '{"op":"show_settings_list"}'
+      echo 'sleep 1' ;;
     settings-appearance)
       echo '{"op":"select_room","room_id":"!rust:demo.local"}'
       echo 'sleep 1'
@@ -1324,7 +1332,8 @@ scenario_note() {
     settings-notifications) echo 'with the window unfocused and Hide message text on, each arrival notifies as "New message" (the log: demo: a desktop notification shows); Show notifications off withdraws them all while the rooms stay unread (notifications, directory.attention)' ;;
     settings-presence) echo 'Share your presence off says offline once with your status kept, and on again says online at once (the log: demo: presence reaches the homeserver)' ;;
     settings-messages) echo 'Messages and privacy: Ctrl+Enter sends, read receipts go private, typing notices stop (settings.values; the demo logs each receipt with its visibility)' ;;
-    settings-appearance) echo 'Settings opens from the drawer on its overview, Appearance turns the theme dark at once and reduces motion (settings.values, settings.dialog.page; the shot is dark)' ;;
+    settings-appearance) echo 'Settings opens on Appearance beside its categories, and Appearance turns the theme dark at once and reduces motion (settings.values, settings.dialog.page and layout; the shot is dark)' ;;
+    settings-narrow) echo 'At 600 px Settings opens on its list of pages; Notification rules shows with a back arrow and follows the homeserver while it shows, and back on the list the follow stops (settings.dialog.listing and layout, settings.rules.known)' ;;
     reduced-motion)  echo 'the desktop asks for reduced motion: the log says the UI follows it with reduced=true, and the rail marker, the drawer and every other movement jump while fades run (target/visual-system/motion.sh measures the marker)' ;;
     subspace-tabs)   echo 'Rust lists its sub-spaces as tabs above its rooms (All in Rust, Web, Infra) instead of a second rail; picking Web lists its rooms and names it in the header (directory.space_name, subspace_id, listed_space)' ;;
     mentions)        echo 'in !design the roster loads slowly, then "pr" suggests Priya, "" puts the recent speakers first, and "ro" offers @room' ;;
@@ -1477,7 +1486,7 @@ names() {
     identity-reset identity-reset-oauth room-keys \
     account-sessions account-password account-sso account-oauth account-limits account-deactivate \
     logout-warning settings-appearance settings-messages settings-presence settings-notifications \
-    settings-calls settings-media settings-cache settings-rules settings-ignored
+    settings-calls settings-media settings-cache settings-rules settings-ignored settings-narrow
 }
 
 cmd_list() {

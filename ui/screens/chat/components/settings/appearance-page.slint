@@ -5,12 +5,8 @@ import { AppearanceView } from "../../../../views.slint";
 import { Actions } from "../../../../actions.slint";
 import { SettingsWords } from "../../../../messages.slint";
 import { Motion, Space } from "../../../../theme.slint";
-import { PageHeader } from "./page-header.slint";
 
 export component AppearancePage inherits VerticalLayout {
-    callback back();
-    callback close();
-
     pure function theme-at(index: int) -> ThemeChoice {
         return index == 1 ? ThemeChoice.light : index == 2 ? ThemeChoice.dark : ThemeChoice.system;
     }
@@ -20,16 +16,6 @@ export component AppearancePage inherits VerticalLayout {
     }
 
     spacing: Space.lg;
-
-    PageHeader {
-        title: @tr("Appearance");
-        back => {
-            root.back();
-        }
-        close => {
-            root.close();
-        }
-    }
 
     SectionLabel {
         text: @tr("THEME");

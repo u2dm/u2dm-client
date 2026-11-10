@@ -7,7 +7,6 @@ import { SettingsView } from "../../../../views.slint";
 import { Actions } from "../../../../actions.slint";
 import { SettingsWords } from "../../../../messages.slint";
 import { AppStyle, Fonts, Space } from "../../../../theme.slint";
-import { PageHeader } from "./page-header.slint";
 
 component SizeLine inherits Rectangle {
     in property <string> text;
@@ -154,20 +153,9 @@ component StorageSection inherits VerticalLayout {
 export component MediaPage inherits VerticalLayout {
     in-out property <bool> asking-clear;
 
-    callback back();
-    callback close();
+    callback park-focus();
 
     spacing: Space.lg;
-
-    header := PageHeader {
-        title: @tr("Media and storage");
-        back => {
-            root.back();
-        }
-        close => {
-            root.close();
-        }
-    }
 
     SectionLabel {
         text: @tr("DOWNLOADS");
@@ -202,7 +190,7 @@ export component MediaPage inherits VerticalLayout {
     StorageSection {
         asking <=> root.asking-clear;
         confirmed => {
-            header.take-focus();
+            root.park-focus();
         }
     }
 }

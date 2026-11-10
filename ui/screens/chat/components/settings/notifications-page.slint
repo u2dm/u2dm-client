@@ -4,23 +4,9 @@ import { SettingFlag } from "../../../../enums.slint";
 import { SettingsView } from "../../../../views.slint";
 import { Actions } from "../../../../actions.slint";
 import { Space } from "../../../../theme.slint";
-import { PageHeader } from "./page-header.slint";
 
 export component NotificationsPage inherits VerticalLayout {
-    callback back();
-    callback close();
-
     spacing: Space.lg;
-
-    PageHeader {
-        title: @tr("Notifications and sounds");
-        back => {
-            root.back();
-        }
-        close => {
-            root.close();
-        }
-    }
 
     SectionLabel {
         text: @tr("DESKTOP NOTIFICATIONS");

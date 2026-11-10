@@ -38,6 +38,7 @@ import {
     ChangePasswordRequest,
     DeactivateRequest,
     SettingsPageRequest,
+    SettingsLayoutRequest,
     ThemeRequest,
     MotionRequest,
     SendKeyRequest,
@@ -71,6 +72,8 @@ export global Actions {
     callback remove-keyword(string);
     callback stop-ignoring(string);
     callback show-settings-page(SettingsPageRequest);
+    callback show-settings-list();
+    callback settings-layout(SettingsLayoutRequest);
     callback set-theme(ThemeRequest);
     callback set-motion(MotionRequest);
     callback set-send-key(SendKeyRequest);

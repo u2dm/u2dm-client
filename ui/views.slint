@@ -554,6 +554,9 @@ export global CallView {
 export global EncryptionView {
     in property <bool> visible;
     in property <EncryptionStanding> standing: EncryptionStanding.checking;
+    out property <bool> needs-you: root.standing == EncryptionStanding.unverified
+        || root.standing == EncryptionStanding.setup-refused
+        || root.standing == EncryptionStanding.setup-failed;
     in property <bool> verified-sessions;
     in property <RecoveryStatus> recovery: RecoveryStatus.unknown;
     in property <bool> key-storage-off;
@@ -577,7 +580,8 @@ export global AppearanceView {
 
 export global SettingsView {
     in property <bool> visible;
-    in property <SettingsPage> page: SettingsPage.overview;
+    in property <SettingsPage> page: SettingsPage.appearance;
+    in property <bool> listing;
     in property <SendKey> send-key: SendKey.enter;
     in property <ReceiptVisibility> receipts: ReceiptVisibility.public;
     in property <bool> typing-notices: true;
