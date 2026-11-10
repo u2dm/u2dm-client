@@ -1731,10 +1731,9 @@ macro_rules! settings_pages {
         Appearance Appearance "appearance";
         Messages   Messages   "messages";
         Notifications Notifications "notifications";
+        Privacy    Privacy    "privacy";
         Calls      Calls      "calls";
         Media      Media      "media";
-        Rules      Rules      "rules";
-        Ignored    Ignored    "ignored";
     } };
 }
 pub(crate) use settings_pages;

@@ -1,11 +1,11 @@
 import { ChoiceGroup } from "../../../../components/choice-group.slint";
 import { SwitchRow } from "../../../../components/switch-row.slint";
-import { SectionLabel } from "../../../../components/text-roles.slint";
-import { CallLayout, SettingFlag } from "../../../../enums.slint";
+import { CallLayout, SettingFlag, SettingKey } from "../../../../enums.slint";
 import { SettingsView } from "../../../../views.slint";
 import { Actions } from "../../../../actions.slint";
-import { CallWords, SettingsWords } from "../../../../messages.slint";
+import { SettingsWords } from "../../../../messages.slint";
 import { Space } from "../../../../theme.slint";
+import { SettingsGroup } from "./group.slint";
 
 export component CallsPage inherits VerticalLayout {
     pure function layout-at(index: int) -> CallLayout {
@@ -15,64 +15,75 @@ export component CallsPage inherits VerticalLayout {
             : CallLayout.automatic;
     }
 
-    spacing: Space.lg;
+    spacing: Space.xl;
 
-    SectionLabel {
-        text: @tr("DEVICES");
-    }
+    SettingsGroup {
+        label: @tr("DEVICES");
 
-    SwitchRow {
-        text: @tr("Remember my devices");
-        detail: @tr("Calls use the microphone, speaker and camera you chose last, even after a restart");
-        on: SettingsView.remember-devices;
-        toggled(on) => {
-            Actions.set-setting-flag({ setting: SettingFlag.remember-devices, on: on });
+        SwitchRow {
+            text: SettingsWords.label(SettingKey.remember-devices);
+            detail: SettingsWords.detail(SettingKey.remember-devices);
+            on: SettingsView.remember-devices;
+            toggled(on) => {
+                Actions.set-setting-flag({ setting: SettingFlag.remember-devices, on: on });
+            }
+        }
+
+        SwitchRow {
+            text: SettingsWords.label(SettingKey.camera-on-join);
+            detail: SettingsWords.detail(SettingKey.camera-on-join);
+            on: SettingsView.camera-on-join;
+            toggled(on) => {
+                Actions.set-setting-flag({ setting: SettingFlag.camera-on-join, on: on });
+            }
         }
     }
 
-    SwitchRow {
-        text: @tr("Camera on for video calls");
-        detail: @tr("Video calls you start or join begin with your camera on. You can turn it off before you connect");
-        on: SettingsView.camera-on-join;
-        toggled(on) => {
-            Actions.set-setting-flag({ setting: SettingFlag.camera-on-join, on: on });
+    SettingsGroup {
+        label: @tr("INCOMING CALLS");
+
+        SwitchRow {
+            text: SettingsWords.label(SettingKey.ringtone);
+            detail: SettingsWords.detail(SettingKey.ringtone);
+            on: SettingsView.ringtone;
+            toggled(on) => {
+                Actions.set-setting-flag({ setting: SettingFlag.ringtone, on: on });
+            }
         }
     }
 
-    SectionLabel {
-        text: @tr("DEFAULT LAYOUT");
-    }
+    SettingsGroup {
+        label: @tr("DEFAULT LAYOUT");
 
-    ChoiceGroup {
-        label: @tr("Default layout");
-        options: [
-            {
-                text: SettingsWords.call-layout(CallLayout.automatic),
-                detail: @tr("Call and chat for video calls, Chat only for voice calls"),
-            },
-            { text: SettingsWords.call-layout(CallLayout.call-and-chat), detail: "" },
-            { text: SettingsWords.call-layout(CallLayout.call-only), detail: "" },
-            { text: SettingsWords.call-layout(CallLayout.chat-only), detail: "" },
-        ];
-        selected: SettingsView.call-layout == CallLayout.call-and-chat ? 1
-            : SettingsView.call-layout == CallLayout.call-only ? 2
-            : SettingsView.call-layout == CallLayout.chat-only ? 3
-            : 0;
-        chose(index) => {
-            Actions.set-call-layout({ choice: root.layout-at(index) });
+        ChoiceGroup {
+            label: SettingsWords.label(SettingKey.call-layout);
+            options: [
+                {
+                    text: SettingsWords.call-layout(CallLayout.automatic),
+                    detail: @tr("Call and chat for video calls, Chat only for voice calls"),
+                },
+                { text: SettingsWords.call-layout(CallLayout.call-and-chat), detail: "" },
+                { text: SettingsWords.call-layout(CallLayout.call-only), detail: "" },
+                { text: SettingsWords.call-layout(CallLayout.chat-only), detail: "" },
+            ];
+            selected: SettingsView.call-layout == CallLayout.call-and-chat ? 1
+                : SettingsView.call-layout == CallLayout.call-only ? 2
+                : SettingsView.call-layout == CallLayout.chat-only ? 3
+                : 0;
+            chose(index) => {
+                Actions.set-call-layout({ choice: root.layout-at(index) });
+            }
         }
     }
 
-    SectionLabel {
-        text: @tr("STAGE");
-    }
-
-    SwitchRow {
-        text: CallWords.follow-speaker();
-        detail: @tr("Whoever is talking fills the stage, unless a screen is shared or you pinned someone");
-        on: SettingsView.follow-speaker;
-        toggled(on) => {
-            Actions.set-setting-flag({ setting: SettingFlag.follow-speaker, on: on });
+    SettingsGroup {
+        SwitchRow {
+            text: SettingsWords.label(SettingKey.follow-speaker);
+            detail: SettingsWords.detail(SettingKey.follow-speaker);
+            on: SettingsView.follow-speaker;
+            toggled(on) => {
+                Actions.set-setting-flag({ setting: SettingFlag.follow-speaker, on: on });
+            }
         }
     }
 }

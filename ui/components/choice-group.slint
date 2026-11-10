@@ -1,10 +1,66 @@
+import { Palette } from "std-widgets.slint";
+import { IconDisplay, IconSet } from "@lucide";
+
 import { FocusReveal, RovingKeys } from "./a11y.slint";
-import { ChoiceRow } from "./choice-row.slint";
-import { Metrics, Space } from "../theme.slint";
+import { ShadedClickArea } from "./state-layer.slint";
+import { AppStyle, Fonts, IconSize, Metrics, Radius, Space, Stroke, Weight } from "../theme.slint";
 
 export struct ChoiceOption {
     text: string,
     detail: string,
+}
+
+component ChoiceLine inherits ShadedClickArea {
+    in property <string> text;
+    in property <string> detail;
+    in property <bool> checked;
+
+    height: max(Metrics.settings-row, content.preferred-height + Space.md);
+    background: AppStyle.control;
+    ring-radius: Radius.sm;
+    ring-inset: Stroke.emphasis;
+    above-modal: true;
+    focusable: false;
+    label: root.detail == "" ? root.text : @tr("{}, {}", root.text, root.detail);
+    accessible-role: radio-button;
+    accessible-checkable: true;
+    accessible-checked: root.checked;
+
+    content := HorizontalLayout {
+        padding-left: Space.lg;
+        padding-right: Space.lg;
+        spacing: Space.lg;
+
+        VerticalLayout {
+            horizontal-stretch: 1;
+            alignment: center;
+            spacing: Space.xs;
+
+            Text {
+                text: root.text;
+                font-size: Fonts.label;
+                font-weight: Weight.semibold;
+                wrap: word-wrap;
+                accessible-role: none;
+            }
+
+            if root.detail != "": Text {
+                text: root.detail;
+                font-size: Fonts.body-small;
+                color: AppStyle.overlay-foreground-muted;
+                wrap: word-wrap;
+                accessible-role: none;
+            }
+        }
+
+        IconDisplay {
+            cross-axis-self-alignment: center;
+            icon: IconSet.Check;
+            size: IconSize.sm;
+            stroke: Palette.accent-background;
+            opacity: root.checked ? 1 : 0;
+        }
+    }
 }
 
 export component ChoiceGroup inherits Rectangle {
@@ -40,16 +96,12 @@ export component ChoiceGroup inherits Rectangle {
     }
 
     VerticalLayout {
-        spacing: Space.xs;
+        spacing: Stroke.hairline;
 
-        for option[index] in root.options: ChoiceRow {
+        for option[index] in root.options: ChoiceLine {
             text: option.text;
             detail: option.detail;
-            wraps: true;
-            height: max(Metrics.choice-row, self.content-height + Space.md);
             checked: index == root.selected;
-            above-modal: true;
-            focusable: false;
             roving-focus: keys.has-focus && keys.cursor == index;
             clicked => {
                 root.choose(index);

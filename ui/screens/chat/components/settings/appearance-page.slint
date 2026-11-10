@@ -1,10 +1,9 @@
-import { ChoiceGroup } from "../../../../components/choice-group.slint";
-import { SectionLabel } from "../../../../components/text-roles.slint";
-import { MotionChoice, ThemeChoice } from "../../../../enums.slint";
+import { MotionChoice, SettingKey, ThemeChoice } from "../../../../enums.slint";
 import { AppearanceView } from "../../../../views.slint";
 import { Actions } from "../../../../actions.slint";
 import { SettingsWords } from "../../../../messages.slint";
 import { Motion, Space } from "../../../../theme.slint";
+import { SegmentedRow, SettingsGroup } from "./group.slint";
 
 export component AppearancePage inherits VerticalLayout {
     pure function theme-at(index: int) -> ThemeChoice {
@@ -15,55 +14,39 @@ export component AppearancePage inherits VerticalLayout {
         return index == 1 ? MotionChoice.reduced : index == 2 ? MotionChoice.full : MotionChoice.system;
     }
 
-    spacing: Space.lg;
+    spacing: Space.xl;
 
-    SectionLabel {
-        text: @tr("THEME");
-    }
-
-    ChoiceGroup {
-        label: @tr("Theme");
-        options: [
-            {
-                text: SettingsWords.theme(ThemeChoice.system),
-                detail: @tr("Matches your desktop"),
-            },
-            { text: SettingsWords.theme(ThemeChoice.light), detail: "" },
-            { text: SettingsWords.theme(ThemeChoice.dark), detail: "" },
-        ];
-        selected: AppearanceView.theme == ThemeChoice.light ? 1
-            : AppearanceView.theme == ThemeChoice.dark ? 2
-            : 0;
-        chose(index) => {
-            Actions.set-theme({ choice: root.theme-at(index) });
+    SettingsGroup {
+        SegmentedRow {
+            text: SettingsWords.label(SettingKey.theme);
+            options: [
+                SettingsWords.theme-segment(ThemeChoice.system),
+                SettingsWords.theme-segment(ThemeChoice.light),
+                SettingsWords.theme-segment(ThemeChoice.dark),
+            ];
+            selected: AppearanceView.theme == ThemeChoice.light ? 1
+                : AppearanceView.theme == ThemeChoice.dark ? 2
+                : 0;
+            detail: SettingsWords.theme-detail(AppearanceView.theme);
+            chose(index) => {
+                Actions.set-theme({ choice: root.theme-at(index) });
+            }
         }
-    }
 
-    SectionLabel {
-        text: @tr("MOTION");
-    }
-
-    ChoiceGroup {
-        label: @tr("Motion");
-        options: [
-            {
-                text: SettingsWords.motion(MotionChoice.system),
-                detail: SettingsWords.motion-detail(MotionChoice.system),
-            },
-            {
-                text: SettingsWords.motion(MotionChoice.reduced),
-                detail: SettingsWords.motion-detail(MotionChoice.reduced),
-            },
-            {
-                text: SettingsWords.motion(MotionChoice.full),
-                detail: SettingsWords.motion-detail(MotionChoice.full),
-            },
-        ];
-        selected: Motion.choice == MotionChoice.reduced ? 1
-            : Motion.choice == MotionChoice.full ? 2
-            : 0;
-        chose(index) => {
-            Actions.set-motion({ choice: root.motion-at(index) });
+        SegmentedRow {
+            text: SettingsWords.label(SettingKey.motion);
+            options: [
+                SettingsWords.motion-segment(MotionChoice.system),
+                SettingsWords.motion-segment(MotionChoice.reduced),
+                SettingsWords.motion-segment(MotionChoice.full),
+            ];
+            selected: Motion.choice == MotionChoice.reduced ? 1
+                : Motion.choice == MotionChoice.full ? 2
+                : 0;
+            detail: SettingsWords.motion-detail(Motion.choice);
+            chose(index) => {
+                Actions.set-motion({ choice: root.motion-at(index) });
+            }
         }
     }
 }

@@ -1,56 +1,243 @@
+import { Palette } from "std-widgets.slint";
+import { IconSet } from "@lucide";
+
+import { ErrorBanner } from "../../../../components/banner.slint";
+import { AppButton, IconButton } from "../../../../components/button.slint";
 import { SwitchRow } from "../../../../components/switch-row.slint";
-import { SectionLabel } from "../../../../components/text-roles.slint";
-import { SettingFlag } from "../../../../enums.slint";
+import { TextField } from "../../../../components/text-field.slint";
+import { AccountRule, RoomClass, RoomDefault, SettingFlag, SettingKey, UserMessageKind } from "../../../../enums.slint";
+import { KeywordEntry } from "../../../../types.slint";
 import { SettingsView } from "../../../../views.slint";
 import { Actions } from "../../../../actions.slint";
-import { Space } from "../../../../theme.slint";
+import { SettingsWords } from "../../../../messages.slint";
+import { AppStyle, Fonts, Metrics, Size, Space } from "../../../../theme.slint";
+import { GroupLabel, GroupNote, NoteRow, SegmentedRow, SettingsGroup } from "./group.slint";
+
+component KeywordLine inherits Rectangle {
+    in property <KeywordEntry> entry;
+
+    callback remove();
+
+    height: Metrics.settings-row;
+    background: AppStyle.control;
+
+    HorizontalLayout {
+        padding-left: Space.lg;
+        padding-right: Space.sm;
+        spacing: Space.md;
+
+        Text {
+            horizontal-stretch: 1;
+            text: root.entry.keyword;
+            font-size: Fonts.label;
+            color: root.entry.busy ? AppStyle.overlay-foreground-muted : Palette.foreground;
+            vertical-alignment: center;
+            overflow: elide;
+        }
+
+        if !root.entry.busy: IconButton {
+            cross-axis-self-alignment: center;
+            size: Size.md;
+            icon: IconSet.X;
+            above-modal: true;
+            label: @tr("Remove the keyword {}", root.entry.keyword);
+            clicked => {
+                root.remove();
+            }
+        }
+    }
+}
+
+component KeywordsSection inherits VerticalLayout {
+    property <string> draft;
+    property <bool> refused;
+
+    function add() {
+        field.focus-input();
+        root.refused = !Actions.add-keyword(root.draft);
+        if !root.refused {
+            root.draft = "";
+        }
+    }
+
+    changed draft => {
+        root.refused = false;
+    }
+
+    spacing: Space.sm;
+
+    GroupLabel {
+        text: @tr("KEYWORDS");
+    }
+
+    HorizontalLayout {
+        spacing: Space.md;
+
+        field := TextField {
+            horizontal-stretch: 1;
+            icon: IconSet.Tag;
+            above-modal: true;
+            label: @tr("New keyword");
+            placeholder: @tr("Add a keyword");
+            text <=> root.draft;
+            accepted => {
+                root.add();
+            }
+        }
+
+        AppButton {
+            horizontal-stretch: 0;
+            above-modal: true;
+            text: @tr("Add");
+            filled: false;
+            enabled: root.draft != "";
+            clicked => {
+                root.add();
+            }
+        }
+    }
+
+    if root.refused: Text {
+        text: @tr("A keyword cannot start with a dot or contain a slash or backslash");
+        font-size: Fonts.body-small;
+        color: AppStyle.danger-muted;
+        wrap: word-wrap;
+        accessible-live-region: AccessibleLiveness.assertive;
+    }
+
+    SettingsGroup {
+        note: SettingsWords.detail(SettingKey.keywords);
+
+        if SettingsView.keywords.length == 0: NoteRow {
+            text: @tr("No keywords yet");
+        }
+
+        for entry in SettingsView.keywords: KeywordLine {
+            entry: entry;
+            remove => {
+                field.focus-input();
+                Actions.remove-keyword(entry.keyword);
+            }
+        }
+    }
+}
 
 export component NotificationsPage inherits VerticalLayout {
-    spacing: Space.lg;
+    property <bool> shown: SettingsView.desktop-notifications;
+    property <bool> muted: SettingsView.account-rule == AccountRule.off;
+    property <string> needs-shown: @tr("Turn on Show notifications to change this");
+    property <string> needs-account: @tr("Notifications are off for this account");
 
-    SectionLabel {
-        text: @tr("DESKTOP NOTIFICATIONS");
+    pure function default-index(mode: RoomDefault) -> int {
+        return mode == RoomDefault.mentions-and-keywords ? 1 : 0;
     }
 
-    SwitchRow {
-        text: @tr("Show notifications");
-        detail: @tr("New messages and invites appear on your desktop while this window is in the background");
-        on: SettingsView.desktop-notifications;
-        toggled(on) => {
-            Actions.set-setting-flag({ setting: SettingFlag.desktop-notifications, on: on });
+    pure function default-at(index: int) -> RoomDefault {
+        return index == 1 ? RoomDefault.mentions-and-keywords : RoomDefault.all-messages;
+    }
+
+    spacing: Space.xl;
+
+    SettingsGroup {
+        label: @tr("ON THIS DEVICE");
+        note: root.shown ? "" : @tr("Hide message text and the notification sound apply once notifications are on.");
+
+        SwitchRow {
+            text: SettingsWords.label(SettingKey.desktop-notifications);
+            detail: SettingsWords.detail(SettingKey.desktop-notifications);
+            on: root.shown;
+            toggled(on) => {
+                Actions.set-setting-flag({ setting: SettingFlag.desktop-notifications, on: on });
+            }
+        }
+
+        SwitchRow {
+            text: SettingsWords.label(SettingKey.hide-message-text);
+            detail: SettingsWords.detail(SettingKey.hide-message-text);
+            enabled: root.shown;
+            reason: root.needs-shown;
+            on: SettingsView.hide-message-text;
+            toggled(on) => {
+                Actions.set-setting-flag({ setting: SettingFlag.hide-message-text, on: on });
+            }
+        }
+
+        SwitchRow {
+            text: SettingsWords.label(SettingKey.notification-sound);
+            detail: SettingsWords.detail(SettingKey.notification-sound);
+            enabled: root.shown;
+            reason: root.needs-shown;
+            on: SettingsView.notification-sound;
+            toggled(on) => {
+                Actions.set-setting-flag({ setting: SettingFlag.notification-sound, on: on });
+            }
         }
     }
 
-    SwitchRow {
-        text: @tr("Hide message text");
-        detail: @tr("Notifications name the room, but not the sender or the message");
-        enabled: SettingsView.desktop-notifications;
-        on: SettingsView.hide-message-text;
-        toggled(on) => {
-            Actions.set-setting-flag({ setting: SettingFlag.hide-message-text, on: on });
-        }
+    if !SettingsView.rules-known: GroupNote {
+        text: @tr("Reading your rules…");
     }
 
-    SectionLabel {
-        text: @tr("SOUNDS");
-    }
+    if SettingsView.rules-known: Rectangle {
+        height: rules.preferred-height;
 
-    SwitchRow {
-        text: @tr("Notification sound");
-        detail: @tr("Desktop notifications play a sound when your notification rules ask for one");
-        enabled: SettingsView.desktop-notifications;
-        on: SettingsView.notification-sound;
-        toggled(on) => {
-            Actions.set-setting-flag({ setting: SettingFlag.notification-sound, on: on });
-        }
-    }
+        rules := VerticalLayout {
+            spacing: Space.xl;
 
-    SwitchRow {
-        text: @tr("Ringtone");
-        detail: @tr("Incoming calls ring out loud. The call card appears either way");
-        on: SettingsView.ringtone;
-        toggled(on) => {
-            Actions.set-setting-flag({ setting: SettingFlag.ringtone, on: on });
+            if SettingsView.rules-failed: ErrorBanner {
+                messages: [{ kind: UserMessageKind.notification-rules-not-changed, detail: "" }];
+            }
+
+            SettingsGroup {
+                label: @tr("YOUR ACCOUNT · ALL SESSIONS");
+                note: root.muted
+                    ? @tr("Notifications are off for this account, so these defaults wait until you turn them back on.")
+                    : @tr("Kept on your homeserver and used by all your sessions. A room with its own setting keeps it.");
+
+                SwitchRow {
+                    text: SettingsWords.label(SettingKey.account-notifications);
+                    detail: SettingsView.account-rule == AccountRule.missing
+                        ? @tr("Your homeserver does not offer this switch")
+                        : SettingsWords.detail(SettingKey.account-notifications);
+                    enabled: SettingsView.account-rule != AccountRule.missing;
+                    on: SettingsView.account-rule == AccountRule.on;
+                    toggled(on) => {
+                        Actions.set-account-notifications({ on: on });
+                    }
+                }
+
+                SegmentedRow {
+                    text: SettingsWords.label(SettingKey.direct-default);
+                    options: [
+                        SettingsWords.room-default(RoomDefault.all-messages),
+                        SettingsWords.room-default(RoomDefault.mentions-and-keywords),
+                    ];
+                    selected: root.default-index(SettingsView.direct-default);
+                    detail: SettingsWords.room-default-detail(SettingsView.direct-default);
+                    enabled: !root.muted;
+                    reason: root.needs-account;
+                    chose(index) => {
+                        Actions.set-room-default({ rooms: RoomClass.direct, mode: root.default-at(index) });
+                    }
+                }
+
+                SegmentedRow {
+                    text: SettingsWords.label(SettingKey.group-default);
+                    options: [
+                        SettingsWords.room-default(RoomDefault.all-messages),
+                        SettingsWords.room-default(RoomDefault.mentions-and-keywords),
+                    ];
+                    selected: root.default-index(SettingsView.group-default);
+                    detail: SettingsWords.room-default-detail(SettingsView.group-default);
+                    enabled: !root.muted;
+                    reason: root.needs-account;
+                    chose(index) => {
+                        Actions.set-room-default({ rooms: RoomClass.group, mode: root.default-at(index) });
+                    }
+                }
+            }
+
+            KeywordsSection { }
         }
     }
 }

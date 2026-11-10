@@ -42,10 +42,9 @@ pub enum SettingsPage {
     Appearance,
     Messages,
     Notifications,
+    Privacy,
     Calls,
     Media,
-    Rules,
-    Ignored,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]

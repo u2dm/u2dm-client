@@ -1,30 +1,32 @@
 import { ErrorBanner } from "../../../../components/banner.slint";
 import { AppButton } from "../../../../components/button.slint";
 import { SwitchRow } from "../../../../components/switch-row.slint";
-import { SectionLabel } from "../../../../components/text-roles.slint";
-import { DownloadedMedia, SettingFlag, UserMessageKind } from "../../../../enums.slint";
+import { DownloadedMedia, SettingFlag, SettingKey, UserMessageKind } from "../../../../enums.slint";
 import { SettingsView } from "../../../../views.slint";
 import { Actions } from "../../../../actions.slint";
 import { SettingsWords } from "../../../../messages.slint";
-import { AppStyle, Fonts, Space } from "../../../../theme.slint";
+import { AppStyle, Fonts, Metrics, Space } from "../../../../theme.slint";
+import { GroupNote, SettingsGroup } from "./group.slint";
 
 component SizeLine inherits Rectangle {
     in property <string> text;
     in property <string> size;
 
-    height: line.preferred-height;
+    height: max(Metrics.settings-row, line.preferred-height + Space.md);
+    background: AppStyle.control;
     accessible-role: AccessibleRole.text;
     accessible-label: @tr("{}: {}", root.text, root.size);
 
     line := HorizontalLayout {
-        padding-left: Space.md;
-        padding-right: Space.md;
+        padding-left: Space.lg;
+        padding-right: Space.lg;
         spacing: Space.lg;
 
         Text {
             horizontal-stretch: 1;
             text: root.text;
             font-size: Fonts.label;
+            vertical-alignment: center;
             wrap: word-wrap;
             accessible-role: none;
         }
@@ -33,7 +35,8 @@ component SizeLine inherits Rectangle {
             horizontal-stretch: 0;
             text: root.size;
             font-size: Fonts.label;
-            color: AppStyle.foreground-muted;
+            color: AppStyle.overlay-foreground-muted;
+            vertical-alignment: center;
             accessible-role: none;
         }
     }
@@ -56,18 +59,21 @@ component StorageSection inherits VerticalLayout {
         messages: [{ kind: UserMessageKind.downloaded-media-not-cleared, detail: "" }];
     }
 
-    SizeLine {
-        text: @tr("Images, videos and audio");
-        size: SettingsWords.storage-size(root.storage, SettingsView.clearable-size);
-    }
+    SettingsGroup {
+        label: @tr("STORAGE");
 
-    SizeLine {
-        text: @tr("Profile pictures, sticker packs and custom emoji");
-        size: SettingsWords.storage-size(root.storage, SettingsView.kept-size);
+        SizeLine {
+            text: @tr("Images, videos and audio");
+            size: SettingsWords.storage-size(root.storage, SettingsView.clearable-size);
+        }
+
+        SizeLine {
+            text: @tr("Profile pictures, sticker packs and custom emoji");
+            size: SettingsWords.storage-size(root.storage, SettingsView.kept-size);
+        }
     }
 
     if !root.asking: HorizontalLayout {
-        padding-left: Space.md;
         alignment: start;
 
         AppButton {
@@ -94,8 +100,6 @@ component StorageSection inherits VerticalLayout {
         height: question.preferred-height;
 
         question := VerticalLayout {
-            padding-left: Space.md;
-            padding-right: Space.md;
             spacing: Space.md;
 
             Text {
@@ -137,16 +141,8 @@ component StorageSection inherits VerticalLayout {
         }
     }
 
-    HorizontalLayout {
-        padding-left: Space.md;
-        padding-right: Space.md;
-
-        Text {
-            text: @tr("Anything you view again downloads again. Profile pictures, sticker packs, custom emoji and whatever is playing now stay.");
-            font-size: Fonts.body-small;
-            color: AppStyle.foreground-muted;
-            wrap: word-wrap;
-        }
+    GroupNote {
+        text: SettingsWords.detail(SettingKey.downloaded-media);
     }
 }
 
@@ -155,36 +151,26 @@ export component MediaPage inherits VerticalLayout {
 
     callback park-focus();
 
-    spacing: Space.lg;
+    spacing: Space.xl;
 
-    SectionLabel {
-        text: @tr("DOWNLOADS");
-    }
-
-    SwitchRow {
-        text: @tr("Load media automatically");
-        detail: @tr("Images, stickers and video previews appear as they arrive. When off, you choose which to load. Profile pictures, custom emoji and your own messages always load");
-        on: SettingsView.auto-load-media;
-        toggled(on) => {
-            Actions.set-setting-flag({ setting: SettingFlag.auto-load-media, on: on });
+    SettingsGroup {
+        SwitchRow {
+            text: SettingsWords.label(SettingKey.auto-load-media);
+            detail: SettingsWords.detail(SettingKey.auto-load-media);
+            on: SettingsView.auto-load-media;
+            toggled(on) => {
+                Actions.set-setting-flag({ setting: SettingFlag.auto-load-media, on: on });
+            }
         }
-    }
 
-    SectionLabel {
-        text: @tr("ANIMATION");
-    }
-
-    SwitchRow {
-        text: @tr("Play animated images");
-        detail: @tr("GIFs, stickers and custom emoji move. When off, they stay on their first frame");
-        on: SettingsView.play-animations;
-        toggled(on) => {
-            Actions.set-setting-flag({ setting: SettingFlag.play-animations, on: on });
+        SwitchRow {
+            text: SettingsWords.label(SettingKey.play-animations);
+            detail: SettingsWords.detail(SettingKey.play-animations);
+            on: SettingsView.play-animations;
+            toggled(on) => {
+                Actions.set-setting-flag({ setting: SettingFlag.play-animations, on: on });
+            }
         }
-    }
-
-    SectionLabel {
-        text: @tr("STORAGE");
     }
 
     StorageSection {

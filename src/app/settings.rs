@@ -169,13 +169,13 @@ impl SettingsController {
         match (page, ports) {
             (SettingsPage::Media, PagePorts { media, .. }) => self.measure_media(media),
             (
-                SettingsPage::Rules,
+                SettingsPage::Notifications,
                 PagePorts {
                     rules: Some(port), ..
                 },
             ) => self.rules.start(port),
             (
-                SettingsPage::Ignored,
+                SettingsPage::Privacy,
                 PagePorts {
                     people: Some(port), ..
                 },
@@ -186,8 +186,8 @@ impl SettingsController {
 
     fn leave(&mut self, page: SettingsPage) {
         match page {
-            SettingsPage::Rules => self.rules.stop(),
-            SettingsPage::Ignored => self.ignored.stop(),
+            SettingsPage::Notifications => self.rules.stop(),
+            SettingsPage::Privacy => self.ignored.stop(),
             _ => {}
         }
     }

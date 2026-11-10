@@ -1,0 +1,135 @@
+import { SegmentedChoice } from "../../../../components/segmented-choice.slint";
+import { SectionLabel } from "../../../../components/text-roles.slint";
+import { AppStyle, Fonts, Metrics, Opacity, Radius, Space, Stroke, Weight } from "../../../../theme.slint";
+
+export component GroupLabel inherits HorizontalLayout {
+    in property <string> text;
+
+    padding-left: Space.lg;
+    padding-right: Space.lg;
+
+    SectionLabel {
+        text: root.text;
+        overflow: elide;
+    }
+}
+
+export component GroupNote inherits Rectangle {
+    in property <string> text;
+
+    height: note.preferred-height;
+
+    note := HorizontalLayout {
+        padding-left: Space.lg;
+        padding-right: Space.lg;
+
+        Text {
+            text: root.text;
+            font-size: Fonts.body-small;
+            color: AppStyle.foreground-muted;
+            wrap: word-wrap;
+        }
+    }
+}
+
+export component SettingsGroup inherits VerticalLayout {
+    in property <string> label;
+    in property <string> note;
+
+    spacing: Space.sm;
+
+    if root.label != "": GroupLabel {
+        text: root.label;
+    }
+
+    Rectangle {
+        height: rows.preferred-height;
+        border-radius: Radius.md;
+        clip: true;
+
+        rows := VerticalLayout {
+            spacing: Stroke.hairline;
+
+            @children
+        }
+    }
+
+    if root.note != "": GroupNote {
+        text: root.note;
+    }
+}
+
+export component NoteRow inherits Rectangle {
+    in property <string> text;
+
+    height: max(Metrics.settings-row, line.preferred-height);
+    background: AppStyle.control;
+
+    line := HorizontalLayout {
+        padding-left: Space.lg;
+        padding-right: Space.lg;
+        padding-top: Space.md;
+        padding-bottom: Space.md;
+
+        Text {
+            text: root.text;
+            font-size: Fonts.label;
+            color: AppStyle.overlay-foreground-muted;
+            vertical-alignment: center;
+            wrap: word-wrap;
+        }
+    }
+}
+
+export component SegmentedRow inherits Rectangle {
+    in property <string> text;
+    in property <string> detail;
+    in property <[string]> options;
+    in property <int> selected;
+    in property <bool> enabled: true;
+    in property <string> reason;
+
+    callback chose(int);
+
+    height: layout.preferred-height;
+    background: AppStyle.control;
+
+    layout := VerticalLayout {
+        padding-left: Space.lg;
+        padding-right: Space.lg;
+        padding-top: Space.md;
+        padding-bottom: Space.md;
+        spacing: Space.sm;
+
+        Text {
+            text: root.text;
+            font-size: Fonts.label;
+            font-weight: Weight.semibold;
+            wrap: word-wrap;
+            opacity: root.enabled ? 1 : Opacity.disabled;
+            accessible-role: none;
+        }
+
+        SegmentedChoice {
+            options: root.options;
+            selected: root.selected;
+            label: root.text;
+            description: root.detail;
+            reason: root.reason;
+            enabled: root.enabled;
+            above-modal: true;
+            chose(index) => {
+                root.chose(index);
+            }
+        }
+
+        Text {
+            text: root.detail;
+            font-size: Fonts.body-small;
+            color: AppStyle.overlay-foreground-muted;
+            wrap: word-wrap;
+            opacity: root.enabled ? 1 : Opacity.disabled;
+            accessible-role: none;
+        }
+    }
+}

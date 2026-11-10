@@ -11,14 +11,13 @@ import { AppearanceView, EncryptionView, SettingsView } from "../../../../views.
 import { Actions } from "../../../../actions.slint";
 import { SettingsWords } from "../../../../messages.slint";
 import { MetaTip, Reactions, SettingsEntry } from "../../../../local.slint";
-import { AppStyle, Fonts, IconSize, Metrics, Radius, Space, Weight } from "../../../../theme.slint";
+import { AppStyle, Fonts, IconSize, Metrics, Motion, Radius, Space, Weight } from "../../../../theme.slint";
 import { AppearancePage } from "./appearance-page.slint";
 import { MessagesPage } from "./messages-page.slint";
 import { NotificationsPage } from "./notifications-page.slint";
 import { CallsPage } from "./calls-page.slint";
 import { MediaPage } from "./media-page.slint";
-import { RulesPage } from "./rules-page.slint";
-import { IgnoredPage } from "./ignored-page.slint";
+import { PrivacyPage } from "./privacy-page.slint";
 import { SettingsHeader, UnsavedBanner } from "./page-header.slint";
 
 export global SettingsPages {
@@ -26,40 +25,35 @@ export global SettingsPages {
         SettingsPage.appearance,
         SettingsPage.messages,
         SettingsPage.notifications,
+        SettingsPage.privacy,
         SettingsPage.calls,
         SettingsPage.media,
-        SettingsPage.rules,
-        SettingsPage.ignored,
     ];
 
     public pure function position(page: SettingsPage) -> int {
         return page == SettingsPage.messages ? 1
             : page == SettingsPage.notifications ? 2
-            : page == SettingsPage.calls ? 3
-            : page == SettingsPage.media ? 4
-            : page == SettingsPage.rules ? 5
-            : page == SettingsPage.ignored ? 6
+            : page == SettingsPage.privacy ? 3
+            : page == SettingsPage.calls ? 4
+            : page == SettingsPage.media ? 5
             : 0;
     }
 
     public pure function title(page: SettingsPage) -> string {
         if page == SettingsPage.messages {
-            return @tr("Messages and privacy");
+            return @tr("Messages");
         }
         if page == SettingsPage.notifications {
-            return @tr("Notifications and sounds");
+            return @tr("Notifications");
+        }
+        if page == SettingsPage.privacy {
+            return @tr("Privacy and safety");
         }
         if page == SettingsPage.calls {
             return @tr("Calls");
         }
         if page == SettingsPage.media {
             return @tr("Media and storage");
-        }
-        if page == SettingsPage.rules {
-            return @tr("Notification rules");
-        }
-        if page == SettingsPage.ignored {
-            return @tr("Ignored users");
         }
         return @tr("Appearance");
     }
@@ -71,27 +65,27 @@ export global SettingsPages {
         if page == SettingsPage.notifications {
             return IconSet.Bell;
         }
+        if page == SettingsPage.privacy {
+            return IconSet.UserLock;
+        }
         if page == SettingsPage.calls {
             return IconSet.Phone;
         }
         if page == SettingsPage.media {
             return IconSet.Image;
         }
-        if page == SettingsPage.rules {
-            return IconSet.BellRing;
-        }
-        if page == SettingsPage.ignored {
-            return IconSet.EyeOff;
-        }
         return IconSet.Palette;
     }
 
     public pure function summary(page: SettingsPage) -> string {
         if page == SettingsPage.messages {
-            return SettingsWords.messages-summary(SettingsView.send-key, SettingsView.receipts);
+            return SettingsWords.send-key-summary(SettingsView.send-key);
         }
         if page == SettingsPage.notifications {
             return SettingsWords.notifications-summary(SettingsView.desktop-notifications, SettingsView.hide-message-text);
+        }
+        if page == SettingsPage.privacy {
+            return SettingsWords.privacy-summary(SettingsView.receipts, SettingsView.typing-notices, SettingsView.share-presence);
         }
         if page == SettingsPage.calls {
             return SettingsWords.calls-summary(SettingsView.call-layout);
@@ -99,10 +93,7 @@ export global SettingsPages {
         if page == SettingsPage.media {
             return SettingsWords.media-summary(SettingsView.auto-load-media);
         }
-        if page == SettingsPage.rules || page == SettingsPage.ignored {
-            return @tr("Kept on your homeserver");
-        }
-        return SettingsWords.theme(AppearanceView.theme);
+        return SettingsWords.appearance-summary(AppearanceView.theme, Motion.choice);
     }
 }
 
@@ -520,6 +511,12 @@ export component SettingsDialog inherits ModalHost {
 
                         if !root.listing && root.page == SettingsPage.notifications: NotificationsPage { }
 
+                        if !root.listing && root.page == SettingsPage.privacy: PrivacyPage {
+                            park-focus => {
+                                root.park-focus();
+                            }
+                        }
+
                         if !root.listing && root.page == SettingsPage.calls: CallsPage { }
 
                         if !root.listing && root.page == SettingsPage.media: MediaPage {
@@ -529,13 +526,6 @@ export component SettingsDialog inherits ModalHost {
                             }
                         }
 
-                        if !root.listing && root.page == SettingsPage.rules: RulesPage { }
-
-                        if !root.listing && root.page == SettingsPage.ignored: IgnoredPage {
-                            park-focus => {
-                                root.park-focus();
-                            }
-                        }
                     }
                 }
             }

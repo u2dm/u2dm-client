@@ -1,4 +1,4 @@
-import { CallCamera, CallDeviceKind, CallDeviceStatus, CallDeviceTrouble, CallHand, CallLayout, CallLinkState, CallMic, CallNotice, CallPhase, CallPreviewTrouble, CallReaction, CallRefusal, CallScreen, CallScreenRefusal, CallSheetPreview, CallTestPhase, CallTileState, Delivery, DownloadedMedia, EmojiArt, MediaFailure, MotionChoice, PresenceLine, PreviewKind, ReceiptVisibility, RoomCallMark, SendKey, ServiceKind, ShieldReason, ThemeChoice, UpgradeLink, UserMessageKind } from "./enums.slint";
+import { CallCamera, CallDeviceKind, CallDeviceStatus, CallDeviceTrouble, CallHand, CallLayout, CallLinkState, CallMic, CallNotice, CallPhase, CallPreviewTrouble, CallReaction, CallRefusal, CallScreen, CallScreenRefusal, CallSheetPreview, CallTestPhase, CallTileState, Delivery, DownloadedMedia, EmojiArt, MediaFailure, MotionChoice, PresenceLine, PreviewKind, ReceiptVisibility, RoomCallMark, RoomDefault, SendKey, ServiceKind, SettingKey, ShieldReason, ThemeChoice, UpgradeLink, UserMessageKind } from "./enums.slint";
 import { CallStates } from "./call-states.slint";
 import { CallPersonEntry, CallTileEntry } from "./types.slint";
 
@@ -1879,6 +1879,178 @@ export global PresenceWords {
 }
 
 export global SettingsWords {
+    public pure function label(key: SettingKey) -> string {
+        if key == SettingKey.theme {
+            return @tr("Theme");
+        }
+        if key == SettingKey.motion {
+            return @tr("Motion");
+        }
+        if key == SettingKey.send-key {
+            return @tr("Send messages with");
+        }
+        if key == SettingKey.desktop-notifications {
+            return @tr("Show notifications");
+        }
+        if key == SettingKey.hide-message-text {
+            return @tr("Hide message text");
+        }
+        if key == SettingKey.notification-sound {
+            return @tr("Notification sound");
+        }
+        if key == SettingKey.account-notifications {
+            return @tr("Notifications for this account");
+        }
+        if key == SettingKey.direct-default {
+            return @tr("Direct messages");
+        }
+        if key == SettingKey.group-default {
+            return @tr("Group rooms");
+        }
+        if key == SettingKey.keywords {
+            return @tr("Keywords");
+        }
+        if key == SettingKey.read-receipts {
+            return @tr("Read receipts");
+        }
+        if key == SettingKey.typing-notices {
+            return @tr("Show when you are typing");
+        }
+        if key == SettingKey.share-presence {
+            return @tr("Share your presence");
+        }
+        if key == SettingKey.ignored-users {
+            return @tr("Ignored users");
+        }
+        if key == SettingKey.remember-devices {
+            return @tr("Remember my devices");
+        }
+        if key == SettingKey.camera-on-join {
+            return @tr("Camera on for video calls");
+        }
+        if key == SettingKey.ringtone {
+            return @tr("Ringtone");
+        }
+        if key == SettingKey.call-layout {
+            return @tr("Default layout");
+        }
+        if key == SettingKey.follow-speaker {
+            return CallWords.follow-speaker();
+        }
+        if key == SettingKey.auto-load-media {
+            return @tr("Load media automatically");
+        }
+        if key == SettingKey.play-animations {
+            return @tr("Play animated images");
+        }
+        return @tr("Downloaded media");
+    }
+
+    public pure function detail(key: SettingKey) -> string {
+        if key == SettingKey.desktop-notifications {
+            return @tr("New messages and invites appear on your desktop while this window is in the background");
+        }
+        if key == SettingKey.hide-message-text {
+            return @tr("Notifications name the room, but not the sender or the message");
+        }
+        if key == SettingKey.notification-sound {
+            return @tr("Desktop notifications play a sound when your notification rules ask for one");
+        }
+        if key == SettingKey.account-notifications {
+            return @tr("When off, none of your sessions notifies you, and rooms only show that there is something new");
+        }
+        if key == SettingKey.keywords {
+            return @tr("You are notified of messages that contain these words");
+        }
+        if key == SettingKey.typing-notices {
+            return @tr("People in the room see a typing notice");
+        }
+        if key == SettingKey.share-presence {
+            return @tr("People in your rooms see when you are online");
+        }
+        if key == SettingKey.ignored-users {
+            return @tr("Messages and invites from these people are hidden. This list is kept on your homeserver and applies to all your sessions.");
+        }
+        if key == SettingKey.remember-devices {
+            return @tr("Calls use the microphone, speaker and camera you chose last, even after a restart");
+        }
+        if key == SettingKey.camera-on-join {
+            return @tr("Video calls you start or join begin with your camera on. You can turn it off before you connect");
+        }
+        if key == SettingKey.ringtone {
+            return @tr("Incoming calls ring out loud. The call card appears either way, and its desktop notice follows Show notifications");
+        }
+        if key == SettingKey.follow-speaker {
+            return @tr("Whoever is talking fills the stage, unless a screen is shared or you pinned someone");
+        }
+        if key == SettingKey.auto-load-media {
+            return @tr("Images, stickers and video previews appear as they arrive. When off, you choose which to load. Profile pictures, custom emoji and your own messages always load");
+        }
+        if key == SettingKey.play-animations {
+            return @tr("GIFs, stickers and custom emoji move. When off, they stay on their first frame");
+        }
+        if key == SettingKey.downloaded-media {
+            return @tr("Anything you view again downloads again. Profile pictures, sticker packs, custom emoji and whatever is playing now stay.");
+        }
+        return "";
+    }
+
+    public pure function theme-segment(choice: ThemeChoice) -> string {
+        return choice == ThemeChoice.system ? @tr("System") : root.theme(choice);
+    }
+
+    public pure function theme-detail(choice: ThemeChoice) -> string {
+        if choice == ThemeChoice.light {
+            return @tr("Always light, whatever your desktop uses");
+        }
+        if choice == ThemeChoice.dark {
+            return @tr("Always dark, whatever your desktop uses");
+        }
+        return @tr("Matches your desktop");
+    }
+
+    public pure function motion-segment(choice: MotionChoice) -> string {
+        return choice == MotionChoice.system ? @tr("System") : root.motion(choice);
+    }
+
+    public pure function room-default(mode: RoomDefault) -> string {
+        return mode == RoomDefault.mentions-and-keywords ? @tr("Mentions") : @tr("All messages");
+    }
+
+    public pure function room-default-detail(mode: RoomDefault) -> string {
+        return mode == RoomDefault.mentions-and-keywords
+            ? @tr("Only mentions and your keywords notify you")
+            : @tr("Every new message notifies you");
+    }
+
+    public pure function appearance-summary(theme: ThemeChoice, motion: MotionChoice) -> string {
+        if motion == MotionChoice.reduced {
+            return @tr("{}, reduced motion", root.theme(theme));
+        }
+        if motion == MotionChoice.full {
+            return @tr("{}, full motion", root.theme(theme));
+        }
+        return root.theme(theme);
+    }
+
+    public pure function send-key-summary(key: SendKey) -> string {
+        return @tr("{} sends", root.send-key(key));
+    }
+
+    public pure function privacy-summary(receipts: ReceiptVisibility, typing: bool, presence: bool) -> string {
+        let base = receipts == ReceiptVisibility.private ? @tr("Private read receipts") : @tr("Public read receipts");
+        if !typing && !presence {
+            return @tr("{}, typing and presence hidden", base);
+        }
+        if !typing {
+            return @tr("{}, typing hidden", base);
+        }
+        if !presence {
+            return @tr("{}, presence hidden", base);
+        }
+        return base;
+    }
+
     public pure function theme(choice: ThemeChoice) -> string {
         if choice == ThemeChoice.light {
             return @tr("Light");
@@ -1925,12 +2097,6 @@ export global SettingsWords {
             return @tr("Only your own sessions know what you have read");
         }
         return @tr("People in the room can see what you have read");
-    }
-
-    public pure function messages-summary(key: SendKey, receipts: ReceiptVisibility) -> string {
-        return receipts == ReceiptVisibility.private
-            ? @tr("{} sends, private read receipts", root.send-key(key))
-            : @tr("{} sends, public read receipts", root.send-key(key));
     }
 
     public pure function call-layout(choice: CallLayout) -> string {

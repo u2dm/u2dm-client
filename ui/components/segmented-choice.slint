@@ -1,0 +1,98 @@
+import { Palette } from "std-widgets.slint";
+
+import { ClickArea, FocusReveal, RovingKeys } from "./a11y.slint";
+import { AppStyle, Fonts, Metrics, Opacity, Radius, Space, Weight } from "../theme.slint";
+
+component Segment inherits ClickArea {
+    in property <string> text;
+    in property <bool> selected;
+
+    focusable: false;
+    border-radius: Radius.sm;
+    ring-radius: Radius.sm;
+    label: root.text;
+    accessible-role: radio-button;
+    accessible-checkable: true;
+    accessible-checked: root.selected;
+    background: root.selected
+        ? AppStyle.accent-background-soft
+        : root.has-hover && root.enabled ? AppStyle.overlay-hover : transparent;
+
+    Text {
+        x: Space.sm;
+        width: parent.width - 2 * Space.sm;
+        height: parent.height;
+        text: root.text;
+        font-size: Fonts.label;
+        font-weight: root.selected ? Weight.semibold : Weight.regular;
+        color: Palette.foreground;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+        overflow: elide;
+        accessible-role: none;
+    }
+}
+
+export component SegmentedChoice inherits Rectangle {
+    in property <[string]> options;
+    in property <int> selected;
+    in property <string> label;
+    in property <string> description;
+    in property <string> reason;
+    in property <bool> enabled: true;
+    in property <bool> above-modal: false;
+
+    callback chose(int);
+
+    function choose(index: int) {
+        if !root.enabled {
+            return;
+        }
+        keys.cursor = index;
+        root.chose(index);
+    }
+
+    height: Metrics.settings-segment;
+    opacity: root.enabled ? 1 : Opacity.disabled;
+
+    keys := RovingKeys {
+        count: root.options.length;
+        horizontal: true;
+        start-at: root.selected;
+        paused: !root.enabled;
+        focus-on-tab-navigation: root.enabled;
+        accessible-role: radio-button;
+        accessible-label: @tr("{}: {}", root.label, root.options[self.cursor < 0 ? root.selected : self.cursor]);
+        accessible-checkable: true;
+        accessible-checked: self.cursor < 0 || self.cursor == root.selected;
+        accessible-enabled: root.enabled;
+        accessible-description: root.enabled ? root.description : root.reason;
+        accessible-action-default => {
+            root.choose(self.cursor < 0 ? root.selected : self.cursor);
+        }
+        activated(index) => {
+            root.choose(index);
+        }
+        changed has-focus => {
+            if self.has-focus {
+                FocusReveal.ask(root.absolute-position.x, root.absolute-position.y, root.height);
+            }
+        }
+    }
+
+    HorizontalLayout {
+        spacing: Space.xs;
+
+        for option[index] in root.options: Segment {
+            horizontal-stretch: 1;
+            text: option;
+            selected: index == root.selected;
+            enabled: root.enabled;
+            above-modal: root.above-modal;
+            roving-focus: keys.has-focus && keys.cursor == index;
+            clicked => {
+                root.choose(index);
+            }
+        }
+    }
+}

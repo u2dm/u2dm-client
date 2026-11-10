@@ -1,0 +1,132 @@
+import { Palette } from "std-widgets.slint";
+
+import { ErrorBanner } from "../../../../components/banner.slint";
+import { AppButton } from "../../../../components/button.slint";
+import { SwitchRow } from "../../../../components/switch-row.slint";
+import { ReceiptVisibility, SettingFlag, SettingKey, UserMessageKind } from "../../../../enums.slint";
+import { IgnoredPersonEntry } from "../../../../types.slint";
+import { SettingsView } from "../../../../views.slint";
+import { Actions } from "../../../../actions.slint";
+import { SettingsWords } from "../../../../messages.slint";
+import { AppStyle, Fonts, Metrics, Space, Weight } from "../../../../theme.slint";
+import { NoteRow, SegmentedRow, SettingsGroup } from "./group.slint";
+
+component IgnoredLine inherits Rectangle {
+    in property <IgnoredPersonEntry> person;
+
+    callback stop-ignoring();
+
+    property <bool> named: root.person.name != "";
+
+    height: max(Metrics.settings-row, line.preferred-height + Space.md);
+    background: AppStyle.control;
+
+    line := HorizontalLayout {
+        padding-left: Space.lg;
+        padding-right: Space.md;
+        spacing: Space.lg;
+
+        VerticalLayout {
+            horizontal-stretch: 1;
+            alignment: center;
+            spacing: Space.xs;
+
+            Text {
+                text: root.named ? root.person.name : root.person.user-id;
+                font-family: Fonts.emoji;
+                font-size: Fonts.label;
+                font-weight: Weight.semibold;
+                color: root.person.busy ? AppStyle.overlay-foreground-muted : Palette.foreground;
+                overflow: elide;
+            }
+
+            if root.named: Text {
+                text: root.person.user-id;
+                font-size: Fonts.body-small;
+                color: AppStyle.overlay-foreground-muted;
+                overflow: elide;
+            }
+        }
+
+        AppButton {
+            horizontal-stretch: 0;
+            cross-axis-self-alignment: center;
+            above-modal: true;
+            text: @tr("Stop ignoring");
+            label: @tr("Stop ignoring {}", root.named ? root.person.name : root.person.user-id);
+            description: root.named ? root.person.user-id : "";
+            filled: false;
+            busy: root.person.busy;
+            clicked => {
+                root.stop-ignoring();
+            }
+        }
+    }
+}
+
+export component PrivacyPage inherits VerticalLayout {
+    callback park-focus();
+
+    spacing: Space.xl;
+
+    SettingsGroup {
+        label: @tr("SHARED FROM THIS DEVICE");
+        note: @tr("This device decides what it shares. Your other sessions choose for themselves.");
+
+        SegmentedRow {
+            text: SettingsWords.label(SettingKey.read-receipts);
+            options: [
+                SettingsWords.receipts(ReceiptVisibility.public),
+                SettingsWords.receipts(ReceiptVisibility.private),
+            ];
+            selected: SettingsView.receipts == ReceiptVisibility.private ? 1 : 0;
+            detail: SettingsWords.receipts-detail(SettingsView.receipts);
+            chose(index) => {
+                Actions.set-receipts({ choice: index == 1 ? ReceiptVisibility.private : ReceiptVisibility.public });
+            }
+        }
+
+        SwitchRow {
+            text: SettingsWords.label(SettingKey.typing-notices);
+            detail: SettingsWords.detail(SettingKey.typing-notices);
+            on: SettingsView.typing-notices;
+            toggled(on) => {
+                Actions.set-setting-flag({ setting: SettingFlag.typing-notices, on: on });
+            }
+        }
+
+        SwitchRow {
+            text: SettingsWords.label(SettingKey.share-presence);
+            detail: SettingsWords.detail(SettingKey.share-presence);
+            on: SettingsView.share-presence;
+            toggled(on) => {
+                Actions.set-setting-flag({ setting: SettingFlag.share-presence, on: on });
+            }
+        }
+    }
+
+    if SettingsView.unignore-failed != "": ErrorBanner {
+        messages: [{ kind: UserMessageKind.unignore-failed, detail: SettingsView.unignore-failed }];
+    }
+
+    SettingsGroup {
+        label: @tr("IGNORED USERS");
+        note: SettingsWords.detail(SettingKey.ignored-users);
+
+        if !SettingsView.ignored-known: NoteRow {
+            text: @tr("Reading your ignore list…");
+        }
+
+        if SettingsView.ignored-known && SettingsView.ignored-people.length == 0: NoteRow {
+            text: @tr("You aren't ignoring anyone. To ignore someone, open their profile in a room.");
+        }
+
+        for person in SettingsView.ignored-people: IgnoredLine {
+            person: person;
+            stop-ignoring => {
+                root.park-focus();
+                Actions.stop-ignoring(person.user-id);
+            }
+        }
+    }
+}

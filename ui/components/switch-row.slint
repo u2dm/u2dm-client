@@ -1,32 +1,34 @@
 import { Palette } from "std-widgets.slint";
 
 import { ShadedClickArea } from "./state-layer.slint";
-import { AppStyle, Fonts, Metrics, Motion, Opacity, Radius, Space, Weight } from "../theme.slint";
+import { AppStyle, Fonts, Metrics, Motion, Opacity, Radius, Space, Stroke, Weight } from "../theme.slint";
 
 export component SwitchRow inherits ShadedClickArea {
     in property <string> text;
     in property <string> detail;
     in property <bool> on;
+    in property <string> reason;
 
     callback toggled(bool);
 
-    height: max(Metrics.choice-row, content.preferred-height + Space.md);
+    height: max(Metrics.settings-row, content.preferred-height + Space.md);
     opacity: root.enabled ? 1 : Opacity.disabled;
-    border-radius: Radius.md;
-    ring-radius: Radius.md;
+    background: AppStyle.control;
+    ring-radius: Radius.sm;
+    ring-inset: Stroke.emphasis;
     above-modal: true;
     label: root.text;
     accessible-role: switch;
     accessible-checkable: true;
     accessible-checked: root.on;
-    accessible-description: root.detail;
+    accessible-description: root.enabled || root.reason == "" ? root.detail : @tr("{}. {}", root.reason, root.detail);
     clicked => {
         root.toggled(!root.on);
     }
 
     content := HorizontalLayout {
-        padding-left: Space.md;
-        padding-right: Space.md;
+        padding-left: Space.lg;
+        padding-right: Space.lg;
         spacing: Space.lg;
 
         VerticalLayout {
@@ -45,7 +47,7 @@ export component SwitchRow inherits ShadedClickArea {
             if root.detail != "": Text {
                 text: root.detail;
                 font-size: Fonts.body-small;
-                color: AppStyle.foreground-muted;
+                color: AppStyle.overlay-foreground-muted;
                 wrap: word-wrap;
                 accessible-role: none;
             }
