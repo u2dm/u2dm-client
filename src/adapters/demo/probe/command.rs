@@ -349,6 +349,19 @@ pub enum ProbeCommand {
     OpenSettings,
     CloseSettings,
     ClearMediaCache,
+    SetAccountNotifications {
+        on: bool,
+    },
+    SetRoomDefault {
+        rooms: String,
+        mode: String,
+    },
+    AddKeyword {
+        keyword: String,
+    },
+    RemoveKeyword {
+        keyword: String,
+    },
     ShowSettingsPage {
         page: String,
     },

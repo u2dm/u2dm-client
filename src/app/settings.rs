@@ -1,20 +1,31 @@
+mod rules;
+
+use std::mem;
 use std::path::PathBuf;
 use std::sync::Arc;
 
 use tokio::sync::watch;
 
-use super::event::{AppEvent, SettingsEvent};
+use self::rules::NotificationRules;
+use super::event::{ActionOutcome, AppEvent, RuleSlot, SettingsEvent};
 use super::input::EventSender;
 use super::show_toast;
 use super::task_group::TaskGroup;
 use crate::commands::messages::{UserMessage, UserMessageKind};
+use crate::commands::ui::RuleCommand;
 use crate::commands::view::{DownloadedMedia, SettingsDialog, SettingsPage, SettingsView, Toast};
 use crate::domain::call::devices::DeviceChoices;
 use crate::domain::media::MediaUsage;
+use crate::domain::server_rules::ServerRules;
 use crate::domain::settings::{SettingChange, Settings};
-use crate::ports::matrix::MediaPort;
+use crate::ports::matrix::{MediaPort, ServerRulesPort};
 use crate::ports::output::AppOutputPort;
 use crate::ports::settings::SettingsPort;
+
+pub(super) struct PagePorts {
+    pub(super) media: Option<Arc<dyn MediaPort>>,
+    pub(super) rules: Option<Arc<dyn ServerRulesPort>>,
+}
 
 pub(super) struct SettingsController {
     output: Arc<dyn AppOutputPort>,
@@ -25,6 +36,7 @@ pub(super) struct SettingsController {
     storage: TaskGroup,
     dialog: Option<SettingsDialog>,
     media_cleared: u64,
+    rules: NotificationRules,
 }
 
 impl SettingsController {
@@ -39,6 +51,7 @@ impl SettingsController {
         saves.spawn(save_newest(port, events.clone(), changes));
         Self {
             output,
+            rules: NotificationRules::new(events.clone()),
             events,
             values: loaded,
             lane: Some(lane),
@@ -67,10 +80,11 @@ impl SettingsController {
             return;
         }
         tracing::debug!("closing the settings dialog");
+        self.rules.stop();
         self.publish();
     }
 
-    pub(super) fn show_page(&mut self, page: SettingsPage, media: Option<Arc<dyn MediaPort>>) {
+    pub(super) fn show_page(&mut self, page: SettingsPage, ports: PagePorts) {
         let Some(dialog) = self.dialog.as_mut() else {
             return;
         };
@@ -78,9 +92,45 @@ impl SettingsController {
             return;
         }
         tracing::debug!(?page, "showing a settings page");
-        dialog.page = page;
+        let left = mem::replace(&mut dialog.page, page);
+        if left == SettingsPage::Rules {
+            self.rules.stop();
+        }
         if page == SettingsPage::Media {
-            self.measure_media(media);
+            self.measure_media(ports.media);
+        }
+        if let (SettingsPage::Rules, Some(port)) = (page, ports.rules) {
+            self.rules.start(port);
+        }
+        self.publish();
+    }
+
+    pub(super) fn change_rule(&mut self, port: Arc<dyn ServerRulesPort>, command: RuleCommand) {
+        match command {
+            RuleCommand::SetAccountNotifications(on) => self.rules.set_account(port, on),
+            RuleCommand::SetRoomDefault(rooms, mode) => {
+                self.rules.set_room_default(port, rooms, mode);
+            }
+            RuleCommand::AddKeyword(keyword) => self.rules.add_keyword(port, keyword),
+            RuleCommand::RemoveKeyword(keyword) => self.rules.remove_keyword(port, keyword),
+        }
+        self.publish();
+    }
+
+    pub(super) fn rules_followed(&mut self, rules: ServerRules) {
+        self.rules.followed(rules);
+        self.publish();
+    }
+
+    pub(super) fn rule_written(&mut self, request: u64, slot: &RuleSlot, outcome: ActionOutcome) {
+        self.rules.written(request, slot, outcome);
+        if outcome == ActionOutcome::Failed && !self.rules.show_failure() {
+            show_toast(
+                self.output.as_ref(),
+                Toast::Error(UserMessage::new(
+                    UserMessageKind::NotificationRulesNotChanged,
+                )),
+            );
         }
         self.publish();
     }
@@ -191,6 +241,7 @@ impl SettingsController {
 
     pub(super) fn close_with_session(&mut self) -> SettingsView {
         self.storage.cancel_and_detach();
+        self.rules.forget_session();
         self.dialog = None;
         self.view()
     }
@@ -199,6 +250,7 @@ impl SettingsController {
         self.lane = None;
         self.saves.drain().await;
         self.storage.shutdown().await;
+        self.rules.shutdown().await;
     }
 
     fn save_and_publish(&self) {
@@ -213,6 +265,7 @@ impl SettingsController {
             values: self.values.clone(),
             dialog: self.dialog,
             media_cleared: self.media_cleared,
+            rules: self.rules.view(),
         }
     }
 

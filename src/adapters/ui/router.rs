@@ -12,8 +12,8 @@ pub(super) use self::drafts::{
     send_poll,
 };
 pub(super) use self::settings::{
-    set_call_layout, set_motion, set_receipts, set_send_key, set_setting_flag, set_theme,
-    show_settings_page,
+    add_keyword, set_call_layout, set_motion, set_receipts, set_room_default, set_send_key,
+    set_setting_flag, set_theme, show_settings_page,
 };
 pub(super) use self::watches::{
     composer_changed, scroll_position, timeline_visibility, user_activity, window_focus,
@@ -23,8 +23,8 @@ use super::schema::{notify_modes, room_accesses, room_kinds, simple_callbacks, v
 use super::{clipboard, permalink};
 use crate::app::input::CommandSender;
 use crate::commands::ui::{
-    AccountCommand, AuthCommand, CallCommand, DepartureCommand, KeysCommand, SettingsCommand,
-    UiCommand,
+    AccountCommand, AuthCommand, CallCommand, DepartureCommand, KeysCommand, RuleCommand,
+    SettingsCommand, UiCommand,
 };
 use crate::domain::auth::LoginCredentials;
 use crate::domain::capabilities::AccountPage;

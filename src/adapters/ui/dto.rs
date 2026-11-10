@@ -5,6 +5,7 @@ mod packs;
 mod people;
 mod reactions;
 mod rooms;
+mod rules;
 
 pub(super) use self::body::{
     BodyLineDto, BodyPieceDto, CoveredBody, RowBody, preview_line, rich_body,
@@ -39,3 +40,4 @@ pub(super) use self::rooms::{
     removal_to_dto, request_space_child_avatar, request_space_match_avatar,
     room_preview_avatar_path, room_to_dto, space_child_to_dto, space_match_to_dto, space_to_dto,
 };
+pub(super) use self::rules::{KeywordDto, keyword_to_dto};

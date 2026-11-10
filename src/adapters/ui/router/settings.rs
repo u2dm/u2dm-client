@@ -1,11 +1,12 @@
 use super::Tx;
 use crate::adapters::ui::props::send_command;
 use crate::adapters::ui::schema::{
-    call_layouts, motion_choices, receipt_visibilities, send_keys, setting_flags, settings_pages,
-    theme_choices, variant_named,
+    call_layouts, motion_choices, receipt_visibilities, room_classes, room_defaults, send_keys,
+    setting_flags, settings_pages, theme_choices, variant_named,
 };
-use crate::commands::ui::SettingsCommand;
+use crate::commands::ui::{RuleCommand, SettingsCommand};
 use crate::commands::view::SettingsPage;
+use crate::domain::server_rules::{Keyword, RoomClass, RoomDefault};
 use crate::domain::settings::{
     CallLayout, MotionChoice, ReceiptVisibility, SendKey, SettingChange, SettingFlag, ThemeChoice,
 };
@@ -17,6 +18,8 @@ send_keys!(variant_named send_key_named SendKey;);
 receipt_visibilities!(variant_named receipt_visibility_named ReceiptVisibility;);
 call_layouts!(variant_named call_layout_named CallLayout;);
 setting_flags!(variant_named setting_flag_named SettingFlag;);
+room_classes!(variant_named room_class_named RoomClass;);
+room_defaults!(variant_named room_default_named RoomDefault;);
 
 pub fn show_settings_page(tx: &Tx, page: &str) {
     let Some(page) = settings_page_named(page) else {
@@ -78,4 +81,20 @@ pub fn set_setting_flag(tx: &Tx, setting: &str, on: bool) {
         return;
     };
     send_command(tx, SettingsCommand::Change(SettingChange::Flag(flag, on)));
+}
+
+pub fn set_room_default(tx: &Tx, rooms: &str, mode: &str) {
+    let (Some(rooms), Some(mode)) = (room_class_named(rooms), room_default_named(mode)) else {
+        tracing::warn!(rooms, mode, "ignoring an unknown room default");
+        return;
+    };
+    send_command(tx, RuleCommand::SetRoomDefault(rooms, mode));
+}
+
+pub fn add_keyword(tx: &Tx, text: &str) -> bool {
+    let Some(keyword) = Keyword::parse(text) else {
+        return false;
+    };
+    send_command(tx, RuleCommand::AddKeyword(keyword));
+    true
 }

@@ -78,6 +78,7 @@ scenario_env() {
     settings-calls) echo 'U2DM_DEMO_CALLS=active,speeches U2DM_DEMO_WINDOW=900x760' ;;
     settings-media) echo 'U2DM_DEMO_SETTINGS=media-slow U2DM_DEMO_WINDOW=900x760' ;;
     settings-cache) echo 'U2DM_DEMO_SETTINGS=cache-slow,media-slow U2DM_DEMO_WINDOW=900x760' ;;
+    settings-rules) echo 'U2DM_DEMO_SETTINGS=rules-slow,keywords U2DM_DEMO_WINDOW=900x760' ;;
     mentions)        echo 'U2DM_DEMO_ROOM_INFO=slow' ;;
     room-mention)    echo 'U2DM_DEMO_WINDOW=900x760' ;;
     display-names)   echo 'U2DM_DEMO_NAMES=all' ;;
@@ -1129,6 +1130,18 @@ scenario_steps() {
       echo 'sleep 1'
       echo '{"op":"select_subspace","subspace_id":"!space-rust-web:demo.local"}'
       echo 'sleep 2' ;;
+    settings-rules)
+      echo '{"op":"open_settings"}'
+      echo '{"op":"show_settings_page","page":"rules"}'
+      echo 'sleep 1'
+      echo '{"op":"set_account_notifications","on":false}'
+      echo 'sleep 3'
+      echo '{"op":"set_room_default","rooms":"group","mode":"mentions-and-keywords"}'
+      echo 'sleep 3'
+      echo '{"op":"add_keyword","keyword":"launch"}'
+      echo 'sleep 3'
+      echo '{"op":"remove_keyword","keyword":"deploy"}'
+      echo 'sleep 3' ;;
     settings-cache)
       echo '{"op":"select_room","room_id":"!sarah:demo.local"}'
       echo 'sleep 2'
@@ -1289,6 +1302,7 @@ scenario_note() {
     readers)         echo 'in !rust, the 123 readers of an older message load slowly, then the 121 readers of your newest message page in fifty at a time' ;;
     room-search)     echo 'in All Rooms, "design" lists the Design Team room, then the Design space' ;;
     room-search-open) echo '"web" matches only the Web space under Rust (Web Accessibility is too deep to open); opening it selects Rust and its Web subspace' ;;
+    settings-rules) echo 'the Notification rules page shows each change at once (settings.rules: account, group, keywords) and holds it until the homeserver echoes it, a new keyword busy until then; a change that fails is taken back with a toast (the demo logs each write)' ;;
     settings-cache) echo 'the Media page measures the downloaded media (settings.dialog.storage measuring, then measured), Clear shows the busy button (clearing) and the size falls; the open room keeps its pictures (media_state ready) while its files come back (media_cleared counts each clear)' ;;
     settings-media) echo "with Load media automatically off, other people's photos, video previews and stickers read not-loaded with a Load button (/timeline media_state), your own still load, and load_media brings one in; with Play animated images off, stickers and custom emoji hold their first frame" ;;
     settings-calls) echo 'Camera on for video calls proposes the camera and previews it in the sheet (/state .call.sheet: camera, preview); the microphone chosen there is remembered (.settings.values.remembered_devices), and the call opens as Call only following the speaker (.call.active.follows_speaker)' ;;
@@ -1448,7 +1462,7 @@ names() {
     identity-reset identity-reset-oauth room-keys \
     account-sessions account-password account-sso account-oauth account-limits account-deactivate \
     logout-warning settings-appearance settings-messages settings-presence settings-notifications \
-    settings-calls settings-media settings-cache
+    settings-calls settings-media settings-cache settings-rules
 }
 
 cmd_list() {

@@ -1,0 +1,219 @@
+import { Palette } from "std-widgets.slint";
+import { IconSet } from "@lucide";
+
+import { ErrorBanner } from "../../../../components/banner.slint";
+import { AppButton, IconButton } from "../../../../components/button.slint";
+import { ChoiceGroup } from "../../../../components/choice-group.slint";
+import { Hairline } from "../../../../components/divider.slint";
+import { SwitchRow } from "../../../../components/switch-row.slint";
+import { TextField } from "../../../../components/text-field.slint";
+import { DialogNote, SectionLabel } from "../../../../components/text-roles.slint";
+import { AccountRule, NotifyMode, RoomClass, RoomDefault, UserMessageKind } from "../../../../enums.slint";
+import { KeywordEntry } from "../../../../types.slint";
+import { SettingsView } from "../../../../views.slint";
+import { Actions } from "../../../../actions.slint";
+import { AppStyle, Fonts, Size, Space } from "../../../../theme.slint";
+import { NotifyModes } from "../notify-modes.slint";
+import { PageHeader } from "./page-header.slint";
+
+component KeywordLine inherits Rectangle {
+    in property <KeywordEntry> entry;
+
+    callback remove();
+
+    height: Size.md;
+
+    HorizontalLayout {
+        padding-left: Space.md;
+        spacing: Space.md;
+
+        Text {
+            horizontal-stretch: 1;
+            text: root.entry.keyword;
+            font-size: Fonts.label;
+            color: root.entry.busy ? AppStyle.foreground-muted : Palette.foreground;
+            vertical-alignment: center;
+            overflow: elide;
+        }
+
+        if !root.entry.busy: IconButton {
+            cross-axis-self-alignment: center;
+            size: Size.md;
+            icon: IconSet.X;
+            above-modal: true;
+            label: @tr("Remove the keyword {}", root.entry.keyword);
+            clicked => {
+                root.remove();
+            }
+        }
+    }
+}
+
+component KeywordsSection inherits VerticalLayout {
+    property <string> draft;
+    property <bool> refused;
+
+    function add() {
+        field.focus-input();
+        root.refused = !Actions.add-keyword(root.draft);
+        if !root.refused {
+            root.draft = "";
+        }
+    }
+
+    changed draft => {
+        root.refused = false;
+    }
+
+    spacing: Space.md;
+
+    Text {
+        text: @tr("You are notified of messages that contain these words");
+        font-size: Fonts.body-small;
+        color: AppStyle.foreground-muted;
+        wrap: word-wrap;
+    }
+
+    HorizontalLayout {
+        spacing: Space.md;
+
+        field := TextField {
+            horizontal-stretch: 1;
+            icon: IconSet.Tag;
+            above-modal: true;
+            label: @tr("New keyword");
+            placeholder: @tr("Add a keyword");
+            text <=> root.draft;
+            accepted => {
+                root.add();
+            }
+        }
+
+        AppButton {
+            horizontal-stretch: 0;
+            above-modal: true;
+            text: @tr("Add");
+            filled: false;
+            enabled: root.draft != "";
+            clicked => {
+                root.add();
+            }
+        }
+    }
+
+    if root.refused: Text {
+        text: @tr("A keyword cannot start with a dot or contain a slash or backslash");
+        font-size: Fonts.body-small;
+        color: AppStyle.danger-muted;
+        wrap: word-wrap;
+        accessible-live-region: AccessibleLiveness.assertive;
+    }
+
+    for entry in SettingsView.keywords: KeywordLine {
+        entry: entry;
+        remove => {
+            field.focus-input();
+            Actions.remove-keyword(entry.keyword);
+        }
+    }
+}
+
+export component RulesPage inherits VerticalLayout {
+    callback back();
+    callback close();
+
+    pure function default-index(mode: RoomDefault) -> int {
+        return mode == RoomDefault.mentions-and-keywords ? 1 : 0;
+    }
+
+    pure function default-at(index: int) -> RoomDefault {
+        return index == 1 ? RoomDefault.mentions-and-keywords : RoomDefault.all-messages;
+    }
+
+    spacing: Space.lg;
+
+    PageHeader {
+        title: @tr("Notification rules");
+        back => {
+            root.back();
+        }
+        close => {
+            root.close();
+        }
+    }
+
+    Hairline { }
+
+    if !SettingsView.rules-known: DialogNote {
+        text: @tr("Reading your rules...");
+    }
+
+    if SettingsView.rules-known: Rectangle {
+        height: rules.preferred-height;
+
+        rules := VerticalLayout {
+            spacing: Space.lg;
+
+            if SettingsView.rules-failed: ErrorBanner {
+                messages: [{ kind: UserMessageKind.notification-rules-not-changed, detail: "" }];
+            }
+
+            Text {
+                text: @tr("These rules are kept on your homeserver and apply to all your sessions. A room with its own setting keeps it.");
+                font-size: Fonts.body-small;
+                color: AppStyle.foreground-muted;
+                wrap: word-wrap;
+            }
+
+            SwitchRow {
+                text: @tr("Notifications for this account");
+                detail: SettingsView.account-rule == AccountRule.missing
+                    ? @tr("Your homeserver does not offer this switch")
+                    : @tr("When off, none of your sessions notifies you, and rooms only show that there is something new");
+                enabled: SettingsView.account-rule != AccountRule.missing;
+                on: SettingsView.account-rule == AccountRule.on;
+                toggled(on) => {
+                    Actions.set-account-notifications({ on: on });
+                }
+            }
+
+            SectionLabel {
+                text: @tr("DIRECT MESSAGES");
+            }
+
+            ChoiceGroup {
+                label: @tr("Direct messages");
+                options: [
+                    { text: NotifyModes.choice(NotifyMode.all-messages), detail: "" },
+                    { text: NotifyModes.choice(NotifyMode.mentions-only), detail: "" },
+                ];
+                selected: root.default-index(SettingsView.direct-default);
+                chose(index) => {
+                    Actions.set-room-default({ rooms: RoomClass.direct, mode: root.default-at(index) });
+                }
+            }
+
+            SectionLabel {
+                text: @tr("GROUP ROOMS");
+            }
+
+            ChoiceGroup {
+                label: @tr("Group rooms");
+                options: [
+                    { text: NotifyModes.choice(NotifyMode.all-messages), detail: "" },
+                    { text: NotifyModes.choice(NotifyMode.mentions-only), detail: "" },
+                ];
+                selected: root.default-index(SettingsView.group-default);
+                chose(index) => {
+                    Actions.set-room-default({ rooms: RoomClass.group, mode: root.default-at(index) });
+                }
+            }
+
+            SectionLabel {
+                text: @tr("KEYWORDS");
+            }
+
+            KeywordsSection { }
+        }
+    }
+}

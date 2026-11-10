@@ -7,6 +7,7 @@ use crate::domain::call::media::MediaChoice;
 use crate::domain::capabilities::AccountPage;
 use crate::domain::encryption::KeyPassphrase;
 use crate::domain::room::RoomId;
+use crate::domain::server_rules::{Keyword, RoomClass, RoomDefault};
 use crate::domain::settings::SettingChange;
 use crate::domain::uia::AccountPassword;
 
@@ -80,7 +81,7 @@ pub enum AccountCommand {
     },
 }
 
-#[derive(Clone, Copy, StrumDisplay)]
+#[derive(StrumDisplay)]
 pub enum SettingsCommand {
     OpenSettings,
     CloseSettings,
@@ -89,6 +90,21 @@ pub enum SettingsCommand {
     #[strum(to_string = "ChangeSetting")]
     Change(SettingChange),
     ClearDownloadedMedia,
+    #[strum(to_string = "ChangeNotificationRule")]
+    Rule(RuleCommand),
+}
+
+pub enum RuleCommand {
+    SetAccountNotifications(bool),
+    SetRoomDefault(RoomClass, RoomDefault),
+    AddKeyword(Keyword),
+    RemoveKeyword(String),
+}
+
+impl From<RuleCommand> for UiCommand {
+    fn from(command: RuleCommand) -> Self {
+        Self::Settings(SettingsCommand::Rule(command))
+    }
 }
 
 #[derive(StrumDisplay)]

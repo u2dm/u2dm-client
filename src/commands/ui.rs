@@ -10,7 +10,8 @@ pub(crate) use self::activity::{
 };
 pub(crate) use self::drafts::{Draft, MessageDraft, ReplyDraft};
 pub(crate) use self::groups::{
-    AccountCommand, AuthCommand, CallCommand, DepartureCommand, KeysCommand, SettingsCommand,
+    AccountCommand, AuthCommand, CallCommand, DepartureCommand, KeysCommand, RuleCommand,
+    SettingsCommand,
 };
 use crate::domain::auth::LoginCredentials;
 use crate::domain::emote::ComposerText;

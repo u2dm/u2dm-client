@@ -191,6 +191,7 @@ export enum UserMessageKind {
     account-page-opened,
     settings-not-saved,
     downloaded-media-not-cleared,
+    notification-rules-not-changed,
     identity-reset-failed,
     encryption-setup-failed,
     key-export-failed,
@@ -670,6 +671,23 @@ export enum SettingsPage {
     notifications,
     calls,
     media,
+    rules,
+}
+
+export enum AccountRule {
+    missing,
+    on,
+    off,
+}
+
+export enum RoomDefault {
+    all-messages,
+    mentions-and-keywords,
+}
+
+export enum RoomClass {
+    direct,
+    group,
 }
 
 export enum DownloadedMedia {

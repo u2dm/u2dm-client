@@ -5,17 +5,17 @@ use super::InterpretedBackend;
 use super::names::{composer_draft, draft_verdict, mention_word, text_splice};
 use crate::adapters::ui::dto::{
     BodyLineDto, BodyPieceDto, CallConnectionDto, CallDeviceDto, CallNoticeMark, CallOfferMark,
-    CallPersonDto, CallScreenMark, CallTileDto, CallTileMark, EmojiArt, InviteeDto, LogLineDto,
-    MediaFailureKind, MediaState, MemberRowDto, MemberRowKind, MessageDto, PackCellDto, PackRowDto,
-    PackSurface, PackTabDto, PollAnswerDto, ReactionDto, ReactorAvatarDto, RoomCallMark, RoomDto,
-    RoomRowKind, SheetPreviewMark, SpaceChildDto, SpaceDto, SpoilerState, TestPhaseMark,
-    UserDeviceDto,
+    CallPersonDto, CallScreenMark, CallTileDto, CallTileMark, EmojiArt, InviteeDto, KeywordDto,
+    LogLineDto, MediaFailureKind, MediaState, MemberRowDto, MemberRowKind, MessageDto, PackCellDto,
+    PackRowDto, PackSurface, PackTabDto, PollAnswerDto, ReactionDto, ReactorAvatarDto,
+    RoomCallMark, RoomDto, RoomRowKind, SheetPreviewMark, SpaceChildDto, SpaceDto, SpoilerState,
+    TestPhaseMark, UserDeviceDto,
 };
 use crate::adapters::ui::fields::{
     BodyLineFields, BodyPieceFields, CallConnectionFields, CallDeviceFields, CallPersonFields,
-    CallTileFields, InviteeFields, LogLineFields, MemberRowFields, MessageFields, PackCellFields,
-    PackRowFields, PackTabFields, PollAnswerFields, ReactionFields, ReactorFields, RoomFields,
-    SpaceChildFields, SpaceFields, UserDeviceFields,
+    CallTileFields, InviteeFields, KeywordFields, LogLineFields, MemberRowFields, MessageFields,
+    PackCellFields, PackRowFields, PackTabFields, PollAnswerFields, ReactionFields, ReactorFields,
+    RoomFields, SpaceChildFields, SpaceFields, UserDeviceFields,
 };
 use crate::adapters::ui::mention;
 use crate::adapters::ui::present::{
@@ -24,20 +24,20 @@ use crate::adapters::ui::present::{
 use crate::adapters::ui::router::DraftVerdict;
 use crate::adapters::ui::schema::{
     body_line_fields, body_piece_fields, call_connection_fields, call_device_fields,
-    call_person_fields, call_tile_fields, invitee_fields, log_line_fields, member_row_fields,
-    message_fields, pack_cell_fields, pack_row_fields, pack_tab_fields, poll_answer_fields,
-    reaction_fields, reactor_fields, room_fields, slint_enums, space_child_fields, space_fields,
-    user_device_fields,
+    call_person_fields, call_tile_fields, invitee_fields, keyword_fields, log_line_fields,
+    member_row_fields, message_fields, pack_cell_fields, pack_row_fields, pack_tab_fields,
+    poll_answer_fields, reaction_fields, reactor_fields, room_fields, slint_enums,
+    space_child_fields, space_fields, user_device_fields,
 };
 use crate::commands::effects::VerificationActivity;
 use crate::commands::messages::UserMessageKind;
 use crate::commands::view::{
-    AccountActivity, AccountStep, AttachmentKind, AuthStage, CallPhase, CameraView, ChildAccess,
-    CreateRoomStatus, DeviceStatus, DeviceTrouble, DirectChat, DownloadedMedia, EncryptionActivity,
-    EncryptionStep, HandView, InviteeState, JoinRefusal, LinkView, LoginActivity, LoginStep,
-    MicrophoneView, PendingAnswer, PendingModeration, PeopleSearchStatus, PreviewTrouble,
-    ReactionView, ReadersStatus, RoomInfoPlacement, RoomPreviewSheet, RoomScope, RosterStatus,
-    SettingsPage, SourceState, SpaceIndexStatus, UpgradeLink, VerifyOffer,
+    AccountActivity, AccountRule, AccountStep, AttachmentKind, AuthStage, CallPhase, CameraView,
+    ChildAccess, CreateRoomStatus, DeviceStatus, DeviceTrouble, DirectChat, DownloadedMedia,
+    EncryptionActivity, EncryptionStep, HandView, InviteeState, JoinRefusal, LinkView,
+    LoginActivity, LoginStep, MicrophoneView, PendingAnswer, PendingModeration, PeopleSearchStatus,
+    PreviewTrouble, ReactionView, ReadersStatus, RoomInfoPlacement, RoomPreviewSheet, RoomScope,
+    RosterStatus, SettingsPage, SourceState, SpaceIndexStatus, UpgradeLink, VerifyOffer,
 };
 use crate::domain::auth::LoginMethod;
 use crate::domain::call::devices::DeviceKind;
@@ -55,6 +55,7 @@ use crate::domain::room::NotifyMode;
 use crate::domain::room_creation::{RoomAccess, RoomKind};
 use crate::domain::room_info::MemberRole;
 use crate::domain::room_log::LogLevel;
+use crate::domain::server_rules::{RoomClass, RoomDefault};
 use crate::domain::settings::{
     CallLayout, MotionChoice, ReceiptVisibility, SendKey, SettingFlag, ThemeChoice,
 };
@@ -285,6 +286,8 @@ call_connection_fields!(impl_value CallConnectionDto CallConnectionFields;);
 call_device_fields!(impl_value CallDeviceDto CallDeviceFields;);
 
 user_device_fields!(impl_value UserDeviceDto UserDeviceFields;);
+
+keyword_fields!(impl_value KeywordDto KeywordFields;);
 
 pack_cell_fields!(impl_value PackCellDto PackCellFields;);
 

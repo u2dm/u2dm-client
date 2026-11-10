@@ -38,6 +38,7 @@ use crate::domain::room::{NotifyMode, RoomId};
 use crate::domain::room_creation::{CreateResult, RoomBlueprint};
 use crate::domain::room_info::{Reader, RoomAbout, RosterMember};
 use crate::domain::room_preview::PreviewResult;
+use crate::domain::server_rules::{Keyword, RoomClass, RoomDefault, ServerRules};
 use crate::domain::sessions::{LogoutRisks, OwnSessions};
 use crate::domain::settings::ReceiptVisibility;
 use crate::domain::space_index::HierarchyPage;
@@ -163,6 +164,7 @@ pub struct AuthenticatedSession {
     pub timeline: Arc<dyn TimelinePort>,
     pub pinned: Arc<dyn PinnedPort>,
     pub media: Arc<dyn MediaPort>,
+    pub server_rules: Arc<dyn ServerRulesPort>,
     pub verification: Arc<dyn VerificationPort>,
     pub identity: Arc<dyn IdentityPort>,
     pub encryption: Arc<dyn EncryptionPort>,
@@ -450,6 +452,15 @@ pub trait MediaPort: Send + Sync {
         event_id: &str,
         need: WaveformNeed,
     ) -> Result<PathBuf>;
+}
+
+#[async_trait]
+pub trait ServerRulesPort: Send + Sync {
+    async fn follow(&self, rules_tx: mpsc::Sender<ServerRules>) -> Result<()>;
+    async fn set_account_notifications(&self, on: bool) -> Result<()>;
+    async fn set_room_default(&self, rooms: RoomClass, mode: RoomDefault) -> Result<()>;
+    async fn add_keyword(&self, keyword: &Keyword) -> Result<()>;
+    async fn remove_keyword(&self, keyword: &str) -> Result<()>;
 }
 
 #[derive(Debug, Default)]

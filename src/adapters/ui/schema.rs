@@ -226,6 +226,11 @@ macro_rules! simple_callbacks {
         on_close_settings "close-settings" close_settings plain SettingsCommand::CloseSettings;
         on_clear_downloaded_media "clear-downloaded-media" clear_downloaded_media plain
             SettingsCommand::ClearDownloadedMedia;
+        on_set_account_notifications "set-account-notifications" set_account_notifications
+            flag(on "on") RuleCommand::SetAccountNotifications;
+        on_set_room_default "set-room-default" set_room_default
+            request(rooms "rooms" variant, mode "mode" variant) RuleCommand::SetRoomDefault;
+        on_remove_keyword "remove-keyword" remove_keyword pass RuleCommand::RemoveKeyword;
         on_show_settings_page "show-settings-page" show_settings_page
             request(page "page" variant) SettingsCommand::ShowPage;
         on_set_theme "set-theme" set_theme request(choice "choice" variant) SettingsCommand::Change;
@@ -496,6 +501,8 @@ macro_rules! bool_props {
         SettingsCameraOnJoin SettingsView "SettingsView" "camera-on-join" set_camera_on_join get_camera_on_join;
         SettingsFollowSpeaker SettingsView "SettingsView" "follow-speaker" set_follow_speaker get_follow_speaker;
         SettingsAutoLoadMedia SettingsView "SettingsView" "auto-load-media" set_auto_load_media get_auto_load_media;
+        SettingsRulesKnown SettingsView "SettingsView" "rules-known" set_rules_known get_rules_known;
+        SettingsRulesFailed SettingsView "SettingsView" "rules-failed" set_rules_failed get_rules_failed;
         SettingsHasClearableMedia SettingsView "SettingsView" "has-clearable-media" set_has_clearable_media get_has_clearable_media;
         SettingsPlayAnimations SettingsView "SettingsView" "play-animations" set_play_animations get_play_animations;
         AccountVisible AccountView "AccountView" "visible" set_visible get_visible;
@@ -722,6 +729,12 @@ macro_rules! enum_props {
             SettingsView "SettingsView" "page" set_page get_page;
         DownloadedMedia set_downloaded_media(DownloadedMedia)
             SettingsView "SettingsView" "downloaded-media" set_downloaded_media get_downloaded_media;
+        AccountRule set_account_rule(AccountRule)
+            SettingsView "SettingsView" "account-rule" set_account_rule get_account_rule;
+        DirectDefault set_direct_default(RoomDefault)
+            SettingsView "SettingsView" "direct-default" set_direct_default get_direct_default;
+        GroupDefault set_group_default(RoomDefault)
+            SettingsView "SettingsView" "group-default" set_group_default get_group_default;
         AppearanceTheme set_appearance_theme(ThemeChoice)
             AppearanceView "AppearanceView" "theme" set_theme get_theme;
         MotionChoice set_motion_choice(MotionChoice)
@@ -903,6 +916,7 @@ macro_rules! model_props {
         call_cameras CallDevice VecModel CallView "CallView" "cameras" set_cameras;
         user_devices UserDevice VecModel UserInfoView "UserInfoView" "devices" set_devices;
         account_sessions UserDevice VecModel AccountView "AccountView" "sessions" set_sessions;
+        keywords Keyword VecModel SettingsView "SettingsView" "keywords" set_keywords;
     } };
 }
 pub(crate) use model_props;
@@ -1047,6 +1061,9 @@ macro_rules! slint_enums {
             account_activities AccountActivity AccountActivity;
             settings_pages SettingsPage SettingsPage;
             downloaded_media_states DownloadedMedia DownloadedMedia;
+            account_rules AccountRule AccountRule;
+            room_defaults RoomDefault RoomDefault;
+            room_classes RoomClass RoomClass;
             theme_choices ThemeChoice ThemeChoice;
             motion_choices MotionChoice MotionChoice;
             send_keys SendKey SendKey;
@@ -1294,6 +1311,7 @@ macro_rules! user_message_kinds {
         AccountPageOpened         AccountPageOpened       "account-page-opened";
         SettingsNotSaved          SettingsNotSaved        "settings-not-saved";
         DownloadedMediaNotCleared DownloadedMediaNotCleared "downloaded-media-not-cleared";
+        NotificationRulesNotChanged NotificationRulesNotChanged "notification-rules-not-changed";
         IdentityResetFailed       IdentityResetFailed     "identity-reset-failed";
         EncryptionSetupFailed     EncryptionSetupFailed   "encryption-setup-failed";
         KeyExportFailed           KeyExportFailed         "key-export-failed";
@@ -1704,6 +1722,7 @@ macro_rules! settings_pages {
         Notifications Notifications "notifications";
         Calls      Calls      "calls";
         Media      Media      "media";
+        Rules      Rules      "rules";
     } };
 }
 pub(crate) use settings_pages;
@@ -1717,6 +1736,31 @@ macro_rules! downloaded_media_states {
     } };
 }
 pub(crate) use downloaded_media_states;
+
+macro_rules! account_rules {
+    ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
+        Missing Missing "missing";
+        On      On      "on";
+        Off     Off     "off";
+    } };
+}
+pub(crate) use account_rules;
+
+macro_rules! room_defaults {
+    ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
+        AllMessages         AllMessages         "all-messages";
+        MentionsAndKeywords MentionsAndKeywords "mentions-and-keywords";
+    } };
+}
+pub(crate) use room_defaults;
+
+macro_rules! room_classes {
+    ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
+        Direct Direct "direct";
+        Group  Group  "group";
+    } };
+}
+pub(crate) use room_classes;
 
 macro_rules! theme_choices {
     ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
@@ -2603,6 +2647,14 @@ macro_rules! user_device_fields {
     } };
 }
 pub(crate) use user_device_fields;
+
+macro_rules! keyword_fields {
+    ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
+        keyword set_keyword "keyword" text;
+        busy set_busy "busy" flag;
+    } };
+}
+pub(crate) use keyword_fields;
 
 macro_rules! log_line_fields {
     ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*

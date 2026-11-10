@@ -17,7 +17,7 @@ pub(super) use self::rooms::{
 };
 pub(super) use self::security::{AccountEvent, EncryptionEvent, IdentityEvent};
 pub(super) use self::session::SessionEvent;
-pub(super) use self::settings::SettingsEvent;
+pub(super) use self::settings::{RuleSlot, SettingsEvent};
 use super::invites::Answer;
 use super::upgrades::UpgradeJoined;
 use crate::commands::messages::{UserMessage, UserMessageKind};

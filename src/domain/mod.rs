@@ -87,6 +87,7 @@ pub mod room_log;
 pub mod room_preview;
 pub mod room_search;
 pub mod room_state;
+pub mod server_rules;
 pub mod sessions;
 pub mod settings;
 pub mod space_index;

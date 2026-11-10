@@ -12,8 +12,8 @@ use crate::commands::effects::VerificationActivity;
 use crate::commands::messages::{UserMessage, UserMessageKind};
 use crate::commands::ui::UiCommand;
 use crate::commands::view::{
-    AccountActivity, AccountStep, AttachmentKind, AuthStage, CallPhase, CameraView, ChildAccess,
-    CreateRoomStatus, DeviceTrouble, DirectChat, DownloadedMedia, EncryptionActivity,
+    AccountActivity, AccountRule, AccountStep, AttachmentKind, AuthStage, CallPhase, CameraView,
+    ChildAccess, CreateRoomStatus, DeviceTrouble, DirectChat, DownloadedMedia, EncryptionActivity,
     EncryptionStep, HandView, JoinRefusal, LoginActivity, LoginStep, MicrophoneView, PendingAnswer,
     PendingModeration, PeopleSearchStatus, PreviewTrouble, ReactionView, ReadersStatus,
     RoomInfoPlacement, RoomPreviewSheet, RoomScope, RosterStatus, SettingsPage, SourceState,
@@ -31,6 +31,7 @@ use crate::domain::presence::PresenceLine;
 use crate::domain::room::NotifyMode;
 use crate::domain::room_creation::RoomKind;
 use crate::domain::room_info::MemberRole;
+use crate::domain::server_rules::RoomDefault;
 use crate::domain::settings::{CallLayout, MotionChoice, ReceiptVisibility, SendKey, ThemeChoice};
 use crate::domain::sync::ConnectionStatus;
 use crate::domain::timeline::{SourceEncryption, TimelineStatus};

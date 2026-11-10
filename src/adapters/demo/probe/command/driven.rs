@@ -3,8 +3,8 @@ use std::time::Duration;
 
 use super::drafts::{CreateRoomOp, EmoteDto, message_edit, poll_draft, room_draft};
 use super::targets::{
-    Selection, ban, in_room, in_space, kick, leave_space, moderation, person, room, room_notify,
-    setting_change, settings_page, target,
+    Selection, ban, in_room, in_space, keyword_rule, kick, leave_space, moderation, person, room,
+    room_default, room_notify, setting_change, settings_page, target,
 };
 use super::{ProbeCommand, Rejected};
 use crate::adapters::demo::attachments;
@@ -12,7 +12,7 @@ use crate::adapters::ui::dump::Poke;
 use crate::adapters::ui::{link_command, matrix_link, room_address_entry};
 use crate::commands::ui::{
     AccountCommand, AuthCommand, CallCommand, DepartureCommand, KeysCommand, MessageDraft,
-    ReplyDraft, SettingsCommand, UiCommand,
+    ReplyDraft, RuleCommand, SettingsCommand, UiCommand,
 };
 use crate::domain::call::devices::DeviceKey;
 use crate::domain::call::media::MediaChoice;
@@ -320,6 +320,12 @@ pub fn to_driven(command: ProbeCommand, selected: Selection<'_>) -> Result<Drive
         ProbeCommand::OpenSettings => SettingsCommand::OpenSettings.into(),
         ProbeCommand::CloseSettings => SettingsCommand::CloseSettings.into(),
         ProbeCommand::ClearMediaCache => SettingsCommand::ClearDownloadedMedia.into(),
+        ProbeCommand::SetAccountNotifications { on } => {
+            RuleCommand::SetAccountNotifications(on).into()
+        }
+        ProbeCommand::SetRoomDefault { rooms, mode } => return room_default(&rooms, &mode),
+        ProbeCommand::AddKeyword { keyword } => return keyword_rule(&keyword),
+        ProbeCommand::RemoveKeyword { keyword } => RuleCommand::RemoveKeyword(keyword).into(),
         ProbeCommand::ShowSettingsPage { page } => return settings_page(&page),
         ProbeCommand::SetSetting { name, value } => return setting_change(&name, &value),
         ProbeCommand::OpenAccount => AccountCommand::OpenAccount.into(),

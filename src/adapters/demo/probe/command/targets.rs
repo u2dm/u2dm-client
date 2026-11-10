@@ -3,10 +3,11 @@ use serde::{Deserialize, Deserializer, de};
 use super::Rejected;
 use super::driven::Driven;
 use crate::adapters::demo::probe::names;
-use crate::commands::ui::{DepartureCommand, SettingsCommand, UiCommand};
+use crate::commands::ui::{DepartureCommand, RuleCommand, SettingsCommand, UiCommand};
 use crate::domain::call::devices::DeviceKind;
 use crate::domain::departure::membership_reason;
 use crate::domain::room::RoomId;
+use crate::domain::server_rules::Keyword;
 use crate::domain::settings::SettingChange;
 use crate::domain::user_info::UserId;
 
@@ -16,6 +17,22 @@ pub(super) fn settings_page(page: &str) -> Result<Driven, Rejected> {
     names::settings_page_named(page)
         .map(|page| Driven::Command(SettingsCommand::ShowPage(page).into()))
         .ok_or_else(|| Rejected(format!("{page} is not a settings page")))
+}
+
+pub(super) fn room_default(rooms: &str, mode: &str) -> Result<Driven, Rejected> {
+    let rooms = names::room_class_named(rooms)
+        .ok_or_else(|| Rejected(format!("{rooms} is not a class of rooms")))?;
+    let mode = names::room_default_named(mode)
+        .ok_or_else(|| Rejected(format!("{mode} is not a room default")))?;
+    Ok(Driven::Command(
+        RuleCommand::SetRoomDefault(rooms, mode).into(),
+    ))
+}
+
+pub(super) fn keyword_rule(text: &str) -> Result<Driven, Rejected> {
+    let keyword =
+        Keyword::parse(text).ok_or_else(|| Rejected(format!("{text} cannot be a keyword")))?;
+    Ok(Driven::Command(RuleCommand::AddKeyword(keyword).into()))
 }
 
 pub(super) fn setting_change(name: &str, value: &str) -> Result<Driven, Rejected> {

@@ -1,5 +1,6 @@
 use super::AppService;
 use crate::app::event::SettingsEvent;
+use crate::app::settings::PagePorts;
 use crate::commands::ui::SettingsCommand;
 use crate::domain::settings::{Appearance, MediaPreferences, Messaging, Settings};
 
@@ -50,8 +51,16 @@ impl AppService {
             SettingsCommand::OpenSettings => self.settings.open(),
             SettingsCommand::CloseSettings => self.settings.close(),
             SettingsCommand::ShowPage(page) => {
-                let media = self.port(|session| &session.media);
-                self.settings.show_page(page, media);
+                let ports = PagePorts {
+                    media: self.port(|session| &session.media),
+                    rules: self.port(|session| &session.server_rules),
+                };
+                self.settings.show_page(page, ports);
+            }
+            SettingsCommand::Rule(command) => {
+                if let Some(port) = self.port(|session| &session.server_rules) {
+                    self.settings.change_rule(port, command);
+                }
             }
             SettingsCommand::ClearDownloadedMedia => {
                 let media = self.port(|session| &session.media);
@@ -75,6 +84,12 @@ impl AppService {
             SettingsEvent::SaveFailed => self.settings.save_failed(),
             SettingsEvent::DevicesChosen(devices) => self.settings.remember_devices(*devices),
             SettingsEvent::MediaMeasured(usage) => self.settings.media_measured(usage),
+            SettingsEvent::RulesChanged(rules) => self.settings.rules_followed(*rules),
+            SettingsEvent::RuleWritten {
+                request,
+                slot,
+                outcome,
+            } => self.settings.rule_written(request, &slot, outcome),
             SettingsEvent::MediaCleared(outcome) => {
                 let media = self.port(|session| &session.media);
                 self.settings.media_cleared(outcome, media);

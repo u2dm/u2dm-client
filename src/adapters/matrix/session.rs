@@ -14,8 +14,8 @@ use super::media::{MatrixMedia, MediaService, fetch_avatar_thumbnails};
 use super::profile::PronounCache;
 use super::rooms::{
     MatrixInvitePeople, MatrixInvites, MatrixLeaves, MatrixPresence, MatrixPush,
-    MatrixRoomCreation, MatrixRoomInfo, MatrixRoomPreviews, MatrixSpaceIndex, MatrixSpaceOrder,
-    MatrixSync, MatrixTyping, MatrixUpgrades,
+    MatrixRoomCreation, MatrixRoomInfo, MatrixRoomPreviews, MatrixServerRules, MatrixSpaceIndex,
+    MatrixSpaceOrder, MatrixSync, MatrixTyping, MatrixUpgrades,
 };
 use super::rtc::{MatrixCallSignals, MatrixRtcMembership};
 use super::store::StoreLayout;
@@ -180,6 +180,7 @@ pub(super) async fn authenticate(
         )),
         pinned: Arc::new(MatrixPinned::new(Arc::clone(&matrix))),
         media: Arc::new(MatrixMedia::new(Arc::clone(&matrix))),
+        server_rules: Arc::new(MatrixServerRules::new(Arc::clone(&matrix))),
         verification,
         identity: Arc::new(MatrixIdentityAlerts::new(Arc::clone(&matrix))),
         encryption: Arc::new(MatrixEncryption::new(Arc::clone(&matrix))),

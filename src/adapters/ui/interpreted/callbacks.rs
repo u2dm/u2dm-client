@@ -389,6 +389,11 @@ impl SlintUiAdapter {
             Value::Bool(router::paste_attachment(&tx, string_arg(args, 0)))
         })?;
 
+        let tx = cmd_tx.clone();
+        bind_action(&self.instance, callback::ADD_KEYWORD, move |args| {
+            Value::Bool(router::add_keyword(&tx, &string_arg(args, 0)))
+        })?;
+
         bind_action(&self.instance, callback::ROOM_LOG_TEXT, |_| {
             text_value(shown_room_log_text())
         })

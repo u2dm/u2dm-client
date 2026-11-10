@@ -3,6 +3,7 @@ mod crypto_ports;
 mod media_ports;
 mod people_ports;
 mod room_ports;
+mod rule_ports;
 mod sync_ports;
 mod timeline_port;
 mod timeline_tasks;
@@ -19,7 +20,9 @@ use url::Url;
 use super::account::AccountBook;
 use super::encryption::EncryptionBook;
 use super::identity::IdentityBook;
-use super::{data, login, logout, media, powers, presence, receipts, sync, typing, user_info};
+use super::{
+    data, login, logout, media, powers, presence, receipts, settings, sync, typing, user_info,
+};
 use crate::adapters::draft_size::RoomFacts;
 use crate::adapters::markdown::RoomMentions;
 use crate::domain::auth::{AuthMethod, LoginCredentials, OAuthLoginData, ServerInfo, Session};
@@ -204,6 +207,7 @@ fn authenticated(session: Session) -> AuthenticatedSession {
     let timeline = Arc::clone(&authed);
     let pinned = Arc::clone(&authed);
     let media = Arc::clone(&authed);
+    let server_rules = Arc::clone(&authed);
     let verification = Arc::clone(&authed);
     let identity = Arc::clone(&authed);
     let encryption = Arc::clone(&authed);
@@ -230,6 +234,7 @@ fn authenticated(session: Session) -> AuthenticatedSession {
         timeline,
         pinned,
         media,
+        server_rules,
         verification,
         identity,
         encryption,
@@ -352,6 +357,7 @@ struct DemoAuthed {
     verified_people: user_info::VerifiedPeople,
     typing_notices: typing::NoticeClock,
     presence: presence::PresenceBook,
+    server_rules: settings::RulesBook,
 }
 
 #[async_trait]

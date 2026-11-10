@@ -1,7 +1,7 @@
 use serde::Serialize;
 
 use crate::adapters::demo::probe::names;
-use crate::commands::view::{DownloadedMedia, SettingsView};
+use crate::commands::view::{DownloadedMedia, KeywordRow, NotificationRulesView, SettingsView};
 use crate::domain::call::devices::{ByKind, DeviceChoice};
 use crate::domain::settings::{
     Alerts, Appearance, CallPreferences, MediaPreferences, Messaging, Settings,
@@ -12,6 +12,45 @@ pub(super) struct SettingsDto {
     values: SettingsValuesDto,
     dialog: Option<SettingsDialogDto>,
     media_cleared: u64,
+    rules: RulesDto,
+}
+
+#[derive(Serialize)]
+struct RulesDto {
+    known: bool,
+    failed: bool,
+    account: &'static str,
+    direct: &'static str,
+    group: &'static str,
+    keywords: Vec<KeywordDto>,
+}
+
+#[derive(Serialize)]
+struct KeywordDto {
+    keyword: String,
+    busy: bool,
+}
+
+impl From<&KeywordRow> for KeywordDto {
+    fn from(row: &KeywordRow) -> Self {
+        Self {
+            keyword: row.keyword.clone(),
+            busy: row.busy,
+        }
+    }
+}
+
+impl From<&NotificationRulesView> for RulesDto {
+    fn from(rules: &NotificationRulesView) -> Self {
+        Self {
+            known: rules.known,
+            failed: rules.failed,
+            account: names::account_rule(rules.account),
+            direct: names::room_default(rules.direct),
+            group: names::room_default(rules.group),
+            keywords: rules.keywords.iter().map(KeywordDto::from).collect(),
+        }
+    }
 }
 
 #[derive(Serialize)]
@@ -133,5 +172,6 @@ pub(super) fn settings(source: &SettingsView) -> SettingsDto {
             storage: dialog.storage.into(),
         }),
         media_cleared: source.media_cleared,
+        rules: (&source.rules).into(),
     }
 }

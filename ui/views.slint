@@ -15,8 +15,9 @@ import {
     CallDeviceEntry,
     CallConnectionEntry,
     UserDeviceEntry,
+    KeywordEntry,
 } from "./types.slint";
-import { AccountActivity, AccountStep, AttachmentKind, AudioKind, AuthStage, CallCamera, CallDeviceKind, CallDeviceTrouble, CallHand, CallLayout, CallMic, CallNotice, CallOffer, CallPhase, CallPreviewTrouble, CallReaction, CallRefusal, CallScreen, CallScreenRefusal, CallSheetPreview, CallTestPhase, ChildAccess, ConnectionState, CreateRoomStatus, DirectChat, DownloadedMedia, EncryptionActivity, EncryptionStanding, EncryptionStep, IdentityAlertKind, IdentityTrust, InviteAnswer, InviteKind, LoginActivity, LoginMethodKind, LoginPhase, MemberRole, Moderation, MotionChoice, NotifyMode, PackSurface, PeopleSearchStatus, PresenceLine, PreviewKind, ReadersStatus, ReceiptVisibility, RecoveryStatus, RemovalKind, RoomInfoPlacement, RoomKind, RoomMembership, RoomPreviewStatus, RoomScope, RosterStatus, SendKey, ServiceKind, SettingsPage, SourceEncryption, SourceStatus, SpaceIndexStatus, ThemeChoice, TimelineState, UpgradeLink, UserMessageKind, VerificationActivity, VerificationPhase, VerifyOffer } from "./enums.slint";
+import { AccountActivity, AccountRule, AccountStep, AttachmentKind, AudioKind, AuthStage, CallCamera, CallDeviceKind, CallDeviceTrouble, CallHand, CallLayout, CallMic, CallNotice, CallOffer, CallPhase, CallPreviewTrouble, CallReaction, CallRefusal, CallScreen, CallScreenRefusal, CallSheetPreview, CallTestPhase, ChildAccess, ConnectionState, CreateRoomStatus, DirectChat, DownloadedMedia, EncryptionActivity, EncryptionStanding, EncryptionStep, IdentityAlertKind, IdentityTrust, InviteAnswer, InviteKind, LoginActivity, LoginMethodKind, LoginPhase, MemberRole, Moderation, MotionChoice, NotifyMode, PackSurface, PeopleSearchStatus, PresenceLine, PreviewKind, ReadersStatus, ReceiptVisibility, RecoveryStatus, RemovalKind, RoomDefault, RoomInfoPlacement, RoomKind, RoomMembership, RoomPreviewStatus, RoomScope, RosterStatus, SendKey, ServiceKind, SettingsPage, SourceEncryption, SourceStatus, SpaceIndexStatus, ThemeChoice, TimelineState, UpgradeLink, UserMessageKind, VerificationActivity, VerificationPhase, VerifyOffer } from "./enums.slint";
 
 export global LoginView {
     in property <LoginPhase> step: LoginPhase.loading;
@@ -594,6 +595,12 @@ export global SettingsView {
     in property <string> clearable-size;
     in property <string> kept-size;
     in property <bool> has-clearable-media;
+    in property <bool> rules-known;
+    in property <bool> rules-failed;
+    in property <AccountRule> account-rule: AccountRule.missing;
+    in property <RoomDefault> direct-default: RoomDefault.all-messages;
+    in property <RoomDefault> group-default: RoomDefault.all-messages;
+    in property <[KeywordEntry]> keywords;
 }
 
 export global AccountView {

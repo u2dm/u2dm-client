@@ -10,6 +10,7 @@ pub mod callback {
     pub const COMPLETE_MENTION: &str = "complete-mention";
     pub const SET_ROOM_NOTIFY: &str = "set-room-notify";
     pub const PASTE_ATTACHMENT: &str = "paste-attachment";
+    pub const ADD_KEYWORD: &str = "add-keyword";
     pub const TOGGLE_REACTION: &str = "toggle-reaction";
     pub const REACT_WITH_EMOTE: &str = "react-with-emote";
     pub const SET_PACK_GLOBAL: &str = "set-pack-global";

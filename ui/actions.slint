@@ -44,6 +44,8 @@ import {
     ReceiptsRequest,
     CallLayoutRequest,
     SettingFlagRequest,
+    RoomDefaultRequest,
+    AccountNotificationsRequest,
 } from "./types.slint";
 import { NotifyMode, PackSurface } from "./enums.slint";
 
@@ -63,6 +65,10 @@ export global Actions {
     callback open-settings();
     callback close-settings();
     callback clear-downloaded-media();
+    callback set-account-notifications(AccountNotificationsRequest);
+    callback set-room-default(RoomDefaultRequest);
+    callback add-keyword(string) -> bool;
+    callback remove-keyword(string);
     callback show-settings-page(SettingsPageRequest);
     callback set-theme(ThemeRequest);
     callback set-motion(MotionRequest);

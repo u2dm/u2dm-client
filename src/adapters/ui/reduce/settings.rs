@@ -1,9 +1,11 @@
 use slint::ComponentHandle;
 
 use super::run_change_handlers_next_frame;
+use crate::adapters::ui::backend::{UiBackend, UiEventContext};
 use crate::adapters::ui::decode::{forget_failed_decodes, set_animations_paused};
+use crate::adapters::ui::dto::keyword_to_dto;
 use crate::adapters::ui::props::{BoolProp, StringProp, UiProps};
-use crate::commands::view::{DownloadedMedia, SettingsPage, SettingsView};
+use crate::commands::view::{DownloadedMedia, NotificationRulesView, SettingsPage, SettingsView};
 use crate::domain::settings::{
     Alerts, Appearance, CallPreferences, MediaPreferences, Messaging, Settings,
 };
@@ -25,6 +27,7 @@ pub(super) fn apply_settings<W: UiProps + ComponentHandle>(
         values,
         dialog,
         media_cleared,
+        rules: _,
     } = view;
     w.set_bool(BoolProp::SettingsVisible, dialog.is_some());
     w.set_settings_page(dialog.map_or(SettingsPage::default(), |dialog| dialog.page));
@@ -42,6 +45,36 @@ pub(super) fn apply_settings<W: UiProps + ComponentHandle>(
     }) {
         run_change_handlers_next_frame(w);
     }
+}
+
+pub(super) fn apply_notification_rules<B: UiBackend>(
+    w: &B::Window,
+    last: Option<&NotificationRulesView>,
+    rules: &NotificationRulesView,
+    ctx: &UiEventContext<'_, B>,
+) {
+    if last == Some(rules) {
+        return;
+    }
+    let NotificationRulesView {
+        known,
+        failed,
+        account,
+        direct,
+        group,
+        keywords,
+    } = rules;
+    w.set_bool(BoolProp::SettingsRulesKnown, *known);
+    w.set_bool(BoolProp::SettingsRulesFailed, *failed);
+    w.set_account_rule(*account);
+    w.set_direct_default(*direct);
+    w.set_group_default(*group);
+    let rows = keywords
+        .iter()
+        .map(keyword_to_dto)
+        .map(B::Keyword::from)
+        .collect::<Vec<_>>();
+    ctx.models.keywords.set_vec(rows);
 }
 
 fn apply_storage<W: UiProps>(w: &W, storage: DownloadedMedia) {
