@@ -24,16 +24,16 @@ use super::decode::{
     set_avatar_ready, set_image_ready,
 };
 use super::dto::{
-    BodyLineDto, CallConnectionDto, CallDeviceDto, CallPersonDto, CallTileDto, InviteeDto,
-    KeywordDto, LogLineDto, MediaFailureKind, MediaState, MemberRowDto, MessageDto, PackBrowse,
-    PackRowDto, PackSurface, PackTabDto, RoomDto, RowBody, SpaceChildDto, SpaceDto, ThumbUpdate,
-    UserDeviceDto, decode_failure_kind, enrich_to_update,
+    BodyLineDto, CallConnectionDto, CallDeviceDto, CallPersonDto, CallTileDto, IgnoredPersonDto,
+    InviteeDto, KeywordDto, LogLineDto, MediaFailureKind, MediaState, MemberRowDto, MessageDto,
+    PackBrowse, PackRowDto, PackSurface, PackTabDto, RoomDto, RowBody, SpaceChildDto, SpaceDto,
+    ThumbUpdate, UserDeviceDto, decode_failure_kind, enrich_to_update,
 };
 use super::fields::{
     BodyLineFields, BodyPieceFields, CallConnectionFields, CallDeviceFields, CallPersonFields,
-    CallTileFields, InviteeFields, KeywordFields, LogLineFields, MemberRowFields, MessageFields,
-    PackCellFields, PackRowFields, PackTabFields, PollAnswerFields, ReactionFields, ReactorFields,
-    RoomFields, SpaceChildFields, SpaceFields, UserDeviceFields,
+    CallTileFields, IgnoredPersonFields, InviteeFields, KeywordFields, LogLineFields,
+    MemberRowFields, MessageFields, PackCellFields, PackRowFields, PackTabFields, PollAnswerFields,
+    ReactionFields, ReactorFields, RoomFields, SpaceChildFields, SpaceFields, UserDeviceFields,
 };
 use super::handoff::follow_handoffs;
 use super::multiplex::spawn_event_multiplexer;
@@ -81,6 +81,11 @@ pub trait UiBackend: Sized + 'static {
     type CallDevice: CallDeviceFields<Self> + Clone + PartialEq + From<CallDeviceDto> + 'static;
     type UserDevice: UserDeviceFields<Self> + Clone + PartialEq + From<UserDeviceDto> + 'static;
     type Keyword: KeywordFields<Self> + Clone + PartialEq + From<KeywordDto> + 'static;
+    type IgnoredPerson: IgnoredPersonFields<Self>
+        + Clone
+        + PartialEq
+        + From<IgnoredPersonDto>
+        + 'static;
     type PackRow: PackRowFields<Self> + Clone + From<PackRowDto> + 'static;
     type PackCell: PackCellFields<Self> + Clone + 'static;
     type PackTab: PackTabFields<Self> + Clone + From<PackTabDto> + 'static;

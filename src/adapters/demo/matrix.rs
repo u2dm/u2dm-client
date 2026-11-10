@@ -347,7 +347,7 @@ struct DemoAuthed {
     lists: Arc<Mutex<RoomLists>>,
     pin_boards: Mutex<HashMap<RoomId, watch::Sender<Vec<String>>>>,
     deleted: Arc<Mutex<HashSet<String>>>,
-    ignored: Mutex<HashSet<String>>,
+    ignored: user_info::IgnoreList,
     memberships: Mutex<HashMap<(RoomId, String), RoomMembership>>,
     creations: AtomicU64,
     shared_packs: Mutex<HashMap<String, bool>>,

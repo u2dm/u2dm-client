@@ -309,6 +309,12 @@ export struct KeywordEntry {
     busy: bool,
 }
 
+export struct IgnoredPersonEntry {
+    user-id: string,
+    name: string,
+    busy: bool,
+}
+
 export struct SettingFlagRequest {
     setting: SettingFlag,
     on: bool,

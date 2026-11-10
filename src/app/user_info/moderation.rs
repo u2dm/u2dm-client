@@ -87,6 +87,24 @@ impl UserInfo {
         self.publish();
     }
 
+    pub(in crate::app) fn ignore_changed_elsewhere(
+        &mut self,
+        user_id: &UserId,
+        change: IgnoreChange,
+    ) {
+        self.accepted_ignores
+            .insert(user_id.clone(), change.ignores());
+        if let Some(profile) = self
+            .open
+            .as_mut()
+            .filter(|open| open.user_id == *user_id)
+            .and_then(OpenSheet::loaded_mut)
+        {
+            profile.ignored = change.ignores();
+            self.publish();
+        }
+    }
+
     pub(in crate::app) fn moderate(
         &mut self,
         port: Arc<dyn UserInfoPort>,

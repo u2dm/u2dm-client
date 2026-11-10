@@ -4,7 +4,6 @@ import { IconSet } from "@lucide";
 import { ErrorBanner } from "../../../../components/banner.slint";
 import { AppButton, IconButton } from "../../../../components/button.slint";
 import { ChoiceGroup } from "../../../../components/choice-group.slint";
-import { Hairline } from "../../../../components/divider.slint";
 import { SwitchRow } from "../../../../components/switch-row.slint";
 import { TextField } from "../../../../components/text-field.slint";
 import { DialogNote, SectionLabel } from "../../../../components/text-roles.slint";
@@ -141,8 +140,6 @@ export component RulesPage inherits VerticalLayout {
             root.close();
         }
     }
-
-    Hairline { }
 
     if !SettingsView.rules-known: DialogNote {
         text: @tr("Reading your rules...");

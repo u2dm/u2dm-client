@@ -1,7 +1,10 @@
 use serde::Serialize;
 
 use crate::adapters::demo::probe::names;
-use crate::commands::view::{DownloadedMedia, KeywordRow, NotificationRulesView, SettingsView};
+use crate::commands::view::{
+    DownloadedMedia, IgnoredPerson, IgnoredUsersView, KeywordRow, NotificationRulesView,
+    SettingsView,
+};
 use crate::domain::call::devices::{ByKind, DeviceChoice};
 use crate::domain::settings::{
     Alerts, Appearance, CallPreferences, MediaPreferences, Messaging, Settings,
@@ -10,9 +13,45 @@ use crate::domain::settings::{
 #[derive(Serialize)]
 pub(super) struct SettingsDto {
     values: SettingsValuesDto,
+    unsaved: bool,
     dialog: Option<SettingsDialogDto>,
     media_cleared: u64,
     rules: RulesDto,
+    ignored: IgnoredDto,
+}
+
+#[derive(Serialize)]
+struct IgnoredDto {
+    known: bool,
+    failed: Option<String>,
+    people: Vec<IgnoredPersonDto>,
+}
+
+#[derive(Serialize)]
+struct IgnoredPersonDto {
+    user_id: String,
+    name: Option<String>,
+    busy: bool,
+}
+
+impl From<&IgnoredPerson> for IgnoredPersonDto {
+    fn from(person: &IgnoredPerson) -> Self {
+        Self {
+            user_id: person.user_id.to_string(),
+            name: person.name.set().map(ToOwned::to_owned),
+            busy: person.busy,
+        }
+    }
+}
+
+impl From<&IgnoredUsersView> for IgnoredDto {
+    fn from(ignored: &IgnoredUsersView) -> Self {
+        Self {
+            known: ignored.known,
+            failed: ignored.failed.clone(),
+            people: ignored.people.iter().map(IgnoredPersonDto::from).collect(),
+        }
+    }
 }
 
 #[derive(Serialize)]
@@ -97,6 +136,7 @@ impl From<&ByKind<DeviceChoice>> for RememberedDevicesDto {
 struct SettingsDialogDto {
     page: &'static str,
     storage: StorageDto,
+    clear_failed: bool,
 }
 
 #[derive(Serialize)]
@@ -148,6 +188,7 @@ pub(super) fn settings(source: &SettingsView) -> SettingsDto {
         },
     } = source.values;
     SettingsDto {
+        unsaved: source.unsaved,
         values: SettingsValuesDto {
             theme: names::theme_choice(theme),
             motion: names::motion_choice(motion),
@@ -170,8 +211,10 @@ pub(super) fn settings(source: &SettingsView) -> SettingsDto {
         dialog: source.dialog.map(|dialog| SettingsDialogDto {
             page: names::settings_page(dialog.page),
             storage: dialog.storage.into(),
+            clear_failed: dialog.clear_failed,
         }),
         media_cleared: source.media_cleared,
         rules: (&source.rules).into(),
+        ignored: (&source.ignored).into(),
     }
 }

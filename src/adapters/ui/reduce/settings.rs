@@ -3,9 +3,11 @@ use slint::ComponentHandle;
 use super::run_change_handlers_next_frame;
 use crate::adapters::ui::backend::{UiBackend, UiEventContext};
 use crate::adapters::ui::decode::{forget_failed_decodes, set_animations_paused};
-use crate::adapters::ui::dto::keyword_to_dto;
+use crate::adapters::ui::dto::{ignored_person_to_dto, keyword_to_dto};
 use crate::adapters::ui::props::{BoolProp, StringProp, UiProps};
-use crate::commands::view::{DownloadedMedia, NotificationRulesView, SettingsPage, SettingsView};
+use crate::commands::view::{
+    DownloadedMedia, IgnoredUsersView, NotificationRulesView, SettingsPage, SettingsView,
+};
 use crate::domain::settings::{
     Alerts, Appearance, CallPreferences, MediaPreferences, Messaging, Settings,
 };
@@ -25,12 +27,19 @@ pub(super) fn apply_settings<W: UiProps + ComponentHandle>(
     }
     let SettingsView {
         values,
+        unsaved,
         dialog,
         media_cleared,
         rules: _,
+        ignored: _,
     } = view;
     w.set_bool(BoolProp::SettingsVisible, dialog.is_some());
+    w.set_bool(BoolProp::SettingsUnsaved, *unsaved);
     w.set_settings_page(dialog.map_or(SettingsPage::default(), |dialog| dialog.page));
+    w.set_bool(
+        BoolProp::SettingsMediaClearFailed,
+        dialog.is_some_and(|dialog| dialog.clear_failed),
+    );
     apply_storage(
         w,
         dialog.map_or(DownloadedMedia::default(), |dialog| dialog.storage),
@@ -75,6 +84,33 @@ pub(super) fn apply_notification_rules<B: UiBackend>(
         .map(B::Keyword::from)
         .collect::<Vec<_>>();
     ctx.models.keywords.set_vec(rows);
+}
+
+pub(super) fn apply_ignored_users<B: UiBackend>(
+    w: &B::Window,
+    last: Option<&IgnoredUsersView>,
+    ignored: &IgnoredUsersView,
+    ctx: &UiEventContext<'_, B>,
+) {
+    if last == Some(ignored) {
+        return;
+    }
+    let IgnoredUsersView {
+        known,
+        failed,
+        people,
+    } = ignored;
+    w.set_bool(BoolProp::SettingsIgnoredKnown, *known);
+    w.set_text(
+        StringProp::SettingsUnignoreFailed,
+        failed.clone().unwrap_or_default(),
+    );
+    let rows = people
+        .iter()
+        .map(ignored_person_to_dto)
+        .map(B::IgnoredPerson::from)
+        .collect::<Vec<_>>();
+    ctx.models.ignored_people.set_vec(rows);
 }
 
 fn apply_storage<W: UiProps>(w: &W, storage: DownloadedMedia) {

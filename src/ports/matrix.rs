@@ -382,6 +382,7 @@ pub trait UserInfoPort: Send + Sync {
     async fn fetch_avatars(&self, mxcs: &[String]) -> usize;
     async fn start_dm(&self, user_id: &UserId) -> Result<RoomId>;
     async fn set_ignored(&self, user_id: &UserId, change: IgnoreChange) -> Result<()>;
+    async fn follow_ignored(&self, ignored_tx: mpsc::Sender<Vec<UserId>>) -> Result<()>;
     async fn moderate(
         &self,
         room_id: &RoomId,

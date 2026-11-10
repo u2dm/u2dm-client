@@ -1,9 +1,17 @@
 import { IconSet } from "@lucide";
 
+import { ErrorBanner } from "../../../../components/banner.slint";
 import { IconButton } from "../../../../components/button.slint";
+import { Hairline } from "../../../../components/divider.slint";
+import { UserMessageKind } from "../../../../enums.slint";
+import { SettingsView } from "../../../../views.slint";
 import { Fonts, Size, Space, Weight } from "../../../../theme.slint";
 
-export component PageHeader inherits HorizontalLayout {
+export component UnsavedBanner inherits ErrorBanner {
+    messages: [{ kind: UserMessageKind.settings-not-saved, detail: "" }];
+}
+
+export component PageHeader inherits VerticalLayout {
     in property <string> title;
 
     callback back();
@@ -13,39 +21,47 @@ export component PageHeader inherits HorizontalLayout {
         back-button.take-focus();
     }
 
-    spacing: Space.sm;
+    spacing: Space.lg;
 
     init => {
         back-button.take-focus();
     }
 
-    back-button := IconButton {
-        cross-axis-self-alignment: center;
-        size: Size.md;
-        icon: IconSet.ArrowLeft;
-        above-modal: true;
-        label: @tr("Back to Settings");
-        clicked => {
-            root.back();
+    HorizontalLayout {
+        spacing: Space.sm;
+
+        back-button := IconButton {
+            cross-axis-self-alignment: center;
+            size: Size.md;
+            icon: IconSet.ArrowLeft;
+            above-modal: true;
+            label: @tr("Back to Settings");
+            clicked => {
+                root.back();
+            }
+        }
+
+        Text {
+            horizontal-stretch: 1;
+            text: root.title;
+            font-size: Fonts.title;
+            font-weight: Weight.bold;
+            vertical-alignment: center;
+        }
+
+        IconButton {
+            cross-axis-self-alignment: center;
+            size: Size.md;
+            icon: IconSet.X;
+            above-modal: true;
+            label: @tr("Close settings");
+            clicked => {
+                root.close();
+            }
         }
     }
 
-    Text {
-        horizontal-stretch: 1;
-        text: root.title;
-        font-size: Fonts.title;
-        font-weight: Weight.bold;
-        vertical-alignment: center;
-    }
+    Hairline { }
 
-    IconButton {
-        cross-axis-self-alignment: center;
-        size: Size.md;
-        icon: IconSet.X;
-        above-modal: true;
-        label: @tr("Close settings");
-        clicked => {
-            root.close();
-        }
-    }
+    if SettingsView.unsaved: UnsavedBanner { }
 }

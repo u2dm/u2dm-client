@@ -16,6 +16,7 @@ use matrix_sdk::ruma::events::room::encryption::RoomEncryptionEventContent;
 use matrix_sdk::ruma::events::room::member::MembershipState;
 use matrix_sdk::ruma::events::{GlobalAccountDataEventType, InitialStateEvent};
 use matrix_sdk::ruma::profile::{AvatarUrl, DisplayName};
+use matrix_sdk::ruma::serde::Raw;
 use matrix_sdk::ruma::{OwnedRoomId, OwnedUserId};
 use matrix_sdk::{Client, Room};
 use tokio::sync::{Semaphore, mpsc};
@@ -189,39 +190,11 @@ impl UserInfoPort for MatrixUserInfo {
     }
 
     async fn set_ignored(&self, user_id: &UserId, change: IgnoreChange) -> Result<()> {
-        let client = self.matrix.client().await?;
-        let user = parse_user(user_id)?;
-        let own = own_user(&client)?;
-        if user == own {
-            return Err(AppError::Other("you cannot ignore yourself".to_owned()));
-        }
-        let mut list = client
-            .account()
-            .account_data::<IgnoredUserListEventContent>()
-            .await
-            .map_err(AppError::other)?
-            .map(|raw| raw.deserialize())
-            .transpose()
-            .map_err(AppError::other)?
-            .unwrap_or_default();
-        let changed = match change {
-            IgnoreChange::Ignore => list
-                .ignored_users
-                .insert(user, IgnoredUser::new())
-                .is_none(),
-            IgnoreChange::Unignore => list.ignored_users.remove(&user).is_some(),
-        };
-        if !changed {
-            return Ok(());
-        }
-        let request =
-            set_global_account_data::v3::Request::new(own, &list).map_err(AppError::other)?;
-        client
-            .send(request)
-            .with_request_config(RequestConfig::short_retry())
-            .await
-            .map_err(AppError::other)?;
-        Ok(())
+        write_ignore_change(&self.matrix.client().await?, user_id, change).await
+    }
+
+    async fn follow_ignored(&self, ignored_tx: mpsc::Sender<Vec<UserId>>) -> Result<()> {
+        follow_ignore_list(&self.matrix.client().await?, ignored_tx).await
     }
 
     async fn moderate(
@@ -428,6 +401,83 @@ async fn send_moderation(
         }
     };
     sent.map_err(AppError::other)
+}
+
+pub(super) async fn write_ignore_change(
+    client: &Client,
+    user_id: &UserId,
+    change: IgnoreChange,
+) -> Result<()> {
+    let user = parse_user(user_id)?;
+    let own = own_user(client)?;
+    if user == own {
+        return Err(AppError::Other("you cannot ignore yourself".to_owned()));
+    }
+    let mut list = stored_ignore_list(client)
+        .await?
+        .map(|raw| raw.deserialize())
+        .transpose()
+        .map_err(AppError::other)?
+        .unwrap_or_default();
+    let changed = match change {
+        IgnoreChange::Ignore => list
+            .ignored_users
+            .insert(user, IgnoredUser::new())
+            .is_none(),
+        IgnoreChange::Unignore => list.ignored_users.remove(&user).is_some(),
+    };
+    if !changed {
+        return Ok(());
+    }
+    let request = set_global_account_data::v3::Request::new(own, &list).map_err(AppError::other)?;
+    client
+        .send(request)
+        .with_request_config(RequestConfig::short_retry())
+        .await
+        .map_err(AppError::other)?;
+    Ok(())
+}
+
+pub(super) async fn follow_ignore_list(
+    client: &Client,
+    ignored_tx: mpsc::Sender<Vec<UserId>>,
+) -> Result<()> {
+    let mut changes = client.subscribe_to_ignore_user_list_changes();
+    loop {
+        if ignored_tx.send(ignored_users(client).await?).await.is_err() {
+            return Ok(());
+        }
+        if changes.next().await.is_none() {
+            return Ok(());
+        }
+    }
+}
+
+async fn stored_ignore_list(client: &Client) -> Result<Option<Raw<IgnoredUserListEventContent>>> {
+    client
+        .account()
+        .account_data::<IgnoredUserListEventContent>()
+        .await
+        .map_err(AppError::other)
+}
+
+async fn ignored_users(client: &Client) -> Result<Vec<UserId>> {
+    let parsed = stored_ignore_list(client)
+        .await?
+        .map(|raw| raw.deserialize())
+        .transpose();
+    let list = parsed.unwrap_or_else(|e| {
+        tracing::warn!(
+            "the ignore list does not parse, so it reads as nobody, as the SDK reads it: {e}"
+        );
+        None
+    });
+    Ok(list
+        .unwrap_or_default()
+        .ignored_users
+        .into_keys()
+        .map(|user| UserId::new(user.as_str()))
+        .collect())
 }
 
 pub(super) fn own_user(client: &Client) -> Result<OwnedUserId> {

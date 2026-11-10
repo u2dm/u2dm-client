@@ -59,10 +59,8 @@ impl DemoAuthed {
                 stamp_deleted_reply(message, &deleted);
             }
         }
-        if let Ok(ignored) = self.ignored.lock()
-            && !ignored.is_empty()
-        {
-            history.retain(|message| !ignored.contains(&message.sender));
+        if !self.ignored.is_empty() {
+            history.retain(|message| !self.ignored.contains(&message.sender));
         }
         history
     }

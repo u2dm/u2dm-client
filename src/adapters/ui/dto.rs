@@ -26,10 +26,11 @@ pub(super) use self::packs::{
     pack_art, pack_grid, pack_surface_named,
 };
 pub(super) use self::people::{
-    INVITED_HEADING_ROW, InviteeDto, MemberRowDto, MemberRowKind, UserDeviceDto, invitee_to_dto,
-    load_user_info_avatar, member_row_to_dto, mention_to_dto, own_session_to_dto, reader_to_dto,
-    request_invitee_avatar, request_member_avatar, request_mention_avatar, request_reader_avatar,
-    user_device_to_dto, user_info_pronouns,
+    INVITED_HEADING_ROW, IgnoredPersonDto, InviteeDto, MemberRowDto, MemberRowKind, UserDeviceDto,
+    ignored_person_to_dto, invitee_to_dto, load_user_info_avatar, member_row_to_dto,
+    mention_to_dto, own_session_to_dto, reader_to_dto, request_invitee_avatar,
+    request_member_avatar, request_mention_avatar, request_reader_avatar, user_device_to_dto,
+    user_info_pronouns,
 };
 pub(super) use self::reactions::{ReactionDto, ReactorAvatarDto};
 pub(super) use self::rooms::{

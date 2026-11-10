@@ -8,10 +8,10 @@ use super::dto::{
 use super::present::{Delivery, MessageKind, PollPhase, ServiceKind, ShieldReason};
 use super::schema::{
     body_line_fields, body_piece_fields, call_connection_fields, call_device_fields,
-    call_person_fields, call_tile_fields, invitee_fields, keyword_fields, log_line_fields,
-    member_row_fields, message_fields, pack_cell_fields, pack_row_fields, pack_tab_fields,
-    poll_answer_fields, reaction_fields, reactor_fields, room_fields, space_child_fields,
-    space_fields, user_device_fields,
+    call_person_fields, call_tile_fields, ignored_person_fields, invitee_fields, keyword_fields,
+    log_line_fields, member_row_fields, message_fields, pack_cell_fields, pack_row_fields,
+    pack_tab_fields, poll_answer_fields, reaction_fields, reactor_fields, room_fields,
+    space_child_fields, space_fields, user_device_fields,
 };
 use crate::commands::messages::UserMessageKind;
 use crate::commands::view::{ChildAccess, DeviceStatus, InviteeState, LinkView};
@@ -78,6 +78,7 @@ call_connection_fields!(declare_fields CallConnectionFields;);
 call_device_fields!(declare_fields CallDeviceFields;);
 user_device_fields!(declare_fields UserDeviceFields;);
 keyword_fields!(declare_fields KeywordFields;);
+ignored_person_fields!(declare_fields IgnoredPersonFields;);
 pack_cell_fields!(declare_fields PackCellFields;);
 pack_tab_fields!(declare_fields PackTabFields;);
 pack_row_fields!(declare_fields PackRowFields;);

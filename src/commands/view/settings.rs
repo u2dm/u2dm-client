@@ -1,19 +1,24 @@
 use crate::domain::media::MediaUsage;
+use crate::domain::member_name::MemberName;
 use crate::domain::server_rules::RoomDefault;
 use crate::domain::settings::Settings;
+use crate::domain::user_info::UserId;
 
 #[derive(Clone, Default, PartialEq, Eq)]
 pub struct SettingsView {
     pub values: Settings,
+    pub unsaved: bool,
     pub dialog: Option<SettingsDialog>,
     pub media_cleared: u64,
     pub rules: NotificationRulesView,
+    pub ignored: IgnoredUsersView,
 }
 
 #[derive(Clone, Copy, Default, PartialEq, Eq)]
 pub struct SettingsDialog {
     pub page: SettingsPage,
     pub storage: DownloadedMedia,
+    pub clear_failed: bool,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -26,6 +31,7 @@ pub enum SettingsPage {
     Calls,
     Media,
     Rules,
+    Ignored,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -67,5 +73,19 @@ pub enum AccountRule {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct KeywordRow {
     pub keyword: String,
+    pub busy: bool,
+}
+
+#[derive(Clone, Default, PartialEq, Eq)]
+pub struct IgnoredUsersView {
+    pub known: bool,
+    pub failed: Option<String>,
+    pub people: Vec<IgnoredPerson>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct IgnoredPerson {
+    pub user_id: UserId,
+    pub name: MemberName,
     pub busy: bool,
 }

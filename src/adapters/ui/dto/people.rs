@@ -8,7 +8,7 @@ use crate::adapters::ui::present::{
 };
 use crate::adapters::ui::schema::{define_ui_enum, member_row_kinds};
 use crate::commands::messages::UserMessageKind;
-use crate::commands::view::{InviteeRow, InviteeState, RosterRow};
+use crate::commands::view::{IgnoredPerson, InviteeRow, InviteeState, RosterRow};
 use crate::domain::member_name::{MemberName, isolated};
 use crate::domain::room_info::{MemberRole, Reader, RosterMember};
 use crate::domain::sessions::OwnSession;
@@ -44,12 +44,32 @@ pub struct InviteeDto {
     pub has_avatar: bool,
 }
 
+pub struct IgnoredPersonDto {
+    pub user_id: SharedString,
+    pub name: SharedString,
+    pub busy: bool,
+}
+
 pub struct UserDeviceDto {
     pub device_id: SharedString,
     pub name: SharedString,
     pub trust: DeviceTrust,
     pub last_seen: SharedString,
     pub ip: SharedString,
+}
+
+pub fn ignored_person_to_dto(person: &IgnoredPerson) -> IgnoredPersonDto {
+    IgnoredPersonDto {
+        user_id: SharedString::from(person.user_id.as_ref()),
+        name: bare_name(&person.name),
+        busy: person.busy,
+    }
+}
+
+fn bare_name(name: &MemberName) -> SharedString {
+    name.set()
+        .map(|name| SharedString::from(isolated(name)))
+        .unwrap_or_default()
 }
 
 pub fn member_row_to_dto(row: &RosterRow, media: &dyn MediaCache) -> MemberRowDto {
@@ -78,10 +98,7 @@ fn person_row(
     MemberRowDto {
         user_id: SharedString::from(user_id),
         kind: MemberRowKind::Member,
-        name: name
-            .set()
-            .map(|name| SharedString::from(isolated(name)))
-            .unwrap_or_default(),
+        name: bare_name(name),
         initial: SharedString::from(name_initials(name, user_id)),
         color_index: avatar_color_index(user_id),
         role,
@@ -119,11 +136,7 @@ pub fn invitee_to_dto(row: &InviteeRow, media: &dyn MediaCache) -> InviteeDto {
     let avatar = invitee_avatar_path(row, media).and_then(|path| peek_avatar(&path));
     InviteeDto {
         user_id: SharedString::from(person.user_id.as_ref()),
-        name: person
-            .name
-            .set()
-            .map(|name| SharedString::from(isolated(name)))
-            .unwrap_or_default(),
+        name: bare_name(&person.name),
         initial: SharedString::from(name_initials(&person.name, &person.user_id)),
         color_index: avatar_color_index(&person.user_id),
         state: row.state,

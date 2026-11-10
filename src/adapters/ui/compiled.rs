@@ -12,15 +12,15 @@ use u2dm_ui::{
     AccountView, Actions, AppWindow, AppearanceView, AttachmentView, AudioView, BodyLine,
     BodyPiece, CallConnectionEntry, CallDeviceEntry, CallPersonEntry, CallTileEntry, CallView,
     CallWindow, ComposerDraft, CreateRoomView, DirectoryView, DraftVerdict as UiDraftVerdict,
-    EmojiEntry, EmojiRow, EmojiStore, EncryptionView, IdentityAlertView, InvitePeopleView,
-    InviteView, InviteeEntry, KeywordEntry, LeaveSpaceView, LogLineEntry, LoginView, LogoutView,
-    MemberEntry, MentionWord, MentionsView, MessageEntry, Motion, NotificationText, PackCell,
-    PackRow, PackTabEntry, PackView, PollAnswerEntry, PresenceView, ReactionEntry, ReactorAvatar,
-    ReadersView, RemovalView, ReplySwipe, RoomEntry, RoomInfoView, RoomLogView, RoomMenuView,
-    RoomPreviewView, RoomView, SessionView, SettingsView, SourceView, SpaceChildEntry, SpaceEntry,
-    SpaceIndexView, SpoilerCover, TextSplice, TouchpadView, TypingView, UnsentView, UpgradeView,
-    UserDeviceEntry, UserInfoView, UserMessage as UiUserMessage, VerificationEmoji,
-    VerificationView, VideoView, WindowView,
+    EmojiEntry, EmojiRow, EmojiStore, EncryptionView, IdentityAlertView, IgnoredPersonEntry,
+    InvitePeopleView, InviteView, InviteeEntry, KeywordEntry, LeaveSpaceView, LogLineEntry,
+    LoginView, LogoutView, MemberEntry, MentionWord, MentionsView, MessageEntry, Motion,
+    NotificationText, PackCell, PackRow, PackTabEntry, PackView, PollAnswerEntry, PresenceView,
+    ReactionEntry, ReactorAvatar, ReadersView, RemovalView, ReplySwipe, RoomEntry, RoomInfoView,
+    RoomLogView, RoomMenuView, RoomPreviewView, RoomView, SessionView, SettingsView, SourceView,
+    SpaceChildEntry, SpaceEntry, SpaceIndexView, SpoilerCover, TextSplice, TouchpadView,
+    TypingView, UnsentView, UpgradeView, UserDeviceEntry, UserInfoView,
+    UserMessage as UiUserMessage, VerificationEmoji, VerificationView, VideoView, WindowView,
 };
 #[cfg(feature = "demo")]
 use u2dm_ui::{Probe, RoomMenu, WindowTitle};
@@ -36,19 +36,19 @@ use super::decode::{
 };
 use super::dto::{
     BodyLineDto, BodyPieceDto, CallConnectionDto, CallDeviceDto, CallNoticeMark, CallOfferMark,
-    CallPersonDto, CallScreenMark, CallTileDto, CallTileMark, EmojiArt, InviteeDto, KeywordDto,
-    LogLineDto, MediaFailureKind, MediaState, MemberRowDto, MemberRowKind, MessageDto, PackCellDto,
-    PackRowDto, PackSurface, PackTabDto, PollAnswerDto, ReactionDto, ReactorAvatarDto,
-    RoomCallMark, RoomDto, RoomRowKind, SheetPreviewMark, SpaceChildDto, SpaceDto, SpoilerState,
-    TestPhaseMark, UserDeviceDto, pack_surface_named,
+    CallPersonDto, CallScreenMark, CallTileDto, CallTileMark, EmojiArt, IgnoredPersonDto,
+    InviteeDto, KeywordDto, LogLineDto, MediaFailureKind, MediaState, MemberRowDto, MemberRowKind,
+    MessageDto, PackCellDto, PackRowDto, PackSurface, PackTabDto, PollAnswerDto, ReactionDto,
+    ReactorAvatarDto, RoomCallMark, RoomDto, RoomRowKind, SheetPreviewMark, SpaceChildDto,
+    SpaceDto, SpoilerState, TestPhaseMark, UserDeviceDto, pack_surface_named,
 };
 #[cfg(feature = "demo")]
 use super::dump;
 use super::fields::{
     BodyLineFields, BodyPieceFields, CallConnectionFields, CallDeviceFields, CallPersonFields,
-    CallTileFields, InviteeFields, KeywordFields, LogLineFields, MemberRowFields, MessageFields,
-    PackCellFields, PackRowFields, PackTabFields, PollAnswerFields, ReactionFields, ReactorFields,
-    RoomFields, SpaceChildFields, SpaceFields, UserDeviceFields,
+    CallTileFields, IgnoredPersonFields, InviteeFields, KeywordFields, LogLineFields,
+    MemberRowFields, MessageFields, PackCellFields, PackRowFields, PackTabFields, PollAnswerFields,
+    ReactionFields, ReactorFields, RoomFields, SpaceChildFields, SpaceFields, UserDeviceFields,
 };
 use super::notices::NoticeWords;
 use super::present::{
@@ -60,11 +60,11 @@ use super::props::{BoolProp, ImageProp, IntProp, StringProp, UiProps};
 use super::router::{DraftVerdict, EditedRow, EditedText};
 use super::schema::{
     body_line_fields, body_piece_fields, bool_props, call_connection_fields, call_device_fields,
-    call_person_fields, call_tile_fields, enum_props, image_props, int_props, invitee_fields,
-    keyword_fields, log_line_fields, member_row_fields, message_fields, model_props,
-    pack_cell_fields, pack_row_fields, pack_tab_fields, poll_answer_fields, reaction_fields,
-    reactor_fields, room_fields, simple_callbacks, slint_enums, space_child_fields, space_fields,
-    string_props, user_device_fields,
+    call_person_fields, call_tile_fields, enum_props, ignored_person_fields, image_props,
+    int_props, invitee_fields, keyword_fields, log_line_fields, member_row_fields, message_fields,
+    model_props, pack_cell_fields, pack_row_fields, pack_tab_fields, poll_answer_fields,
+    reaction_fields, reactor_fields, room_fields, simple_callbacks, slint_enums,
+    space_child_fields, space_fields, string_props, user_device_fields,
 };
 use super::session::active_models;
 use super::video::{self, millis_to_duration};
@@ -516,6 +516,7 @@ call_connection_fields!(impl_entry CallConnectionDto CallConnectionFields CallCo
 call_device_fields!(impl_entry CallDeviceDto CallDeviceFields CallDeviceEntry;);
 user_device_fields!(impl_entry UserDeviceDto UserDeviceFields UserDeviceEntry;);
 keyword_fields!(impl_entry KeywordDto KeywordFields KeywordEntry;);
+ignored_person_fields!(impl_entry IgnoredPersonDto IgnoredPersonFields IgnoredPersonEntry;);
 pack_cell_fields!(impl_entry PackCellDto PackCellFields PackCell;);
 pack_tab_fields!(impl_entry PackTabDto PackTabFields PackTabEntry;);
 pack_row_fields!(impl_entry PackRowDto PackRowFields PackRow;);
@@ -562,6 +563,7 @@ impl UiBackend for CompiledBackend {
     type CallDevice = CallDeviceEntry;
     type UserDevice = UserDeviceEntry;
     type Keyword = KeywordEntry;
+    type IgnoredPerson = IgnoredPersonEntry;
     type PackRow = PackRow;
     type PackCell = PackCell;
     type PackTab = PackTabEntry;

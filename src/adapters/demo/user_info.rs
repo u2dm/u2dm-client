@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::collections::{BTreeSet, HashSet};
 use std::sync::{LazyLock, Mutex, OnceLock};
 use std::time::Duration;
 
@@ -10,8 +10,8 @@ use super::revisions::Revisions;
 use super::{data, room_info};
 use crate::domain::room_info::{ADMIN_LEVEL, MODERATOR_LEVEL, MemberRole};
 use crate::domain::user_info::{
-    DeviceTrust, IdentityTrust, Moderation, ModerationPowers, Pronouns, RoomMembership, UserDevice,
-    UserProfile, localpart,
+    DeviceTrust, IdentityTrust, IgnoreChange, Moderation, ModerationPowers, Pronouns,
+    RoomMembership, UserDevice, UserProfile, localpart,
 };
 
 const ENV_VAR: &str = "U2DM_DEMO_USER_INFO";
@@ -50,6 +50,16 @@ pub const CATALOG: Scenarios = Scenarios {
         Flag {
             value: "ignore-fails",
             effect: "ignoring and unignoring fail, so the inline errors are reachable",
+            note: "the Ignored users page in Settings shows its own error",
+        },
+        Flag {
+            value: "ignored",
+            effect: "you start out ignoring Leo, Vera and @sprinkles:spam.example, who has no profile name, so Settings' Ignored users page lists them and their messages are hidden",
+            note: "",
+        },
+        Flag {
+            value: "ignore-no-echo",
+            effect: "an ignore change succeeds but never comes back through sync, so the Ignored users page keeps a person busy and the open room is not replayed",
             note: "",
         },
         Flag {
@@ -96,7 +106,7 @@ pub const CATALOG: Scenarios = Scenarios {
     notes: &[
         "a member's name, avatar and role come from the room info roster; anyone else is outside the room and is named from the global profile",
         "a started chat returns first and reaches the room list ~0.6s later, as a real sync echo does; `slow` also delays starting one",
-        "an ignore change replays the open room's timeline ~0.6s later without the ignored person, the way the event cache clears every room when the ignore list echoes back",
+        "an ignore change replays the open room's timeline ~0.6s later without the ignored person, the way the event cache clears every room when the ignore list echoes back; the Ignored users page hears the change after the same lag",
         "everyone has sessions: Nadia's old tablet and one of Jordan's are not verified by their owner, and Marcus has no cross-signing identity",
         "the person you ask to verify answers 2s later with the emoji; They match verifies them for the session",
     ],
@@ -105,6 +115,11 @@ pub const CATALOG: Scenarios = Scenarios {
 const SLOW_DELAY: Duration = Duration::from_millis(1500);
 const LEFT_GUEST: usize = 1;
 const BANNED_GUEST: usize = 2;
+const STARTING_IGNORED: [&str; 3] = [
+    "@leo:matrix.org",
+    "@sprinkles:spam.example",
+    "@vera:matrix.org",
+];
 
 #[derive(Default, Clone, Copy)]
 #[allow(clippy::struct_excessive_bools)]
@@ -116,6 +131,8 @@ pub struct Scenario {
     pub dm_fails: bool,
     pub dm_echo_lost: bool,
     pub ignore_fails: bool,
+    pub starts_ignoring: bool,
+    pub ignore_echo_lost: bool,
     pub admin: bool,
     pub kick_fails: bool,
     pub ban_fails: bool,
@@ -146,6 +163,8 @@ fn apply(scenario: &mut Scenario, flag: &str) {
         "dm-fails" => scenario.dm_fails = true,
         "dm-no-echo" => scenario.dm_echo_lost = true,
         "ignore-fails" => scenario.ignore_fails = true,
+        "ignored" => scenario.starts_ignoring = true,
+        "ignore-no-echo" => scenario.ignore_echo_lost = true,
         "admin" => scenario.admin = true,
         "kick-fails" => scenario.kick_fails = true,
         "ban-fails" => scenario.ban_fails = true,
@@ -309,6 +328,40 @@ pub fn devices(user_id: &str, identity: IdentityTrust) -> Vec<UserDevice> {
             },
         })
         .collect()
+}
+
+pub struct IgnoreList(watch::Sender<BTreeSet<String>>);
+
+impl Default for IgnoreList {
+    fn default() -> Self {
+        let starting = if scenario().starts_ignoring {
+            STARTING_IGNORED.map(str::to_owned).into()
+        } else {
+            BTreeSet::new()
+        };
+        Self(watch::Sender::new(starting))
+    }
+}
+
+impl IgnoreList {
+    pub fn contains(&self, user_id: &str) -> bool {
+        self.0.borrow().contains(user_id)
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.0.borrow().is_empty()
+    }
+
+    pub fn subscribe(&self) -> watch::Receiver<BTreeSet<String>> {
+        self.0.subscribe()
+    }
+
+    pub fn change(&self, user_id: &str, change: IgnoreChange) {
+        self.0.send_if_modified(|ignored| match change {
+            IgnoreChange::Ignore => ignored.insert(user_id.to_owned()),
+            IgnoreChange::Unignore => ignored.remove(user_id),
+        });
+    }
 }
 
 #[derive(Default)]

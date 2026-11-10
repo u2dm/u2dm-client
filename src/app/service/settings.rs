@@ -1,8 +1,9 @@
 use super::AppService;
-use crate::app::event::SettingsEvent;
+use crate::app::event::{ActionOutcome, SettingsEvent};
 use crate::app::settings::PagePorts;
 use crate::commands::ui::SettingsCommand;
 use crate::domain::settings::{Appearance, MediaPreferences, Messaging, Settings};
+use crate::domain::user_info::IgnoreChange;
 
 impl AppService {
     pub(super) fn spread_settings(&mut self) {
@@ -54,12 +55,18 @@ impl AppService {
                 let ports = PagePorts {
                     media: self.port(|session| &session.media),
                     rules: self.port(|session| &session.server_rules),
+                    people: self.port(|session| &session.user_info),
                 };
                 self.settings.show_page(page, ports);
             }
             SettingsCommand::Rule(command) => {
                 if let Some(port) = self.port(|session| &session.server_rules) {
                     self.settings.change_rule(port, command);
+                }
+            }
+            SettingsCommand::StopIgnoring(user_id) => {
+                if let Some(port) = self.port(|session| &session.user_info) {
+                    self.settings.stop_ignoring(port, user_id);
                 }
             }
             SettingsCommand::ClearDownloadedMedia => {
@@ -82,6 +89,7 @@ impl AppService {
     pub(super) fn handle_settings_event(&mut self, event: SettingsEvent) {
         match event {
             SettingsEvent::SaveFailed => self.settings.save_failed(),
+            SettingsEvent::SaveRecovered => self.settings.save_recovered(),
             SettingsEvent::DevicesChosen(devices) => self.settings.remember_devices(*devices),
             SettingsEvent::MediaMeasured(usage) => self.settings.media_measured(usage),
             SettingsEvent::RulesChanged(rules) => self.settings.rules_followed(*rules),
@@ -90,6 +98,23 @@ impl AppService {
                 slot,
                 outcome,
             } => self.settings.rule_written(request, &slot, outcome),
+            SettingsEvent::IgnoredListed(listed) => self.settings.ignored_listed(listed),
+            SettingsEvent::IgnoredNamed {
+                generation,
+                user_id,
+                name,
+            } => self.settings.ignored_named(generation, user_id, name),
+            SettingsEvent::Unignored {
+                request,
+                user_id,
+                outcome,
+            } => {
+                self.settings.unignored(request, &user_id, outcome);
+                if outcome == ActionOutcome::Done {
+                    self.user_info
+                        .ignore_changed_elsewhere(&user_id, IgnoreChange::Unignore);
+                }
+            }
             SettingsEvent::MediaCleared(outcome) => {
                 let media = self.port(|session| &session.media);
                 self.settings.media_cleared(outcome, media);

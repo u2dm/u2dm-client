@@ -362,6 +362,9 @@ pub enum ProbeCommand {
     RemoveKeyword {
         keyword: String,
     },
+    StopIgnoring {
+        user_id: String,
+    },
     ShowSettingsPage {
         page: String,
     },

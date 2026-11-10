@@ -34,7 +34,7 @@ pub const CATALOG: Scenarios = Scenarios {
         },
         Flag {
             value: "save-fails",
-            effect: "every save fails, so a change raises the not-saved toast",
+            effect: "every save fails, so the dialog says your settings were not saved (a toast while it is closed)",
             note: "the change still applies for this run",
         },
         Flag {
@@ -49,7 +49,7 @@ pub const CATALOG: Scenarios = Scenarios {
         },
         Flag {
             value: "clear-fails",
-            effect: "clearing downloaded media fails, so the not-cleared toast shows and the size is measured again",
+            effect: "clearing downloaded media fails, so the Media page says so (a toast away from it) and the size is measured again",
             note: "",
         },
         Flag {
@@ -59,7 +59,7 @@ pub const CATALOG: Scenarios = Scenarios {
         },
         Flag {
             value: "rules-fail",
-            effect: "every change to a notification rule fails, so the change is taken back and a toast shows",
+            effect: "every change to a notification rule fails, so the change is taken back and the page says so (a toast once it is gone)",
             note: "",
         },
         Flag {

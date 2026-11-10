@@ -10,6 +10,7 @@ use crate::domain::room::RoomId;
 use crate::domain::server_rules::{Keyword, RoomClass, RoomDefault};
 use crate::domain::settings::SettingChange;
 use crate::domain::uia::AccountPassword;
+use crate::domain::user_info::UserId;
 
 #[derive(StrumDisplay)]
 pub enum DepartureCommand {
@@ -92,6 +93,8 @@ pub enum SettingsCommand {
     ClearDownloadedMedia,
     #[strum(to_string = "ChangeNotificationRule")]
     Rule(RuleCommand),
+    #[strum(to_string = "StopIgnoring({0})")]
+    StopIgnoring(UserId),
 }
 
 pub enum RuleCommand {

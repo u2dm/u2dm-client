@@ -326,6 +326,11 @@ pub fn to_driven(command: ProbeCommand, selected: Selection<'_>) -> Result<Drive
         ProbeCommand::SetRoomDefault { rooms, mode } => return room_default(&rooms, &mode),
         ProbeCommand::AddKeyword { keyword } => return keyword_rule(&keyword),
         ProbeCommand::RemoveKeyword { keyword } => RuleCommand::RemoveKeyword(keyword).into(),
+        ProbeCommand::StopIgnoring { user_id } => {
+            return person(user_id, |user_id| {
+                SettingsCommand::StopIgnoring(user_id).into()
+            });
+        }
         ProbeCommand::ShowSettingsPage { page } => return settings_page(&page),
         ProbeCommand::SetSetting { name, value } => return setting_change(&name, &value),
         ProbeCommand::OpenAccount => AccountCommand::OpenAccount.into(),

@@ -1,5 +1,4 @@
 import { ChoiceGroup } from "../../../../components/choice-group.slint";
-import { Hairline } from "../../../../components/divider.slint";
 import { SectionLabel } from "../../../../components/text-roles.slint";
 import { MotionChoice, ThemeChoice } from "../../../../enums.slint";
 import { AppearanceView } from "../../../../views.slint";
@@ -31,8 +30,6 @@ export component AppearancePage inherits VerticalLayout {
             root.close();
         }
     }
-
-    Hairline { }
 
     SectionLabel {
         text: @tr("THEME");

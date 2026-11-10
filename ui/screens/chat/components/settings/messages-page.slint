@@ -1,5 +1,4 @@
 import { ChoiceGroup } from "../../../../components/choice-group.slint";
-import { Hairline } from "../../../../components/divider.slint";
 import { SwitchRow } from "../../../../components/switch-row.slint";
 import { SectionLabel } from "../../../../components/text-roles.slint";
 import { ReceiptVisibility, SendKey, SettingFlag } from "../../../../enums.slint";
@@ -32,8 +31,6 @@ export component MessagesPage inherits VerticalLayout {
             root.close();
         }
     }
-
-    Hairline { }
 
     SectionLabel {
         text: @tr("SEND MESSAGES WITH");

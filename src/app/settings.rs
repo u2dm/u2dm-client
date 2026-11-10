@@ -1,3 +1,5 @@
+mod change;
+mod ignored;
 mod rules;
 
 use std::mem;
@@ -6,6 +8,7 @@ use std::sync::Arc;
 
 use tokio::sync::watch;
 
+use self::ignored::IgnoredUsers;
 use self::rules::NotificationRules;
 use super::event::{ActionOutcome, AppEvent, RuleSlot, SettingsEvent};
 use super::input::EventSender;
@@ -16,27 +19,32 @@ use crate::commands::ui::RuleCommand;
 use crate::commands::view::{DownloadedMedia, SettingsDialog, SettingsPage, SettingsView, Toast};
 use crate::domain::call::devices::DeviceChoices;
 use crate::domain::media::MediaUsage;
+use crate::domain::member_name::MemberName;
 use crate::domain::server_rules::ServerRules;
 use crate::domain::settings::{SettingChange, Settings};
-use crate::ports::matrix::{MediaPort, ServerRulesPort};
+use crate::domain::user_info::UserId;
+use crate::ports::matrix::{MediaPort, ServerRulesPort, UserInfoPort};
 use crate::ports::output::AppOutputPort;
 use crate::ports::settings::SettingsPort;
 
 pub(super) struct PagePorts {
     pub(super) media: Option<Arc<dyn MediaPort>>,
     pub(super) rules: Option<Arc<dyn ServerRulesPort>>,
+    pub(super) people: Option<Arc<dyn UserInfoPort>>,
 }
 
 pub(super) struct SettingsController {
     output: Arc<dyn AppOutputPort>,
     events: EventSender,
     values: Settings,
+    unsaved: bool,
     lane: Option<watch::Sender<Settings>>,
     saves: TaskGroup,
     storage: TaskGroup,
     dialog: Option<SettingsDialog>,
     media_cleared: u64,
     rules: NotificationRules,
+    ignored: IgnoredUsers,
 }
 
 impl SettingsController {
@@ -52,8 +60,10 @@ impl SettingsController {
         Self {
             output,
             rules: NotificationRules::new(events.clone()),
+            ignored: IgnoredUsers::new(events.clone()),
             events,
             values: loaded,
+            unsaved: false,
             lane: Some(lane),
             saves,
             storage: TaskGroup::new("settings-storage"),
@@ -81,6 +91,7 @@ impl SettingsController {
         }
         tracing::debug!("closing the settings dialog");
         self.rules.stop();
+        self.ignored.stop();
         self.publish();
     }
 
@@ -93,14 +104,56 @@ impl SettingsController {
         }
         tracing::debug!(?page, "showing a settings page");
         let left = mem::replace(&mut dialog.page, page);
-        if left == SettingsPage::Rules {
-            self.rules.stop();
+        dialog.clear_failed = false;
+        match left {
+            SettingsPage::Rules => self.rules.stop(),
+            SettingsPage::Ignored => self.ignored.stop(),
+            _ => {}
         }
-        if page == SettingsPage::Media {
-            self.measure_media(ports.media);
+        match (page, ports) {
+            (SettingsPage::Media, PagePorts { media, .. }) => self.measure_media(media),
+            (
+                SettingsPage::Rules,
+                PagePorts {
+                    rules: Some(port), ..
+                },
+            ) => self.rules.start(port),
+            (
+                SettingsPage::Ignored,
+                PagePorts {
+                    people: Some(port), ..
+                },
+            ) => self.ignored.start(port),
+            _ => {}
         }
-        if let (SettingsPage::Rules, Some(port)) = (page, ports.rules) {
-            self.rules.start(port);
+        self.publish();
+    }
+
+    pub(super) fn stop_ignoring(&mut self, port: Arc<dyn UserInfoPort>, user_id: UserId) {
+        self.ignored.stop_ignoring(port, user_id);
+        self.publish();
+    }
+
+    pub(super) fn ignored_listed(&mut self, listed: Vec<UserId>) {
+        self.ignored.listed(listed);
+        self.publish();
+    }
+
+    pub(super) fn ignored_named(&mut self, generation: u64, user_id: UserId, name: MemberName) {
+        self.ignored.named(generation, user_id, name);
+        self.publish();
+    }
+
+    pub(super) fn unignored(&mut self, request: u64, user_id: &UserId, outcome: ActionOutcome) {
+        self.ignored.unignored(request, user_id, outcome);
+        if outcome == ActionOutcome::Failed && !self.ignored.show_failure(user_id) {
+            show_toast(
+                self.output.as_ref(),
+                Toast::Error(UserMessage::about(
+                    UserMessageKind::UnignoreFailed,
+                    &self.ignored.shown_name(user_id),
+                )),
+            );
         }
         self.publish();
     }
@@ -180,6 +233,7 @@ impl SettingsController {
         };
         tracing::info!(keeping = keep.len(), "clearing downloaded media");
         dialog.storage = DownloadedMedia::Clearing(usage);
+        dialog.clear_failed = false;
         self.storage.spawn_reporting(&self.events, async move {
             let outcome = media.clear_cache(keep).await.map_err(|e| {
                 tracing::warn!("the downloaded media could not be cleared: {e}");
@@ -210,11 +264,25 @@ impl SettingsController {
                 if let Some(dialog) = clearing {
                     dialog.storage = DownloadedMedia::Measuring;
                 }
-                show_toast(self.output.as_ref(), Toast::Error(UserMessage::new(kind)));
+                if !self.show_clear_failure() {
+                    show_toast(self.output.as_ref(), Toast::Error(UserMessage::new(kind)));
+                }
                 self.measure_media(media);
             }
         }
         self.publish();
+    }
+
+    fn show_clear_failure(&mut self) -> bool {
+        let Some(dialog) = self
+            .dialog
+            .as_mut()
+            .filter(|dialog| dialog.page == SettingsPage::Media)
+        else {
+            return false;
+        };
+        dialog.clear_failed = true;
+        true
     }
 
     pub(super) fn change(&mut self, change: SettingChange) {
@@ -232,16 +300,27 @@ impl SettingsController {
         }
     }
 
-    pub(super) fn save_failed(&self) {
-        show_toast(
-            self.output.as_ref(),
-            Toast::Error(UserMessage::new(UserMessageKind::SettingsNotSaved)),
-        );
+    pub(super) fn save_failed(&mut self) {
+        self.unsaved = true;
+        if self.dialog.is_none() {
+            show_toast(
+                self.output.as_ref(),
+                Toast::Error(UserMessage::new(UserMessageKind::SettingsNotSaved)),
+            );
+        }
+        self.publish();
+    }
+
+    pub(super) fn save_recovered(&mut self) {
+        tracing::info!("the settings are saved again");
+        self.unsaved = false;
+        self.publish();
     }
 
     pub(super) fn close_with_session(&mut self) -> SettingsView {
         self.storage.cancel_and_detach();
         self.rules.forget_session();
+        self.ignored.forget_session();
         self.dialog = None;
         self.view()
     }
@@ -251,6 +330,7 @@ impl SettingsController {
         self.saves.drain().await;
         self.storage.shutdown().await;
         self.rules.shutdown().await;
+        self.ignored.shutdown().await;
     }
 
     fn save_and_publish(&self) {
@@ -263,9 +343,11 @@ impl SettingsController {
     fn view(&self) -> SettingsView {
         SettingsView {
             values: self.values.clone(),
+            unsaved: self.unsaved,
             dialog: self.dialog,
             media_cleared: self.media_cleared,
             rules: self.rules.view(),
+            ignored: self.ignored.view(),
         }
     }
 
@@ -281,16 +363,21 @@ async fn save_newest(
     events: EventSender,
     mut changes: watch::Receiver<Settings>,
 ) {
+    let mut failing = false;
     while changes.changed().await.is_ok() {
         let newest = changes.borrow_and_update().clone();
-        if let Err(e) = port.save(&newest).await {
-            tracing::warn!("the settings could not be saved: {e}");
-            if events
-                .send(AppEvent::Settings(SettingsEvent::SaveFailed))
-                .is_err()
-            {
-                tracing::debug!("the app stopped before hearing that the settings were not saved");
+        let heard = match port.save(&newest).await {
+            Ok(()) => failing.then_some(SettingsEvent::SaveRecovered),
+            Err(e) => {
+                tracing::warn!("the settings could not be saved: {e}");
+                Some(SettingsEvent::SaveFailed)
             }
+        };
+        failing = matches!(heard, Some(SettingsEvent::SaveFailed));
+        if let Some(event) = heard
+            && events.send(AppEvent::Settings(event)).is_err()
+        {
+            tracing::debug!("the app stopped before hearing how the settings were saved");
         }
     }
 }

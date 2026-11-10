@@ -1,5 +1,6 @@
 use async_trait::async_trait;
 use tokio::sync::mpsc;
+use tokio::time::sleep;
 
 use super::{DemoAuthed, current_lists, unavailable, unavailable_if};
 use crate::adapters::demo::{
@@ -28,9 +29,7 @@ use crate::ports::matrix::{
 
 impl DemoAuthed {
     fn is_ignored(&self, user_id: &str) -> bool {
-        self.ignored
-            .lock()
-            .is_ok_and(|ignored| ignored.contains(user_id))
+        self.ignored.contains(user_id)
     }
 
     pub(super) fn trust_of(&self, user_id: &str) -> IdentityTrust {
@@ -418,18 +417,25 @@ impl UserInfoPort for DemoAuthed {
             return Err(unavailable("changing the ignore list"));
         }
         tracing::debug!(%user_id, ?change, "demo: changing the ignore list");
-        if let Ok(mut ignored) = self.ignored.lock() {
-            match change {
-                IgnoreChange::Ignore => {
-                    ignored.insert(user_id.to_string());
-                }
-                IgnoreChange::Unignore => {
-                    ignored.remove(user_id.as_ref());
-                }
-            }
+        self.ignored.change(user_id, change);
+        if !user_info::scenario().ignore_echo_lost {
+            self.replay_live_window();
         }
-        self.replay_live_window();
         Ok(())
+    }
+
+    async fn follow_ignored(&self, ignored_tx: mpsc::Sender<Vec<UserId>>) -> Result<()> {
+        let mut list = self.ignored.subscribe();
+        loop {
+            let listed = list.borrow_and_update().iter().map(UserId::new).collect();
+            if ignored_tx.send(listed).await.is_err() || list.changed().await.is_err() {
+                return Ok(());
+            }
+            if user_info::scenario().ignore_echo_lost {
+                return Ok(());
+            }
+            sleep(room_info::ECHO_LAG).await;
+        }
     }
 
     async fn follow_trust(

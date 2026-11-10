@@ -22,6 +22,7 @@ macro_rules! string_props {
         ToastDetail RoomView "RoomView" "toast-detail" set_toast_detail get_toast_detail;
         SettingsClearableSize SettingsView "SettingsView" "clearable-size" set_clearable_size get_clearable_size;
         SettingsKeptSize SettingsView "SettingsView" "kept-size" set_kept_size get_kept_size;
+        SettingsUnignoreFailed SettingsView "SettingsView" "unignore-failed" set_unignore_failed get_unignore_failed;
         VerificationSender VerificationView "VerificationView" "sender" set_sender get_sender;
         VerificationErrorDetail VerificationView "VerificationView" "error-detail" set_error_detail get_error_detail;
         EncryptionRecoveryKey EncryptionView "EncryptionView" "recovery-key" set_recovery_key get_recovery_key;
@@ -231,6 +232,7 @@ macro_rules! simple_callbacks {
         on_set_room_default "set-room-default" set_room_default
             request(rooms "rooms" variant, mode "mode" variant) RuleCommand::SetRoomDefault;
         on_remove_keyword "remove-keyword" remove_keyword pass RuleCommand::RemoveKeyword;
+        on_stop_ignoring "stop-ignoring" stop_ignoring user SettingsCommand::StopIgnoring;
         on_show_settings_page "show-settings-page" show_settings_page
             request(page "page" variant) SettingsCommand::ShowPage;
         on_set_theme "set-theme" set_theme request(choice "choice" variant) SettingsCommand::Change;
@@ -503,6 +505,9 @@ macro_rules! bool_props {
         SettingsAutoLoadMedia SettingsView "SettingsView" "auto-load-media" set_auto_load_media get_auto_load_media;
         SettingsRulesKnown SettingsView "SettingsView" "rules-known" set_rules_known get_rules_known;
         SettingsRulesFailed SettingsView "SettingsView" "rules-failed" set_rules_failed get_rules_failed;
+        SettingsIgnoredKnown SettingsView "SettingsView" "ignored-known" set_ignored_known get_ignored_known;
+        SettingsUnsaved SettingsView "SettingsView" "unsaved" set_unsaved get_unsaved;
+        SettingsMediaClearFailed SettingsView "SettingsView" "media-clear-failed" set_media_clear_failed get_media_clear_failed;
         SettingsHasClearableMedia SettingsView "SettingsView" "has-clearable-media" set_has_clearable_media get_has_clearable_media;
         SettingsPlayAnimations SettingsView "SettingsView" "play-animations" set_play_animations get_play_animations;
         AccountVisible AccountView "AccountView" "visible" set_visible get_visible;
@@ -917,6 +922,7 @@ macro_rules! model_props {
         user_devices UserDevice VecModel UserInfoView "UserInfoView" "devices" set_devices;
         account_sessions UserDevice VecModel AccountView "AccountView" "sessions" set_sessions;
         keywords Keyword VecModel SettingsView "SettingsView" "keywords" set_keywords;
+        ignored_people IgnoredPerson VecModel SettingsView "SettingsView" "ignored-people" set_ignored_people;
     } };
 }
 pub(crate) use model_props;
@@ -1723,6 +1729,7 @@ macro_rules! settings_pages {
         Calls      Calls      "calls";
         Media      Media      "media";
         Rules      Rules      "rules";
+        Ignored    Ignored    "ignored";
     } };
 }
 pub(crate) use settings_pages;
@@ -2655,6 +2662,15 @@ macro_rules! keyword_fields {
     } };
 }
 pub(crate) use keyword_fields;
+
+macro_rules! ignored_person_fields {
+    ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
+        user_id set_user_id "user-id" text;
+        name set_name "name" text;
+        busy set_busy "busy" flag;
+    } };
+}
+pub(crate) use ignored_person_fields;
 
 macro_rules! log_line_fields {
     ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*

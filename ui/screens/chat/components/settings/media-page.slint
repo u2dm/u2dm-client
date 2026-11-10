@@ -1,8 +1,8 @@
+import { ErrorBanner } from "../../../../components/banner.slint";
 import { AppButton } from "../../../../components/button.slint";
-import { Hairline } from "../../../../components/divider.slint";
 import { SwitchRow } from "../../../../components/switch-row.slint";
 import { SectionLabel } from "../../../../components/text-roles.slint";
-import { DownloadedMedia, SettingFlag } from "../../../../enums.slint";
+import { DownloadedMedia, SettingFlag, UserMessageKind } from "../../../../enums.slint";
 import { SettingsView } from "../../../../views.slint";
 import { Actions } from "../../../../actions.slint";
 import { SettingsWords } from "../../../../messages.slint";
@@ -52,6 +52,10 @@ component StorageSection inherits VerticalLayout {
     property <string> question: @tr("Remove {} of images, videos and audio from this device?", SettingsView.clearable-size);
 
     spacing: Space.md;
+
+    if SettingsView.media-clear-failed: ErrorBanner {
+        messages: [{ kind: UserMessageKind.downloaded-media-not-cleared, detail: "" }];
+    }
 
     SizeLine {
         text: @tr("Images, videos and audio");
@@ -164,8 +168,6 @@ export component MediaPage inherits VerticalLayout {
             root.close();
         }
     }
-
-    Hairline { }
 
     SectionLabel {
         text: @tr("DOWNLOADS");

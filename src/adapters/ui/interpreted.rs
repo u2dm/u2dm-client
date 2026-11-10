@@ -104,6 +104,7 @@ impl UiBackend for InterpretedBackend {
     type CallDevice = Value;
     type UserDevice = Value;
     type Keyword = Value;
+    type IgnoredPerson = Value;
     type PackRow = Value;
     type PackCell = Value;
     type PackTab = Value;

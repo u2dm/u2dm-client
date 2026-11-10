@@ -16,6 +16,8 @@ import { NotificationsPage } from "./notifications-page.slint";
 import { CallsPage } from "./calls-page.slint";
 import { MediaPage } from "./media-page.slint";
 import { RulesPage } from "./rules-page.slint";
+import { IgnoredPage } from "./ignored-page.slint";
+import { UnsavedBanner } from "./page-header.slint";
 
 component Overview inherits VerticalLayout {
     in property <SettingsPage> came-from;
@@ -44,6 +46,9 @@ component Overview inherits VerticalLayout {
         if root.came-from == SettingsPage.rules {
             rules.take-focus();
         }
+        if root.came-from == SettingsPage.ignored {
+            ignored.take-focus();
+        }
     }
 
     DialogHeader {
@@ -56,6 +61,8 @@ component Overview inherits VerticalLayout {
     }
 
     Hairline { }
+
+    if SettingsView.unsaved: UnsavedBanner { }
 
     VerticalLayout {
         spacing: Space.xs;
@@ -129,6 +136,18 @@ component Overview inherits VerticalLayout {
             above-modal: true;
             clicked => {
                 root.open-page(SettingsPage.rules);
+            }
+        }
+
+        ignored := MenuRow {
+            height: Metrics.choice-row;
+            icon: IconSet.EyeOff;
+            label: @tr("Ignored users");
+            detail: @tr("Kept on your homeserver");
+            trailing: IconSet.ChevronRight;
+            above-modal: true;
+            clicked => {
+                root.open-page(SettingsPage.ignored);
             }
         }
     }
@@ -230,6 +249,15 @@ export component SettingsDialog inherits ModalHost {
         }
 
         if SettingsView.page == SettingsPage.rules: RulesPage {
+            back => {
+                root.back();
+            }
+            close => {
+                Actions.close-settings();
+            }
+        }
+
+        if SettingsView.page == SettingsPage.ignored: IgnoredPage {
             back => {
                 root.back();
             }

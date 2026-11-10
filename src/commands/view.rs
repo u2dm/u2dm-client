@@ -30,8 +30,8 @@ pub(crate) use self::security::{
     LoginActivity, LoginStep, LogoutView,
 };
 pub(crate) use self::settings::{
-    AccountRule, DownloadedMedia, KeywordRow, NotificationRulesView, SettingsDialog, SettingsPage,
-    SettingsView,
+    AccountRule, DownloadedMedia, IgnoredPerson, IgnoredUsersView, KeywordRow,
+    NotificationRulesView, SettingsDialog, SettingsPage, SettingsView,
 };
 use super::messages::{UserMessage, UserMessageKind};
 use super::ui::Draft;
