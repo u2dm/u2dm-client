@@ -243,6 +243,7 @@ macro_rules! simple_callbacks {
             request(layout "layout" variant) SettingsCommand::Layout;
         on_set_theme "set-theme" set_theme request(choice "choice" variant) SettingsCommand::Change;
         on_set_motion "set-motion" set_motion request(choice "choice" variant) SettingsCommand::Change;
+        on_set_clock "set-clock" set_clock request(choice "choice" variant) SettingsCommand::Change;
         on_set_send_key "set-send-key" set_send_key request(choice "choice" variant)
             SettingsCommand::Change;
         on_set_receipts "set-receipts" set_receipts request(choice "choice" variant)
@@ -525,6 +526,9 @@ macro_rules! bool_props {
         SettingsMediaClearFailed SettingsView "SettingsView" "media-clear-failed" set_media_clear_failed get_media_clear_failed;
         SettingsHasClearableMedia SettingsView "SettingsView" "has-clearable-media" set_has_clearable_media get_has_clearable_media;
         SettingsPlayAnimations SettingsView "SettingsView" "play-animations" set_play_animations get_play_animations;
+        SettingsVoiceInARow SettingsView "SettingsView" "voice-in-a-row" set_voice_in_a_row get_voice_in_a_row;
+        SettingsJoinsAndLeaves SettingsView "SettingsView" "joins-and-leaves" set_joins_and_leaves get_joins_and_leaves;
+        SettingsProfileChanges SettingsView "SettingsView" "profile-changes" set_profile_changes get_profile_changes;
         SettingsQuickReactionsCustom SettingsView "SettingsView" "quick-reactions-custom" set_quick_reactions_custom get_quick_reactions_custom;
         AccountVisible AccountView "AccountView" "visible" set_visible get_visible;
         AccountSessionsKnown AccountView "AccountView" "sessions-known" set_sessions_known get_sessions_known;
@@ -762,6 +766,8 @@ macro_rules! enum_props {
             AppearanceView "AppearanceView" "theme" set_theme get_theme;
         MotionChoice set_motion_choice(MotionChoice)
             Motion "Motion" "choice" set_choice get_choice;
+        ClockChoice set_clock_choice(ClockChoice)
+            AppearanceView "AppearanceView" "clock" set_clock get_clock;
         SendKey set_send_key(SendKey)
             SettingsView "SettingsView" "send-key" set_send_key get_send_key;
         ReceiptVisibility set_receipt_visibility(ReceiptVisibility)
@@ -1091,6 +1097,7 @@ macro_rules! slint_enums {
             room_classes RoomClass RoomClass;
             theme_choices ThemeChoice ThemeChoice;
             motion_choices MotionChoice MotionChoice;
+            clock_choices ClockChoice ClockChoice;
             send_keys SendKey SendKey;
             receipt_visibilities ReceiptVisibility ReceiptVisibility;
             call_layouts CallLayout CallLayout;
@@ -1813,6 +1820,15 @@ macro_rules! motion_choices {
 }
 pub(crate) use motion_choices;
 
+macro_rules! clock_choices {
+    ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
+        System         System         "system";
+        TwelveHour     TwelveHour     "twelve-hour";
+        TwentyFourHour TwentyFourHour "twenty-four-hour";
+    } };
+}
+pub(crate) use clock_choices;
+
 macro_rules! send_keys {
     ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
         Enter     Enter    "enter";
@@ -1852,6 +1868,9 @@ macro_rules! setting_flags {
         FollowSpeaker FollowSpeaker "follow-speaker";
         AutoLoadMedia AutoLoadMedia "auto-load-media";
         PlayAnimations PlayAnimations "play-animations";
+        VoiceInARow VoiceInARow "voice-in-a-row";
+        JoinsAndLeaves JoinsAndLeaves "joins-and-leaves";
+        ProfileChanges ProfileChanges "profile-changes";
     } };
 }
 pub(crate) use setting_flags;

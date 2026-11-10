@@ -40,7 +40,7 @@ use crate::domain::room_info::{Reader, RoomAbout, RosterMember};
 use crate::domain::room_preview::PreviewResult;
 use crate::domain::server_rules::{Keyword, RoomClass, RoomDefault, ServerRules};
 use crate::domain::sessions::{LogoutRisks, OwnSessions};
-use crate::domain::settings::ReceiptVisibility;
+use crate::domain::settings::{ReceiptVisibility, RowFilter};
 use crate::domain::space_index::HierarchyPage;
 use crate::domain::sync::{SyncEvent, SyncOutcome};
 use crate::domain::timeline::{TimelineCommand, TimelineFocus, TimelineUpdate};
@@ -400,6 +400,7 @@ pub trait TimelinePort: Send + Sync {
         &self,
         room_id: &RoomId,
         focus: TimelineFocus,
+        rows: RowFilter,
         timeline_tx: mpsc::Sender<TimelineUpdate>,
         cmd_rx: mpsc::UnboundedReceiver<TimelineCommand>,
         close: CancellationToken,

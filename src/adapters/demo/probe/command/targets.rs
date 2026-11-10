@@ -72,6 +72,7 @@ pub(super) fn setting_change(name: &str, value: &str) -> Result<Driven, Rejected
     let change = match name {
         "theme" => names::theme_choice_named(value).map(SettingChange::Theme),
         "motion" => names::motion_choice_named(value).map(SettingChange::Motion),
+        "clock" => names::clock_choice_named(value).map(SettingChange::Clock),
         "send_key" => names::send_key_named(value).map(SettingChange::SendKey),
         "receipts" => names::receipt_visibility_named(value).map(SettingChange::Receipts),
         "call_layout" => names::call_layout_named(value).map(SettingChange::CallLayout),

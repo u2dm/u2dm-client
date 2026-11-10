@@ -34,6 +34,7 @@ pub(super) struct AudioController {
     issued: u64,
     locating: Option<Locating>,
     now_playing: Option<NowPlaying>,
+    in_a_row: bool,
 }
 
 impl AudioController {
@@ -45,7 +46,12 @@ impl AudioController {
             issued: 0,
             locating: None,
             now_playing: None,
+            in_a_row: true,
         }
+    }
+
+    pub(super) const fn set_in_a_row(&mut self, on: bool) {
+        self.in_a_row = on;
     }
 
     pub(super) fn play(&mut self, timeline: &ActiveTimeline, event_id: String) {
@@ -179,7 +185,8 @@ impl AudioController {
             pending.fallback = Fallback::Close;
             return;
         }
-        let advances = end == AudioEnd::Finished
+        let advances = self.in_a_row
+            && end == AudioEnd::Finished
             && now.meta.kind == AudioKind::Voice
             && timeline.is_active_room(&now.room_id);
         match end {

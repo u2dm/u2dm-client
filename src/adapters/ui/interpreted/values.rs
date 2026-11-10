@@ -58,7 +58,7 @@ use crate::domain::room_info::MemberRole;
 use crate::domain::room_log::LogLevel;
 use crate::domain::server_rules::{RoomClass, RoomDefault};
 use crate::domain::settings::{
-    CallLayout, MotionChoice, ReceiptVisibility, SendKey, SettingFlag, ThemeChoice,
+    CallLayout, ClockChoice, MotionChoice, ReceiptVisibility, SendKey, SettingFlag, ThemeChoice,
 };
 use crate::domain::sync::ConnectionStatus;
 use crate::domain::timeline::{SourceEncryption, TimelineStatus};

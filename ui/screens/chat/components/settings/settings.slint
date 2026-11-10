@@ -89,7 +89,7 @@ export global SettingsPages {
 
     public pure function summary(page: SettingsPage) -> string {
         if page == SettingsPage.messages {
-            return SettingsWords.send-key-summary(SettingsView.send-key);
+            return SettingsWords.messages-summary(SettingsView.send-key, SettingsView.joins-and-leaves, SettingsView.profile-changes);
         }
         if page == SettingsPage.reactions {
             return SettingsWords.reactions-summary(QuickReactions.default-key);
@@ -106,7 +106,7 @@ export global SettingsPages {
         if page == SettingsPage.media {
             return SettingsWords.media-summary(SettingsView.auto-load-media);
         }
-        return SettingsWords.appearance-summary(AppearanceView.theme, Motion.choice);
+        return SettingsWords.appearance-summary(AppearanceView.theme, Motion.choice, AppearanceView.clock);
     }
 }
 

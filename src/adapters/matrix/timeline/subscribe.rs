@@ -38,6 +38,7 @@ use crate::adapters::matrix::media::MediaService;
 use crate::adapters::matrix::profile::PronounCache;
 use crate::adapters::matrix::session::known_room;
 use crate::domain::room::RoomId;
+use crate::domain::settings::RowFilter;
 use crate::domain::timeline::{
     PaginationDirection, PaginationOutcome, TimelineCommand, TimelineFocus, TimelinePatch,
     TimelineUpdate,
@@ -47,12 +48,13 @@ use crate::error::Result;
 
 async fn send_initial_timeline(
     initial_items: Vec<Arc<TimelineItem>>,
+    rows: RowFilter,
     backwards_outcome: PaginationOutcome,
     ctx: &TimelineContext<'_>,
     room_id: &RoomId,
 ) -> Option<TimelineItems> {
     let raw_items = initial_items.len();
-    let (items, messages) = TimelineItems::load(initial_items, ctx);
+    let (items, messages) = TimelineItems::load(initial_items, rows, ctx);
     tracing::info!(
         raw_items,
         messages = messages.len(),
@@ -117,6 +119,23 @@ async fn refresh_row(items: &mut TimelineItems, event_id: &EventId, ctx: &Timeli
         message,
     };
     drop(ctx.timeline_tx.send(TimelineUpdate::patch(patch)).await);
+}
+
+async fn reclassify(items: &mut TimelineItems, rows: RowFilter, ctx: &TimelineContext<'_>) {
+    let mut batch = items.reclassify(rows, ctx);
+    if batch.is_empty() {
+        return;
+    }
+    stamp_read_marks(items, &mut batch, ctx);
+    tracing::debug!(
+        patches = batch.len(),
+        "the timeline rows follow a new filter"
+    );
+    drop(
+        ctx.timeline_tx
+            .send(TimelineUpdate::patch(TimelinePatch::Batch(batch)))
+            .await,
+    );
 }
 
 async fn settle_rowless_send(
@@ -200,6 +219,10 @@ async fn handle_timeline_command(
             recheck_media(items, ctx).await;
             return;
         }
+        TimelineCommand::Reclassify(rows) => {
+            reclassify(items, rows, ctx).await;
+            return;
+        }
     };
 
     if timeline_tx
@@ -279,15 +302,25 @@ async fn paginate_forwards(timeline: &Timeline) -> PaginationOutcome {
     }
 }
 
+pub(crate) struct Opening<'a> {
+    pub(crate) room_id: &'a RoomId,
+    pub(crate) focus: &'a TimelineFocus,
+    pub(crate) rows: RowFilter,
+}
+
 pub(crate) async fn subscribe_timeline(
     client: &Client,
     media: &Arc<MediaService>,
     pronouns: &Arc<PronounCache>,
-    room_id: &RoomId,
-    focus: &TimelineFocus,
+    opening: Opening<'_>,
     timeline_tx: mpsc::Sender<TimelineUpdate>,
     commands: Commands,
 ) -> Result<()> {
+    let Opening {
+        room_id,
+        focus,
+        rows,
+    } = opening;
     let room = known_room(client, room_id)?;
     let ending = Arc::new(EndingPolls::default());
     let discarded = Arc::new(DiscardedEdits::default());
@@ -336,6 +369,7 @@ pub(crate) async fn subscribe_timeline(
     }
 
     let own_user_id = client.user_id().map(ToString::to_string);
+    let first_unread = unread.first_unread(&initial_items, client.user_id(), rows);
     let enrich = EnrichmentPool::new();
     let receipts = ReceiptLane::spawn(&timeline);
     let members = Arc::new(Members::default());
@@ -352,13 +386,14 @@ pub(crate) async fn subscribe_timeline(
         discarded: &discarded,
         own_user_id: own_user_id.as_deref(),
         focused: focus.target().is_some(),
-        first_unread: unread.first_unread(),
+        first_unread: first_unread.as_deref(),
         timeline_tx: &timeline_tx,
         enrich: &enrich,
         receipts: &receipts,
     };
 
-    let Some(items) = send_initial_timeline(initial_items, backwards_outcome, &ctx, room_id).await
+    let Some(items) =
+        send_initial_timeline(initial_items, rows, backwards_outcome, &ctx, room_id).await
     else {
         return Ok(());
     };

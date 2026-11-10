@@ -1,4 +1,5 @@
-import { SendKey, SettingKey } from "../../../../enums.slint";
+import { SwitchRow } from "../../../../components/switch-row.slint";
+import { SendKey, SettingFlag, SettingKey } from "../../../../enums.slint";
 import { SettingsView } from "../../../../views.slint";
 import { Actions } from "../../../../actions.slint";
 import { SettingsWords } from "../../../../messages.slint";
@@ -16,6 +17,28 @@ export component MessagesPage inherits VerticalLayout {
             detail: SettingsWords.send-key-detail(SettingsView.send-key);
             chose(index) => {
                 Actions.set-send-key({ choice: index == 1 ? SendKey.ctrl-enter : SendKey.enter });
+            }
+        }
+    }
+
+    SettingsGroup {
+        label: @tr("TIMELINE");
+
+        SwitchRow {
+            text: SettingsWords.label(SettingKey.joins-and-leaves);
+            detail: SettingsWords.detail(SettingKey.joins-and-leaves);
+            on: SettingsView.joins-and-leaves;
+            toggled(on) => {
+                Actions.set-setting-flag({ setting: SettingFlag.joins-and-leaves, on: on });
+            }
+        }
+
+        SwitchRow {
+            text: SettingsWords.label(SettingKey.profile-changes);
+            detail: SettingsWords.detail(SettingKey.profile-changes);
+            on: SettingsView.profile-changes;
+            toggled(on) => {
+                Actions.set-setting-flag({ setting: SettingFlag.profile-changes, on: on });
             }
         }
     }

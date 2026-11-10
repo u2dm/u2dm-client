@@ -171,6 +171,15 @@ export component MediaPage inherits VerticalLayout {
                 Actions.set-setting-flag({ setting: SettingFlag.play-animations, on: on });
             }
         }
+
+        SwitchRow {
+            text: SettingsWords.label(SettingKey.voice-in-a-row);
+            detail: SettingsWords.detail(SettingKey.voice-in-a-row);
+            on: SettingsView.voice-in-a-row;
+            toggled(on) => {
+                Actions.set-setting-flag({ setting: SettingFlag.voice-in-a-row, on: on });
+            }
+        }
     }
 
     StorageSection {

@@ -14,7 +14,7 @@ use crate::commands::ui::TimelineVisibility;
 use crate::commands::view::Toast;
 use crate::domain::poll::{PollAction, PollDraft};
 use crate::domain::room::RoomId;
-use crate::domain::settings::ReceiptVisibility;
+use crate::domain::settings::{ReceiptVisibility, RowFilter};
 use crate::domain::timeline::{
     AudioLookup, FailedSend, PaginationDirection, PaginationOutcome, TimelineAdvance,
     TimelineCommand, TimelineFocus, TimelinePatch, TimelineStatus, TimelineUpdate,
@@ -46,6 +46,7 @@ pub(super) struct ActiveTimeline {
     receipt_withheld: bool,
     read_boundary: ReadBoundary,
     receipts: ReceiptVisibility,
+    rows: RowFilter,
 }
 
 impl ActiveTimeline {
@@ -65,11 +66,21 @@ impl ActiveTimeline {
             receipt_withheld: false,
             read_boundary: ReadBoundary::Resolved,
             receipts: ReceiptVisibility::default(),
+            rows: RowFilter::default(),
         }
     }
 
     pub(super) const fn set_receipts(&mut self, receipts: ReceiptVisibility) {
         self.receipts = receipts;
+    }
+
+    pub(super) fn set_row_filter(&mut self, rows: RowFilter) {
+        if self.rows == rows {
+            return;
+        }
+        tracing::info!(?rows, "the timeline shows a different set of rows");
+        self.rows = rows;
+        self.forward(TimelineCommand::Reclassify(rows));
     }
 
     pub(super) fn recheck_media(&self) {
@@ -118,6 +129,7 @@ impl ActiveTimeline {
         self.timeline_cmd_tx = Some(tl_cmd_tx);
 
         let token = self.tasks.token();
+        let rows = self.rows;
         let mut forwarder = Forwarder {
             output: Arc::clone(&self.output),
             events: self.events.clone(),
@@ -129,7 +141,7 @@ impl ActiveTimeline {
 
         self.tasks.spawn(async move {
             let mut subscribe =
-                timeline.subscribe_timeline(&room_id, focus, tl_tx, tl_cmd_rx, token.clone());
+                timeline.subscribe_timeline(&room_id, focus, rows, tl_tx, tl_cmd_rx, token.clone());
 
             tokio::select! {
                 biased;

@@ -8,7 +8,8 @@ use crate::commands::view::{
 use crate::domain::call::devices::{ByKind, DeviceChoice};
 use crate::domain::settings::quick_reactions::QuickReaction;
 use crate::domain::settings::{
-    Alerts, Appearance, CallPreferences, MediaPreferences, Messaging, ReactionPreferences, Settings,
+    Alerts, Appearance, CallPreferences, MediaPreferences, Messaging, ReactionPreferences,
+    RowFilter, Settings,
 };
 
 #[derive(Serialize)]
@@ -98,10 +99,13 @@ impl From<&NotificationRulesView> for RulesDto {
 struct SettingsValuesDto {
     theme: &'static str,
     motion: &'static str,
+    clock: &'static str,
     send_key: &'static str,
     receipts: &'static str,
     typing_notices: bool,
     share_presence: bool,
+    joins_and_leaves: bool,
+    profile_changes: bool,
     quick_reactions: Vec<String>,
     one_click: usize,
     skin_tone: u8,
@@ -116,6 +120,7 @@ struct SettingsValuesDto {
     remembered_devices: RememberedDevicesDto,
     auto_load_media: bool,
     play_animations: bool,
+    voice_in_a_row: bool,
 }
 
 #[derive(Serialize)]
@@ -165,7 +170,11 @@ impl From<DownloadedMedia> for StorageDto {
 
 pub(super) fn settings(source: &SettingsView) -> SettingsDto {
     let Settings {
-        appearance: Appearance { theme, motion },
+        appearance: Appearance {
+            theme,
+            motion,
+            clock,
+        },
         messaging:
             Messaging {
                 send_key,
@@ -173,6 +182,10 @@ pub(super) fn settings(source: &SettingsView) -> SettingsDto {
                 typing_notices,
                 share_presence,
             },
+        timeline: RowFilter {
+            joins_and_leaves,
+            profile_changes,
+        },
         reactions: ReactionPreferences {
             ref quick,
             skin_tone,
@@ -192,20 +205,25 @@ pub(super) fn settings(source: &SettingsView) -> SettingsDto {
                 follow_speaker,
             },
         ref remembered_devices,
-        media: MediaPreferences {
-            auto_load,
-            play_animations,
-        },
+        media:
+            MediaPreferences {
+                auto_load,
+                play_animations,
+                voice_in_a_row,
+            },
     } = source.values;
     SettingsDto {
         unsaved: source.unsaved,
         values: SettingsValuesDto {
             theme: names::theme_choice(theme),
             motion: names::motion_choice(motion),
+            clock: names::clock_choice(clock),
             send_key: names::send_key(send_key),
             receipts: names::receipt_visibility(receipts),
             typing_notices,
             share_presence,
+            joins_and_leaves,
+            profile_changes,
             quick_reactions: quick
                 .keys()
                 .iter()
@@ -225,6 +243,7 @@ pub(super) fn settings(source: &SettingsView) -> SettingsDto {
             remembered_devices: remembered_devices.into(),
             auto_load_media: auto_load,
             play_animations,
+            voice_in_a_row,
         },
         dialog: source.dialog.map(|dialog| SettingsDialogDto {
             page: names::settings_page(dialog.page),

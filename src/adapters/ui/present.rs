@@ -1,4 +1,4 @@
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
 use std::fmt::Write;
 use std::sync::OnceLock;
@@ -23,6 +23,7 @@ use crate::domain::message::{
 use crate::domain::poll::{Poll, PollAnswer, PollDisclosure, PollStatus};
 use crate::domain::room_log::{LogLevel, LogLine};
 use crate::domain::room_state::{GuestAccess, HistoryVisibility, PowerChange, RoleChange};
+use crate::domain::settings::ClockChoice;
 use crate::domain::space_index::JoinRule;
 use crate::domain::verification::VerificationCancellation;
 use crate::locale::{self, LocaleRequest};
@@ -163,6 +164,30 @@ fn uses_12h_clock(locale: Locale) -> bool {
     })
 }
 
+thread_local! {
+    static CLOCK: Cell<ClockChoice> = const { Cell::new(ClockChoice::System) };
+}
+
+pub fn use_clock(clock: ClockChoice) -> bool {
+    CLOCK.replace(clock) != clock
+}
+
+fn twelve_hour(locale: Locale) -> bool {
+    match CLOCK.get() {
+        ClockChoice::System => uses_12h_clock(locale),
+        ClockChoice::TwelveHour => true,
+        ClockChoice::TwentyFourHour => false,
+    }
+}
+
+fn day_period(local: &chrono::DateTime<chrono::Local>, locale: Locale) -> String {
+    let named = local.format_localized("%p", locale).to_string();
+    if named.trim().is_empty() {
+        return local.format_localized("%p", Locale::POSIX).to_string();
+    }
+    named
+}
+
 fn to_local(timestamp_ms: u64) -> Option<chrono::DateTime<chrono::Local>> {
     chrono::DateTime::from_timestamp((timestamp_ms / MILLIS_PER_SECOND).cast_signed(), 0)
         .map(|utc| utc.with_timezone(&chrono::Local))
@@ -170,9 +195,9 @@ fn to_local(timestamp_ms: u64) -> Option<chrono::DateTime<chrono::Local>> {
 
 fn short_time(local: &chrono::DateTime<chrono::Local>, locale: Locale) -> String {
     let minute = local.minute();
-    if uses_12h_clock(locale) {
+    if twelve_hour(locale) {
         let (_, hour) = local.hour12();
-        let period = local.format_localized("%p", locale).to_string();
+        let period = day_period(local, locale);
         format!("{hour}:{minute:02} {period}")
     } else {
         let hour = local.hour();

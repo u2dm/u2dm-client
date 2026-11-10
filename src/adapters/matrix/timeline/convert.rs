@@ -28,6 +28,7 @@ use crate::domain::message::{
     ReactionSend, Reactor, ReadBy, ReplyInfo, RichText, SendState, ServiceEvent, Shield,
     ShieldCode, TimelineMessage,
 };
+use crate::domain::settings::RowFilter;
 
 fn reported_name(profile: &TimelineDetails<Profile>) -> MemberName {
     match profile {
@@ -351,6 +352,15 @@ pub(super) enum Renderable<'a> {
     Service(ServiceEvent),
 }
 
+impl Renderable<'_> {
+    const fn passes(&self, rows: RowFilter) -> bool {
+        match self {
+            Self::Service(service) => rows.shows(service),
+            Self::Message(_) | Self::Sticker(_) | Self::Poll(_) | Self::Utd(_) => true,
+        }
+    }
+}
+
 pub(super) fn classify(content: &TimelineItemContent) -> Option<Renderable<'_>> {
     if let Some(message) = content.as_message() {
         if let MessageType::VerificationRequest(request) = message.msgtype() {
@@ -372,13 +382,15 @@ pub(super) fn classify(content: &TimelineItemContent) -> Option<Renderable<'_>> 
     service_event_from_content(content).map(Renderable::Service)
 }
 
-fn classify_event(event: &EventTimelineItem) -> Option<Renderable<'_>> {
-    classify(event.content()).or_else(|| unparsed_state(event).map(Renderable::Service))
+fn classify_event(event: &EventTimelineItem, rows: RowFilter) -> Option<Renderable<'_>> {
+    classify(event.content())
+        .or_else(|| unparsed_state(event).map(Renderable::Service))
+        .filter(|renderable| renderable.passes(rows))
 }
 
-pub(super) fn renders(item: &TimelineItem) -> bool {
+pub(super) fn renders(item: &TimelineItem, rows: RowFilter) -> bool {
     item.as_event()
-        .is_some_and(|event| classify_event(event).is_some())
+        .is_some_and(|event| classify_event(event, rows).is_some())
 }
 
 pub(super) fn event_media(item: &TimelineItem) -> Option<EventMedia> {
@@ -432,16 +444,18 @@ fn extract_reply(content: &TimelineItemContent, ctx: &TimelineContext<'_>) -> Op
 
 pub(super) fn convert_timeline_item(
     item: &TimelineItem,
+    rows: RowFilter,
     ctx: &TimelineContext<'_>,
 ) -> Option<TimelineMessage> {
     let event = item.as_event()?;
     let unique_id = item.unique_id().0.clone();
-    convert_event_item_with_uid(unique_id, event, ctx)
+    convert_event_item_with_uid(unique_id, event, rows, ctx)
 }
 
-pub(super) fn convert_event_item_with_uid(
+fn convert_event_item_with_uid(
     unique_id: String,
     event: &EventTimelineItem,
+    rows: RowFilter,
     ctx: &TimelineContext<'_>,
 ) -> Option<TimelineMessage> {
     let event_id_str = event
@@ -450,11 +464,11 @@ pub(super) fn convert_event_item_with_uid(
         .unwrap_or_default();
 
     let reply = extract_reply(event.content(), ctx);
-    let Some(renderable) = classify_event(event) else {
+    let Some(renderable) = classify_event(event, rows) else {
         tracing::debug!(
             event_id = event_id_str,
             sender = %event.sender(),
-            "skipping non-message event"
+            "skipping an event that gets no row"
         );
         return None;
     };

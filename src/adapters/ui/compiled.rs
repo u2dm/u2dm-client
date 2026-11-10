@@ -101,7 +101,8 @@ use crate::domain::room_log::LogLevel;
 use crate::domain::server_rules::{RoomClass, RoomDefault};
 use crate::domain::settings::quick_reactions::QuickReactions;
 use crate::domain::settings::{
-    CallLayout, MotionChoice, ReceiptVisibility, SendKey, SettingFlag, Settings, ThemeChoice,
+    CallLayout, ClockChoice, MotionChoice, ReceiptVisibility, SendKey, SettingFlag, Settings,
+    ThemeChoice,
 };
 use crate::domain::sync::ConnectionStatus;
 use crate::domain::timeline::{SourceEncryption, TimelineStatus};

@@ -1,4 +1,4 @@
-import { CallCamera, CallDeviceKind, CallDeviceStatus, CallDeviceTrouble, CallHand, CallLayout, CallLinkState, CallMic, CallNotice, CallPhase, CallPreviewTrouble, CallReaction, CallRefusal, CallScreen, CallScreenRefusal, CallSheetPreview, CallTestPhase, CallTileState, Delivery, DownloadedMedia, EmojiArt, MediaFailure, MotionChoice, PresenceLine, PreviewKind, ReceiptVisibility, RoomCallMark, RoomDefault, SendKey, ServiceKind, SettingKey, ShieldReason, ThemeChoice, UpgradeLink, UserMessageKind } from "./enums.slint";
+import { CallCamera, CallDeviceKind, CallDeviceStatus, CallDeviceTrouble, CallHand, CallLayout, CallLinkState, CallMic, CallNotice, CallPhase, CallPreviewTrouble, CallReaction, CallRefusal, CallScreen, CallScreenRefusal, CallSheetPreview, CallTestPhase, CallTileState, ClockChoice, Delivery, DownloadedMedia, EmojiArt, MediaFailure, MotionChoice, PresenceLine, PreviewKind, ReceiptVisibility, RoomCallMark, RoomDefault, SendKey, ServiceKind, SettingKey, ShieldReason, ThemeChoice, UpgradeLink, UserMessageKind } from "./enums.slint";
 import { CallStates } from "./call-states.slint";
 import { CallPersonEntry, CallTileEntry } from "./types.slint";
 
@@ -1886,8 +1886,17 @@ export global SettingsWords {
         if key == SettingKey.motion {
             return @tr("Motion");
         }
+        if key == SettingKey.clock {
+            return @tr("Time format");
+        }
         if key == SettingKey.send-key {
             return @tr("Send messages with");
+        }
+        if key == SettingKey.joins-and-leaves {
+            return @tr("Show joins and leaves");
+        }
+        if key == SettingKey.profile-changes {
+            return @tr("Show name and avatar changes");
         }
         if key == SettingKey.quick-reactions {
             return @tr("Quick reactions");
@@ -1949,10 +1958,19 @@ export global SettingsWords {
         if key == SettingKey.play-animations {
             return @tr("Play animated images");
         }
+        if key == SettingKey.voice-in-a-row {
+            return @tr("Play voice messages one after another");
+        }
         return @tr("Downloaded media");
     }
 
     public pure function detail(key: SettingKey) -> string {
+        if key == SettingKey.joins-and-leaves {
+            return @tr("A row appears when someone joins, leaves or answers an invite. Kicks, bans, invites and knocks always show");
+        }
+        if key == SettingKey.profile-changes {
+            return @tr("A row appears when someone changes their display name or profile picture");
+        }
         if key == SettingKey.quick-reactions {
             return @tr("They appear beside a message you hover and at the top of its menu. The starred one is sent in one click");
         }
@@ -2001,6 +2019,9 @@ export global SettingsWords {
         if key == SettingKey.play-animations {
             return @tr("GIFs, stickers and custom emoji move. When off, they stay on their first frame");
         }
+        if key == SettingKey.voice-in-a-row {
+            return @tr("When a voice message ends, the next one in the room starts");
+        }
         if key == SettingKey.downloaded-media {
             return @tr("Anything you view again downloads again. Profile pictures, sticker packs, custom emoji and whatever is playing now stay.");
         }
@@ -2025,6 +2046,30 @@ export global SettingsWords {
         return choice == MotionChoice.system ? @tr("System") : root.motion(choice);
     }
 
+    public pure function clock-segment(choice: ClockChoice) -> string {
+        return choice == ClockChoice.system ? @tr("System") : root.clock(choice);
+    }
+
+    public pure function clock(choice: ClockChoice) -> string {
+        if choice == ClockChoice.twelve-hour {
+            return @tr("12-hour");
+        }
+        if choice == ClockChoice.twenty-four-hour {
+            return @tr("24-hour");
+        }
+        return @tr("Follow system");
+    }
+
+    public pure function clock-detail(choice: ClockChoice) -> string {
+        if choice == ClockChoice.twelve-hour {
+            return @tr("Times look like 3:05 PM");
+        }
+        if choice == ClockChoice.twenty-four-hour {
+            return @tr("Times look like 15:05");
+        }
+        return @tr("Matches your desktop's region settings");
+    }
+
     public pure function room-default(mode: RoomDefault) -> string {
         return mode == RoomDefault.mentions-and-keywords ? @tr("Mentions") : @tr("All messages");
     }
@@ -2035,7 +2080,18 @@ export global SettingsWords {
             : @tr("Every new message notifies you");
     }
 
-    public pure function appearance-summary(theme: ThemeChoice, motion: MotionChoice) -> string {
+    public pure function appearance-summary(theme: ThemeChoice, motion: MotionChoice, clock: ClockChoice) -> string {
+        let look = root.look-summary(theme, motion);
+        if clock == ClockChoice.twelve-hour {
+            return @tr("{}, 12-hour clock", look);
+        }
+        if clock == ClockChoice.twenty-four-hour {
+            return @tr("{}, 24-hour clock", look);
+        }
+        return look;
+    }
+
+    pure function look-summary(theme: ThemeChoice, motion: MotionChoice) -> string {
         if motion == MotionChoice.reduced {
             return @tr("{}, reduced motion", root.theme(theme));
         }
@@ -2045,8 +2101,18 @@ export global SettingsWords {
         return root.theme(theme);
     }
 
-    public pure function send-key-summary(key: SendKey) -> string {
-        return @tr("{} sends", root.send-key(key));
+    public pure function messages-summary(key: SendKey, joins: bool, profiles: bool) -> string {
+        let sends = @tr("{} sends", root.send-key(key));
+        if !joins && !profiles {
+            return @tr("{}, joins and name changes hidden", sends);
+        }
+        if !joins {
+            return @tr("{}, joins and leaves hidden", sends);
+        }
+        if !profiles {
+            return @tr("{}, name changes hidden", sends);
+        }
+        return sends;
     }
 
     public pure function reactions-summary(one-click: string) -> string {

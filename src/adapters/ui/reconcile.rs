@@ -14,7 +14,7 @@ pub(super) use self::packs::{
 };
 pub(super) use self::rooms::{RoomListing, apply_rooms};
 pub(super) use self::timeline::{
-    TimelineIndex, apply_timeline_patch, reorder_rows, timeline_row_of,
+    RowTime, TimelineIndex, apply_timeline_patch, reorder_rows, restamp_rows, timeline_row_of,
 };
 use super::dto::{
     INVITED_HEADING_ROW, prefetch_space_avatar, request_invitee_avatar, request_member_avatar,

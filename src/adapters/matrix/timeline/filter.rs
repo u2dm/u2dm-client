@@ -6,26 +6,73 @@ use matrix_sdk::ruma::EventId;
 use matrix_sdk_ui::timeline::{EventItemOrigin, EventTimelineItem, TimelineItem};
 
 use super::TimelineContext;
-use super::convert::convert_timeline_item;
+use super::convert::{convert_timeline_item, renders};
+use super::subscribe::enrich_message;
 use crate::domain::message::{ReadScan, TimelineMessage};
-use crate::domain::timeline::{Arrivals, JumpTarget, MessageReaders};
+use crate::domain::settings::RowFilter;
+use crate::domain::timeline::{Arrivals, JumpTarget, MessageReaders, TimelinePatch};
 
 pub(super) struct TimelineItems {
     items: Vec<Arc<TimelineItem>>,
     messages: Vec<Option<TimelineMessage>>,
+    rows: RowFilter,
 }
 
 impl TimelineItems {
     pub(super) fn load(
         values: Vec<Arc<TimelineItem>>,
+        rows: RowFilter,
         ctx: &TimelineContext<'_>,
     ) -> (Self, Vec<TimelineMessage>) {
         let mut items = Self {
             items: Vec::new(),
             messages: Vec::new(),
+            rows,
         };
         let messages = items.reset(values, ctx);
         (items, messages)
+    }
+
+    pub(super) fn convert(
+        &self,
+        item: &TimelineItem,
+        ctx: &TimelineContext<'_>,
+    ) -> Option<TimelineMessage> {
+        convert_timeline_item(item, self.rows, ctx)
+    }
+
+    pub(super) fn reclassify(
+        &mut self,
+        rows: RowFilter,
+        ctx: &TimelineContext<'_>,
+    ) -> Vec<TimelinePatch> {
+        self.rows = rows;
+        let mut patches = Vec::new();
+        let mut row = 0_usize;
+        for (item, slot) in self.items.iter().zip(self.messages.iter_mut()) {
+            match (slot.is_some(), renders(item, rows)) {
+                (true, true) => row = row.saturating_add(1),
+                (true, false) => {
+                    if let Some(hidden) = slot.take() {
+                        ctx.enrich.invalidate(&hidden.unique_id);
+                    }
+                    patches.push(TimelinePatch::Remove { index: row });
+                }
+                (false, true) => {
+                    *slot = convert_timeline_item(item, rows, ctx);
+                    if let Some(shown) = slot {
+                        enrich_message(item, shown, ctx);
+                        patches.push(TimelinePatch::Insert {
+                            index: row,
+                            message: shown.clone(),
+                        });
+                        row = row.saturating_add(1);
+                    }
+                }
+                (false, false) => {}
+            }
+        }
+        patches
     }
 
     pub(super) fn items(&self) -> &[Arc<TimelineItem>] {
@@ -182,7 +229,9 @@ impl TimelineItems {
         ctx: &TimelineContext<'_>,
         mut on_change: impl FnMut(usize, &TimelineMessage),
     ) {
-        let Self { items, messages } = self;
+        let Self {
+            items, messages, ..
+        } = self;
         let mut scan = ReadScan::excluding(ctx.own_user_id);
         let mut row = messages.iter().flatten().count();
         for (item, slot) in items.iter().zip(messages.iter_mut()).rev() {
@@ -268,7 +317,7 @@ impl TimelineItems {
         raw_index: usize,
         ctx: &TimelineContext<'_>,
     ) -> Option<TimelineMessage> {
-        let message = convert_timeline_item(self.items.get(raw_index)?, ctx)?;
+        let message = convert_timeline_item(self.items.get(raw_index)?, self.rows, ctx)?;
         let Some(slot) = self.messages.get_mut(raw_index) else {
             return Some(message);
         };
@@ -288,8 +337,11 @@ impl TimelineItems {
     }
 
     fn store(&mut self, values: Vec<Arc<TimelineItem>>, ctx: &TimelineContext<'_>) {
-        self.messages
-            .extend(values.iter().map(|item| convert_timeline_item(item, ctx)));
+        self.messages.extend(
+            values
+                .iter()
+                .map(|item| convert_timeline_item(item, self.rows, ctx)),
+        );
         self.items.extend(values);
     }
 }

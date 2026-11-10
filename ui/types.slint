@@ -1,4 +1,4 @@
-import { AudioKind, CallDeviceKind, CallDeviceStatus, CallLayout, CallLinkState, CallTileState, ChildAccess, DecryptionFailure, Delivery, DeviceTrust, EmojiArt, InviteKind, InviteeState, LogLevel, MediaFailure, MediaState, MemberRole, MemberRowKind, MessageKind, MotionChoice, PackOrigin, PollPhase, PreviewKind, ReactionSend, ReceiptVisibility, RemovalKind, RoomAccess, RoomCallMark, RoomClass, RoomDefault, RoomKind, RoomRowKind, SendKey, SendState, ServiceKind, SettingFlag, SettingsLayout, SettingsPage, Shield, ShieldReason, SpoilerState, ThemeChoice, UserMessageKind } from "./enums.slint";
+import { AudioKind, CallDeviceKind, CallDeviceStatus, CallLayout, CallLinkState, CallTileState, ChildAccess, ClockChoice, DecryptionFailure, Delivery, DeviceTrust, EmojiArt, InviteKind, InviteeState, LogLevel, MediaFailure, MediaState, MemberRole, MemberRowKind, MessageKind, MotionChoice, PackOrigin, PollPhase, PreviewKind, ReactionSend, ReceiptVisibility, RemovalKind, RoomAccess, RoomCallMark, RoomClass, RoomDefault, RoomKind, RoomRowKind, SendKey, SendState, ServiceKind, SettingFlag, SettingsLayout, SettingsPage, Shield, ShieldReason, SpoilerState, ThemeChoice, UserMessageKind } from "./enums.slint";
 
 export struct RoomEntry {
     id: string,
@@ -285,6 +285,10 @@ export struct ThemeRequest {
 
 export struct MotionRequest {
     choice: MotionChoice,
+}
+
+export struct ClockRequest {
+    choice: ClockChoice,
 }
 
 export struct SendKeyRequest {

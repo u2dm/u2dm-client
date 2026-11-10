@@ -12,8 +12,9 @@ use crate::domain::settings::quick_reactions::{
     QUICK_REACTION_COUNT, QuickReaction, QuickReactions, ReactionSlot,
 };
 use crate::domain::settings::{
-    Alerts, Appearance, CallLayout, CallPreferences, MediaPreferences, Messaging, MotionChoice,
-    ReactionPreferences, ReceiptVisibility, SendKey, Settings, SkinTone, ThemeChoice,
+    Alerts, Appearance, CallLayout, CallPreferences, ClockChoice, MediaPreferences, Messaging,
+    MotionChoice, ReactionPreferences, ReceiptVisibility, RowFilter, SendKey, Settings, SkinTone,
+    ThemeChoice,
 };
 use crate::error::Result;
 use crate::ports::settings::SettingsPort;
@@ -51,6 +52,12 @@ stored_choice!(StoredMotion MotionChoice;
     Full "full";
 );
 
+stored_choice!(StoredClock ClockChoice;
+    System "system";
+    TwelveHour "twelve-hour";
+    TwentyFourHour "twenty-four-hour";
+);
+
 stored_choice!(StoredSendKey SendKey;
     Enter "enter";
     CtrlEnter "ctrl-enter";
@@ -74,6 +81,8 @@ struct StoredAppearance {
     theme: Option<StoredTheme>,
     #[serde(default, deserialize_with = "lenient")]
     motion: Option<StoredMotion>,
+    #[serde(default, deserialize_with = "lenient")]
+    clock: Option<StoredClock>,
 }
 
 #[derive(Default, Deserialize, Serialize)]
@@ -86,6 +95,14 @@ struct StoredMessaging {
     typing_notices: Option<bool>,
     #[serde(default, deserialize_with = "lenient")]
     share_presence: Option<bool>,
+}
+
+#[derive(Default, Deserialize, Serialize)]
+struct StoredTimeline {
+    #[serde(default, deserialize_with = "lenient")]
+    joins_and_leaves: Option<bool>,
+    #[serde(default, deserialize_with = "lenient")]
+    profile_changes: Option<bool>,
 }
 
 #[derive(Default, Deserialize, Serialize)]
@@ -148,6 +165,8 @@ struct StoredMedia {
     auto_load: Option<bool>,
     #[serde(default, deserialize_with = "lenient")]
     play_animations: Option<bool>,
+    #[serde(default, deserialize_with = "lenient")]
+    voice_in_a_row: Option<bool>,
 }
 
 #[derive(Default, Deserialize, Serialize)]
@@ -156,6 +175,8 @@ struct StoredSettings {
     appearance: Option<StoredAppearance>,
     #[serde(default, deserialize_with = "lenient")]
     messaging: Option<StoredMessaging>,
+    #[serde(default, deserialize_with = "lenient")]
+    timeline: Option<StoredTimeline>,
     #[serde(default)]
     reactions: Value,
     #[serde(default, deserialize_with = "lenient")]
@@ -289,13 +310,23 @@ fn device_choice(stored: Option<StoredDevice>) -> DeviceChoice {
 impl From<&Settings> for StoredSettings {
     fn from(settings: &Settings) -> Self {
         let Settings {
-            appearance: Appearance { theme, motion },
+            appearance:
+                Appearance {
+                    theme,
+                    motion,
+                    clock,
+                },
             messaging:
                 Messaging {
                     send_key,
                     receipts,
                     typing_notices,
                     share_presence,
+                },
+            timeline:
+                RowFilter {
+                    joins_and_leaves,
+                    profile_changes,
                 },
             ref reactions,
             alerts:
@@ -317,18 +348,24 @@ impl From<&Settings> for StoredSettings {
                 MediaPreferences {
                     auto_load,
                     play_animations,
+                    voice_in_a_row,
                 },
         } = *settings;
         Self {
             appearance: Some(StoredAppearance {
                 theme: Some(theme.into()),
                 motion: Some(motion.into()),
+                clock: Some(clock.into()),
             }),
             messaging: Some(StoredMessaging {
                 send_key: Some(send_key.into()),
                 receipts: Some(receipts.into()),
                 typing_notices: Some(typing_notices),
                 share_presence: Some(share_presence),
+            }),
+            timeline: Some(StoredTimeline {
+                joins_and_leaves: Some(joins_and_leaves),
+                profile_changes: Some(profile_changes),
             }),
             reactions: stored_reactions(reactions),
             alerts: Some(StoredAlerts {
@@ -351,6 +388,7 @@ impl From<&Settings> for StoredSettings {
             media: Some(StoredMedia {
                 auto_load: Some(auto_load),
                 play_animations: Some(play_animations),
+                voice_in_a_row: Some(voice_in_a_row),
             }),
         }
     }
@@ -361,6 +399,7 @@ impl From<StoredSettings> for Settings {
         let defaults = Self::default();
         let appearance = stored.appearance.unwrap_or_default();
         let messaging = stored.messaging.unwrap_or_default();
+        let timeline = stored.timeline.unwrap_or_default();
         let alerts = stored.alerts.unwrap_or_default();
         let calls = stored.calls.unwrap_or_default();
         let remember_devices = calls
@@ -379,6 +418,9 @@ impl From<StoredSettings> for Settings {
                 motion: appearance
                     .motion
                     .map_or(defaults.appearance.motion, Into::into),
+                clock: appearance
+                    .clock
+                    .map_or(defaults.appearance.clock, Into::into),
             },
             messaging: Messaging {
                 send_key: messaging
@@ -393,6 +435,14 @@ impl From<StoredSettings> for Settings {
                 share_presence: messaging
                     .share_presence
                     .unwrap_or(defaults.messaging.share_presence),
+            },
+            timeline: RowFilter {
+                joins_and_leaves: timeline
+                    .joins_and_leaves
+                    .unwrap_or(defaults.timeline.joins_and_leaves),
+                profile_changes: timeline
+                    .profile_changes
+                    .unwrap_or(defaults.timeline.profile_changes),
             },
             reactions: read_reactions(&stored.reactions),
             alerts: Alerts {
@@ -427,6 +477,9 @@ impl From<StoredSettings> for Settings {
                 play_animations: media
                     .play_animations
                     .unwrap_or(defaults.media.play_animations),
+                voice_in_a_row: media
+                    .voice_in_a_row
+                    .unwrap_or(defaults.media.voice_in_a_row),
             },
         }
     }

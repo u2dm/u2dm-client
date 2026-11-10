@@ -57,7 +57,7 @@ use self::poll_ends::EndingPolls;
 use self::receipts::ReceiptLane;
 pub(super) use self::send_gate::refuse_unpermitted;
 pub(super) use self::size_limit::refuse_oversized;
-use self::subscribe::subscribe_timeline;
+use self::subscribe::{Opening, subscribe_timeline};
 use self::undecrypted::UndecryptedResponses;
 use super::attachment;
 use super::media::MediaService;
@@ -74,6 +74,7 @@ use crate::domain::media::OutgoingAttachment;
 use crate::domain::message::MessageEdit;
 use crate::domain::poll::PollDraft;
 use crate::domain::room::RoomId;
+use crate::domain::settings::RowFilter;
 use crate::domain::timeline::{TimelineCommand, TimelineFocus, TimelineUpdate};
 use crate::error::{AppError, Result};
 use crate::ports::matrix::{AttachmentHandoff, TimelinePort};
@@ -450,18 +451,22 @@ impl TimelinePort for MatrixTimeline {
         &self,
         room_id: &RoomId,
         focus: TimelineFocus,
+        rows: RowFilter,
         timeline_tx: mpsc::Sender<TimelineUpdate>,
         cmd_rx: mpsc::UnboundedReceiver<TimelineCommand>,
         close: CancellationToken,
     ) -> Result<()> {
-        tracing::info!(%room_id, ?focus, "subscribing to timeline");
+        tracing::info!(%room_id, ?focus, ?rows, "subscribing to timeline");
         Box::pin(
             subscribe_timeline(
                 &self.matrix.client().await?,
                 self.matrix.media(),
                 &self.pronouns,
-                room_id,
-                &focus,
+                Opening {
+                    room_id,
+                    focus: &focus,
+                    rows,
+                },
                 timeline_tx,
                 Commands::new(cmd_rx, close),
             )

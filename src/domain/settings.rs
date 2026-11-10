@@ -2,6 +2,7 @@ pub mod quick_reactions;
 
 use self::quick_reactions::{QuickReactionChange, QuickReactions};
 use crate::domain::call::devices::DeviceChoices;
+use crate::domain::message::ServiceEvent;
 
 pub const SKIN_TONE_COUNT: u8 = 6;
 
@@ -19,6 +20,14 @@ pub enum MotionChoice {
     System,
     Reduced,
     Full,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum ClockChoice {
+    #[default]
+    System,
+    TwelveHour,
+    TwentyFourHour,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -74,12 +83,16 @@ pub enum SettingFlag {
     FollowSpeaker,
     AutoLoadMedia,
     PlayAnimations,
+    VoiceInARow,
+    JoinsAndLeaves,
+    ProfileChanges,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct Appearance {
     pub theme: ThemeChoice,
     pub motion: MotionChoice,
+    pub clock: ClockChoice,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -97,6 +110,37 @@ impl Default for Messaging {
             receipts: ReceiptVisibility::default(),
             typing_notices: true,
             share_presence: true,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct RowFilter {
+    pub joins_and_leaves: bool,
+    pub profile_changes: bool,
+}
+
+impl Default for RowFilter {
+    fn default() -> Self {
+        Self {
+            joins_and_leaves: true,
+            profile_changes: true,
+        }
+    }
+}
+
+impl RowFilter {
+    pub const fn shows(self, service: &ServiceEvent) -> bool {
+        match service {
+            ServiceEvent::Joined
+            | ServiceEvent::Left
+            | ServiceEvent::InvitationAccepted
+            | ServiceEvent::InvitationRejected => self.joins_and_leaves,
+            ServiceEvent::DisplayNameSet { .. }
+            | ServiceEvent::DisplayNameChanged { .. }
+            | ServiceEvent::DisplayNameRemoved
+            | ServiceEvent::AvatarChanged => self.profile_changes,
+            _ => true,
         }
     }
 }
@@ -150,6 +194,7 @@ impl Default for CallPreferences {
 pub struct MediaPreferences {
     pub auto_load: bool,
     pub play_animations: bool,
+    pub voice_in_a_row: bool,
 }
 
 impl Default for MediaPreferences {
@@ -157,6 +202,7 @@ impl Default for MediaPreferences {
         Self {
             auto_load: true,
             play_animations: true,
+            voice_in_a_row: true,
         }
     }
 }
@@ -165,6 +211,7 @@ impl Default for MediaPreferences {
 pub struct Settings {
     pub appearance: Appearance,
     pub messaging: Messaging,
+    pub timeline: RowFilter,
     pub reactions: ReactionPreferences,
     pub alerts: Alerts,
     pub calls: CallPreferences,
@@ -176,6 +223,7 @@ pub struct Settings {
 pub enum SettingChange {
     Theme(ThemeChoice),
     Motion(MotionChoice),
+    Clock(ClockChoice),
     SendKey(SendKey),
     Receipts(ReceiptVisibility),
     CallLayout(CallLayout),
@@ -188,6 +236,7 @@ impl Settings {
         match change {
             SettingChange::Theme(theme) => replaced(&mut self.appearance.theme, theme),
             SettingChange::Motion(motion) => replaced(&mut self.appearance.motion, motion),
+            SettingChange::Clock(clock) => replaced(&mut self.appearance.clock, clock),
             SettingChange::SendKey(key) => replaced(&mut self.messaging.send_key, key),
             SettingChange::Receipts(receipts) => replaced(&mut self.messaging.receipts, receipts),
             SettingChange::CallLayout(layout) => replaced(&mut self.calls.layout, layout),
@@ -223,6 +272,9 @@ impl Settings {
             SettingFlag::FollowSpeaker => &mut self.calls.follow_speaker,
             SettingFlag::AutoLoadMedia => &mut self.media.auto_load,
             SettingFlag::PlayAnimations => &mut self.media.play_animations,
+            SettingFlag::VoiceInARow => &mut self.media.voice_in_a_row,
+            SettingFlag::JoinsAndLeaves => &mut self.timeline.joins_and_leaves,
+            SettingFlag::ProfileChanges => &mut self.timeline.profile_changes,
         }
     }
 }

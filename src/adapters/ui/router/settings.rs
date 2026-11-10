@@ -1,22 +1,23 @@
 use super::Tx;
 use crate::adapters::ui::props::send_command;
 use crate::adapters::ui::schema::{
-    call_layouts, motion_choices, receipt_visibilities, room_classes, room_defaults, send_keys,
-    setting_flags, settings_layouts, settings_pages, theme_choices, variant_named,
+    call_layouts, clock_choices, motion_choices, receipt_visibilities, room_classes, room_defaults,
+    send_keys, setting_flags, settings_layouts, settings_pages, theme_choices, variant_named,
 };
 use crate::commands::ui::{RuleCommand, SettingsCommand};
 use crate::commands::view::{SettingsLayout, SettingsPage};
 use crate::domain::server_rules::{Keyword, RoomClass, RoomDefault};
 use crate::domain::settings::quick_reactions::{QuickReaction, QuickReactionChange, ReactionSlot};
 use crate::domain::settings::{
-    CallLayout, MotionChoice, ReceiptVisibility, SendKey, SettingChange, SettingFlag, SkinTone,
-    ThemeChoice,
+    CallLayout, ClockChoice, MotionChoice, ReceiptVisibility, SendKey, SettingChange, SettingFlag,
+    SkinTone, ThemeChoice,
 };
 
 settings_pages!(variant_named settings_page_named SettingsPage;);
 settings_layouts!(variant_named settings_layout_named SettingsLayout;);
 theme_choices!(variant_named theme_choice_named ThemeChoice;);
 motion_choices!(variant_named motion_choice_named MotionChoice;);
+clock_choices!(variant_named clock_choice_named ClockChoice;);
 send_keys!(variant_named send_key_named SendKey;);
 receipt_visibilities!(variant_named receipt_visibility_named ReceiptVisibility;);
 call_layouts!(variant_named call_layout_named CallLayout;);
@@ -66,6 +67,14 @@ pub fn set_motion(tx: &Tx, choice: &str) {
         return;
     };
     send_command(tx, SettingsCommand::Change(SettingChange::Motion(motion)));
+}
+
+pub fn set_clock(tx: &Tx, choice: &str) {
+    let Some(clock) = clock_choice_named(choice) else {
+        tracing::warn!(choice, "ignoring an unknown time format");
+        return;
+    };
+    send_command(tx, SettingsCommand::Change(SettingChange::Clock(clock)));
 }
 
 pub fn set_send_key(tx: &Tx, choice: &str) {

@@ -677,7 +677,10 @@ export enum SettingsPage {
 export enum SettingKey {
     theme,
     motion,
+    clock,
     send-key,
+    joins-and-leaves,
+    profile-changes,
     quick-reactions,
     skin-tone,
     desktop-notifications,
@@ -698,6 +701,7 @@ export enum SettingKey {
     follow-speaker,
     auto-load-media,
     play-animations,
+    voice-in-a-row,
     downloaded-media,
 }
 
@@ -751,6 +755,9 @@ export enum SettingFlag {
     follow-speaker,
     auto-load-media,
     play-animations,
+    voice-in-a-row,
+    joins-and-leaves,
+    profile-changes,
 }
 
 export enum CallLayout {
@@ -770,6 +777,12 @@ export enum MotionChoice {
     system,
     reduced,
     full,
+}
+
+export enum ClockChoice {
+    system,
+    twelve-hour,
+    twenty-four-hour,
 }
 
 export enum MemberRowKind {

@@ -2,13 +2,13 @@ use crate::adapters::ui::IdentityAlertKind;
 use crate::adapters::ui::schema::{
     account_activities, account_rules, account_steps, attachment_kinds, audio_kinds, auth_stages,
     call_device_kinds, call_device_statuses, call_device_troubles, call_layouts, child_accesses,
-    connection_states, create_room_statuses, device_trusts, direct_chats, downloaded_media_states,
-    encryption_activities, encryption_standings, encryption_steps, enum_names,
-    identity_alert_kinds, identity_trusts, invite_answers, invite_kinds, invitee_states,
-    log_levels, login_activities, login_methods, login_phases, member_roles, motion_choices,
-    notify_modes, pending_moderations, people_search_statuses, presence_lines, preview_kinds,
-    readers_statuses, receipt_visibilities, recovery_statuses, removal_kinds, room_accesses,
-    room_classes, room_defaults, room_info_placements, room_kinds, room_memberships,
+    clock_choices, connection_states, create_room_statuses, device_trusts, direct_chats,
+    downloaded_media_states, encryption_activities, encryption_standings, encryption_steps,
+    enum_names, identity_alert_kinds, identity_trusts, invite_answers, invite_kinds,
+    invitee_states, log_levels, login_activities, login_methods, login_phases, member_roles,
+    motion_choices, notify_modes, pending_moderations, people_search_statuses, presence_lines,
+    preview_kinds, readers_statuses, receipt_visibilities, recovery_statuses, removal_kinds,
+    room_accesses, room_classes, room_defaults, room_info_placements, room_kinds, room_memberships,
     room_preview_statuses, room_scopes, roster_statuses, send_keys, setting_flags,
     settings_layouts, settings_pages, source_encryptions, source_statuses, space_index_statuses,
     theme_choices, upgrade_links, user_message_kinds, variant_named, verify_offers,
@@ -36,7 +36,7 @@ use crate::domain::room_info::MemberRole;
 use crate::domain::room_log::LogLevel;
 use crate::domain::server_rules::{RoomClass, RoomDefault};
 use crate::domain::settings::{
-    CallLayout, MotionChoice, ReceiptVisibility, SendKey, SettingFlag, ThemeChoice,
+    CallLayout, ClockChoice, MotionChoice, ReceiptVisibility, SendKey, SettingFlag, ThemeChoice,
 };
 use crate::domain::sync::ConnectionStatus;
 use crate::domain::timeline::SourceEncryption;
@@ -94,6 +94,8 @@ theme_choices!(enum_names val theme_choice ThemeChoice;);
 theme_choices!(variant_named theme_choice_named ThemeChoice;);
 motion_choices!(enum_names val motion_choice MotionChoice;);
 motion_choices!(variant_named motion_choice_named MotionChoice;);
+clock_choices!(enum_names val clock_choice ClockChoice;);
+clock_choices!(variant_named clock_choice_named ClockChoice;);
 send_keys!(enum_names val send_key SendKey;);
 send_keys!(variant_named send_key_named SendKey;);
 receipt_visibilities!(enum_names val receipt_visibility ReceiptVisibility;);

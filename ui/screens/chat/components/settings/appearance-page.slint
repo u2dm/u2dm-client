@@ -1,4 +1,4 @@
-import { MotionChoice, SettingKey, ThemeChoice } from "../../../../enums.slint";
+import { ClockChoice, MotionChoice, SettingKey, ThemeChoice } from "../../../../enums.slint";
 import { AppearanceView } from "../../../../views.slint";
 import { Actions } from "../../../../actions.slint";
 import { SettingsWords } from "../../../../messages.slint";
@@ -12,6 +12,10 @@ export component AppearancePage inherits VerticalLayout {
 
     pure function motion-at(index: int) -> MotionChoice {
         return index == 1 ? MotionChoice.reduced : index == 2 ? MotionChoice.full : MotionChoice.system;
+    }
+
+    pure function clock-at(index: int) -> ClockChoice {
+        return index == 1 ? ClockChoice.twelve-hour : index == 2 ? ClockChoice.twenty-four-hour : ClockChoice.system;
     }
 
     spacing: Space.xl;
@@ -46,6 +50,22 @@ export component AppearancePage inherits VerticalLayout {
             detail: SettingsWords.motion-detail(Motion.choice);
             chose(index) => {
                 Actions.set-motion({ choice: root.motion-at(index) });
+            }
+        }
+
+        SegmentedRow {
+            text: SettingsWords.label(SettingKey.clock);
+            options: [
+                SettingsWords.clock-segment(ClockChoice.system),
+                SettingsWords.clock-segment(ClockChoice.twelve-hour),
+                SettingsWords.clock-segment(ClockChoice.twenty-four-hour),
+            ];
+            selected: AppearanceView.clock == ClockChoice.twelve-hour ? 1
+                : AppearanceView.clock == ClockChoice.twenty-four-hour ? 2
+                : 0;
+            detail: SettingsWords.clock-detail(AppearanceView.clock);
+            chose(index) => {
+                Actions.set-clock({ choice: root.clock-at(index) });
             }
         }
     }

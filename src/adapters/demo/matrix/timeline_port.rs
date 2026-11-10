@@ -28,6 +28,7 @@ use crate::domain::media::{ContentKey, OutgoingAttachment, ThumbnailOutcome};
 use crate::domain::message::{MessageEdit, SendState, TimelineMessage};
 use crate::domain::poll::PollDraft;
 use crate::domain::room::RoomId;
+use crate::domain::settings::RowFilter;
 use crate::domain::timeline::{
     AudioLookup, AudioTrack, EnrichmentDelta, EventSource, MessageReaders, PaginationDirection,
     PaginationOutcome, TimelineCommand, TimelineFocus, TimelinePatch, TimelineUpdate, locate_audio,
@@ -156,6 +157,7 @@ impl DemoAuthed {
                 self.load_media(&event_id, timeline_tx).await;
             }
             TimelineCommand::RecheckMedia => self.recheck_media(timeline_tx).await,
+            TimelineCommand::Reclassify(rows) => self.reclassify(rows).await,
         }
         None
     }
@@ -291,6 +293,7 @@ impl DemoAuthed {
         &self,
         room_id: &RoomId,
         focus: TimelineFocus,
+        rows: RowFilter,
         timeline_tx: mpsc::Sender<TimelineUpdate>,
         mut cmd_rx: mpsc::UnboundedReceiver<TimelineCommand>,
     ) -> Result<()> {
@@ -310,7 +313,7 @@ impl DemoAuthed {
             messages,
             reset_messages,
         }) = self
-            .open_window(room_id, &focus, scenario, &timeline_tx)
+            .open_window(room_id, &focus, rows, scenario, &timeline_tx)
             .await?
         else {
             return Ok(());
@@ -375,11 +378,12 @@ impl TimelinePort for DemoAuthed {
         &self,
         room_id: &RoomId,
         focus: TimelineFocus,
+        rows: RowFilter,
         timeline_tx: mpsc::Sender<TimelineUpdate>,
         cmd_rx: mpsc::UnboundedReceiver<TimelineCommand>,
         close: CancellationToken,
     ) -> Result<()> {
-        let subscription = self.run_timeline(room_id, focus, timeline_tx, cmd_rx);
+        let subscription = self.run_timeline(room_id, focus, rows, timeline_tx, cmd_rx);
         close
             .run_until_cancelled(subscription)
             .await

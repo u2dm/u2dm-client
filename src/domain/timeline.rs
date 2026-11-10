@@ -1,7 +1,7 @@
 use crate::domain::media::{AudioKind, AudioMeta, ContentKey, ThumbnailOutcome};
 use crate::domain::message::{MessageEdit, TimelineMessage};
 use crate::domain::poll::{PollAction, PollDraft};
-use crate::domain::settings::ReceiptVisibility;
+use crate::domain::settings::{ReceiptVisibility, RowFilter};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct UnreadAnchor {
@@ -211,6 +211,7 @@ pub enum TimelineCommand {
         event_id: String,
     },
     RecheckMedia,
+    Reclassify(RowFilter),
 }
 
 impl TimelineCommand {
@@ -228,7 +229,8 @@ impl TimelineCommand {
             | Self::LocateSource { .. }
             | Self::LocateReaders { .. }
             | Self::LoadMedia { .. }
-            | Self::RecheckMedia => false,
+            | Self::RecheckMedia
+            | Self::Reclassify(_) => false,
         }
     }
 }

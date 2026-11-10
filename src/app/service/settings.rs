@@ -14,6 +14,7 @@ impl AppService {
                 Appearance {
                     theme: _,
                     motion: _,
+                    clock: _,
                 },
             messaging:
                 Messaging {
@@ -22,6 +23,7 @@ impl AppService {
                     typing_notices,
                     share_presence,
                 },
+            timeline,
             reactions:
                 ReactionPreferences {
                     quick: _,
@@ -34,6 +36,7 @@ impl AppService {
                 MediaPreferences {
                     auto_load: _,
                     play_animations: _,
+                    voice_in_a_row,
                 },
         } = *self.settings.values();
         self.active_timeline.set_receipts(receipts);
@@ -43,6 +46,8 @@ impl AppService {
         self.notifications.set_alerts(alerts);
         self.calls.set_alerts(alerts, &self.room_directory);
         self.calls.set_preferences(calls);
+        self.active_timeline.set_row_filter(timeline);
+        self.audio.set_in_a_row(voice_in_a_row);
         self.tell_session_media_loading();
     }
 

@@ -8,6 +8,7 @@ use tokio::sync::mpsc;
 use crate::adapters::matrix::timeline::convert::renders;
 use crate::adapters::matrix::timeline::filter::TimelineItems;
 use crate::adapters::matrix::timeline::{TimelineContext, source};
+use crate::domain::settings::RowFilter;
 use crate::domain::timeline::{AudioLookup, JumpTarget, TimelineUpdate, locate_audio};
 
 pub(super) async fn report_jump(
@@ -117,15 +118,22 @@ async fn fully_read_marker(timeline: &Timeline) -> Option<OwnedEventId> {
 
 #[derive(Debug)]
 pub(super) enum UnreadBoundary {
-    FirstUnread(String),
+    UnreadFrom(usize),
     CaughtUp,
     Unresolved,
 }
 
 impl UnreadBoundary {
-    pub(super) fn first_unread(&self) -> Option<&str> {
+    pub(super) fn first_unread(
+        &self,
+        items: &[Arc<TimelineItem>],
+        own_user_id: Option<&UserId>,
+        rows: RowFilter,
+    ) -> Option<String> {
         match self {
-            Self::FirstUnread(event_id) => Some(event_id),
+            Self::UnreadFrom(raw_index) => {
+                first_unread_event_id(items, *raw_index, own_user_id, rows)
+            }
             Self::CaughtUp | Self::Unresolved => None,
         }
     }
@@ -164,8 +172,7 @@ pub(super) async fn locate_unread(
             None => UnreadBoundary::CaughtUp,
         };
     };
-    first_unread_event_id(items, first_unread, own_user_id)
-        .map_or(UnreadBoundary::CaughtUp, UnreadBoundary::FirstUnread)
+    UnreadBoundary::UnreadFrom(first_unread)
 }
 
 async fn first_unread_index(
@@ -216,11 +223,12 @@ fn first_unread_event_id(
     items: &[Arc<TimelineItem>],
     first_unread: usize,
     own_user_id: Option<&UserId>,
+    rows: RowFilter,
 ) -> Option<String> {
     items
         .get(first_unread..)?
         .iter()
-        .filter(|item| renders(item))
+        .filter(|item| renders(item, rows))
         .filter_map(|item| item.as_event())
         .find(|event| own_user_id != Some(event.sender()))
         .and_then(|event| event.event_id().map(ToString::to_string))

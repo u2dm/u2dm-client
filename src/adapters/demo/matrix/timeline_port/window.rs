@@ -9,6 +9,7 @@ use crate::adapters::demo::matrix::{ActiveRoom, DemoAuthed, unavailable};
 use crate::adapters::demo::{data, polls, reactions, receipts, room_info, timeline};
 use crate::domain::message::{SendState, TimelineMessage};
 use crate::domain::room::RoomId;
+use crate::domain::settings::RowFilter;
 use crate::domain::timeline::{
     JumpTarget, PaginationDirection, PaginationOutcome, TimelineFocus, TimelinePatch,
     TimelineUpdate,
@@ -78,15 +79,52 @@ impl DemoAuthed {
     fn refiltered_window(&self) -> Option<(mpsc::Sender<TimelineUpdate>, Vec<TimelineMessage>)> {
         let mut guard = self.active.lock().ok()?;
         let active = guard.as_mut().filter(|active| active.live)?;
-        active.messages = self.room_history(&active.room_id);
+        active.messages = shown_rows(self.room_history(&active.room_id), active.rows);
         active.prepended = 0;
         Some((active.timeline_tx.clone(), active.messages.clone()))
+    }
+
+    pub(super) async fn reclassify(&self, rows: RowFilter) {
+        let Some((timeline_tx, changes)) = self.reclassified_window(rows) else {
+            return;
+        };
+        tracing::info!(
+            patches = changes.len(),
+            "demo: the open timeline follows the new row filter"
+        );
+        if !changes.is_empty() {
+            send_patch(&timeline_tx, TimelinePatch::Batch(changes)).await;
+        }
+    }
+
+    fn reclassified_window(
+        &self,
+        rows: RowFilter,
+    ) -> Option<(mpsc::Sender<TimelineUpdate>, Vec<TimelinePatch>)> {
+        let room_id = self.active.lock().ok()?.as_ref()?.room_id.clone();
+        let history = self.room_history(&room_id);
+        let mut guard = self.active.lock().ok()?;
+        let active = guard.as_mut().filter(|active| active.room_id == room_id)?;
+        active.rows = rows;
+        let span = if active.live && !timeline::scenario().window_is_short {
+            0..history.len()
+        } else {
+            span_of(&history, &active.messages)
+        };
+        let changes = reclassified(
+            history.get(span).unwrap_or_default(),
+            &mut active.messages,
+            rows,
+            active.prepended,
+        );
+        Some((active.timeline_tx.clone(), changes))
     }
 
     pub(super) async fn open_window(
         &self,
         room_id: &RoomId,
         focus: &TimelineFocus,
+        rows: RowFilter,
         scenario: timeline::Scenario,
         timeline_tx: &mpsc::Sender<TimelineUpdate>,
     ) -> Result<Option<OpenedWindow>> {
@@ -96,7 +134,7 @@ impl DemoAuthed {
         let Ok(mut active) = self.active.lock() else {
             return Err(unavailable("the demo timeline"));
         };
-        let all = self.room_history(room_id);
+        let all = shown_rows(self.room_history(room_id), rows);
         let window = opening_window(&all, focus, scenario)?;
         let newer = window.end;
         let messages = window_messages(&all, window, focus);
@@ -106,6 +144,7 @@ impl DemoAuthed {
         *active = Some(ActiveRoom {
             room_id: room_id.clone(),
             live: focus.is_live(),
+            rows,
             timeline_tx: timeline_tx.clone(),
             messages: messages.clone(),
             prepended: 0,
@@ -202,6 +241,77 @@ impl DemoAuthed {
             }
         }
     }
+}
+
+fn shows(rows: RowFilter, message: &TimelineMessage) -> bool {
+    message
+        .body
+        .service()
+        .is_none_or(|service| rows.shows(service))
+}
+
+fn shown_rows(mut history: Vec<TimelineMessage>, rows: RowFilter) -> Vec<TimelineMessage> {
+    history.retain(|message| shows(rows, message));
+    history
+}
+
+fn span_of(history: &[TimelineMessage], shown: &[TimelineMessage]) -> Range<usize> {
+    let position = |message: &TimelineMessage| {
+        history
+            .iter()
+            .position(|held| held.unique_id == message.unique_id)
+    };
+    let first = shown.iter().find_map(position);
+    let last = shown.iter().rev().find_map(position);
+    match (first, last) {
+        (Some(first), Some(last)) => first..last.saturating_add(1),
+        _ => 0..0,
+    }
+}
+
+fn reclassified(
+    span: &[TimelineMessage],
+    shown: &mut Vec<TimelineMessage>,
+    rows: RowFilter,
+    base: usize,
+) -> Vec<TimelinePatch> {
+    let mut changes = Vec::new();
+    for offset in (0..shown.len()).rev() {
+        if shown
+            .get(offset)
+            .is_some_and(|message| !shows(rows, message))
+        {
+            shown.remove(offset);
+            changes.push(TimelinePatch::Remove {
+                index: base.saturating_add(offset),
+            });
+        }
+    }
+    let mut after: Option<usize> = None;
+    for message in span {
+        if let Some(held) = shown
+            .iter()
+            .position(|held| held.unique_id == message.unique_id)
+        {
+            after = Some(held);
+            continue;
+        }
+        if !shows(rows, message) {
+            continue;
+        }
+        let at = after.map_or(0, |held| held.saturating_add(1));
+        let message = TimelineMessage {
+            is_first_unread: false,
+            ..message.clone()
+        };
+        shown.insert(at, message.clone());
+        changes.push(TimelinePatch::Insert {
+            index: base.saturating_add(at),
+            message,
+        });
+        after = Some(at);
+    }
+    changes
 }
 
 pub(super) fn reset_messages(messages: &[TimelineMessage]) -> Vec<TimelineMessage> {

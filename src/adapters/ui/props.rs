@@ -33,7 +33,9 @@ use crate::domain::room_creation::RoomKind;
 use crate::domain::room_info::MemberRole;
 use crate::domain::server_rules::RoomDefault;
 use crate::domain::settings::quick_reactions::QuickReactions;
-use crate::domain::settings::{CallLayout, MotionChoice, ReceiptVisibility, SendKey, ThemeChoice};
+use crate::domain::settings::{
+    CallLayout, ClockChoice, MotionChoice, ReceiptVisibility, SendKey, ThemeChoice,
+};
 use crate::domain::sync::ConnectionStatus;
 use crate::domain::timeline::{SourceEncryption, TimelineStatus};
 use crate::domain::user_info::{IdentityTrust, RoomMembership};

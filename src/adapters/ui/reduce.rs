@@ -20,7 +20,7 @@ use self::security::{
     reset_verification,
 };
 pub(super) use self::settings::seed_settings;
-use self::settings::{apply_ignored_users, apply_notification_rules, apply_settings};
+use self::settings::{apply_ignored_users, apply_notification_rules, apply_settings, follow_clock};
 use self::sheets::{
     apply_create_room, apply_invite, apply_invite_people, apply_leave_space, apply_removal,
     apply_room_info, apply_room_log, apply_room_preview, apply_user_info,
@@ -354,6 +354,7 @@ fn apply_snapshot<B: UiBackend>(
     apply_encryption(w, last.map(|l| &l.encryption), encryption);
     apply_account::<B>(w, last.map(|l| &l.account), account, ctx);
     apply_settings(w, last.map(|l| &l.settings), settings);
+    follow_clock::<B>(w, view, ctx);
     apply_notification_rules::<B>(w, last.map(|l| &l.settings.rules), &settings.rules, ctx);
     apply_ignored_users::<B>(w, last.map(|l| &l.settings.ignored), &settings.ignored, ctx);
     apply_logout(w, last.map(|l| &l.logout), logout);

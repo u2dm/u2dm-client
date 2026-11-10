@@ -5,7 +5,6 @@ use matrix_sdk_ui::eyeball_im::VectorDiff;
 use matrix_sdk_ui::timeline::TimelineItem;
 
 use super::TimelineContext;
-use super::convert::convert_timeline_item;
 use super::filter::TimelineItems;
 use super::subscribe::{enrich_message, enrich_messages};
 use crate::domain::message::TimelineMessage;
@@ -25,8 +24,12 @@ fn apply_append(
     Some(TimelinePatch::Append(msgs))
 }
 
-fn convert_and_enrich(value: &TimelineItem, ctx: &TimelineContext<'_>) -> Option<TimelineMessage> {
-    let msg = convert_timeline_item(value, ctx)?;
+fn convert_and_enrich(
+    items: &TimelineItems,
+    value: &TimelineItem,
+    ctx: &TimelineContext<'_>,
+) -> Option<TimelineMessage> {
+    let msg = items.convert(value, ctx)?;
     enrich_message(value, &msg, ctx);
     Some(msg)
 }
@@ -36,7 +39,7 @@ fn apply_push_front(
     value: Arc<TimelineItem>,
     ctx: &TimelineContext<'_>,
 ) -> Option<TimelinePatch> {
-    let msg = convert_and_enrich(&value, ctx);
+    let msg = convert_and_enrich(items, &value, ctx);
     items.push_front(value, msg.clone());
     msg.map(TimelinePatch::PushFront)
 }
@@ -46,7 +49,7 @@ fn apply_push_back(
     value: Arc<TimelineItem>,
     ctx: &TimelineContext<'_>,
 ) -> Option<TimelinePatch> {
-    let msg = convert_and_enrich(&value, ctx);
+    let msg = convert_and_enrich(items, &value, ctx);
     items.push_back(value, msg.clone());
     msg.map(TimelinePatch::PushBack)
 }
@@ -65,7 +68,7 @@ fn apply_insert(
     value: Arc<TimelineItem>,
     ctx: &TimelineContext<'_>,
 ) -> Option<TimelinePatch> {
-    let msg = convert_and_enrich(&value, ctx);
+    let msg = convert_and_enrich(items, &value, ctx);
     items.insert(index, value, msg.clone());
     let msg = msg?;
     let mi = items.msg_index_at(index);
@@ -88,7 +91,7 @@ fn apply_set(
     value: &Arc<TimelineItem>,
     ctx: &TimelineContext<'_>,
 ) -> Option<TimelinePatch> {
-    let converted = convert_timeline_item(value, ctx);
+    let converted = items.convert(value, ctx);
     let old_msg = items
         .set(index, value, converted)
         .map(|old| with_current_pronouns(old, ctx));

@@ -1,19 +1,27 @@
-use slint::ComponentHandle;
+use slint::{ComponentHandle, SharedString};
 
 use super::run_change_handlers_next_frame;
+use super::sheets::apply_joined_on;
 use crate::adapters::ui::backend::{UiBackend, UiEventContext};
+use crate::adapters::ui::clock::refresh_room_labels;
 use crate::adapters::ui::decode::{forget_failed_decodes, set_animations_paused};
 use crate::adapters::ui::dto::{ignored_person_to_dto, keyword_to_dto};
+use crate::adapters::ui::fields::MessageFields;
+use crate::adapters::ui::present::{message_sent_at_label, message_timestamp_label, use_clock};
 use crate::adapters::ui::props::{BoolProp, IntProp, StringProp, UiProps};
+use crate::adapters::ui::reconcile::{RowTime, restamp_rows};
 use crate::commands::view::{
-    DownloadedMedia, IgnoredUsersView, NotificationRulesView, SettingsPage, SettingsView,
+    AppViewState, DownloadedMedia, IgnoredUsersView, NotificationRulesView, SettingsPage,
+    SettingsView,
 };
 use crate::domain::settings::{
-    Alerts, Appearance, CallPreferences, MediaPreferences, Messaging, ReactionPreferences, Settings,
+    Alerts, Appearance, CallPreferences, MediaPreferences, Messaging, ReactionPreferences,
+    RowFilter, Settings,
 };
 use crate::util::{format_bytes, saturating_i32};
 
 pub(in crate::adapters::ui) fn seed_settings<W: UiProps>(w: &W, values: &Settings) {
+    use_clock(values.appearance.clock);
     apply_values(w, values);
     w.apply_quick_reactions(&values.reactions.quick);
 }
@@ -62,6 +70,39 @@ pub(super) fn apply_settings<W: UiProps + ComponentHandle>(
     }) {
         run_change_handlers_next_frame(w);
     }
+}
+
+pub(super) fn follow_clock<B: UiBackend>(
+    w: &B::Window,
+    view: &AppViewState,
+    ctx: &UiEventContext<'_, B>,
+) {
+    if !use_clock(view.settings.values.appearance.clock) {
+        return;
+    }
+    tracing::debug!("times on screen follow the new clock");
+    restamp_rows(
+        &ctx.models.timeline,
+        &|entry| entry.unique_id(),
+        &restamp_message::<B>,
+    );
+    refresh_room_labels::<B>(&view.directory, ctx.media);
+    apply_joined_on(w, view.room_info.about.as_ref());
+}
+
+fn restamp_message<B: UiBackend>(entry: &mut B::Message, time: RowTime) -> bool {
+    let timestamp = SharedString::from(message_timestamp_label(time.at));
+    let sent_at = if time.own {
+        SharedString::from(message_sent_at_label(time.at))
+    } else {
+        SharedString::new()
+    };
+    if entry.timestamp() == timestamp.as_str() && entry.sent_at() == sent_at.as_str() {
+        return false;
+    }
+    entry.set_timestamp(timestamp);
+    entry.set_sent_at(sent_at);
+    true
 }
 
 pub(super) fn apply_notification_rules<B: UiBackend>(
@@ -134,7 +175,11 @@ fn apply_storage<W: UiProps>(w: &W, storage: DownloadedMedia) {
 
 fn apply_values<W: UiProps>(w: &W, values: &Settings) {
     let Settings {
-        appearance: Appearance { theme, motion },
+        appearance: Appearance {
+            theme,
+            motion,
+            clock,
+        },
         messaging:
             Messaging {
                 send_key,
@@ -142,6 +187,10 @@ fn apply_values<W: UiProps>(w: &W, values: &Settings) {
                 typing_notices,
                 share_presence,
             },
+        timeline: RowFilter {
+            joins_and_leaves,
+            profile_changes,
+        },
         reactions: ReactionPreferences {
             ref quick,
             skin_tone,
@@ -161,13 +210,16 @@ fn apply_values<W: UiProps>(w: &W, values: &Settings) {
                 follow_speaker,
             },
         remembered_devices: _,
-        media: MediaPreferences {
-            auto_load,
-            play_animations,
-        },
+        media:
+            MediaPreferences {
+                auto_load,
+                play_animations,
+                voice_in_a_row,
+            },
     } = *values;
     w.set_appearance_theme(theme);
     w.set_motion_choice(motion);
+    w.set_clock_choice(clock);
     w.set_send_key(send_key);
     w.set_receipt_visibility(receipts);
     w.set_int(
@@ -178,6 +230,8 @@ fn apply_values<W: UiProps>(w: &W, values: &Settings) {
     w.set_int(IntProp::SkinTone, i32::from(skin_tone.index()));
     w.set_bool(BoolProp::SettingsTypingNotices, typing_notices);
     w.set_bool(BoolProp::SettingsSharePresence, share_presence);
+    w.set_bool(BoolProp::SettingsJoinsAndLeaves, joins_and_leaves);
+    w.set_bool(BoolProp::SettingsProfileChanges, profile_changes);
     w.set_bool(
         BoolProp::SettingsDesktopNotifications,
         desktop_notifications,
@@ -191,5 +245,6 @@ fn apply_values<W: UiProps>(w: &W, values: &Settings) {
     w.set_bool(BoolProp::SettingsFollowSpeaker, follow_speaker);
     w.set_bool(BoolProp::SettingsAutoLoadMedia, auto_load);
     w.set_bool(BoolProp::SettingsPlayAnimations, play_animations);
+    w.set_bool(BoolProp::SettingsVoiceInARow, voice_in_a_row);
     set_animations_paused(!play_animations);
 }

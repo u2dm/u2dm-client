@@ -32,6 +32,7 @@ use crate::domain::invite::Invite;
 use crate::domain::link::LauncherSafeUrl;
 use crate::domain::message::TimelineMessage;
 use crate::domain::room::{Room, RoomId, Space};
+use crate::domain::settings::RowFilter;
 use crate::domain::sync::SyncEvent;
 use crate::domain::timeline::TimelineUpdate;
 use crate::domain::user_info::RoomMembership;
@@ -262,6 +263,7 @@ fn authenticated(session: Session) -> AuthenticatedSession {
 struct ActiveRoom {
     room_id: RoomId,
     live: bool,
+    rows: RowFilter,
     timeline_tx: mpsc::Sender<TimelineUpdate>,
     messages: Vec<TimelineMessage>,
     prepended: usize,

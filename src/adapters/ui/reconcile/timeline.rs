@@ -11,16 +11,24 @@ use crate::adapters::ui::spoilers::forget_spoiler_rows;
 use crate::domain::message::TimelineMessage;
 use crate::domain::timeline::{EnrichmentDelta, TimelinePatch};
 
+#[derive(Clone, Copy)]
+pub struct RowTime {
+    pub at: u64,
+    pub own: bool,
+}
+
 #[derive(Default)]
 pub struct TimelineIndex {
     row_of: HashMap<String, usize>,
     fingerprint_of: HashMap<String, u64>,
+    times: HashMap<String, RowTime>,
 }
 
 impl TimelineIndex {
     fn clear(&mut self) {
         self.row_of.clear();
         self.fingerprint_of.clear();
+        self.times.clear();
     }
 
     fn reset(&mut self, messages: &[TimelineMessage]) {
@@ -38,11 +46,19 @@ impl TimelineIndex {
         self.row_of.insert(message.unique_id.clone(), row);
         self.fingerprint_of
             .insert(message.unique_id.clone(), message.enrichment_fingerprint());
+        self.times.insert(
+            message.unique_id.clone(),
+            RowTime {
+                at: message.timestamp,
+                own: message.is_own,
+            },
+        );
     }
 
     fn forget(&mut self, unique_id: &str) {
         self.row_of.remove(unique_id);
         self.fingerprint_of.remove(unique_id);
+        self.times.remove(unique_id);
     }
 
     fn spliced_at(&mut self, row: usize, messages: &[TimelineMessage]) {
@@ -77,9 +93,11 @@ impl TimelineIndex {
         let Self {
             row_of,
             fingerprint_of,
+            times,
         } = self;
         row_of.retain(|_, row| *row < length);
         fingerprint_of.retain(|unique_id, _| row_of.contains_key(unique_id));
+        times.retain(|unique_id, _| row_of.contains_key(unique_id));
     }
 
     fn holds_revision(&self, delta: &EnrichmentDelta) -> bool {
@@ -101,6 +119,32 @@ impl TimelineIndex {
 
 pub fn timeline_row_of(unique_id: &str) -> Option<usize> {
     with_session(|session| session.timeline_index.row_of.get(unique_id).copied())
+}
+
+pub fn restamp_rows<T: Clone + 'static>(
+    model: &SpliceModel<T>,
+    entry_id: &dyn Fn(&T) -> &str,
+    restamp: &dyn Fn(&mut T, RowTime) -> bool,
+) {
+    let stamped: Vec<(usize, T, RowTime)> = with_session(|session| {
+        model
+            .iter()
+            .enumerate()
+            .filter_map(|(row, entry)| {
+                let time = session
+                    .timeline_index
+                    .times
+                    .get(entry_id(&entry))
+                    .copied()?;
+                Some((row, entry, time))
+            })
+            .collect()
+    });
+    for (row, mut entry, time) in stamped {
+        if restamp(&mut entry, time) {
+            model.set_row_data(row, entry);
+        }
+    }
 }
 
 struct TimelineOps<'a, T> {

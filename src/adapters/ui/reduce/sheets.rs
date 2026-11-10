@@ -428,6 +428,14 @@ fn show_sheet_avatar(
     }
 }
 
+pub(super) fn apply_joined_on(w: &impl UiProps, about: Option<&RoomAbout>) {
+    let joined_on = about
+        .and_then(|about| about.joined_at)
+        .map(message_sent_at_label)
+        .unwrap_or_default();
+    w.set_text(StringProp::RoomInfoJoinedOn, joined_on);
+}
+
 pub(super) fn apply_room_info<B: UiBackend>(
     w: &B::Window,
     last: Option<&RoomInfoView>,
@@ -459,13 +467,8 @@ pub(super) fn apply_room_info<B: UiBackend>(
         apply_room_topic(w, card.as_ref(), about.as_ref());
     }
     if last.is_none_or(|l| l.about != *about) {
-        let joined_on = about
-            .as_ref()
-            .and_then(|about| about.joined_at)
-            .map(message_sent_at_label)
-            .unwrap_or_default();
+        apply_joined_on(w, about.as_ref());
         let link = about.as_ref().map_or("", |about| about.link.as_str());
-        w.set_text(StringProp::RoomInfoJoinedOn, joined_on);
         w.set_text(StringProp::RoomInfoLink, link);
     }
     if last.is_none_or(|l| l.roster != *roster) {

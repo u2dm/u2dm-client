@@ -8,6 +8,7 @@ use super::backend::UiBackend;
 use super::present::invalidate_activity_labels;
 use super::reconcile::{RoomListing, apply_rooms};
 use super::reduce::latest_directory;
+use crate::commands::view::DirectoryView;
 use crate::ports::media::MediaCache;
 
 thread_local! {
@@ -22,20 +23,20 @@ fn schedule_next<B: UiBackend>(media: Arc<dyn MediaCache>) {
     let delay = duration_until_next_local_midnight();
     MIDNIGHT_TIMER.with(|timer| {
         timer.start(TimerMode::SingleShot, delay, move || {
-            refresh_room_labels::<B>(media.as_ref());
+            match latest_directory() {
+                Some(directory) => refresh_room_labels::<B>(&directory, media.as_ref()),
+                None => invalidate_activity_labels(),
+            }
             schedule_next::<B>(Arc::clone(&media));
         });
     });
 }
 
-fn refresh_room_labels<B: UiBackend>(media: &dyn MediaCache) {
+pub(super) fn refresh_room_labels<B: UiBackend>(directory: &DirectoryView, media: &dyn MediaCache) {
     invalidate_activity_labels();
-    let Some(directory) = latest_directory() else {
-        return;
-    };
     apply_rooms::<B>(
         &B::models().rooms,
-        RoomListing::of(&directory),
+        RoomListing::of(directory),
         RoomListing::default(),
         media,
     );
