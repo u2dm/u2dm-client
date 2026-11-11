@@ -1,8 +1,10 @@
 import { Palette } from "std-widgets.slint";
 import { IconDisplay, IconSet } from "@lucide";
 
+import { SettingKey } from "../enums.slint";
 import { FocusReveal, RovingKeys } from "./a11y.slint";
 import { ShadedClickArea } from "./state-layer.slint";
+import { SoughtTint } from "./sought-tint.slint";
 import { AppStyle, Fonts, IconSize, Metrics, Radius, Space, Stroke, Weight } from "../theme.slint";
 
 export struct ChoiceOption {
@@ -67,12 +69,18 @@ export component ChoiceGroup inherits Rectangle {
     in property <[ChoiceOption]> options;
     in property <int> selected: 0;
     in property <string> label;
+    in property <SettingKey> key;
 
     callback chose(int);
 
     function choose(index: int) {
         keys.cursor = index;
         root.chose(index);
+    }
+
+    public function take-focus() {
+        keys.cursor = root.selected;
+        keys.focus();
     }
 
     keys := RovingKeys {
@@ -105,6 +113,15 @@ export component ChoiceGroup inherits Rectangle {
             roving-focus: keys.has-focus && keys.cursor == index;
             clicked => {
                 root.choose(index);
+            }
+        }
+    }
+
+    SoughtTint {
+        key: root.key;
+        arrived(keyed) => {
+            if keyed {
+                root.take-focus();
             }
         }
     }

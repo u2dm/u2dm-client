@@ -3,7 +3,9 @@ import { IconDisplay, IconSet } from "@lucide";
 
 import { AppButton } from "../../../../components/button.slint";
 import { CopyFeedback } from "../../../../components/copier.slint";
+import { SoughtTint } from "../../../../components/sought-tint.slint";
 import { ShadedClickArea } from "../../../../components/state-layer.slint";
+import { SettingKey } from "../../../../enums.slint";
 import { AboutView } from "../../../../views.slint";
 import { Actions } from "../../../../actions.slint";
 import { SettingsWords } from "../../../../messages.slint";
@@ -116,7 +118,8 @@ export component AboutPage inherits Rectangle {
             note: @tr("U2DM is free software: you may share and change it under this licence.");
 
             ValueLine {
-                text: @tr("Licence");
+                key: SettingKey.licence;
+                text: SettingsWords.label(SettingKey.licence);
                 value: AboutView.licence;
             }
 
@@ -129,27 +132,42 @@ export component AboutPage inherits Rectangle {
             }
         }
 
-        VerticalLayout {
-            spacing: Space.md;
+        Rectangle {
+            height: copy-block.preferred-height;
+            border-radius: Radius.md;
 
-            HorizontalLayout {
-                alignment: start;
+            copy-block := VerticalLayout {
+                spacing: Space.md;
 
-                AppButton {
-                    above-modal: true;
-                    text: copier.copied ? @tr("Copied") : @tr("Copy version info");
-                    label: @tr("Copy version info");
-                    description: copier.copied ? @tr("Copied") : AboutView.report;
-                    icon: copier.copied ? IconSet.Check : IconSet.Copy;
-                    filled: false;
-                    clicked => {
-                        copier.copy(AboutView.report);
+                HorizontalLayout {
+                    alignment: start;
+
+                    copy-button := AppButton {
+                        above-modal: true;
+                        text: copier.copied ? @tr("Copied") : SettingsWords.label(SettingKey.version-info);
+                        label: SettingsWords.label(SettingKey.version-info);
+                        description: copier.copied ? @tr("Copied") : AboutView.report;
+                        icon: copier.copied ? IconSet.Check : IconSet.Copy;
+                        filled: false;
+                        clicked => {
+                            copier.copy(AboutView.report);
+                        }
                     }
+                }
+
+                GroupNote {
+                    text: @tr("One line for bug reports: {}", AboutView.report);
                 }
             }
 
-            GroupNote {
-                text: @tr("One line for bug reports: {}", AboutView.report);
+            SoughtTint {
+                key: SettingKey.version-info;
+                border-radius: parent.border-radius;
+                arrived(keyed) => {
+                    if keyed {
+                        copy-button.take-focus();
+                    }
+                }
             }
         }
     }

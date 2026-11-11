@@ -1,5 +1,7 @@
 import { SegmentedChoice } from "../../../../components/segmented-choice.slint";
+import { SoughtTint } from "../../../../components/sought-tint.slint";
 import { SectionLabel } from "../../../../components/text-roles.slint";
+import { SettingKey } from "../../../../enums.slint";
 import { AppStyle, Fonts, Metrics, Opacity, Radius, Space, Stroke, Weight } from "../../../../theme.slint";
 
 export component GroupLabel inherits HorizontalLayout {
@@ -35,6 +37,9 @@ export component GroupNote inherits Rectangle {
 export component SettingsGroup inherits VerticalLayout {
     in property <string> label;
     in property <string> note;
+    in property <SettingKey> key;
+
+    callback arrived(bool);
 
     spacing: Space.sm;
 
@@ -51,6 +56,13 @@ export component SettingsGroup inherits VerticalLayout {
             spacing: Stroke.hairline;
 
             @children
+        }
+
+        SoughtTint {
+            key: root.key;
+            arrived(keyed) => {
+                root.arrived(keyed);
+            }
         }
     }
 
@@ -84,11 +96,16 @@ export component NoteRow inherits Rectangle {
 export component ValueLine inherits Rectangle {
     in property <string> text;
     in property <string> value;
+    in property <SettingKey> key;
 
     height: max(Metrics.settings-row, line.preferred-height + Space.md);
     background: AppStyle.control;
     accessible-role: AccessibleRole.text;
     accessible-label: @tr("{}: {}", root.text, root.value);
+
+    SoughtTint {
+        key: root.key;
+    }
 
     line := HorizontalLayout {
         padding-left: Space.lg;
@@ -122,11 +139,21 @@ export component SegmentedRow inherits Rectangle {
     in property <int> selected;
     in property <bool> enabled: true;
     in property <string> reason;
+    in property <SettingKey> key;
 
     callback chose(int);
 
     height: layout.preferred-height;
     background: AppStyle.control;
+
+    SoughtTint {
+        key: root.key;
+        arrived(keyed) => {
+            if keyed && root.enabled {
+                choice.take-focus();
+            }
+        }
+    }
 
     layout := VerticalLayout {
         padding-left: Space.lg;
@@ -144,7 +171,7 @@ export component SegmentedRow inherits Rectangle {
             accessible-role: none;
         }
 
-        SegmentedChoice {
+        choice := SegmentedChoice {
             options: root.options;
             selected: root.selected;
             label: root.text;

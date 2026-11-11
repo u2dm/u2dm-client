@@ -26,6 +26,7 @@ component StorageSection inherits VerticalLayout {
     }
 
     SettingsGroup {
+        key: SettingKey.downloaded-media;
         label: @tr("STORAGE");
 
         ValueLine {
@@ -121,6 +122,7 @@ export component MediaPage inherits VerticalLayout {
 
     SettingsGroup {
         SwitchRow {
+            key: SettingKey.auto-load-media;
             text: SettingsWords.label(SettingKey.auto-load-media);
             detail: SettingsWords.detail(SettingKey.auto-load-media);
             on: SettingsView.auto-load-media;
@@ -130,6 +132,7 @@ export component MediaPage inherits VerticalLayout {
         }
 
         SwitchRow {
+            key: SettingKey.play-animations;
             text: SettingsWords.label(SettingKey.play-animations);
             detail: SettingsWords.detail(SettingKey.play-animations);
             on: SettingsView.play-animations;
@@ -139,6 +142,7 @@ export component MediaPage inherits VerticalLayout {
         }
 
         SwitchRow {
+            key: SettingKey.voice-in-a-row;
             text: SettingsWords.label(SettingKey.voice-in-a-row);
             detail: SettingsWords.detail(SettingKey.voice-in-a-row);
             on: SettingsView.voice-in-a-row;

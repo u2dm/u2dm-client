@@ -1,4 +1,4 @@
-import { CallLayout, Delivery, LoginPhase, MessageKind, PollPhase, ReactionSend, RoomInfoPlacement, Shield } from "./enums.slint";
+import { CallLayout, Delivery, LoginPhase, MessageKind, PollPhase, ReactionSend, RoomInfoPlacement, SettingKey, Shield } from "./enums.slint";
 import { AccountView, AttachmentView, CallView, CreateRoomView, DirectoryView, EncryptionView, InvitePeopleView, InviteView, LeaveSpaceView, LoginView, LogoutView, ReadersView, RemovalView, RoomInfoView, RoomLogView, RoomMenuView, RoomPreviewView, RoomView, SettingsView, SourceView, UserInfoView, VerificationView, VideoView, WindowView } from "./views.slint";
 import { Actions } from "./actions.slint";
 import { EditedMessage, MessageEntry, ReactionEntry, ReplyDraft } from "./types.slint";
@@ -333,6 +333,12 @@ export global CallPanel {
 
 export global SettingsEntry {
     in-out property <bool> by-keys;
+}
+
+export global SettingsSearch {
+    in-out property <SettingKey> sought: SettingKey.none;
+    in-out property <bool> keyed;
+    in-out property <int> serial;
 }
 
 export global Shell {

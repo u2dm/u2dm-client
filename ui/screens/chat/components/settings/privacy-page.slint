@@ -74,6 +74,7 @@ export component PrivacyPage inherits VerticalLayout {
         note: @tr("This device decides what it shares. Your other sessions choose for themselves.");
 
         SegmentedRow {
+            key: SettingKey.read-receipts;
             text: SettingsWords.label(SettingKey.read-receipts);
             options: [
                 SettingsWords.receipts(ReceiptVisibility.public),
@@ -87,6 +88,7 @@ export component PrivacyPage inherits VerticalLayout {
         }
 
         SwitchRow {
+            key: SettingKey.typing-notices;
             text: SettingsWords.label(SettingKey.typing-notices);
             detail: SettingsWords.detail(SettingKey.typing-notices);
             on: SettingsView.typing-notices;
@@ -96,6 +98,7 @@ export component PrivacyPage inherits VerticalLayout {
         }
 
         SwitchRow {
+            key: SettingKey.share-presence;
             text: SettingsWords.label(SettingKey.share-presence);
             detail: SettingsWords.detail(SettingKey.share-presence);
             on: SettingsView.share-presence;
@@ -110,6 +113,7 @@ export component PrivacyPage inherits VerticalLayout {
     }
 
     SettingsGroup {
+        key: SettingKey.ignored-users;
         label: @tr("IGNORED USERS");
         note: SettingsWords.detail(SettingKey.ignored-users);
 

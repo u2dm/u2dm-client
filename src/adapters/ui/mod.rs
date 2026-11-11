@@ -40,6 +40,7 @@ mod rows;
 pub(crate) mod schema;
 mod sending;
 mod session;
+mod settings_search;
 mod splice_model;
 mod spoilers;
 mod swipe;

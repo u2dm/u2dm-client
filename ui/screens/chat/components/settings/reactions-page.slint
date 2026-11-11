@@ -4,6 +4,7 @@ import { IconDisplay, IconSet } from "@lucide";
 import { FocusReveal, RovingKeys } from "../../../../components/a11y.slint";
 import { LinkButton } from "../../../../components/button.slint";
 import { ShadedClickArea } from "../../../../components/state-layer.slint";
+import { SoughtTint } from "../../../../components/sought-tint.slint";
 import { SettingKey } from "../../../../enums.slint";
 import { EmojiStore } from "../../../../emoji-store.slint";
 import { SettingsView } from "../../../../views.slint";
@@ -104,6 +105,15 @@ component QuickReactionsRow inherits Rectangle {
 
     height: layout.preferred-height;
     background: AppStyle.control;
+
+    SoughtTint {
+        key: SettingKey.quick-reactions;
+        arrived(keyed) => {
+            if keyed {
+                root.focus-slot(0);
+            }
+        }
+    }
 
     layout := VerticalLayout {
         padding-left: root.inset;
@@ -236,6 +246,16 @@ component SkinToneRow inherits Rectangle {
 
     height: layout.preferred-height;
     background: AppStyle.control;
+
+    SoughtTint {
+        key: SettingKey.skin-tone;
+        arrived(keyed) => {
+            if keyed {
+                tones.cursor = EmojiStore.tone;
+                tones.focus();
+            }
+        }
+    }
 
     tones := RovingKeys {
         count: SkinTones.colors.length;

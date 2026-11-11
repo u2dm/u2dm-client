@@ -4,14 +4,15 @@ import { IconDisplay, IconSet, Icon } from "@lucide";
 import { ClickArea, FocusReveal, RovingKeys } from "../../../../components/a11y.slint";
 import { Hairline, MenuDivider } from "../../../../components/divider.slint";
 import { MenuScroll } from "../../../../components/menu.slint";
+import { SearchField } from "../../../../components/search-field.slint";
 import { FixedDialogCard, ModalHost } from "../../../../components/overlay.slint";
 import { StateLayer } from "../../../../components/state-layer.slint";
-import { SettingsLayout, SettingsPage } from "../../../../enums.slint";
+import { SettingKey, SettingsLayout, SettingsPage } from "../../../../enums.slint";
 import { AboutView, AppearanceView, EncryptionView, SettingsView } from "../../../../views.slint";
 import { Actions } from "../../../../actions.slint";
 import { SettingsWords } from "../../../../messages.slint";
-import { MetaTip, Reactions, SettingsEntry } from "../../../../local.slint";
-import { AppStyle, Fonts, IconSize, Metrics, Motion, Radius, Space, Weight } from "../../../../theme.slint";
+import { MetaTip, Reactions, SettingsEntry, SettingsSearch } from "../../../../local.slint";
+import { AppStyle, Fonts, IconSize, Metrics, Motion, Radius, Size, Space, Weight } from "../../../../theme.slint";
 import { AboutPage } from "./about-page.slint";
 import { AppearancePage } from "./appearance-page.slint";
 import { MessagesPage } from "./messages-page.slint";
@@ -22,6 +23,7 @@ import { PrivacyPage } from "./privacy-page.slint";
 import { ReactionsPage } from "./reactions-page.slint";
 import { QuickReactions } from "../timeline/quick-reactions.slint";
 import { SettingsHeader, UnsavedBanner } from "./page-header.slint";
+import { SettingsIndexEntry } from "../../../../types.slint";
 
 export global SettingsPages {
     out property <[SettingsPage]> all: [
@@ -122,6 +124,221 @@ export global SettingsPages {
     }
 }
 
+export global SettingsIndex {
+    out property <[SettingsIndexEntry]> entries: [
+        {
+            key: SettingKey.theme,
+            page: SettingsPage.appearance,
+            label: SettingsWords.label(SettingKey.theme),
+            page-title: SettingsPages.title(SettingsPage.appearance),
+            terms: @tr("settings search" => "dark light mode colours"),
+        },
+        {
+            key: SettingKey.motion,
+            page: SettingsPage.appearance,
+            label: SettingsWords.label(SettingKey.motion),
+            page-title: SettingsPages.title(SettingsPage.appearance),
+            terms: @tr("settings search" => "animations reduce movement"),
+        },
+        {
+            key: SettingKey.clock,
+            page: SettingsPage.appearance,
+            label: SettingsWords.label(SettingKey.clock),
+            page-title: SettingsPages.title(SettingsPage.appearance),
+            terms: @tr("settings search" => "time 12 24 hour clock am pm"),
+        },
+        {
+            key: SettingKey.send-key,
+            page: SettingsPage.messages,
+            label: SettingsWords.label(SettingKey.send-key),
+            page-title: SettingsPages.title(SettingsPage.messages),
+            terms: @tr("settings search" => "enter ctrl keyboard shortcut new line"),
+        },
+        {
+            key: SettingKey.joins-and-leaves,
+            page: SettingsPage.messages,
+            label: SettingsWords.label(SettingKey.joins-and-leaves),
+            page-title: SettingsPages.title(SettingsPage.messages),
+            terms: @tr("settings search" => "members join leave timeline rows"),
+        },
+        {
+            key: SettingKey.profile-changes,
+            page: SettingsPage.messages,
+            label: SettingsWords.label(SettingKey.profile-changes),
+            page-title: SettingsPages.title(SettingsPage.messages),
+            terms: @tr("settings search" => "rename display name avatar picture timeline"),
+        },
+        {
+            key: SettingKey.quick-reactions,
+            page: SettingsPage.reactions,
+            label: SettingsWords.label(SettingKey.quick-reactions),
+            page-title: SettingsPages.title(SettingsPage.reactions),
+            terms: @tr("settings search" => "emoji favourite react star default one click"),
+        },
+        {
+            key: SettingKey.skin-tone,
+            page: SettingsPage.reactions,
+            label: SettingsWords.label(SettingKey.skin-tone),
+            page-title: SettingsPages.title(SettingsPage.reactions),
+            terms: @tr("settings search" => "emoji colour"),
+        },
+        {
+            key: SettingKey.desktop-notifications,
+            page: SettingsPage.notifications,
+            label: SettingsWords.label(SettingKey.desktop-notifications),
+            page-title: SettingsPages.title(SettingsPage.notifications),
+            terms: @tr("settings search" => "alerts popups banners"),
+        },
+        {
+            key: SettingKey.hide-message-text,
+            page: SettingsPage.notifications,
+            label: SettingsWords.label(SettingKey.hide-message-text),
+            page-title: SettingsPages.title(SettingsPage.notifications),
+            terms: @tr("settings search" => "privacy preview content"),
+        },
+        {
+            key: SettingKey.notification-sound,
+            page: SettingsPage.notifications,
+            label: SettingsWords.label(SettingKey.notification-sound),
+            page-title: SettingsPages.title(SettingsPage.notifications),
+            terms: @tr("settings search" => "audio beep chime"),
+        },
+        {
+            key: SettingKey.account-notifications,
+            page: SettingsPage.notifications,
+            label: SettingsWords.label(SettingKey.account-notifications),
+            page-title: SettingsPages.title(SettingsPage.notifications),
+            terms: @tr("settings search" => "push mute all sessions"),
+        },
+        {
+            key: SettingKey.direct-default,
+            page: SettingsPage.notifications,
+            label: SettingsWords.label(SettingKey.direct-default),
+            page-title: SettingsPages.title(SettingsPage.notifications),
+            terms: @tr("settings search" => "dm private chats mentions"),
+        },
+        {
+            key: SettingKey.group-default,
+            page: SettingsPage.notifications,
+            label: SettingsWords.label(SettingKey.group-default),
+            page-title: SettingsPages.title(SettingsPage.notifications),
+            terms: @tr("settings search" => "rooms mentions"),
+        },
+        {
+            key: SettingKey.keywords,
+            page: SettingsPage.notifications,
+            label: SettingsWords.label(SettingKey.keywords),
+            page-title: SettingsPages.title(SettingsPage.notifications),
+            terms: @tr("settings search" => "highlight words mentions"),
+        },
+        {
+            key: SettingKey.read-receipts,
+            page: SettingsPage.privacy,
+            label: SettingsWords.label(SettingKey.read-receipts),
+            page-title: SettingsPages.title(SettingsPage.privacy),
+            terms: @tr("settings search" => "seen read private"),
+        },
+        {
+            key: SettingKey.typing-notices,
+            page: SettingsPage.privacy,
+            label: SettingsWords.label(SettingKey.typing-notices),
+            page-title: SettingsPages.title(SettingsPage.privacy),
+            terms: @tr("settings search" => "typing indicator"),
+        },
+        {
+            key: SettingKey.share-presence,
+            page: SettingsPage.privacy,
+            label: SettingsWords.label(SettingKey.share-presence),
+            page-title: SettingsPages.title(SettingsPage.privacy),
+            terms: @tr("settings search" => "online status away last seen"),
+        },
+        {
+            key: SettingKey.ignored-users,
+            page: SettingsPage.privacy,
+            label: SettingsWords.label(SettingKey.ignored-users),
+            page-title: SettingsPages.title(SettingsPage.privacy),
+            terms: @tr("settings search" => "block mute people"),
+        },
+        {
+            key: SettingKey.remember-devices,
+            page: SettingsPage.calls,
+            label: SettingsWords.label(SettingKey.remember-devices),
+            page-title: SettingsPages.title(SettingsPage.calls),
+            terms: @tr("settings search" => "microphone speaker camera headset"),
+        },
+        {
+            key: SettingKey.camera-on-join,
+            page: SettingsPage.calls,
+            label: SettingsWords.label(SettingKey.camera-on-join),
+            page-title: SettingsPages.title(SettingsPage.calls),
+            terms: @tr("settings search" => "video webcam"),
+        },
+        {
+            key: SettingKey.ringtone,
+            page: SettingsPage.calls,
+            label: SettingsWords.label(SettingKey.ringtone),
+            page-title: SettingsPages.title(SettingsPage.calls),
+            terms: @tr("settings search" => "ring incoming sound"),
+        },
+        {
+            key: SettingKey.call-layout,
+            page: SettingsPage.calls,
+            label: SettingsWords.label(SettingKey.call-layout),
+            page-title: SettingsPages.title(SettingsPage.calls),
+            terms: @tr("settings search" => "stage gallery split view"),
+        },
+        {
+            key: SettingKey.follow-speaker,
+            page: SettingsPage.calls,
+            label: SettingsWords.label(SettingKey.follow-speaker),
+            page-title: SettingsPages.title(SettingsPage.calls),
+            terms: @tr("settings search" => "active speaker stage"),
+        },
+        {
+            key: SettingKey.auto-load-media,
+            page: SettingsPage.media,
+            label: SettingsWords.label(SettingKey.auto-load-media),
+            page-title: SettingsPages.title(SettingsPage.media),
+            terms: @tr("settings search" => "images download data previews"),
+        },
+        {
+            key: SettingKey.play-animations,
+            page: SettingsPage.media,
+            label: SettingsWords.label(SettingKey.play-animations),
+            page-title: SettingsPages.title(SettingsPage.media),
+            terms: @tr("settings search" => "gif animated stickers emoji"),
+        },
+        {
+            key: SettingKey.voice-in-a-row,
+            page: SettingsPage.media,
+            label: SettingsWords.label(SettingKey.voice-in-a-row),
+            page-title: SettingsPages.title(SettingsPage.media),
+            terms: @tr("settings search" => "audio voice autoplay next"),
+        },
+        {
+            key: SettingKey.downloaded-media,
+            page: SettingsPage.media,
+            label: SettingsWords.label(SettingKey.downloaded-media),
+            page-title: SettingsPages.title(SettingsPage.media),
+            terms: @tr("settings search" => "cache storage disk space clear"),
+        },
+        {
+            key: SettingKey.licence,
+            page: SettingsPage.about,
+            label: SettingsWords.label(SettingKey.licence),
+            page-title: SettingsPages.title(SettingsPage.about),
+            terms: @tr("settings search" => "agpl free software legal source code"),
+        },
+        {
+            key: SettingKey.version-info,
+            page: SettingsPage.about,
+            label: SettingsWords.label(SettingKey.version-info),
+            page-title: SettingsPages.title(SettingsPage.about),
+            terms: @tr("settings search" => "version bug report copy build about"),
+        },
+    ];
+}
+
 component SettingsNavRow inherits Rectangle {
     in property <Icon> icon;
     in property <color> icon-tint: AppStyle.foreground-muted;
@@ -202,10 +419,21 @@ component SettingsNavRow inherits Rectangle {
 component SettingsNav inherits Rectangle {
     in property <bool> listing;
     in property <int> selected;
+    in-out property <string> query;
 
     callback picked(SettingsPage, bool);
     callback followed(bool);
+    callback found(int, bool);
 
+    property <bool> searching: root.query != "";
+    property <[int]> hits: root.searching ? Actions.settings-matches(root.query, SettingsIndex.entries) : [];
+    property <int> opened-hit: -1;
+    property <length> hit-height: Metrics.choice-row;
+    property <length> hit-pitch: root.hit-height + Space.xs;
+    property <length> list-top: Size.md + Space.md;
+    property <string> found-words: root.hits.length == 0
+        ? @tr("No settings match")
+        : @tr("{n} setting" | "{n} settings" % root.hits.length);
     property <int> pages: SettingsPages.all.length;
     property <int> account: root.pages;
     property <int> encryption: root.pages + 1;
@@ -219,11 +447,45 @@ component SettingsNav inherits Rectangle {
         : @tr("Encryption");
 
     public function take-focus(ring: bool) {
+        if root.searching {
+            found-keys.cursor = ring && root.hits.length > 0
+                ? clamp(root.opened-hit, 0, root.hits.length - 1)
+                : -1;
+            found-keys.focus();
+            if found-keys.cursor >= 0 {
+                root.reveal-hit(found-keys.cursor);
+            }
+            return;
+        }
         keys.cursor = ring ? root.selected : -1;
         keys.focus();
         if ring {
             root.reveal(root.selected);
         }
+    }
+
+    public function focus-search() {
+        search.focus();
+    }
+
+    pure function hit-label(position: int) -> string {
+        if position < 0 || position >= root.hits.length {
+            return "";
+        }
+        return @tr("{}, {}", SettingsIndex.entries[root.hits[position]].label,
+            SettingsIndex.entries[root.hits[position]].page-title);
+    }
+
+    function open-hit(position: int, by-keys: bool) {
+        if position < 0 || position >= root.hits.length {
+            return;
+        }
+        root.opened-hit = position;
+        root.found(root.hits[position], by-keys);
+    }
+
+    function reveal-hit(position: int) {
+        results.reveal(count.preferred-height + Space.xs + position * root.hit-pitch, root.hit-height);
     }
 
     pure function label-at(index: int) -> string {
@@ -258,8 +520,66 @@ component SettingsNav inherits Rectangle {
         scroll.reveal(root.row-top(index), root.row-height);
     }
 
+    field-keys := FocusScope {
+        x: Space.sm;
+        y: 0;
+        width: root.width - 2 * Space.sm;
+        height: Size.md;
+        focus-on-click: false;
+        focus-on-tab-navigation: false;
+        capture-key-pressed(event) => {
+            if event.text == Key.DownArrow && root.hits.length > 0 {
+                found-keys.cursor = 0;
+                found-keys.focus();
+                root.reveal-hit(0);
+                return accept;
+            }
+            return reject;
+        }
+
+        search := SearchField {
+            width: 100%;
+            height: 100%;
+            placeholder: @tr("Search settings");
+            query <=> root.query;
+            above-modal: true;
+            edited(text) => {
+                found-keys.cursor = -1;
+                root.opened-hit = -1;
+                results.content-y = 0;
+            }
+            accepted => {
+                root.open-hit(0, true);
+            }
+        }
+    }
+
+    found-keys := RovingKeys {
+        count: root.hits.length;
+        focus-on-tab-navigation: root.searching;
+        accessible-label: root.hit-label(max(self.cursor, 0));
+        accessible-description: root.found-words;
+        accessible-action-default => {
+            root.open-hit(max(self.cursor, 0), true);
+        }
+        intercept(event) => {
+            if event.text == Key.UpArrow && self.cursor <= 0 {
+                root.focus-search();
+                return accept;
+            }
+            return reject;
+        }
+        moved(position) => {
+            root.reveal-hit(position);
+        }
+        activated(position) => {
+            root.open-hit(position, true);
+        }
+    }
+
     keys := RovingKeys {
         count: root.about + 1;
+        focus-on-tab-navigation: !root.searching;
         start-at: root.selected;
         accessible-role: tab;
         accessible-label: root.label-at(max(self.cursor, 0));
@@ -284,8 +604,9 @@ component SettingsNav inherits Rectangle {
     }
 
     scroll := MenuScroll {
-        y: 0;
-        height: root.height;
+        y: root.list-top;
+        height: root.height - root.list-top;
+        visible: !root.searching;
 
         for page[index] in SettingsPages.all: SettingsNavRow {
             height: root.row-height;
@@ -342,9 +663,40 @@ component SettingsNav inherits Rectangle {
             }
         }
     }
+
+    results := MenuScroll {
+        y: root.list-top;
+        height: root.height - root.list-top;
+        visible: root.searching;
+
+        count := HorizontalLayout {
+            padding-left: Space.md;
+            padding-right: Space.md;
+
+            Text {
+                text: root.found-words;
+                font-size: Fonts.caption;
+                color: AppStyle.foreground-muted;
+                wrap: word-wrap;
+                accessible-live-region: AccessibleLiveness.polite;
+            }
+        }
+
+        for hit[position] in root.hits: SettingsNavRow {
+            height: root.hit-height;
+            icon: SettingsPages.icon(SettingsIndex.entries[hit].page);
+            label: SettingsIndex.entries[hit].label;
+            detail: SettingsIndex.entries[hit].page-title;
+            roving-focus: found-keys.has-focus && found-keys.cursor == position;
+            clicked => {
+                root.open-hit(position, false);
+            }
+        }
+    }
 }
 
 export component SettingsDialog inherits ModalHost {
+    property <string> query;
     property <bool> asking-clear;
     property <int> picking-slot: -1;
     property <int> picker-peels;
@@ -376,7 +728,7 @@ export component SettingsDialog inherits ModalHost {
         if above > 0 {
             pane.content-y = min(0px, pane.content-y + above);
         } else if below > 0 {
-            pane.content-y = max(pane.visible-height - pane.content-height, pane.content-y - below);
+            pane.content-y = max(pane.visible-height - pane.content-height, pane.content-y - min(below, -above));
         }
     }
 
@@ -403,6 +755,22 @@ export component SettingsDialog inherits ModalHost {
             nav.take-focus(false);
         }
         Actions.show-settings-page({ page: page });
+    }
+
+    function open-result(index: int, by-keys: bool) {
+        root.asking-clear = false;
+        root.picking-slot = -1;
+        root.keyed = false;
+        SettingsSearch.sought = SettingsIndex.entries[index].key;
+        SettingsSearch.keyed = by-keys;
+        SettingsSearch.serial += 1;
+        if root.wide {
+            nav.take-focus(false);
+        } else {
+            root.focus();
+            root.arriving = true;
+        }
+        Actions.show-settings-page({ page: SettingsIndex.entries[index].page });
     }
 
     function follow-link(account: bool) {
@@ -460,11 +828,17 @@ export component SettingsDialog inherits ModalHost {
             root.list(true);
             return;
         }
+        if root.query != "" && !root.dismissing-by-pointer {
+            root.query = "";
+            nav.focus-search();
+            return;
+        }
         Actions.close-settings();
     }
     opened => {
         Reactions.close();
         MetaTip.clear();
+        SettingsSearch.sought = SettingKey.none;
         root.keyed = SettingsEntry.by-keys;
         SettingsEntry.by-keys = false;
         root.report-layout();
@@ -548,11 +922,15 @@ export component SettingsDialog inherits ModalHost {
                     visible: root.wide || root.listing;
                     listing: root.listing;
                     selected: SettingsPages.position(root.page);
+                    query <=> root.query;
                     picked(page, by-keys) => {
                         root.open-page(page, by-keys);
                     }
                     followed(account) => {
                         root.follow-link(account);
+                    }
+                    found(index, by-keys) => {
+                        root.open-result(index, by-keys);
                     }
                 }
 

@@ -24,7 +24,7 @@ use crate::adapters::ui::decode::{
 use crate::adapters::ui::router::{DraftVerdict, EditedRow, EditedText};
 use crate::adapters::ui::schema::simple_callbacks;
 use crate::adapters::ui::video::{self, millis_to_duration};
-use crate::adapters::ui::{audio, drafts, emote, mention, router};
+use crate::adapters::ui::{audio, drafts, emote, mention, router, settings_search};
 use crate::app::input::CommandSender;
 use crate::commands::ui::{ComposerActivity, TimelineVisibility, ViewportChanged, WindowAttention};
 use crate::error::{AppError, Result};
@@ -237,6 +237,25 @@ impl SlintUiAdapter {
                 &string_arg(args, 0),
                 &string_arg(args, 1),
             ))
+        })?;
+
+        bind_action(&self.instance, callback::SETTINGS_MATCHES, |args| {
+            model_value(
+                settings_search::matching_entries(
+                    &string_arg(args, 0),
+                    model_of(args.get(1)).iter().map(|entry| match entry {
+                        Value::Struct(entry) => [
+                            field(&entry, "label"),
+                            field(&entry, "page-title"),
+                            field(&entry, "terms"),
+                        ],
+                        _ => [String::new(), String::new(), String::new()],
+                    }),
+                )
+                .into_iter()
+                .map(num)
+                .collect(),
+            )
         })?;
 
         bind_action(&self.instance, callback::POLL_ANSWER_TEXTS, |args| {

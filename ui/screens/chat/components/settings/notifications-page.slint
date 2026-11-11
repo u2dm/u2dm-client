@@ -3,6 +3,7 @@ import { IconSet } from "@lucide";
 
 import { ErrorBanner } from "../../../../components/banner.slint";
 import { AppButton, IconButton } from "../../../../components/button.slint";
+import { SoughtTint } from "../../../../components/sought-tint.slint";
 import { SwitchRow } from "../../../../components/switch-row.slint";
 import { TextField } from "../../../../components/text-field.slint";
 import { AccountRule, RoomClass, RoomDefault, SettingFlag, SettingKey, UserMessageKind } from "../../../../enums.slint";
@@ -10,7 +11,7 @@ import { KeywordEntry } from "../../../../types.slint";
 import { SettingsView } from "../../../../views.slint";
 import { Actions } from "../../../../actions.slint";
 import { SettingsWords } from "../../../../messages.slint";
-import { AppStyle, Fonts, Metrics, Size, Space } from "../../../../theme.slint";
+import { AppStyle, Fonts, Metrics, Radius, Size, Space } from "../../../../theme.slint";
 import { GroupLabel, GroupNote, NoteRow, SegmentedRow, SettingsGroup } from "./group.slint";
 
 component KeywordLine inherits Rectangle {
@@ -48,7 +49,7 @@ component KeywordLine inherits Rectangle {
     }
 }
 
-component KeywordsSection inherits VerticalLayout {
+component KeywordsSection inherits Rectangle {
     property <string> draft;
     property <bool> refused;
 
@@ -64,59 +65,73 @@ component KeywordsSection inherits VerticalLayout {
         root.refused = false;
     }
 
-    spacing: Space.sm;
+    height: section.preferred-height;
 
-    GroupLabel {
-        text: @tr("KEYWORDS");
-    }
+    section := VerticalLayout {
+        spacing: Space.sm;
 
-    HorizontalLayout {
-        spacing: Space.md;
+        GroupLabel {
+            text: @tr("KEYWORDS");
+        }
 
-        field := TextField {
-            horizontal-stretch: 1;
-            icon: IconSet.Tag;
-            above-modal: true;
-            label: @tr("New keyword");
-            placeholder: @tr("Add a keyword");
-            text <=> root.draft;
-            accepted => {
-                root.add();
+        HorizontalLayout {
+            spacing: Space.md;
+
+            field := TextField {
+                horizontal-stretch: 1;
+                icon: IconSet.Tag;
+                above-modal: true;
+                label: @tr("New keyword");
+                placeholder: @tr("Add a keyword");
+                text <=> root.draft;
+                accepted => {
+                    root.add();
+                }
+            }
+
+            AppButton {
+                horizontal-stretch: 0;
+                above-modal: true;
+                text: @tr("Add");
+                filled: false;
+                enabled: root.draft != "";
+                clicked => {
+                    root.add();
+                }
             }
         }
 
-        AppButton {
-            horizontal-stretch: 0;
-            above-modal: true;
-            text: @tr("Add");
-            filled: false;
-            enabled: root.draft != "";
-            clicked => {
-                root.add();
+        if root.refused: Text {
+            text: @tr("A keyword cannot start with a dot or contain a slash or backslash");
+            font-size: Fonts.body-small;
+            color: AppStyle.danger-muted;
+            wrap: word-wrap;
+            accessible-live-region: AccessibleLiveness.assertive;
+        }
+
+        SettingsGroup {
+            note: SettingsWords.detail(SettingKey.keywords);
+
+            if SettingsView.keywords.length == 0: NoteRow {
+                text: @tr("No keywords yet");
+            }
+
+            for entry in SettingsView.keywords: KeywordLine {
+                entry: entry;
+                remove => {
+                    field.focus-input();
+                    Actions.remove-keyword(entry.keyword);
+                }
             }
         }
     }
 
-    if root.refused: Text {
-        text: @tr("A keyword cannot start with a dot or contain a slash or backslash");
-        font-size: Fonts.body-small;
-        color: AppStyle.danger-muted;
-        wrap: word-wrap;
-        accessible-live-region: AccessibleLiveness.assertive;
-    }
-
-    SettingsGroup {
-        note: SettingsWords.detail(SettingKey.keywords);
-
-        if SettingsView.keywords.length == 0: NoteRow {
-            text: @tr("No keywords yet");
-        }
-
-        for entry in SettingsView.keywords: KeywordLine {
-            entry: entry;
-            remove => {
+    SoughtTint {
+        key: SettingKey.keywords;
+        border-radius: Radius.md;
+        arrived(keyed) => {
+            if keyed {
                 field.focus-input();
-                Actions.remove-keyword(entry.keyword);
             }
         }
     }
@@ -143,6 +158,7 @@ export component NotificationsPage inherits VerticalLayout {
         note: root.shown ? "" : @tr("Hide message text and the notification sound apply once notifications are on.");
 
         SwitchRow {
+            key: SettingKey.desktop-notifications;
             text: SettingsWords.label(SettingKey.desktop-notifications);
             detail: SettingsWords.detail(SettingKey.desktop-notifications);
             on: root.shown;
@@ -152,6 +168,7 @@ export component NotificationsPage inherits VerticalLayout {
         }
 
         SwitchRow {
+            key: SettingKey.hide-message-text;
             text: SettingsWords.label(SettingKey.hide-message-text);
             detail: SettingsWords.detail(SettingKey.hide-message-text);
             enabled: root.shown;
@@ -163,6 +180,7 @@ export component NotificationsPage inherits VerticalLayout {
         }
 
         SwitchRow {
+            key: SettingKey.notification-sound;
             text: SettingsWords.label(SettingKey.notification-sound);
             detail: SettingsWords.detail(SettingKey.notification-sound);
             enabled: root.shown;
@@ -195,6 +213,7 @@ export component NotificationsPage inherits VerticalLayout {
                     : @tr("Kept on your homeserver and used by all your sessions. A room with its own setting keeps it.");
 
                 SwitchRow {
+                    key: SettingKey.account-notifications;
                     text: SettingsWords.label(SettingKey.account-notifications);
                     detail: SettingsView.account-rule == AccountRule.missing
                         ? @tr("Your homeserver does not offer this switch")
@@ -207,6 +226,7 @@ export component NotificationsPage inherits VerticalLayout {
                 }
 
                 SegmentedRow {
+                    key: SettingKey.direct-default;
                     text: SettingsWords.label(SettingKey.direct-default);
                     options: [
                         SettingsWords.room-default(RoomDefault.all-messages),
@@ -222,6 +242,7 @@ export component NotificationsPage inherits VerticalLayout {
                 }
 
                 SegmentedRow {
+                    key: SettingKey.group-default;
                     text: SettingsWords.label(SettingKey.group-default);
                     options: [
                         SettingsWords.room-default(RoomDefault.all-messages),

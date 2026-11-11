@@ -1,6 +1,8 @@
 import { Palette } from "std-widgets.slint";
 
+import { SettingKey } from "../enums.slint";
 import { ShadedClickArea } from "./state-layer.slint";
+import { SoughtTint } from "./sought-tint.slint";
 import { AppStyle, Fonts, Metrics, Motion, Opacity, Radius, Space, Stroke, Weight } from "../theme.slint";
 
 export component SwitchRow inherits ShadedClickArea {
@@ -8,6 +10,7 @@ export component SwitchRow inherits ShadedClickArea {
     in property <string> detail;
     in property <bool> on;
     in property <string> reason;
+    in property <SettingKey> key;
 
     callback toggled(bool);
 
@@ -24,6 +27,15 @@ export component SwitchRow inherits ShadedClickArea {
     accessible-description: root.enabled || root.reason == "" ? root.detail : @tr("{}. {}", root.reason, root.detail);
     clicked => {
         root.toggled(!root.on);
+    }
+
+    SoughtTint {
+        key: root.key;
+        arrived(keyed) => {
+            if keyed && root.enabled {
+                root.take-focus();
+            }
+        }
     }
 
     content := HorizontalLayout {

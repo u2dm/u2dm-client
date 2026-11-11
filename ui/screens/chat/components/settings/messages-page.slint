@@ -11,6 +11,7 @@ export component MessagesPage inherits VerticalLayout {
 
     SettingsGroup {
         SegmentedRow {
+            key: SettingKey.send-key;
             text: SettingsWords.label(SettingKey.send-key);
             options: [SettingsWords.send-key(SendKey.enter), SettingsWords.send-key(SendKey.ctrl-enter)];
             selected: SettingsView.send-key == SendKey.ctrl-enter ? 1 : 0;
@@ -25,6 +26,7 @@ export component MessagesPage inherits VerticalLayout {
         label: @tr("TIMELINE");
 
         SwitchRow {
+            key: SettingKey.joins-and-leaves;
             text: SettingsWords.label(SettingKey.joins-and-leaves);
             detail: SettingsWords.detail(SettingKey.joins-and-leaves);
             on: SettingsView.joins-and-leaves;
@@ -34,6 +36,7 @@ export component MessagesPage inherits VerticalLayout {
         }
 
         SwitchRow {
+            key: SettingKey.profile-changes;
             text: SettingsWords.label(SettingKey.profile-changes);
             detail: SettingsWords.detail(SettingKey.profile-changes);
             on: SettingsView.profile-changes;

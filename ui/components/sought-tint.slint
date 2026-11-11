@@ -1,0 +1,78 @@
+import { SettingKey } from "../enums.slint";
+import { SettingsSearch } from "../local.slint";
+import { AppStyle, Motion } from "../theme.slint";
+import { FocusReveal } from "./a11y.slint";
+
+export component SoughtTint inherits Rectangle {
+    in property <SettingKey> key: SettingKey.none;
+
+    callback arrived(bool);
+
+    property <int> seek: root.key != SettingKey.none && SettingsSearch.sought == root.key
+        ? SettingsSearch.serial
+        : -1;
+    property <bool> lit;
+    property <bool> keyed;
+
+    function start() {
+        settle.running = true;
+    }
+
+    x: 0;
+    y: 0;
+    width: 100%;
+    height: 100%;
+    background: AppStyle.accent-background-soft;
+    opacity: root.lit ? 1 : 0;
+    accessible-role: none;
+
+    animate opacity {
+        duration: root.lit ? 0ms : Motion.highlight-fade;
+        easing: ease-out;
+    }
+
+    init => {
+        if root.seek >= 0 {
+            root.start();
+        }
+    }
+
+    changed seek => {
+        if root.seek >= 0 {
+            root.start();
+        }
+    }
+
+    settle := Timer {
+        interval: Motion.scroll-settle;
+        running: false;
+        triggered => {
+            self.running = false;
+            root.keyed = SettingsSearch.keyed;
+            SettingsSearch.sought = SettingKey.none;
+            root.lit = true;
+            FocusReveal.ask(root.absolute-position.x, root.absolute-position.y, root.height);
+            hand-over.running = true;
+            hold.running = true;
+            hold.restart();
+        }
+    }
+
+    hand-over := Timer {
+        interval: Motion.scroll-settle;
+        running: false;
+        triggered => {
+            self.running = false;
+            root.arrived(root.keyed);
+        }
+    }
+
+    hold := Timer {
+        interval: Motion.feedback-hold;
+        running: false;
+        triggered => {
+            self.running = false;
+            root.lit = false;
+        }
+    }
+}

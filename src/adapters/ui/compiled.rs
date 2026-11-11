@@ -69,7 +69,7 @@ use super::schema::{
 };
 use super::session::active_models;
 use super::video::{self, millis_to_duration};
-use super::{about, audio, drafts, emoji, emote, mention, motion, reduce, router};
+use super::{about, audio, drafts, emoji, emote, mention, motion, reduce, router, settings_search};
 use crate::app::input::CommandSender;
 use crate::commands::effects::{Effect, VerificationActivity};
 use crate::commands::messages::{UserMessage, UserMessageKind};
@@ -777,6 +777,15 @@ impl SlintUiAdapter {
                     .map(|answer| answer.label)
                     .collect::<VecModel<SharedString>>(),
             )
+        });
+
+        actions(win).on_settings_matches(|query, entries| {
+            ModelRc::new(VecModel::from(settings_search::matching_entries(
+                &query,
+                entries
+                    .iter()
+                    .map(|entry| [entry.label, entry.page_title, entry.terms]),
+            )))
         });
     }
 

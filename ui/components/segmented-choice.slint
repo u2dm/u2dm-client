@@ -52,6 +52,11 @@ export component SegmentedChoice inherits Rectangle {
         root.chose(index);
     }
 
+    public function take-focus() {
+        keys.cursor = root.selected;
+        keys.focus();
+    }
+
     height: Metrics.settings-segment;
     opacity: root.enabled ? 1 : Opacity.disabled;
 

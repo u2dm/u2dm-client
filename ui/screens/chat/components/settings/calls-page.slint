@@ -21,6 +21,7 @@ export component CallsPage inherits VerticalLayout {
         label: @tr("DEVICES");
 
         SwitchRow {
+            key: SettingKey.remember-devices;
             text: SettingsWords.label(SettingKey.remember-devices);
             detail: SettingsWords.detail(SettingKey.remember-devices);
             on: SettingsView.remember-devices;
@@ -30,6 +31,7 @@ export component CallsPage inherits VerticalLayout {
         }
 
         SwitchRow {
+            key: SettingKey.camera-on-join;
             text: SettingsWords.label(SettingKey.camera-on-join);
             detail: SettingsWords.detail(SettingKey.camera-on-join);
             on: SettingsView.camera-on-join;
@@ -43,6 +45,7 @@ export component CallsPage inherits VerticalLayout {
         label: @tr("INCOMING CALLS");
 
         SwitchRow {
+            key: SettingKey.ringtone;
             text: SettingsWords.label(SettingKey.ringtone);
             detail: SettingsWords.detail(SettingKey.ringtone);
             on: SettingsView.ringtone;
@@ -56,6 +59,7 @@ export component CallsPage inherits VerticalLayout {
         label: @tr("DEFAULT LAYOUT");
 
         ChoiceGroup {
+            key: SettingKey.call-layout;
             label: SettingsWords.label(SettingKey.call-layout);
             options: [
                 {
@@ -78,6 +82,7 @@ export component CallsPage inherits VerticalLayout {
 
     SettingsGroup {
         SwitchRow {
+            key: SettingKey.follow-speaker;
             text: SettingsWords.label(SettingKey.follow-speaker);
             detail: SettingsWords.detail(SettingKey.follow-speaker);
             on: SettingsView.follow-speaker;
