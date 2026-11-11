@@ -2115,6 +2115,10 @@ export global SettingsWords {
         return sends;
     }
 
+    public pure function about-summary(version: string) -> string {
+        return @tr("Version {}", version);
+    }
+
     public pure function reactions-summary(one-click: string) -> string {
         return @tr("{} in one click", one-click);
     }

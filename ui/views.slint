@@ -574,6 +574,15 @@ export global EncryptionView {
     in property <string> error-detail;
 }
 
+export global AboutView {
+    in property <string> version;
+    in property <string> licence;
+    in property <string> source;
+    in property <string> report;
+    in property <bool> calls;
+    in property <bool> video;
+}
+
 export global AppearanceView {
     in property <ThemeChoice> theme: ThemeChoice.system;
     in property <ClockChoice> clock: ClockChoice.system;

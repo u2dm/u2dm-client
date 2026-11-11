@@ -5,42 +5,8 @@ import { DownloadedMedia, SettingFlag, SettingKey, UserMessageKind } from "../..
 import { SettingsView } from "../../../../views.slint";
 import { Actions } from "../../../../actions.slint";
 import { SettingsWords } from "../../../../messages.slint";
-import { AppStyle, Fonts, Metrics, Space } from "../../../../theme.slint";
-import { GroupNote, SettingsGroup } from "./group.slint";
-
-component SizeLine inherits Rectangle {
-    in property <string> text;
-    in property <string> size;
-
-    height: max(Metrics.settings-row, line.preferred-height + Space.md);
-    background: AppStyle.control;
-    accessible-role: AccessibleRole.text;
-    accessible-label: @tr("{}: {}", root.text, root.size);
-
-    line := HorizontalLayout {
-        padding-left: Space.lg;
-        padding-right: Space.lg;
-        spacing: Space.lg;
-
-        Text {
-            horizontal-stretch: 1;
-            text: root.text;
-            font-size: Fonts.label;
-            vertical-alignment: center;
-            wrap: word-wrap;
-            accessible-role: none;
-        }
-
-        Text {
-            horizontal-stretch: 0;
-            text: root.size;
-            font-size: Fonts.label;
-            color: AppStyle.overlay-foreground-muted;
-            vertical-alignment: center;
-            accessible-role: none;
-        }
-    }
-}
+import { AppStyle, Fonts, Space } from "../../../../theme.slint";
+import { GroupNote, SettingsGroup, ValueLine } from "./group.slint";
 
 component StorageSection inherits VerticalLayout {
     in-out property <bool> asking;
@@ -62,14 +28,14 @@ component StorageSection inherits VerticalLayout {
     SettingsGroup {
         label: @tr("STORAGE");
 
-        SizeLine {
+        ValueLine {
             text: @tr("Images, videos and audio");
-            size: SettingsWords.storage-size(root.storage, SettingsView.clearable-size);
+            value: SettingsWords.storage-size(root.storage, SettingsView.clearable-size);
         }
 
-        SizeLine {
+        ValueLine {
             text: @tr("Profile pictures, sticker packs and custom emoji");
-            size: SettingsWords.storage-size(root.storage, SettingsView.kept-size);
+            value: SettingsWords.storage-size(root.storage, SettingsView.kept-size);
         }
     }
 

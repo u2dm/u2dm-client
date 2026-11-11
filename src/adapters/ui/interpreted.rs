@@ -35,7 +35,7 @@ use super::notices::NoticeWords;
 use super::props::{BoolProp, UiProps};
 use super::schema::model_props;
 use super::session::active_models;
-use super::{motion, reduce};
+use super::{about, motion, reduce};
 use crate::commands::effects::Effect;
 use crate::commands::view::AppViewState;
 use crate::domain::settings::Settings;
@@ -248,6 +248,7 @@ impl SlintUiAdapter {
             Ok::<_, AppError>(inst)
         })?;
         backend::identify_the_app();
+        about::seed_about(&instance);
         Ok(Self { instance })
     }
 

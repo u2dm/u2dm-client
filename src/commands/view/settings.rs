@@ -46,6 +46,7 @@ pub enum SettingsPage {
     Privacy,
     Calls,
     Media,
+    About,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]

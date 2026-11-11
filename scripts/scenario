@@ -75,6 +75,7 @@ scenario_env() {
     settings-narrow) echo 'U2DM_DEMO_WINDOW=600x760' ;;
     settings-reactions) echo 'U2DM_DEMO_WINDOW=900x760' ;;
     settings-timeline) echo 'U2DM_DEMO_WINDOW=900x760' ;;
+    settings-about) echo 'U2DM_DEMO_WINDOW=900x760' ;;
     settings-messages) echo 'U2DM_DEMO_WINDOW=900x760' ;;
     settings-presence) echo 'U2DM_DEMO_PRESENCE=partners,status U2DM_DEMO_WINDOW=900x760' ;;
     settings-notifications) echo 'U2DM_DEMO_NOTIFY=group,dm,mention U2DM_DEMO_WINDOW=900x760' ;;
@@ -1237,6 +1238,9 @@ scenario_steps() {
       echo 'sleep 1'
       echo '{"op":"set_setting","name":"skin_tone","value":"3"}'
       echo 'sleep 1' ;;
+    settings-about)
+      echo '{"op":"open_settings","page":"about"}'
+      echo 'sleep 1' ;;
     settings-timeline)
       echo '{"op":"select_room","room_id":"!rust:demo.local"}'
       echo 'sleep 2'
@@ -1363,6 +1367,7 @@ scenario_note() {
     settings-presence) echo 'Share your presence off says offline once with your status kept, and on again says online at once (the log: demo: presence reaches the homeserver)' ;;
     settings-messages) echo 'Messages: Ctrl+Enter sends; Privacy and safety: read receipts go private and typing notices stop (settings.values; the demo logs each receipt with its visibility)' ;;
     settings-appearance) echo 'Settings opens on Appearance beside its categories, and Appearance turns the theme dark at once and reduces motion (settings.values, settings.dialog.page and layout; the shot is dark)' ;;
+    settings-about) echo 'About, the last row of the sidebar after Account and sessions and Encryption: the version, what this build includes (calls, the video player), the licence, no source link while Cargo.toml names no repository, and Copy version info (settings.dialog.page about; the shot)' ;;
     settings-timeline) echo 'Messages: with Show joins and leaves off, Marcus and Kai joining leave the Rust timeline, and with Show name and avatar changes off so does Kai'"'"'s rename; Appearance turns the clock to 24-hour and every timestamp follows in the open room (/timeline rows and timestamp; settings.values.joins_and_leaves, profile_changes and clock)' ;;
     settings-reactions) echo 'Reactions: 🔥 goes into the first slot and takes the star, then into the fourth, which swaps it with 😭; the star stays with the first slot, so 😭 is the one-click reaction (settings.values.quick_reactions and one_click), and the skin tone is medium (skin_tone 3)' ;;
     settings-narrow) echo 'At 600 px Settings opens on its list of pages; Notifications shows with a back arrow and follows the homeserver'"'"'s rules while it shows, and back on the list the follow stops (settings.dialog.listing and layout, settings.rules.known)' ;;
@@ -1519,7 +1524,7 @@ names() {
     account-sessions account-password account-sso account-oauth account-limits account-deactivate \
     logout-warning settings-appearance settings-messages settings-presence settings-notifications \
     settings-calls settings-media settings-cache settings-rules settings-ignored settings-narrow \
-    settings-reactions settings-timeline
+    settings-reactions settings-timeline settings-about
 }
 
 cmd_list() {

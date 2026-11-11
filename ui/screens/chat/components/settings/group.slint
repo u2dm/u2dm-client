@@ -81,6 +81,40 @@ export component NoteRow inherits Rectangle {
     }
 }
 
+export component ValueLine inherits Rectangle {
+    in property <string> text;
+    in property <string> value;
+
+    height: max(Metrics.settings-row, line.preferred-height + Space.md);
+    background: AppStyle.control;
+    accessible-role: AccessibleRole.text;
+    accessible-label: @tr("{}: {}", root.text, root.value);
+
+    line := HorizontalLayout {
+        padding-left: Space.lg;
+        padding-right: Space.lg;
+        spacing: Space.lg;
+
+        Text {
+            horizontal-stretch: 1;
+            text: root.text;
+            font-size: Fonts.label;
+            vertical-alignment: center;
+            wrap: word-wrap;
+            accessible-role: none;
+        }
+
+        Text {
+            horizontal-stretch: 0;
+            text: root.value;
+            font-size: Fonts.label;
+            color: AppStyle.overlay-foreground-muted;
+            vertical-alignment: center;
+            accessible-role: none;
+        }
+    }
+}
+
 export component SegmentedRow inherits Rectangle {
     in property <string> text;
     in property <string> detail;

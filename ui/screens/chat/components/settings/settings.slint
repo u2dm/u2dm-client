@@ -7,11 +7,12 @@ import { MenuScroll } from "../../../../components/menu.slint";
 import { FixedDialogCard, ModalHost } from "../../../../components/overlay.slint";
 import { StateLayer } from "../../../../components/state-layer.slint";
 import { SettingsLayout, SettingsPage } from "../../../../enums.slint";
-import { AppearanceView, EncryptionView, SettingsView } from "../../../../views.slint";
+import { AboutView, AppearanceView, EncryptionView, SettingsView } from "../../../../views.slint";
 import { Actions } from "../../../../actions.slint";
 import { SettingsWords } from "../../../../messages.slint";
 import { MetaTip, Reactions, SettingsEntry } from "../../../../local.slint";
 import { AppStyle, Fonts, IconSize, Metrics, Motion, Radius, Space, Weight } from "../../../../theme.slint";
+import { AboutPage } from "./about-page.slint";
 import { AppearancePage } from "./appearance-page.slint";
 import { MessagesPage } from "./messages-page.slint";
 import { NotificationsPage } from "./notifications-page.slint";
@@ -32,9 +33,11 @@ export global SettingsPages {
         SettingsPage.calls,
         SettingsPage.media,
     ];
+    out property <int> link-count: 2;
 
     public pure function position(page: SettingsPage) -> int {
-        return page == SettingsPage.messages ? 1
+        return page == SettingsPage.about ? root.all.length + root.link-count
+            : page == SettingsPage.messages ? 1
             : page == SettingsPage.reactions ? 2
             : page == SettingsPage.notifications ? 3
             : page == SettingsPage.privacy ? 4
@@ -62,6 +65,9 @@ export global SettingsPages {
         if page == SettingsPage.media {
             return @tr("Media and storage");
         }
+        if page == SettingsPage.about {
+            return @tr("About");
+        }
         return @tr("Appearance");
     }
 
@@ -84,6 +90,9 @@ export global SettingsPages {
         if page == SettingsPage.media {
             return IconSet.Image;
         }
+        if page == SettingsPage.about {
+            return IconSet.Info;
+        }
         return IconSet.Palette;
     }
 
@@ -105,6 +114,9 @@ export global SettingsPages {
         }
         if page == SettingsPage.media {
             return SettingsWords.media-summary(SettingsView.auto-load-media);
+        }
+        if page == SettingsPage.about {
+            return SettingsWords.about-summary(AboutView.version);
         }
         return SettingsWords.appearance-summary(AppearanceView.theme, Motion.choice, AppearanceView.clock);
     }
@@ -191,11 +203,13 @@ component SettingsNav inherits Rectangle {
     in property <bool> listing;
     in property <int> selected;
 
-    callback picked(int, bool);
+    callback picked(SettingsPage, bool);
+    callback followed(bool);
 
     property <int> pages: SettingsPages.all.length;
     property <int> account: root.pages;
     property <int> encryption: root.pages + 1;
+    property <int> about: root.pages + SettingsPages.link-count;
     property <length> row-height: root.listing ? Metrics.choice-row : Metrics.settings-nav-row;
     property <length> pitch: root.row-height + Space.xs;
     property <length> gap: Space.lg;
@@ -219,7 +233,19 @@ component SettingsNav inherits Rectangle {
         if index == root.encryption {
             return root.encryption-label;
         }
-        return SettingsPages.title(SettingsPages.all[index]);
+        return SettingsPages.title(root.page-at(index));
+    }
+
+    pure function page-at(index: int) -> SettingsPage {
+        return index == root.about ? SettingsPage.about : SettingsPages.all[index];
+    }
+
+    function activate(index: int, by-keys: bool) {
+        if index == root.account || index == root.encryption {
+            root.followed(index == root.account);
+        } else {
+            root.picked(root.page-at(index), by-keys);
+        }
     }
 
     pure function row-top(index: int) -> length {
@@ -233,13 +259,13 @@ component SettingsNav inherits Rectangle {
     }
 
     keys := RovingKeys {
-        count: root.pages + 2;
+        count: root.about + 1;
         start-at: root.selected;
         accessible-role: tab;
         accessible-label: root.label-at(max(self.cursor, 0));
         accessible-item-selected: max(self.cursor, 0) == root.selected;
         accessible-action-default => {
-            root.picked(max(self.cursor, 0), true);
+            root.activate(max(self.cursor, 0), true);
         }
         intercept(event) => {
             if self.cursor < 0 && (event.text == Key.DownArrow || event.text == Key.UpArrow) {
@@ -253,7 +279,7 @@ component SettingsNav inherits Rectangle {
             root.reveal(index);
         }
         activated(index) => {
-            root.picked(index, true);
+            root.activate(index, true);
         }
     }
 
@@ -270,7 +296,7 @@ component SettingsNav inherits Rectangle {
             roving-focus: keys.has-focus && keys.cursor == index;
             trailing: root.listing ? IconSet.ChevronRight : { };
             clicked => {
-                root.picked(index, false);
+                root.picked(page, false);
             }
         }
 
@@ -286,7 +312,7 @@ component SettingsNav inherits Rectangle {
             roving-focus: keys.has-focus && keys.cursor == root.account;
             trailing: IconSet.ArrowUpRight;
             clicked => {
-                root.picked(root.account, false);
+                root.followed(true);
             }
         }
 
@@ -299,7 +325,20 @@ component SettingsNav inherits Rectangle {
             roving-focus: keys.has-focus && keys.cursor == root.encryption;
             trailing: IconSet.ArrowUpRight;
             clicked => {
-                root.picked(root.encryption, false);
+                root.followed(false);
+            }
+        }
+
+        SettingsNavRow {
+            height: root.row-height;
+            icon: SettingsPages.icon(SettingsPage.about);
+            label: SettingsPages.title(SettingsPage.about);
+            detail: root.listing ? SettingsPages.summary(SettingsPage.about) : "";
+            selected: !root.listing && root.selected == root.about;
+            roving-focus: keys.has-focus && keys.cursor == root.about;
+            trailing: root.listing ? IconSet.ChevronRight : { };
+            clicked => {
+                root.picked(SettingsPage.about, false);
             }
         }
     }
@@ -509,12 +548,11 @@ export component SettingsDialog inherits ModalHost {
                     visible: root.wide || root.listing;
                     listing: root.listing;
                     selected: SettingsPages.position(root.page);
-                    picked(index, by-keys) => {
-                        if index < SettingsPages.all.length {
-                            root.open-page(SettingsPages.all[index], by-keys);
-                        } else {
-                            root.follow-link(index == SettingsPages.all.length);
-                        }
+                    picked(page, by-keys) => {
+                        root.open-page(page, by-keys);
+                    }
+                    followed(account) => {
+                        root.follow-link(account);
                     }
                 }
 
@@ -561,6 +599,8 @@ export component SettingsDialog inherits ModalHost {
                                 root.park-focus();
                             }
                         }
+
+                        if !root.listing && root.page == SettingsPage.about: AboutPage { }
 
                     }
                 }

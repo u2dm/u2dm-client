@@ -9,18 +9,19 @@ use slint::{Rgb8Pixel, SharedPixelBuffer};
 use tokio::runtime::Runtime;
 use tokio::sync::{mpsc, watch};
 use u2dm_ui::{
-    AccountView, Actions, AppWindow, AppearanceView, AttachmentView, AudioView, BodyLine,
-    BodyPiece, CallConnectionEntry, CallDeviceEntry, CallPersonEntry, CallTileEntry, CallView,
-    CallWindow, ComposerDraft, CreateRoomView, DirectoryView, DraftVerdict as UiDraftVerdict,
-    EmojiEntry, EmojiRow, EmojiStore, EncryptionView, IdentityAlertView, IgnoredPersonEntry,
-    InvitePeopleView, InviteView, InviteeEntry, KeywordEntry, LeaveSpaceView, LogLineEntry,
-    LoginView, LogoutView, MemberEntry, MentionWord, MentionsView, MessageEntry, Motion,
-    NotificationText, PackCell, PackRow, PackTabEntry, PackView, PollAnswerEntry, PresenceView,
-    ReactionEntry, ReactorAvatar, ReadersView, RemovalView, ReplySwipe, RoomEntry, RoomInfoView,
-    RoomLogView, RoomMenuView, RoomPreviewView, RoomView, SessionView, SettingsView, SourceView,
-    SpaceChildEntry, SpaceEntry, SpaceIndexView, SpoilerCover, TextSplice, TouchpadView,
-    TypingView, UnsentView, UpgradeView, UserDeviceEntry, UserInfoView,
-    UserMessage as UiUserMessage, VerificationEmoji, VerificationView, VideoView, WindowView,
+    AboutView, AccountView, Actions, AppWindow, AppearanceView, AttachmentView, AudioView,
+    BodyLine, BodyPiece, CallConnectionEntry, CallDeviceEntry, CallPersonEntry, CallTileEntry,
+    CallView, CallWindow, ComposerDraft, CreateRoomView, DirectoryView,
+    DraftVerdict as UiDraftVerdict, EmojiEntry, EmojiRow, EmojiStore, EncryptionView,
+    IdentityAlertView, IgnoredPersonEntry, InvitePeopleView, InviteView, InviteeEntry,
+    KeywordEntry, LeaveSpaceView, LogLineEntry, LoginView, LogoutView, MemberEntry, MentionWord,
+    MentionsView, MessageEntry, Motion, NotificationText, PackCell, PackRow, PackTabEntry,
+    PackView, PollAnswerEntry, PresenceView, ReactionEntry, ReactorAvatar, ReadersView,
+    RemovalView, ReplySwipe, RoomEntry, RoomInfoView, RoomLogView, RoomMenuView, RoomPreviewView,
+    RoomView, SessionView, SettingsView, SourceView, SpaceChildEntry, SpaceEntry, SpaceIndexView,
+    SpoilerCover, TextSplice, TouchpadView, TypingView, UnsentView, UpgradeView, UserDeviceEntry,
+    UserInfoView, UserMessage as UiUserMessage, VerificationEmoji, VerificationView, VideoView,
+    WindowView,
 };
 #[cfg(feature = "demo")]
 use u2dm_ui::{Probe, RoomMenu, WindowTitle};
@@ -68,7 +69,7 @@ use super::schema::{
 };
 use super::session::active_models;
 use super::video::{self, millis_to_duration};
-use super::{audio, drafts, emoji, emote, mention, motion, reduce, router};
+use super::{about, audio, drafts, emoji, emote, mention, motion, reduce, router};
 use crate::app::input::CommandSender;
 use crate::commands::effects::{Effect, VerificationActivity};
 use crate::commands::messages::{UserMessage, UserMessageKind};
@@ -664,6 +665,7 @@ impl SlintUiAdapter {
     pub fn compile(_rt: &Runtime) -> Result<Self> {
         let window = AppWindow::new()?;
         backend::identify_the_app();
+        about::seed_about(&window);
         Ok(Self { window })
     }
 

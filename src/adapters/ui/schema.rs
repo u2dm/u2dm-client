@@ -23,6 +23,10 @@ macro_rules! string_props {
         SettingsClearableSize SettingsView "SettingsView" "clearable-size" set_clearable_size get_clearable_size;
         SettingsKeptSize SettingsView "SettingsView" "kept-size" set_kept_size get_kept_size;
         SettingsUnignoreFailed SettingsView "SettingsView" "unignore-failed" set_unignore_failed get_unignore_failed;
+        AboutVersion AboutView "AboutView" "version" set_version get_version;
+        AboutLicence AboutView "AboutView" "licence" set_licence get_licence;
+        AboutSource AboutView "AboutView" "source" set_source get_source;
+        AboutReport AboutView "AboutView" "report" set_report get_report;
         VerificationSender VerificationView "VerificationView" "sender" set_sender get_sender;
         VerificationErrorDetail VerificationView "VerificationView" "error-detail" set_error_detail get_error_detail;
         EncryptionRecoveryKey EncryptionView "EncryptionView" "recovery-key" set_recovery_key get_recovery_key;
@@ -530,6 +534,8 @@ macro_rules! bool_props {
         SettingsJoinsAndLeaves SettingsView "SettingsView" "joins-and-leaves" set_joins_and_leaves get_joins_and_leaves;
         SettingsProfileChanges SettingsView "SettingsView" "profile-changes" set_profile_changes get_profile_changes;
         SettingsQuickReactionsCustom SettingsView "SettingsView" "quick-reactions-custom" set_quick_reactions_custom get_quick_reactions_custom;
+        AboutCalls AboutView "AboutView" "calls" set_calls get_calls;
+        AboutVideo AboutView "AboutView" "video" set_video get_video;
         AccountVisible AccountView "AccountView" "visible" set_visible get_visible;
         AccountSessionsKnown AccountView "AccountView" "sessions-known" set_sessions_known get_sessions_known;
         AccountFactsKnown AccountView "AccountView" "facts-known" set_facts_known get_facts_known;
@@ -1755,6 +1761,7 @@ macro_rules! settings_pages {
         Privacy    Privacy    "privacy";
         Calls      Calls      "calls";
         Media      Media      "media";
+        About      About      "about";
     } };
 }
 pub(crate) use settings_pages;

@@ -1,0 +1,156 @@
+import { Palette } from "std-widgets.slint";
+import { IconDisplay, IconSet } from "@lucide";
+
+import { AppButton } from "../../../../components/button.slint";
+import { CopyFeedback } from "../../../../components/copier.slint";
+import { ShadedClickArea } from "../../../../components/state-layer.slint";
+import { AboutView } from "../../../../views.slint";
+import { Actions } from "../../../../actions.slint";
+import { SettingsWords } from "../../../../messages.slint";
+import { AppStyle, Fonts, IconSize, Metrics, Radius, Space, Stroke, Weight } from "../../../../theme.slint";
+import { GroupNote, SettingsGroup, ValueLine } from "./group.slint";
+
+component LinkLine inherits ShadedClickArea {
+    in property <string> text;
+    in property <string> url;
+
+    height: max(Metrics.settings-row, line.preferred-height + Space.md);
+    background: AppStyle.control;
+    ring-radius: Radius.sm;
+    ring-inset: Stroke.emphasis;
+    above-modal: true;
+    label: root.text;
+    accessible-description: @tr("Opens {} in your browser", root.url);
+
+    line := HorizontalLayout {
+        padding-left: Space.lg;
+        padding-right: Space.lg;
+        spacing: Space.lg;
+
+        Text {
+            horizontal-stretch: 0;
+            text: root.text;
+            font-size: Fonts.label;
+            vertical-alignment: center;
+            accessible-role: none;
+        }
+
+        Text {
+            horizontal-stretch: 1;
+            text: root.url;
+            font-size: Fonts.label;
+            color: AppStyle.overlay-foreground-muted;
+            horizontal-alignment: right;
+            vertical-alignment: center;
+            overflow: elide;
+            accessible-role: none;
+        }
+
+        IconDisplay {
+            cross-axis-self-alignment: center;
+            icon: IconSet.ArrowUpRight;
+            size: IconSize.sm;
+            stroke: AppStyle.overlay-foreground-muted;
+        }
+    }
+}
+
+export component AboutPage inherits Rectangle {
+    property <string> included: @tr("Included");
+    property <string> left-out: @tr("Not in this build");
+
+    height: page.preferred-height;
+
+    copier := CopyFeedback { }
+
+    page := VerticalLayout {
+        spacing: Space.xl;
+
+        VerticalLayout {
+            alignment: center;
+            spacing: Space.sm;
+
+            HorizontalLayout {
+                alignment: center;
+
+                Image {
+                    width: Metrics.settings-about-mark;
+                    height: Metrics.settings-about-mark;
+                    source: @image-url("../../../../../assets/logo.svg");
+                    colorize: Palette.foreground;
+                    accessible-role: none;
+                }
+            }
+
+            Text {
+                text: @tr("U2DM");
+                font-size: Fonts.title;
+                font-weight: Weight.bold;
+                horizontal-alignment: center;
+            }
+
+            Text {
+                text: SettingsWords.about-summary(AboutView.version);
+                font-size: Fonts.label;
+                color: AppStyle.foreground-muted;
+                horizontal-alignment: center;
+            }
+        }
+
+        SettingsGroup {
+            label: @tr("THIS BUILD");
+            note: AboutView.video ? "" : @tr("Without the video player, videos and audio open in your system's player.");
+
+            ValueLine {
+                text: @tr("Calls");
+                value: AboutView.calls ? root.included : root.left-out;
+            }
+
+            ValueLine {
+                text: @tr("Video and audio player");
+                value: AboutView.video ? root.included : root.left-out;
+            }
+        }
+
+        SettingsGroup {
+            note: @tr("U2DM is free software: you may share and change it under this licence.");
+
+            ValueLine {
+                text: @tr("Licence");
+                value: AboutView.licence;
+            }
+
+            if AboutView.source != "": LinkLine {
+                text: @tr("Source code");
+                url: AboutView.source;
+                clicked => {
+                    Actions.open-link(AboutView.source);
+                }
+            }
+        }
+
+        VerticalLayout {
+            spacing: Space.md;
+
+            HorizontalLayout {
+                alignment: start;
+
+                AppButton {
+                    above-modal: true;
+                    text: copier.copied ? @tr("Copied") : @tr("Copy version info");
+                    label: @tr("Copy version info");
+                    description: copier.copied ? @tr("Copied") : AboutView.report;
+                    icon: copier.copied ? IconSet.Check : IconSet.Copy;
+                    filled: false;
+                    clicked => {
+                        copier.copy(AboutView.report);
+                    }
+                }
+            }
+
+            GroupNote {
+                text: @tr("One line for bug reports: {}", AboutView.report);
+            }
+        }
+    }
+}
