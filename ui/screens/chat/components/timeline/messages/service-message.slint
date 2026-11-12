@@ -4,7 +4,7 @@ import { CallWords, ServiceLabel, UpgradeLinks } from "../../../../../messages.s
 import { LinkButton } from "../../../../../components/button.slint";
 import { Actions } from "../../../../../actions.slint";
 import { CallOffer, ServiceKind, UpgradeLink } from "../../../../../enums.slint";
-import { CallPanel, CallSheetOpener } from "../../../../../local.slint";
+import { CallPanel } from "../../../../../local.slint";
 import { CallView, DirectoryView, UpgradeView } from "../../../../../views.slint";
 import { ReaderCount, Readers } from "../delivery-mark.slint";
 
@@ -85,8 +85,7 @@ export component ServiceMessage inherits VerticalLayout {
             clicked => {
                 CallPanel.open-sheet(
                     DirectoryView.selected-room-id,
-                    root.msg.service-kind == ServiceKind.call-video-notification,
-                    CallSheetOpener.composer);
+                    root.msg.service-kind == ServiceKind.call-video-notification);
             }
         }
     }

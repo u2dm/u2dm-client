@@ -7,7 +7,7 @@ import { CopyNotice } from "../../../components/copy-notice.slint";
 import { ConfirmChoice, Confirmations, MenuCard, MenuConfirmation } from "../../../components/menu.slint";
 import { MenuRow } from "../../../components/menu-row.slint";
 import { ModalHost, Placement } from "../../../components/overlay.slint";
-import { CallPanel, CallSheetOpener, LocalState, MessageMenu, Overlays, RoomMenu, RoomMenuOrigin, Shell, SpaceIndexEntry, SubspacePlacement, Subspaces } from "../../../local.slint";
+import { CallPanel, LocalState, MessageMenu, Overlays, RoomMenu, RoomMenuOrigin, Shell, SpaceIndexEntry, SubspacePlacement, Subspaces } from "../../../local.slint";
 import { Actions } from "../../../actions.slint";
 import { DirectoryView, RoomMenuView, SpaceIndexView } from "../../../views.slint";
 import { NotifyMode } from "../../../enums.slint";
@@ -539,7 +539,7 @@ export component RoomMenuOverlay inherits Rectangle {
         let id = RoomMenu.key;
         if action == RoomMenuAction.info {
             if root.room-info-in-pane {
-                RoomMenu.dismiss();
+                RoomMenu.close();
             } else {
                 RoomMenu.close();
             }
@@ -558,8 +558,8 @@ export component RoomMenuOverlay inherits Rectangle {
             return;
         }
         if action == RoomMenuAction.video-call {
-            RoomMenu.hand-over();
-            CallPanel.open-sheet(id, true, CallSheetOpener.room-menu);
+            RoomMenu.close();
+            CallPanel.open-sheet(id, true);
             return;
         }
         if action == RoomMenuAction.invite {
@@ -582,12 +582,12 @@ export component RoomMenuOverlay inherits Rectangle {
         }
         if action == RoomMenuAction.topics-in-column {
             Subspaces.place(SubspacePlacement.column, false);
-            RoomMenu.dismiss();
+            RoomMenu.close();
             return;
         }
         if action == RoomMenuAction.topics-as-tabs {
             Subspaces.place(SubspacePlacement.tabs, false);
-            RoomMenu.dismiss();
+            RoomMenu.close();
             return;
         }
         if action == RoomMenuAction.leave && RoomMenuView.is-space {
@@ -604,17 +604,17 @@ export component RoomMenuOverlay inherits Rectangle {
         } else if action == RoomMenuAction.copy-link {
             Actions.copy-room-link(id);
         }
-        RoomMenu.dismiss();
+        RoomMenu.close();
     }
 
     function pick(mode: NotifyMode) {
         Actions.set-room-notify(RoomMenu.key, mode);
-        RoomMenu.dismiss();
+        RoomMenu.close();
     }
 
     function leave() {
         Actions.leave-room(RoomMenu.key);
-        RoomMenu.dismiss();
+        RoomMenu.close();
     }
 
     notifier := CopyNotifier { }
@@ -640,13 +640,13 @@ export component RoomMenuOverlay inherits Rectangle {
         }
         dismissed => {
             if self.dismissing-by-pointer {
-                RoomMenu.dismiss();
+                RoomMenu.close();
             } else if RoomMenu.flyout-open {
                 card.close-flyout();
             } else if RoomMenu.asking-leave {
                 RoomMenu.asking-leave = false;
             } else {
-                RoomMenu.dismiss();
+                RoomMenu.close();
             }
         }
 

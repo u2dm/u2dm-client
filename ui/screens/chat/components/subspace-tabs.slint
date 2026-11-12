@@ -6,7 +6,7 @@ import { Interaction, ListItemArea } from "../../../components/a11y.slint";
 import { AppStyle, Fonts, Metrics, Radius, Space, Weight } from "../../../theme.slint";
 import { DirectoryView } from "../../../views.slint";
 import { Actions } from "../../../actions.slint";
-import { RoomMenu, RoomMenuOrigin, RoomMenuReturn, Subspaces } from "../../../local.slint";
+import { FocusHome, FocusRegion, RoomMenu, RoomMenuOrigin, Subspaces } from "../../../local.slint";
 
 component SubspaceTab inherits ListItemArea {
     in property <string> text;
@@ -16,7 +16,7 @@ component SubspaceTab inherits ListItemArea {
     in property <string> menu-id;
 
     property <bool> has-unread: root.alert || root.mention || root.hint;
-    property <int> menu-returns: RoomMenu.focus-returns;
+    property <int> focus-asks: FocusHome.asks;
 
     pure function describe() -> string {
         if root.mention {
@@ -35,6 +35,8 @@ component SubspaceTab inherits ListItemArea {
     height: Metrics.subspace-tab;
     border-radius: Radius.sm;
     ring-radius: Radius.sm;
+    region: root.menu-id != "" ? FocusRegion.rooms : FocusRegion.none;
+    place: "tab:\{root.menu-id}";
     label: root.describe();
     background: root.selected
         ? AppStyle.accent-background-soft
@@ -46,8 +48,9 @@ component SubspaceTab inherits ListItemArea {
         }
     }
 
-    changed menu-returns => {
-        if root.menu-id != "" && RoomMenu.returns-to(RoomMenuReturn.tile, root.menu-id) {
+    changed focus-asks => {
+        if root.menu-id != "" && FocusHome.asked == FocusRegion.rooms
+            && FocusHome.asked-place == "tab:\{root.menu-id}" {
             root.take-focus();
         }
     }

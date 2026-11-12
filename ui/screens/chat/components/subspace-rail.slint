@@ -8,7 +8,7 @@ import { Interaction, ListItemArea } from "../../../components/a11y.slint";
 import { IconButton } from "../../../components/button.slint";
 import { DirectoryView } from "../../../views.slint";
 import { Actions } from "../../../actions.slint";
-import { RoomMenu, RoomMenuOrigin, RoomMenuReturn, SubspacePlacement, Subspaces } from "../../../local.slint";
+import { FocusHome, FocusRegion, RoomMenu, RoomMenuOrigin, SubspacePlacement, Subspaces } from "../../../local.slint";
 
 component SubspaceTile inherits ListItemArea {
     in property <string> initial;
@@ -21,14 +21,17 @@ component SubspaceTile inherits ListItemArea {
     in property <bool> hint;
     in property <string> menu-id;
 
-    property <int> menu-returns: RoomMenu.focus-returns;
+    property <int> focus-asks: FocusHome.asks;
 
     height: Metrics.rail-row;
     ring-radius: Radius.md;
     ring-inset: Metrics.rail-tile-inset;
+    region: root.menu-id != "" ? FocusRegion.rail : FocusRegion.none;
+    place: "sub:\{root.menu-id}";
 
-    changed menu-returns => {
-        if root.menu-id != "" && RoomMenu.returns-to(RoomMenuReturn.tile, root.menu-id) {
+    changed focus-asks => {
+        if root.menu-id != "" && FocusHome.asked == FocusRegion.rail
+            && FocusHome.asked-place == "sub:\{root.menu-id}" {
             root.take-focus();
         }
     }

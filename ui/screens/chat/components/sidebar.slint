@@ -24,7 +24,7 @@ import { AppStyle, Fonts, IconSize, Metrics, Motion, Opacity, Size, Space, Strok
 import { InviteKind, RemovalKind, RoomCallMark, RoomRowKind, RoomScope, ServiceKind } from "../../../enums.slint";
 import { DirectoryView, SpaceIndexView } from "../../../views.slint";
 import { Actions } from "../../../actions.slint";
-import { FocusHome, FocusRegion, RoomMenu, RoomMenuOrigin, RoomMenuReturn, RoomSearch, Subspaces } from "../../../local.slint";
+import { FocusHome, FocusRegion, RoomMenu, RoomMenuOrigin, RoomSearch, Subspaces } from "../../../local.slint";
 
 component SidebarSearch inherits FocusScope {
     in property <bool> above-modal: false;
@@ -400,7 +400,6 @@ component RoomRow inherits ListItemArea {
     property <bool> has-face: !root.is-heading && !root.folds-invites;
     property <bool> has-unread: root.entry.alert || root.entry.mention || root.entry.hint;
     property <bool> joined: root.selected && root.joins-timeline;
-    property <int> menu-returns: RoomMenu.focus-returns;
     property <int> focus-asks: FocusHome.asks;
 
     pure function heading-text(kind: RoomRowKind) -> string {
@@ -494,12 +493,6 @@ component RoomRow inherits ListItemArea {
     init => {
         if (root.is-room || root.is-invite || root.is-removal) && !root.entry.has-avatar {
             Actions.request-room-avatar(root.entry.id);
-        }
-    }
-
-    changed menu-returns => {
-        if RoomMenu.returns-to(RoomMenuReturn.row, root.entry.id) {
-            root.take-focus();
         }
     }
 
@@ -769,7 +762,7 @@ component RoomColumnHeader inherits Rectangle {
     }
 
     if !root.collapsed && root.in-space: ClickArea {
-        property <int> menu-returns: RoomMenu.focus-returns;
+        property <int> focus-asks: FocusHome.asks;
 
         x: Space.sm;
         y: Space.sm;
@@ -779,8 +772,10 @@ component RoomColumnHeader inherits Rectangle {
         above-modal: root.above-modal;
         ring-radius: Metrics.sidebar-tab-radius;
         label: @tr("Actions for the space {}", DirectoryView.listed-space-name);
-        changed menu-returns => {
-            if RoomMenu.returns-to(RoomMenuReturn.space-header, DirectoryView.listed-space-id) {
+        region: FocusRegion.rooms;
+        place: "space-header";
+        changed focus-asks => {
+            if FocusHome.asked == FocusRegion.rooms && FocusHome.asked-place == "space-header" {
                 self.take-focus();
             }
         }
@@ -817,6 +812,14 @@ component RoomColumnHeader inherits Rectangle {
         tint: AppStyle.foreground-muted;
         above-modal: root.above-modal;
         label: @tr("New room in this space");
+        region: FocusRegion.rooms;
+        place: "new-room";
+        property <int> focus-asks: FocusHome.asks;
+        changed focus-asks => {
+            if FocusHome.asked == FocusRegion.rooms && FocusHome.asked-place == "new-room" {
+                self.take-focus();
+            }
+        }
         clicked => {
             Actions.open-create-room();
         }
@@ -829,6 +832,14 @@ component RoomColumnHeader inherits Rectangle {
         tint: AppStyle.foreground-muted;
         above-modal: root.above-modal;
         label: @tr("Invite people to this space");
+        region: FocusRegion.rooms;
+        place: "invite";
+        property <int> focus-asks: FocusHome.asks;
+        changed focus-asks => {
+            if FocusHome.asked == FocusRegion.rooms && FocusHome.asked-place == "invite" {
+                self.take-focus();
+            }
+        }
         clicked => {
             Actions.open-invite-people(DirectoryView.listed-space-id);
         }
@@ -845,6 +856,14 @@ component RoomColumnHeader inherits Rectangle {
         label: SpaceIndexView.visible
             ? @tr("Close the room index")
             : @tr("Browse rooms in this space");
+        region: FocusRegion.rooms;
+        place: "index";
+        property <int> focus-asks: FocusHome.asks;
+        changed focus-asks => {
+            if FocusHome.asked == FocusRegion.rooms && FocusHome.asked-place == "index" {
+                self.take-focus();
+            }
+        }
         clicked => {
             if SpaceIndexView.visible {
                 Actions.close-space-index();

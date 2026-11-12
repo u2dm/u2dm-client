@@ -129,8 +129,6 @@ export enum CallMode { call-and-chat, call-only, chat-only }
 
 export enum CallSurface { call, chat }
 
-export enum CallSheetOpener { composer, header, room-menu }
-
 export enum CallMenuOpener { control, more, status }
 
 export global CallPanel {
@@ -180,13 +178,7 @@ export global CallPanel {
     in-out property <length> ring-devices-right;
     in-out property <length> ring-devices-bottom;
     in-out property <int> ring-devices-returns;
-    in-out property <CallSheetOpener> sheet-opener: CallSheetOpener.composer;
-    in-out property <bool> sheet-dismissed: false;
-    in-out property <int> sheet-returns;
-
-    public function open-sheet(room-id: string, video: bool, opener: CallSheetOpener) {
-        root.sheet-opener = opener;
-        root.sheet-dismissed = false;
+    public function open-sheet(room-id: string, video: bool) {
         Actions.open-call-sheet({ room-id: room-id, video: video });
     }
 
@@ -236,11 +228,6 @@ export global CallPanel {
         if root.ring-devices-by-keys {
             root.ring-devices-returns += 1;
         }
-    }
-
-    public function dismiss-sheet() {
-        root.sheet-dismissed = true;
-        Actions.close-call-sheet();
     }
 
     public function open-people(by-keys: bool, left: length, right: length, top: length, bottom: length) {
@@ -337,6 +324,25 @@ export global SettingsEntry {
 
 export global SpaceIndexEntry {
     in-out property <bool> by-keys;
+}
+
+export global SheetReturn {
+    out property <string> opener;
+    out property <int> returns;
+
+    public function opened-by(key: string) {
+        root.opener = key;
+    }
+
+    public function hand-back() {
+        if root.opener != "" {
+            root.returns += 1;
+        }
+    }
+
+    public function forget() {
+        root.opener = "";
+    }
 }
 
 export global SettingsSearch {
@@ -649,8 +655,6 @@ export global MessageMenu {
 
 export enum RoomMenuOrigin { list, header, rail, space-header }
 
-export enum RoomMenuReturn { composer, row, header, tile, space-header }
-
 export global RoomMenu {
     in-out property <string> key;
     in-out property <RoomMenuOrigin> origin: RoomMenuOrigin.list;
@@ -659,18 +663,11 @@ export global RoomMenu {
     in-out property <bool> by-keyboard;
     in-out property <bool> asking-leave;
     in-out property <bool> flyout-open;
-    in-out property <RoomMenuReturn> return-to: RoomMenuReturn.composer;
-    in-out property <string> return-room;
-    in-out property <int> focus-returns;
 
     out property <bool> visible: root.key != "" && RoomMenuView.room-id == root.key;
 
     public pure function shows(id: string) -> bool {
         return root.visible && root.key == id;
-    }
-
-    public pure function returns-to(target: RoomMenuReturn, id: string) -> bool {
-        return root.return-to == target && root.return-room == id;
     }
 
     public function open(id: string, origin: RoomMenuOrigin, x: length, y: length, keyboard: bool) {
@@ -692,31 +689,6 @@ export global RoomMenu {
         root.asking-leave = false;
         root.flyout-open = false;
         Actions.close-room-menu();
-    }
-
-    public function dismiss() {
-        root.hand-over();
-        root.focus-returns += 1;
-    }
-
-    public function hand-over() {
-        if !root.by-keyboard {
-            root.return-to = RoomMenuReturn.composer;
-        } else if root.origin == RoomMenuOrigin.list {
-            root.return-to = RoomMenuReturn.row;
-        } else if root.origin == RoomMenuOrigin.rail {
-            root.return-to = RoomMenuReturn.tile;
-        } else if root.origin == RoomMenuOrigin.space-header {
-            root.return-to = RoomMenuReturn.space-header;
-        } else {
-            root.return-to = RoomMenuReturn.header;
-        }
-        root.return-room = root.key;
-        root.close();
-    }
-
-    public function return-focus() {
-        root.focus-returns += 1;
     }
 }
 
@@ -951,6 +923,16 @@ export global Overlays {
 
 export global FocusKeeper {
     out property <int> reclaims;
+
+    public function restore() {
+        if Overlays.top != 0 {
+            root.reclaims += 1;
+            return;
+        }
+        if Overlays.logged-in {
+            FocusHome.ask(FocusHome.region != FocusRegion.none ? FocusHome.region : FocusRegion.composer);
+        }
+    }
 
     public function recover(level: int, eager: bool) -> string {
         if Overlays.top != 0 {

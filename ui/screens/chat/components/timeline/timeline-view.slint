@@ -16,7 +16,7 @@ import { CopyNotifier } from "../../../../components/copier.slint";
 import { AudioView, CallView, DirectoryView, PresenceView, RoomView, TypingView, WindowView } from "../../../../views.slint";
 import { PresenceWords, TypingLine } from "../../../../messages.slint";
 import { Actions } from "../../../../actions.slint";
-import { CallMode, CallPanel, CallSheetOpener, CallSize, CallSurface, FocusHome, FocusRegion, LocalState, Overlays, ReplySwipe, RoomMenu, RoomMenuOrigin, RoomMenuReturn, RoomSearch, Shell } from "../../../../local.slint";
+import { CallMode, CallPanel, CallSize, CallSurface, FocusHome, FocusRegion, LocalState, Overlays, ReplySwipe, RoomMenu, RoomMenuOrigin, RoomSearch, Shell } from "../../../../local.slint";
 import { StatusPill } from "../../../../components/status-pill.slint";
 import { NowPlayingBar } from "./now-playing-bar.slint";
 import { PinnedBar } from "./pinned-bar.slint";
@@ -160,8 +160,6 @@ export component TimelineView inherits Rectangle {
             + header-title.title-width + Space.sm;
         property <length> join-room: self.width - title-area.x - self.menu-slot - self.pane-slot - Space.md
             - self.title-least;
-        property <int> menu-returns: RoomMenu.focus-returns;
-        property <int> sheet-returns: CallPanel.sheet-returns;
         property <int> focus-asks: FocusHome.asks;
         property <bool> call-takes-row: root.call-owns-header;
         property <bool> row-given;
@@ -193,20 +191,6 @@ export component TimelineView inherits Rectangle {
         function holds-focus() -> bool {
             return title-area.has-focus || start-button.has-focus || join-button.has-focus || pane-button.has-focus
                 || room-menu-button.has-focus;
-        }
-
-        changed menu-returns => {
-            if RoomMenu.returns-to(RoomMenuReturn.header, DirectoryView.selected-room-id) {
-                room-menu-button.take-focus();
-            }
-        }
-
-        changed sheet-returns => {
-            if root.offers-call-start {
-                start-button.take-focus();
-            } else if root.offers-call-join {
-                join-button.take-focus();
-            }
         }
 
         changed focused-control => {
@@ -289,7 +273,7 @@ export component TimelineView inherits Rectangle {
             tip: self.label;
             tip-below: true;
             clicked => {
-                CallPanel.open-sheet(root.room-id, false, CallSheetOpener.header);
+                CallPanel.open-sheet(root.room-id, false);
             }
         }
 
@@ -304,7 +288,7 @@ export component TimelineView inherits Rectangle {
             refused: CallView.offer == CallOffer.refused;
             refusal: CallWords.refusal(CallView.refusal);
             clicked => {
-                CallPanel.open-sheet(root.room-id, false, CallSheetOpener.header);
+                CallPanel.open-sheet(root.room-id, false);
             }
         }
 
@@ -360,7 +344,6 @@ export component TimelineView inherits Rectangle {
 
     if root.has-room: stage := Rectangle {
         property <bool> swipe-within-reach: ReplySwipe.within-reach;
-        property <int> menu-returns: RoomMenu.focus-returns;
         property <int> focus-asks: FocusHome.asks;
         property <bool> opened-from-search: RoomSearch.opened(root.room-id) && Shell.background-reachable;
         property <bool> call-covered: root.call-covers-timeline;
@@ -431,12 +414,6 @@ export component TimelineView inherits Rectangle {
             }
         }
 
-        changed menu-returns => {
-            if RoomMenu.return-to == RoomMenuReturn.composer {
-                self.refocus-composer();
-            }
-        }
-
         changed composer-requests => {
             self.refocus-composer();
         }
@@ -466,136 +443,9 @@ export component TimelineView inherits Rectangle {
         }
 
         CloseWatch {
-            open: Shell.room-info-open;
-            closed => {
-                stage.refocus-composer();
-            }
-        }
-
-        CloseWatch {
             open: Shell.room-info-pane-open;
             closed => {
                 stage.refocus-composer();
-            }
-        }
-
-        CloseWatch {
-            open: Shell.source-open;
-            closed => {
-                stage.refocus-composer();
-            }
-        }
-
-        CloseWatch {
-            open: Shell.user-info-open;
-            closed => {
-                stage.refocus-composer();
-            }
-        }
-
-        CloseWatch {
-            open: Shell.invite-open;
-            closed => {
-                stage.refocus-composer();
-            }
-        }
-
-        CloseWatch {
-            open: Shell.removal-open;
-            closed => {
-                stage.refocus-composer();
-            }
-        }
-
-        CloseWatch {
-            open: Shell.leave-space-open;
-            closed => {
-                stage.refocus-composer();
-            }
-        }
-
-        CloseWatch {
-            open: Shell.room-preview-open;
-            closed => {
-                stage.refocus-composer();
-            }
-        }
-
-        CloseWatch {
-            open: Shell.create-room-open;
-            closed => {
-                stage.refocus-composer();
-            }
-        }
-
-        CloseWatch {
-            open: Shell.invite-people-open;
-            closed => {
-                stage.refocus-composer();
-            }
-        }
-
-        CloseWatch {
-            open: Shell.room-log-open;
-            closed => {
-                stage.refocus-composer();
-            }
-        }
-
-        CloseWatch {
-            open: Shell.readers-open;
-            closed => {
-                stage.refocus-composer();
-            }
-        }
-
-        CloseWatch {
-            open: Shell.encryption-open;
-            closed => {
-                stage.refocus-composer();
-            }
-        }
-
-        CloseWatch {
-            open: Shell.account-open;
-            closed => {
-                stage.refocus-composer();
-            }
-        }
-
-        CloseWatch {
-            open: Shell.settings-open;
-            closed => {
-                stage.refocus-composer();
-            }
-        }
-
-        CloseWatch {
-            open: Shell.logout-open;
-            closed => {
-                stage.refocus-composer();
-            }
-        }
-
-        CloseWatch {
-            open: Shell.call-sheet-open;
-            closed => {
-                stage.hand-back-sheet();
-            }
-        }
-
-        function hand-back-sheet() {
-            if !Shell.background-reachable {
-                return;
-            }
-            if CallPanel.sheet-dismissed && CallPanel.sheet-opener == CallSheetOpener.room-menu {
-                RoomMenu.return-focus();
-            } else if CallPanel.sheet-dismissed
-                && CallPanel.sheet-opener == CallSheetOpener.header
-                && (root.offers-call-start || root.offers-call-join) {
-                CallPanel.sheet-returns += 1;
-            } else {
-                input.focus-input();
             }
         }
 
@@ -763,9 +613,6 @@ export component TimelineView inherits Rectangle {
             height: root.height - root.dock-height;
             timeline-top: content.y + stage.call-above-chat;
             timeline-bottom: content.y + content.height - root.dock-height - input.height;
-            closed => {
-                input.focus-input();
-            }
         }
 
         if notifier.notice != "": CopyNotice {
@@ -779,9 +626,6 @@ export component TimelineView inherits Rectangle {
             y: 0;
             width: root.overlay-width;
             height: root.height - root.dock-height;
-            closed => {
-                input.focus-input();
-            }
             copy-requested(text) => {
                 notifier.copy(text, @tr("Text copied"));
             }

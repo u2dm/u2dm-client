@@ -9,7 +9,7 @@ import { ClickArea, Interaction, RovingKeys } from "../../../../components/a11y.
 import { ConfirmChoice, Confirmations, MenuCard, MenuConfirmation } from "../../../../components/menu.slint";
 import { MenuRow } from "../../../../components/menu-row.slint";
 import { ModalHost, PickerCard, Placement } from "../../../../components/overlay.slint";
-import { Composer, LocalState, MessageMenu, Overlays, Polls, ReactionPopup, Reactions, RoomMenu, TextSelection } from "../../../../local.slint";
+import { Composer, FocusHome, FocusRegion, LocalState, MessageMenu, Overlays, Polls, ReactionPopup, Reactions, RoomMenu, TextSelection } from "../../../../local.slint";
 import { Actions } from "../../../../actions.slint";
 import { RoomView } from "../../../../views.slint";
 import { MessageKind, SendState } from "../../../../enums.slint";
@@ -425,7 +425,6 @@ component MessageMenuCard inherits MenuCard {
 }
 
 export component MessageMenuOverlay inherits Rectangle {
-    callback closed();
     callback copy-requested(string);
 
     property <length> edge: Space.md;
@@ -459,7 +458,6 @@ export component MessageMenuOverlay inherits Rectangle {
 
     function dismiss() {
         MessageMenu.close();
-        root.closed();
     }
 
     function react(key: string) {
@@ -514,8 +512,10 @@ export component MessageMenuOverlay inherits Rectangle {
             return;
         }
         if action == MenuAction.reply {
+            FocusHome.entered(FocusRegion.composer, "");
             Composer.reply-to(msg);
         } else if action == MenuAction.edit {
+            FocusHome.entered(FocusRegion.composer, "");
             Composer.request-edit(msg);
         } else if action == MenuAction.copy-text {
             root.copy-requested(root.text-of(msg));

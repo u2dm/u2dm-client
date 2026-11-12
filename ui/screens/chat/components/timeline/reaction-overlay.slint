@@ -13,8 +13,6 @@ component ReactionPopover inherits ModalHost {
     in property <length> card-max-width;
     in property <length> card-max-height;
 
-    callback closed();
-
     property <length> edge: Space.md;
     property <length> gap: Space.md;
     property <length> card-width: min(root.card-max-width, root.width - 2 * root.edge);
@@ -27,7 +25,6 @@ component ReactionPopover inherits ModalHost {
     layer: Overlays.popup;
     dismissed => {
         Reactions.close();
-        root.closed();
     }
 
     Rectangle {
@@ -54,8 +51,6 @@ export component ReactionOverlay inherits Rectangle {
     in property <length> timeline-top;
     in property <length> timeline-bottom: root.height;
 
-    callback closed();
-
     property <length> edge: Space.md;
     property <duration> strip-close-delay: Motion.close-delay;
 
@@ -71,7 +66,6 @@ export component ReactionOverlay inherits Rectangle {
         Reactions.close-strip();
         if Reactions.popup == ReactionPopup.picker {
             Reactions.close();
-            root.closed();
         }
     }
 
@@ -118,25 +112,19 @@ export component ReactionOverlay inherits Rectangle {
         label: @tr("React to a message");
         card-max-width: Metrics.picker-width;
         card-max-height: Metrics.picker-height;
-        closed => {
-            root.closed();
-        }
 
         ReactionPicker {
             encrypted: PackView.room-encrypted;
             picked(key) => {
                 Actions.toggle-reaction(Reactions.anchor.event-id, key);
                 Reactions.close();
-                root.closed();
             }
             emote-picked(pack-id, shortcode) => {
                 Actions.react-with-emote(Reactions.anchor.event-id, pack-id, shortcode);
                 Reactions.close();
-                root.closed();
             }
             edit-quick-reactions(by-keys) => {
                 Reactions.close();
-                root.closed();
                 SettingsEntry.by-keys = by-keys;
                 Actions.open-settings-page({ page: SettingsPage.reactions });
             }
@@ -147,9 +135,6 @@ export component ReactionOverlay inherits Rectangle {
         label: @tr("Everyone who reacted");
         card-max-width: Metrics.reaction-detail-width;
         card-max-height: Metrics.reaction-detail-height;
-        closed => {
-            root.closed();
-        }
 
         ReactionDetail {
             items: Reactions.items;
@@ -163,9 +148,6 @@ export component ReactionOverlay inherits Rectangle {
         label: @tr("Who voted");
         card-max-width: Metrics.poll-voters-width;
         card-max-height: Metrics.poll-voters-height;
-        closed => {
-            root.closed();
-        }
 
         PollVoters {
             answers: Reactions.target.poll-answers;

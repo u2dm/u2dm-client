@@ -3,11 +3,28 @@ import { ListItemArea } from "../../../components/a11y.slint";
 import { MemberRoles } from "./member-roles.slint";
 import { MemberEntry } from "../../../types.slint";
 import { MemberRowKind } from "../../../enums.slint";
+import { FocusHome, FocusRegion, SheetReturn } from "../../../local.slint";
 import { Actions } from "../../../actions.slint";
 import { AppStyle, Fonts, Metrics, Space, Weight } from "../../../theme.slint";
 
 export component MemberRow inherits ListItemArea {
     in property <MemberEntry> entry;
+
+    property <string> key: "member:\{root.entry.user-id}";
+    property <int> sheet-returns: SheetReturn.returns;
+    property <int> focus-asks: FocusHome.asks;
+
+    changed sheet-returns => {
+        if SheetReturn.opener == root.key {
+            root.take-focus();
+        }
+    }
+
+    changed focus-asks => {
+        if root.region != FocusRegion.none && FocusHome.asked == root.region && FocusHome.asked-place == root.key {
+            root.take-focus();
+        }
+    }
 
     pure function describe(entry: MemberEntry) -> string {
         if entry.kind == MemberRowKind.invited-heading {
@@ -24,7 +41,9 @@ export component MemberRow inherits ListItemArea {
     enabled: root.entry.kind == MemberRowKind.member;
     label: root.describe(root.entry);
     background: root.has-hover && root.enabled ? AppStyle.overlay-hover : transparent;
+    place: root.key;
     clicked => {
+        SheetReturn.opened-by(root.has-focus ? root.key : "");
         Actions.open-user-info(root.entry.user-id);
     }
 

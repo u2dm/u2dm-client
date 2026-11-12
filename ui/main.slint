@@ -55,7 +55,7 @@ import {
 import { Actions } from "./actions.slint";
 import { EmojiStore } from "./emoji-store.slint";
 import { NotificationText, SpoilerCover } from "./messages.slint";
-import { CallPanel, FocusKeeper, Overlays, Polls, Probe, ReplySwipe, RoomMenu, RoomSearch, Shell } from "./local.slint";
+import { CallPanel, FocusHome, FocusKeeper, FocusRegion, Overlays, Polls, Probe, ReplySwipe, RoomMenu, RoomSearch, Shell } from "./local.slint";
 import { Metrics, Motion, Space } from "./theme.slint";
 import { LoadingScreen } from "./screens/login/loading.slint";
 import { RestorePausedScreen } from "./screens/login/restore-paused.slint";
@@ -152,8 +152,10 @@ export component AppWindow inherits Window {
 
     changed notification-opens => {
         if LoginView.step == LoginPhase.logged-in {
+            FocusHome.entered(FocusRegion.composer, "");
             Shell.close-overlays();
             RoomSearch.clear();
+            RoomSearch.opened-room = WindowView.notification-room;
             Actions.open-notification(WindowView.notification-room);
         }
     }

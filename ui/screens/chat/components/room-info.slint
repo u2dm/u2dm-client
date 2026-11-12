@@ -4,7 +4,6 @@ import { IconDisplay, IconSet, Icon } from "@lucide";
 import { Avatar } from "../../../components/avatar.slint";
 import { ClickArea, Interaction, ListItemArea } from "../../../components/a11y.slint";
 import { CopyFeedback } from "../../../components/copier.slint";
-import { CloseWatch } from "../../../components/close-watch.slint";
 import { DialogCard, ModalHost, PickerCard, Placement } from "../../../components/overlay.slint";
 import { ErrorBanner } from "../../../components/banner.slint";
 import { NoticeLine } from "../../../components/notice-line.slint";
@@ -18,7 +17,7 @@ import { NotifyModes } from "./notify-modes.slint";
 import { AppStyle, Fonts, IconSize, Metrics, Radius, Size, Space, Weight } from "../../../theme.slint";
 import { RosterStatus, UserMessageKind } from "../../../enums.slint";
 import { RoomInfoView } from "../../../views.slint";
-import { Overlays, Shell } from "../../../local.slint";
+import { FocusHome, FocusRegion, Overlays, SheetReturn, Shell } from "../../../local.slint";
 import { Actions } from "../../../actions.slint";
 
 component NotifyRow inherits ListItemArea {
@@ -398,10 +397,27 @@ component TopicSection inherits VerticalLayout {
 }
 
 component InvitePeopleRow inherits ClickArea {
+    property <int> sheet-returns: SheetReturn.returns;
+    property <int> focus-asks: FocusHome.asks;
+
+    changed sheet-returns => {
+        if SheetReturn.opener == "invite" {
+            root.take-focus();
+        }
+    }
+
+    changed focus-asks => {
+        if root.region != FocusRegion.none && FocusHome.asked == root.region && FocusHome.asked-place == "invite" {
+            root.take-focus();
+        }
+    }
+
     height: Metrics.room-info-row;
     label: @tr("Invite people");
+    place: "invite";
     background: root.has-hover && root.enabled ? AppStyle.overlay-hover : transparent;
     clicked => {
+        SheetReturn.opened-by(root.has-focus ? "invite" : "");
         Actions.open-invite-people(RoomInfoView.room-id);
     }
 
@@ -439,6 +455,7 @@ component InvitePeopleRow inherits ClickArea {
 
 component MemberSection inherits VerticalLayout {
     in property <bool> above-modal;
+    in property <bool> docked;
     out property <length> search-top: search-row.y;
     out property <length> list-top: member-list.y;
 
@@ -467,6 +484,7 @@ component MemberSection inherits VerticalLayout {
 
     if RoomInfoView.may-invite: InvitePeopleRow {
         above-modal: root.above-modal;
+        region: root.docked ? FocusRegion.pane : FocusRegion.none;
     }
 
     if RoomInfoView.roster == RosterStatus.loading: HorizontalLayout {
@@ -503,6 +521,7 @@ component MemberSection inherits VerticalLayout {
                 index: idx;
                 entry: entry;
                 above-modal: root.above-modal;
+                region: root.docked ? FocusRegion.pane : FocusRegion.none;
             }
         }
     }
@@ -510,6 +529,7 @@ component MemberSection inherits VerticalLayout {
 
 component RoomInfoSheet inherits Rectangle {
     in property <bool> above-modal;
+    in property <bool> docked;
     in property <brush> surface: AppStyle.elevated;
     out property <bool> notify-picker-open: false;
     out property <length> picker-x;
@@ -713,6 +733,7 @@ component RoomInfoSheet inherits Rectangle {
 
                 members := MemberSection {
                     above-modal: root.above-modal;
+                    docked: root.docked;
                     search-edited(text) => {
                         root.scroll-search-into-view();
                         Actions.filter-room-members(text);
@@ -741,15 +762,16 @@ export component RoomInfoDialog inherits ModalHost {
         || Shell.invite-people-open
         || Shell.verification-open;
 
-    function refocus() {
-        if !Shell.verification-open {
-            root.focus();
-        }
-    }
 
     dim-opacity: AppStyle.dialog-scrim;
     label: @tr("Room info");
     defers: sheet.notify-picker-open;
+    opened => {
+        SheetReturn.forget();
+    }
+    reclaimed => {
+        SheetReturn.hand-back();
+    }
     dismissed => {
         if Shell.user-info-open {
             Actions.close-user-info();
@@ -761,34 +783,6 @@ export component RoomInfoDialog inherits ModalHost {
             Actions.close-invite-people();
         } else if !sheet.peel() {
             Actions.close-room-info();
-        }
-    }
-
-    CloseWatch {
-        open: Shell.user-info-open;
-        closed => {
-            root.refocus();
-        }
-    }
-
-    CloseWatch {
-        open: Shell.room-preview-open;
-        closed => {
-            root.refocus();
-        }
-    }
-
-    CloseWatch {
-        open: Shell.invite-open;
-        closed => {
-            root.refocus();
-        }
-    }
-
-    CloseWatch {
-        open: Shell.invite-people-open;
-        closed => {
-            root.refocus();
         }
     }
 
@@ -822,6 +816,8 @@ export component RoomInfoDialog inherits ModalHost {
 export component RoomInfoPane inherits RoomInfoSheet {
     in property <length> overlay-width;
     in property <length> overlay-height;
+
+    docked: true;
 
     background: AppStyle.pane;
     surface: AppStyle.pane;

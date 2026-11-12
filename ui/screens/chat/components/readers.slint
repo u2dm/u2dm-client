@@ -1,6 +1,5 @@
 import { Palette, ScrollView, Spinner } from "std-widgets.slint";
 
-import { CloseWatch } from "../../../components/close-watch.slint";
 import { DialogHeader } from "../../../components/dialog-header.slint";
 import { DialogCard, ModalHost } from "../../../components/overlay.slint";
 import { RetryNotice } from "../../../components/retry-notice.slint";
@@ -9,7 +8,7 @@ import { MemberRow } from "./member-row.slint";
 import { MessagePreview, ServiceLabel } from "../../../messages.slint";
 import { PreviewKind, ReadersStatus, ServiceKind } from "../../../enums.slint";
 import { ReadersView } from "../../../views.slint";
-import { MetaTip, Reactions, Shell } from "../../../local.slint";
+import { MetaTip, Reactions, SheetReturn, Shell } from "../../../local.slint";
 import { Actions } from "../../../actions.slint";
 import { AppStyle, Fonts, Metrics, Radius, Space, Stroke, Weight } from "../../../theme.slint";
 
@@ -155,16 +154,11 @@ export component ReadersDialog inherits ModalHost {
     opened => {
         Reactions.close();
         MetaTip.clear();
+        SheetReturn.forget();
         header.focus-close();
     }
-
-    CloseWatch {
-        open: Shell.user-info-open;
-        closed => {
-            if !Shell.verification-open {
-                root.focus();
-            }
-        }
+    reclaimed => {
+        SheetReturn.hand-back();
     }
 
     DialogCard {
