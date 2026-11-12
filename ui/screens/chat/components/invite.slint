@@ -79,6 +79,9 @@ component AnswerButtons inherits HorizontalLayout {
 }
 
 export component InviteDialog inherits ModalHost {
+    reclaimed => {
+        sheet.focus-close();
+    }
     dim-opacity: AppStyle.dialog-scrim;
     label: @tr("Invitation to {}", InviteView.name);
     dismissed => {
@@ -89,7 +92,7 @@ export component InviteDialog inherits ModalHost {
         MetaTip.clear();
     }
 
-    SheetCard {
+    sheet := SheetCard {
         max-card-height: Metrics.invite-max-height;
         close-label: @tr("Close the invitation");
         close-clicked => {

@@ -7,7 +7,7 @@ import { CopyNotice } from "../../../components/copy-notice.slint";
 import { ConfirmChoice, Confirmations, MenuCard, MenuConfirmation } from "../../../components/menu.slint";
 import { MenuRow } from "../../../components/menu-row.slint";
 import { ModalHost, Placement } from "../../../components/overlay.slint";
-import { CallPanel, CallSheetOpener, LocalState, MessageMenu, RoomMenu, RoomMenuOrigin, Shell, SubspacePlacement, Subspaces } from "../../../local.slint";
+import { CallPanel, CallSheetOpener, LocalState, MessageMenu, Overlays, RoomMenu, RoomMenuOrigin, Shell, SpaceIndexEntry, SubspacePlacement, Subspaces } from "../../../local.slint";
 import { Actions } from "../../../actions.slint";
 import { DirectoryView, RoomMenuView, SpaceIndexView } from "../../../views.slint";
 import { NotifyMode } from "../../../enums.slint";
@@ -568,6 +568,7 @@ export component RoomMenuOverlay inherits Rectangle {
             return;
         }
         if action == RoomMenuAction.browse {
+            SpaceIndexEntry.by-keys = RoomMenu.by-keyboard;
             RoomMenu.close();
             Actions.open-space(id);
             Actions.open-space-index();
@@ -619,6 +620,7 @@ export component RoomMenuOverlay inherits Rectangle {
     notifier := CopyNotifier { }
 
     if RoomMenu.visible: host := ModalHost {
+        layer: Overlays.popup;
         property <length> card-x: root.card-left(card.width);
         property <length> card-y: root.card-top(card.height);
         property <bool> beside: root.flyout-fits-right(self.card-x, card.width, Metrics.room-menu-flyout-width)

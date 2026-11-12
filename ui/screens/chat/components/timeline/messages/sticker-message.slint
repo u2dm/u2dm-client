@@ -65,6 +65,7 @@ export component StickerMessage inherits HorizontalLayout {
                 x: (parent.width - self.width) / 2;
                 y: (parent.height - self.height) / 2;
                 event-id: root.msg.event-id;
+                row-key: root.msg.unique-id;
                 text: @tr("Load sticker");
                 icon-only: true;
             }

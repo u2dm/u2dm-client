@@ -82,6 +82,7 @@ component RenameField inherits HorizontalLayout {
 
 component ThisSessionCard inherits Rectangle {
     property <bool> renaming;
+    property <bool> refocus-rename;
     property <bool> busy: AccountView.activity == AccountActivity.renaming
         && AccountView.busy-session == AccountView.this-device-id;
     property <string> shown-name: AccountView.this-name != ""
@@ -117,6 +118,12 @@ component ThisSessionCard inherits Rectangle {
             }
 
             if !AccountView.oauth: AppButton {
+                init => {
+                    if root.refocus-rename {
+                        root.refocus-rename = false;
+                        self.take-focus();
+                    }
+                }
                 horizontal-stretch: 0;
                 above-modal: true;
                 text: @tr("Rename");
@@ -133,6 +140,7 @@ component ThisSessionCard inherits Rectangle {
             device-id: AccountView.this-device-id;
             current: AccountView.this-name;
             done => {
+                root.refocus-rename = true;
                 root.renaming = false;
             }
         }
@@ -199,6 +207,9 @@ component OwnSessionRow inherits Rectangle {
 
     property <bool> renaming;
     property <bool> confirming;
+    property <bool> refocus-rename;
+    property <bool> refocus-sign-out;
+    property <bool> confirm-by-keys;
     property <bool> mine: AccountView.busy-session == root.session.device-id;
     property <bool> renaming-busy: root.mine && AccountView.activity == AccountActivity.renaming;
     property <bool> signing-out: root.mine
@@ -258,6 +269,12 @@ component OwnSessionRow inherits Rectangle {
             }
 
             if !AccountView.oauth && !root.confirming: AppButton {
+                init => {
+                    if root.refocus-rename {
+                        root.refocus-rename = false;
+                        self.take-focus();
+                    }
+                }
                 horizontal-stretch: 0;
                 above-modal: true;
                 text: @tr("Rename");
@@ -270,6 +287,12 @@ component OwnSessionRow inherits Rectangle {
             }
 
             if !root.confirming: AppButton {
+                init => {
+                    if root.refocus-sign-out {
+                        root.refocus-sign-out = false;
+                        self.take-focus();
+                    }
+                }
                 horizontal-stretch: 0;
                 above-modal: true;
                 text: @tr("Sign out");
@@ -281,6 +304,7 @@ component OwnSessionRow inherits Rectangle {
                     if AccountView.oauth {
                         Actions.sign-out-session(root.session.device-id);
                     } else {
+                        root.confirm-by-keys = self.has-focus;
                         root.confirming = true;
                     }
                 }
@@ -291,6 +315,7 @@ component OwnSessionRow inherits Rectangle {
             device-id: root.session.device-id;
             current: root.session.name;
             done => {
+                root.refocus-rename = true;
                 root.renaming = false;
             }
         }
@@ -311,7 +336,14 @@ component OwnSessionRow inherits Rectangle {
                 above-modal: true;
                 text: @tr("Cancel");
                 filled: false;
+                init => {
+                    if root.confirm-by-keys {
+                        root.confirm-by-keys = false;
+                        self.take-focus();
+                    }
+                }
                 clicked => {
+                    root.refocus-sign-out = self.has-focus;
                     root.confirming = false;
                 }
             }
@@ -589,6 +621,9 @@ export component AccountDialog inherits ModalHost {
         Reactions.close();
         MetaTip.clear();
     }
+    reclaimed => {
+        header.focus-close();
+    }
 
     pure function auth-purpose(guarding: AccountActivity, subject: string) -> string {
         if guarding == AccountActivity.signing-out {
@@ -604,7 +639,7 @@ export component AccountDialog inherits ModalHost {
     }
 
     ScrollingDialogCard {
-        VerificationHeader {
+        header := VerificationHeader {
             icon: IconSet.UserRoundCog;
             title: @tr("Account");
             subtitle: SessionView.user-id;

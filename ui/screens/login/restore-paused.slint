@@ -6,8 +6,17 @@ import { ErrorBanner } from "../../components/banner.slint";
 import { Metrics } from "../../theme.slint";
 import { LoginView } from "../../views.slint";
 import { Actions } from "../../actions.slint";
+import { FocusHome, FocusRegion } from "../../local.slint";
 
 export component RestorePausedScreen inherits LoginPage {
+    property <int> focus-asks: FocusHome.asks;
+
+    changed focus-asks => {
+        if FocusHome.asked == FocusRegion.login {
+            retry.take-focus();
+        }
+    }
+
     BrandHeader {
         mark-size: root.dense ? Metrics.login-mark-dense : Metrics.login-mark;
     }
@@ -16,7 +25,7 @@ export component RestorePausedScreen inherits LoginPage {
         messages: LoginView.messages;
     }
 
-    AppButton {
+    retry := AppButton {
         text: @tr("Try again");
         icon: IconSet.RotateCw;
         clicked => {

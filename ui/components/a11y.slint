@@ -1,6 +1,6 @@
 import { Palette } from "std-widgets.slint";
 
-import { Shell } from "../local.slint";
+import { FocusHome, FocusRegion, Shell } from "../local.slint";
 import { Metrics, Motion, Radius, Stroke } from "../theme.slint";
 
 export global Interaction {
@@ -177,6 +177,9 @@ export component ClickArea inherits Rectangle {
     in property <bool> roving-focus: false;
     in property <length> ring-radius: Radius.sm;
     in property <length> ring-inset: 0;
+    in property <FocusRegion> region: FocusRegion.none;
+    in property <string> place;
+    in property <bool> region-row: false;
     out property <bool> has-hover: touch.has-hover;
     out property <bool> pressed: touch.pressed;
     out property <bool> has-focus: fs.has-focus;
@@ -213,6 +216,11 @@ export component ClickArea inherits Rectangle {
         focus-gained(reason) => {
             root.focus-by-tab = reason == FocusReason.tab-navigation;
             FocusReveal.ask(root.absolute-position.x, root.absolute-position.y, root.height);
+            if root.region != FocusRegion.none && root.region-row {
+                FocusHome.entered-row(root.region, root.place);
+            } else if root.region != FocusRegion.none {
+                FocusHome.entered(root.region, root.place);
+            }
         }
         focus-lost(reason) => {
             FocusTrail.leave();

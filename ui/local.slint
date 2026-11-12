@@ -335,6 +335,10 @@ export global SettingsEntry {
     in-out property <bool> by-keys;
 }
 
+export global SpaceIndexEntry {
+    in-out property <bool> by-keys;
+}
+
 export global SettingsSearch {
     in-out property <SettingKey> sought: SettingKey.none;
     in-out property <bool> keyed;
@@ -841,8 +845,149 @@ export global RoomSearch {
     }
 }
 
+export enum FocusRegion { none, login, rail, rooms, header, timeline, composer, pane, call, space-index, screen }
+
+export global FocusHome {
+    out property <FocusRegion> region: FocusRegion.none;
+    out property <string> place;
+    out property <bool> row;
+    out property <FocusRegion> asked: FocusRegion.none;
+    out property <string> asked-place;
+    out property <int> asks;
+
+    public function entered(region: FocusRegion, place: string) {
+        root.region = region;
+        root.place = place;
+        root.row = false;
+    }
+
+    public function entered-row(region: FocusRegion, place: string) {
+        root.region = region;
+        root.place = place;
+        root.row = true;
+    }
+
+    public function ask(region: FocusRegion) {
+        root.asked = region;
+        root.asked-place = region == root.region ? root.place : "";
+        root.asks += 1;
+    }
+
+    public function ask-anew(region: FocusRegion) {
+        root.asked = region;
+        root.asked-place = "";
+        root.asks += 1;
+    }
+
+    public function forget() {
+        root.region = FocusRegion.none;
+        root.place = "";
+        root.row = false;
+    }
+}
+
+export global Overlays {
+    out property <int> popup: 10;
+    out property <int> drawer: 20;
+    out property <int> attachment: 100;
+    out property <int> poll: 101;
+    out property <int> create-room: 102;
+    out property <int> video: 103;
+    out property <int> room-info: 104;
+    out property <int> readers: 105;
+    out property <int> user-info: 106;
+    out property <int> invite: 107;
+    out property <int> removal: 108;
+    out property <int> leave-space: 109;
+    out property <int> invite-people: 110;
+    out property <int> room-preview: 111;
+    out property <int> source: 112;
+    out property <int> call-details: 113;
+    out property <int> room-log: 114;
+    out property <int> settings: 115;
+    out property <int> account: 116;
+    out property <int> encryption: 117;
+    out property <int> logout: 118;
+    out property <int> call-sheet: 119;
+    out property <int> ring-devices: 120;
+    out property <int> verification: 121;
+
+    out property <bool> logged-in: LoginView.step == LoginPhase.logged-in;
+    out property <bool> popup-open: Shell.picker-open
+        || Shell.attach-open
+        || Reactions.open
+        || MessageMenu.visible
+        || RoomMenu.visible
+        || CallPanel.menu-open
+        || (CallView.active
+            && (CallPanel.devices-open || CallPanel.reactions-open || CallPanel.people-open
+                || CallPanel.more-open));
+    out property <int> top: Shell.verification-open ? root.verification
+        : root.logged-in && CallView.ring-visible && CallPanel.ring-devices-open ? root.ring-devices
+        : Shell.call-sheet-open ? root.call-sheet
+        : Shell.logout-open ? root.logout
+        : Shell.encryption-open ? root.encryption
+        : Shell.account-open ? root.account
+        : Shell.settings-open ? root.settings
+        : Shell.room-log-open ? root.room-log
+        : root.logged-in && CallView.active && CallPanel.details-open ? root.call-details
+        : Shell.source-open ? root.source
+        : Shell.room-preview-open ? root.room-preview
+        : Shell.invite-people-open ? root.invite-people
+        : Shell.leave-space-open ? root.leave-space
+        : Shell.removal-open ? root.removal
+        : Shell.invite-open ? root.invite
+        : Shell.user-info-open ? root.user-info
+        : Shell.readers-open ? root.readers
+        : Shell.room-info-open ? root.room-info
+        : Shell.video-open ? root.video
+        : Shell.create-room-open ? root.create-room
+        : root.logged-in && Shell.poll-open ? root.poll
+        : Shell.attachment-open ? root.attachment
+        : Shell.drawer-open ? root.drawer
+        : root.popup-open ? root.popup
+        : 0;
+}
+
+export global FocusKeeper {
+    out property <int> reclaims;
+
+    public function recover(level: int, eager: bool) -> string {
+        if Overlays.top != 0 {
+            root.reclaims += 1;
+            return "overlay";
+        }
+        if !Overlays.logged-in {
+            FocusHome.ask(FocusRegion.login);
+            return "login";
+        }
+        if eager && FocusHome.row {
+            return "";
+        }
+        if level == 0 && FocusHome.region != FocusRegion.none {
+            FocusHome.ask(FocusHome.region);
+            return "where it was";
+        }
+        if level <= 1 {
+            FocusHome.ask-anew(FocusRegion.composer);
+            return "the composer";
+        }
+        if level == 2 {
+            FocusHome.ask-anew(FocusRegion.rooms);
+            return "the room list";
+        }
+        if level == 3 {
+            FocusHome.ask-anew(FocusRegion.rail);
+            return "the space rail";
+        }
+        FocusHome.ask-anew(FocusRegion.screen);
+        return "the screen";
+    }
+}
+
 export global LocalState {
     public function forget-session() {
+        FocusHome.forget();
         Composer.clear();
         Shell.close-overlays();
         Shell.room-info-pane-open = false;

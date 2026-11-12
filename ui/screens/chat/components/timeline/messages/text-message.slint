@@ -3,7 +3,7 @@ import { Palette } from "std-widgets.slint";
 import { BodyLine, BodyPiece, MessageEntry } from "../../../../../types.slint";
 import { EmojiArt, MessageKind, SpoilerState } from "../../../../../enums.slint";
 import { Actions } from "../../../../../actions.slint";
-import { TextSelection } from "../../../../../local.slint";
+import { FocusHome, FocusRegion, TextSelection } from "../../../../../local.slint";
 import { AppStyle, Fonts, IconSize, Metrics, Space } from "../../../../../theme.slint";
 import { CustomEmojiImage, EmojiBox } from "../custom-emoji.slint";
 
@@ -186,10 +186,13 @@ export component TextMessage inherits Rectangle {
             changed has-focus => {
                 if !self.has-focus {
                     TextSelection.clear();
+                } else {
+                    FocusHome.entered-row(FocusRegion.timeline, root.msg.unique-id);
                 }
             }
             key-pressed(event) => {
                 if event.text == Key.Escape {
+                    FocusHome.ask(FocusRegion.timeline);
                     TextSelection.clear();
                     return accept;
                 }

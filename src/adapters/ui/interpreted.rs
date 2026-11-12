@@ -11,7 +11,7 @@ use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::Arc;
 
-use names::{callback, notification_text, window_props};
+use names::{callback, focus_keeper, notification_text, window_props};
 use slint::ModelRc;
 use slint_interpreter::{
     Compiler, ComponentDefinition, ComponentHandle, ComponentInstance, SharedString, Value,
@@ -184,6 +184,14 @@ impl UiBackend for InterpretedBackend {
         call_window::keep(window)
     }
 
+    fn recover_focus(window: &ComponentInstance, level: i32, eager: bool) -> SharedString {
+        recover(window, level, eager)
+    }
+
+    fn recover_call_focus(window: &ComponentInstance, level: i32, eager: bool) -> SharedString {
+        recover(window, level, eager)
+    }
+
     fn notification_text(window: &ComponentInstance, words: &NoticeWords<'_>) -> SharedString {
         let (function, args) = match *words {
             NoticeWords::Message { kind, body, sender } => (
@@ -220,6 +228,21 @@ impl UiBackend for InterpretedBackend {
                 );
                 SharedString::new()
             }
+        }
+    }
+}
+
+fn recover(window: &ComponentInstance, level: i32, eager: bool) -> SharedString {
+    let args = [Value::Number(f64::from(level)), Value::Bool(eager)];
+    match window.invoke_global(focus_keeper::NAME, focus_keeper::RECOVER, &args) {
+        Ok(Value::String(to)) => to,
+        Ok(other) => {
+            tracing::warn!("the focus recovery answered {other:?}");
+            SharedString::new()
+        }
+        Err(e) => {
+            tracing::warn!("the focus could not be recovered: {e}");
+            SharedString::new()
         }
     }
 }

@@ -55,12 +55,16 @@ export component SheetCloseChip inherits Rectangle {
 
     callback clicked();
 
+    public function take-focus() {
+        button.take-focus();
+    }
+
     width: Size.md;
     height: Size.md;
     border-radius: self.width / 2;
     background: root.surface;
 
-    IconButton {
+    button := IconButton {
         size: Size.md;
         icon: IconSet.X;
         above-modal: root.above-modal;
@@ -78,6 +82,10 @@ export component SheetCard inherits Rectangle {
     in property <string> close-label;
 
     callback close-clicked();
+
+    public function focus-close() {
+        close-chip.take-focus();
+    }
 
     property <length> card-width: min(AppStyle.card-width-wide, root.width - AppStyle.card-inset);
     property <length> card-height: min(
@@ -111,7 +119,7 @@ export component SheetCard inherits Rectangle {
             }
         }
 
-        SheetCloseChip {
+        close-chip := SheetCloseChip {
             x: parent.width - self.width - Space.md;
             y: Space.md;
             surface: AppStyle.elevated;

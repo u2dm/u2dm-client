@@ -9,7 +9,7 @@ import { ClickArea, Interaction, RovingKeys } from "../../../../components/a11y.
 import { ConfirmChoice, Confirmations, MenuCard, MenuConfirmation } from "../../../../components/menu.slint";
 import { MenuRow } from "../../../../components/menu-row.slint";
 import { ModalHost, PickerCard, Placement } from "../../../../components/overlay.slint";
-import { Composer, LocalState, MessageMenu, Polls, ReactionPopup, Reactions, RoomMenu, TextSelection } from "../../../../local.slint";
+import { Composer, LocalState, MessageMenu, Overlays, Polls, ReactionPopup, Reactions, RoomMenu, TextSelection } from "../../../../local.slint";
 import { Actions } from "../../../../actions.slint";
 import { RoomView } from "../../../../views.slint";
 import { MessageKind, SendState } from "../../../../enums.slint";
@@ -536,6 +536,7 @@ export component MessageMenuOverlay inherits Rectangle {
     }
 
     if MessageMenu.visible: host := ModalHost {
+        layer: Overlays.popup;
         property <length> headroom: root.shows-bar ? bar.height + root.gap : 0;
         property <length> card-x: root.card-left(card.width);
         property <length> card-y: root.card-top(card.height, self.headroom);

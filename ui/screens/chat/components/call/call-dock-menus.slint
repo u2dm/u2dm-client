@@ -1,6 +1,6 @@
 import { Actions } from "../../../../actions.slint";
 import { ModalHost, Placement } from "../../../../components/overlay.slint";
-import { CallMenuOpener, CallMode, CallPanel } from "../../../../local.slint";
+import { CallMenuOpener, CallMode, CallPanel, Overlays } from "../../../../local.slint";
 import { CallView } from "../../../../views.slint";
 import { Space } from "../../../../theme.slint";
 import { DockAnchors } from "./call-dock.slint";
@@ -35,6 +35,7 @@ export component CallDockMenus {
     property <bool> people-above: root.people-room-above > root.people-room-below;
 
     if CallPanel.devices-open && CallView.active: ModalHost {
+        layer: Overlays.popup;
         x: 0;
         y: 0;
         width: root.width;
@@ -64,6 +65,7 @@ export component CallDockMenus {
     }
 
     if CallPanel.reactions-open && CallView.active: ModalHost {
+        layer: Overlays.popup;
         x: 0;
         y: 0;
         width: root.width;
@@ -93,6 +95,7 @@ export component CallDockMenus {
     }
 
     if CallPanel.people-open && CallView.active: ModalHost {
+        layer: Overlays.popup;
         x: 0;
         y: 0;
         width: root.width;
@@ -121,6 +124,7 @@ export component CallDockMenus {
     }
 
     if CallPanel.more-open && CallView.active: ModalHost {
+        layer: Overlays.popup;
         x: 0;
         y: 0;
         width: root.width;

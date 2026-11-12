@@ -62,6 +62,11 @@ const REMOVAL_SLINT: &str = "ui/screens/chat/components/removal.slint";
 const CREATE_ROOM_SLINT: &str = "ui/screens/chat/components/create-room.slint";
 const INVITE_PEOPLE_SLINT: &str = "ui/screens/chat/components/invite-people.slint";
 const SETTINGS_SLINT: &str = "ui/screens/chat/components/settings/settings.slint";
+const MAIN_SLINT: &str = "ui/main.slint";
+const LOCAL_SLINT: &str = "ui/local.slint";
+const OVERLAYS_GLOBAL: (&str, &str) = ("export global Overlays {", "\n}");
+const OVERLAY_LAYER: &str = "layer: Overlays.";
+const TOP_LAYER: (&str, &str) = ("out property <int> top:", ";");
 
 const ENUM_COVERAGE: &[EnumCoverage] = &[
     covers("SettingsPage", SETTINGS_SLINT, &[]),
@@ -222,6 +227,7 @@ fn main() {
     check_scenario_catalogs();
     check_call_reaction_options();
     check_default_quick_reactions();
+    check_overlay_layers_follow_mount_order();
     check_generated_ui_stays_in_its_adapter();
     sync_lucide_lsp_lib();
 
@@ -344,6 +350,54 @@ fn check_call_reaction_options() {
         sent == offered,
         "{CALL_REACTIONS_MENU} offers {offered:?}, but {CALL_REACTIONS_DOMAIN} sends {sent:?}: the \
          menu must list REACTION_OPTIONS' names and emoji, in its order"
+    );
+}
+
+fn check_overlay_layers_follow_mount_order() {
+    println!("cargo::rerun-if-changed={MAIN_SLINT}");
+    println!("cargo::rerun-if-changed={LOCAL_SLINT}");
+    let (Ok(main), Ok(local)) = (
+        fs::read_to_string(MAIN_SLINT),
+        fs::read_to_string(LOCAL_SLINT),
+    ) else {
+        panic!(
+            "failed to read {MAIN_SLINT} or {LOCAL_SLINT}, so the overlay layers cannot be checked"
+        );
+    };
+    let overlays = section(&local, LOCAL_SLINT, OVERLAYS_GLOBAL, "the overlay layers");
+    let layer_of = |name: &str| -> i64 {
+        let declaration = format!("out property <int> {name}: ");
+        let Some(value) = between(overlays, &declaration, ";").and_then(|v| v.trim().parse().ok())
+        else {
+            panic!("Overlays in {LOCAL_SLINT} declares no layer `{name}`, which {MAIN_SLINT} uses");
+        };
+        value
+    };
+    let mounted: Vec<(String, i64)> = main
+        .split(OVERLAY_LAYER)
+        .skip(1)
+        .filter_map(|rest| rest.split(';').next())
+        .map(|name| (name.to_string(), layer_of(name)))
+        .collect();
+    assert!(
+        mounted
+            .windows(2)
+            .all(|pair| matches!(pair, [a, b] if a.1 < b.1)),
+        "{MAIN_SLINT} mounts its overlays as {mounted:?}: each later one draws over the earlier \
+         ones, so their Overlays layers must rise in that order"
+    );
+    let chain = section(overlays, LOCAL_SLINT, TOP_LAYER, "the top overlay");
+    let ranked: Vec<(String, i64)> = chain
+        .split("? root.")
+        .skip(1)
+        .filter_map(|rest| rest.split_whitespace().next())
+        .map(|name| (name.to_string(), layer_of(name)))
+        .collect();
+    assert!(
+        ranked
+            .windows(2)
+            .all(|pair| matches!(pair, [a, b] if a.1 > b.1)),
+        "Overlays.top in {LOCAL_SLINT} tests {ranked:?}: it must ask the highest layer first"
     );
 }
 

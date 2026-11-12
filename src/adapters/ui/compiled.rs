@@ -12,7 +12,7 @@ use u2dm_ui::{
     AboutView, AccountView, Actions, AppWindow, AppearanceView, AttachmentView, AudioView,
     BodyLine, BodyPiece, CallConnectionEntry, CallDeviceEntry, CallPersonEntry, CallTileEntry,
     CallView, CallWindow, ComposerDraft, CreateRoomView, DirectoryView,
-    DraftVerdict as UiDraftVerdict, EmojiEntry, EmojiRow, EmojiStore, EncryptionView,
+    DraftVerdict as UiDraftVerdict, EmojiEntry, EmojiRow, EmojiStore, EncryptionView, FocusKeeper,
     IdentityAlertView, IgnoredPersonEntry, InvitePeopleView, InviteView, InviteeEntry,
     KeywordEntry, LeaveSpaceView, LogLineEntry, LoginView, LogoutView, MemberEntry, MentionWord,
     MentionsView, MessageEntry, Motion, NotificationText, PackCell, PackRow, PackTabEntry,
@@ -637,6 +637,14 @@ impl UiBackend for CompiledBackend {
 
     fn keep_call_window(window: Option<CallWindow>) -> Option<CallWindow> {
         call_window::keep(window)
+    }
+
+    fn recover_focus(window: &AppWindow, level: i32, eager: bool) -> SharedString {
+        window.global::<FocusKeeper>().invoke_recover(level, eager)
+    }
+
+    fn recover_call_focus(window: &CallWindow, level: i32, eager: bool) -> SharedString {
+        window.global::<FocusKeeper>().invoke_recover(level, eager)
     }
 
     fn notification_text(window: &AppWindow, words: &NoticeWords<'_>) -> SharedString {

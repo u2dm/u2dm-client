@@ -9,7 +9,7 @@ import { StateLayer } from "../../../components/state-layer.slint";
 import { DirectoryView } from "../../../views.slint";
 import { RoomScope } from "../../../enums.slint";
 import { Actions } from "../../../actions.slint";
-import { RoomMenu, RoomMenuOrigin, RoomMenuReturn, Shell } from "../../../local.slint";
+import { FocusHome, FocusRegion, RoomMenu, RoomMenuOrigin, RoomMenuReturn, Shell } from "../../../local.slint";
 import { AppStyle, Glyph, IconSize, Metrics, Motion, Radius, Size, Space, Stroke } from "../../../theme.slint";
 
 enum SpaceDrag {
@@ -29,14 +29,24 @@ component SpaceTile inherits ListItemArea {
     property <length> glyph-size: Size.xxl;
     property <length> marker-height: Size.lg;
     property <int> menu-returns: RoomMenu.focus-returns;
+    property <int> focus-asks: FocusHome.asks;
 
     height: Metrics.rail-row;
     label: root.entry.name;
     ring-radius: Radius.md;
     ring-inset: Metrics.rail-tile-inset;
+    region: FocusRegion.rail;
+    place: root.entry.id != "" ? root.entry.id : "\{root.index}";
 
     changed menu-returns => {
         if root.offers-menu && RoomMenu.returns-to(RoomMenuReturn.tile, root.entry.id) {
+            root.take-focus();
+        }
+    }
+
+    changed focus-asks => {
+        if FocusHome.asked == FocusRegion.rail && root.enabled
+            && (FocusHome.asked-place != "" ? FocusHome.asked-place == root.place : root.selected) {
             root.take-focus();
         }
     }

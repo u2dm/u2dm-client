@@ -11,7 +11,7 @@ import { CallDevicesMenu } from "./call-devices-menu.slint";
 import { CallView, DirectoryView, SpaceIndexView } from "../../../../views.slint";
 import { CallWords } from "../../../../messages.slint";
 import { Actions } from "../../../../actions.slint";
-import { CallPanel, MetaTip, Reactions, Shell } from "../../../../local.slint";
+import { CallPanel, MetaTip, Overlays, Reactions, Shell } from "../../../../local.slint";
 import { DialogNote, SecondaryText } from "../../../../components/text-roles.slint";
 
 component BridgeNote inherits HorizontalLayout {
@@ -544,6 +544,7 @@ component CameraPreview inherits Rectangle {
 }
 
 export component CallSheet inherits ModalHost {
+    defers: root.devices-open;
     property <length> card-width: min(AppStyle.card-width, root.width - AppStyle.card-inset);
     property <length> body-height: body.preferred-height;
     property <length> actions-height: actions.preferred-height;
@@ -882,6 +883,7 @@ export component CallSheet inherits ModalHost {
     }
 
     if root.devices-open: ModalHost {
+        layer: Overlays.call-sheet;
         x: 0;
         y: 0;
         width: root.width;

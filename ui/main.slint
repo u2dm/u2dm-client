@@ -55,7 +55,7 @@ import {
 import { Actions } from "./actions.slint";
 import { EmojiStore } from "./emoji-store.slint";
 import { NotificationText, SpoilerCover } from "./messages.slint";
-import { CallPanel, Polls, Probe, ReplySwipe, RoomMenu, RoomSearch, Shell } from "./local.slint";
+import { CallPanel, FocusKeeper, Overlays, Polls, Probe, ReplySwipe, RoomMenu, RoomSearch, Shell } from "./local.slint";
 import { Metrics, Motion, Space } from "./theme.slint";
 import { LoadingScreen } from "./screens/login/loading.slint";
 import { RestorePausedScreen } from "./screens/login/restore-paused.slint";
@@ -97,7 +97,7 @@ export { MessageKind, PreviewKind, ServiceKind, LoginMethodKind, AudioKind }
 export { LoginView, SessionView, DirectoryView, SpaceIndexView, RoomView, PackView, VerificationView }
 export { AttachmentView, VideoView, AudioView, UnsentView, IdentityAlertView, UpgradeView, TouchpadView, TypingView, PresenceView, CallView, EncryptionView, AccountView, AboutView, AppearanceView, SettingsView, LogoutView, WindowView, RoomInfoView, SourceView, RoomMenuView, RoomLogView, UserInfoView, InviteView, RemovalView, LeaveSpaceView, RoomPreviewView, CreateRoomView, InvitePeopleView, ReadersView, MentionsView }
 export { Actions }
-export { Probe, ReplySwipe, RoomMenu }
+export { FocusKeeper, Probe, ReplySwipe, RoomMenu }
 export { Motion }
 export { NotificationText, SpoilerCover }
 export { CallWindow }
@@ -179,8 +179,11 @@ export component AppWindow inherits Window {
         window-minimized: root.minimized;
     }
 
-    if Shell.attachment-open: AttachmentDialog { }
+    if Shell.attachment-open: AttachmentDialog {
+        layer: Overlays.attachment;
+    }
     if Shell.poll-open && LoginView.step == LoginPhase.logged-in: PollDialog {
+        layer: Overlays.poll;
         room-id: DirectoryView.selected-room-id;
         source: Polls.edit-source;
         closed => {
@@ -188,24 +191,60 @@ export component AppWindow inherits Window {
             Polls.stop-editing();
         }
     }
-    if Shell.create-room-open: CreateRoomDialog { }
-    if Shell.video-open: VideoPlayer { }
-    if Shell.room-info-open: RoomInfoDialog { }
-    if Shell.readers-open: ReadersDialog { }
-    if Shell.user-info-open: UserInfoDialog { }
-    if Shell.invite-open: InviteDialog { }
-    if Shell.removal-open: RemovalDialog { }
-    if Shell.leave-space-open: LeaveSpaceDialog { }
-    if Shell.invite-people-open: InvitePeopleDialog { }
-    if Shell.room-preview-open: RoomPreviewDialog { }
-    if Shell.source-open: EventSourceDialog { }
-    if LoginView.step == LoginPhase.logged-in && CallView.active && CallPanel.details-open: CallDetailsDialog { }
-    if Shell.room-log-open: RoomLogDialog { }
-    if Shell.settings-open: SettingsDialog { }
-    if Shell.account-open: AccountDialog { }
-    if Shell.encryption-open: EncryptionDialog { }
-    if Shell.logout-open: LogoutWarningDialog { }
-    if Shell.call-sheet-open: CallSheet { }
+    if Shell.create-room-open: CreateRoomDialog {
+        layer: Overlays.create-room;
+    }
+    if Shell.video-open: VideoPlayer {
+        layer: Overlays.video;
+    }
+    if Shell.room-info-open: RoomInfoDialog {
+        layer: Overlays.room-info;
+    }
+    if Shell.readers-open: ReadersDialog {
+        layer: Overlays.readers;
+    }
+    if Shell.user-info-open: UserInfoDialog {
+        layer: Overlays.user-info;
+    }
+    if Shell.invite-open: InviteDialog {
+        layer: Overlays.invite;
+    }
+    if Shell.removal-open: RemovalDialog {
+        layer: Overlays.removal;
+    }
+    if Shell.leave-space-open: LeaveSpaceDialog {
+        layer: Overlays.leave-space;
+    }
+    if Shell.invite-people-open: InvitePeopleDialog {
+        layer: Overlays.invite-people;
+    }
+    if Shell.room-preview-open: RoomPreviewDialog {
+        layer: Overlays.room-preview;
+    }
+    if Shell.source-open: EventSourceDialog {
+        layer: Overlays.source;
+    }
+    if LoginView.step == LoginPhase.logged-in && CallView.active && CallPanel.details-open: CallDetailsDialog {
+        layer: Overlays.call-details;
+    }
+    if Shell.room-log-open: RoomLogDialog {
+        layer: Overlays.room-log;
+    }
+    if Shell.settings-open: SettingsDialog {
+        layer: Overlays.settings;
+    }
+    if Shell.account-open: AccountDialog {
+        layer: Overlays.account;
+    }
+    if Shell.encryption-open: EncryptionDialog {
+        layer: Overlays.encryption;
+    }
+    if Shell.logout-open: LogoutWarningDialog {
+        layer: Overlays.logout;
+    }
+    if Shell.call-sheet-open: CallSheet {
+        layer: Overlays.call-sheet;
+    }
     if LoginView.step == LoginPhase.logged-in && CallView.ring-visible: IncomingCallCard {
         x: root.width - self.width - Metrics.incoming-call-inset;
         y: Metrics.header-row + Metrics.incoming-call-top;
@@ -213,6 +252,7 @@ export component AppWindow inherits Window {
     }
 
     if LoginView.step == LoginPhase.logged-in && CallView.ring-visible && CallPanel.ring-devices-open: ModalHost {
+        layer: Overlays.ring-devices;
         x: 0;
         y: 0;
         width: root.width;
@@ -234,7 +274,9 @@ export component AppWindow inherits Window {
         }
     }
 
-    if Shell.verification-open: VerificationDialog { }
+    if Shell.verification-open: VerificationDialog {
+        layer: Overlays.verification;
+    }
 
     TipLayer {
         x: 0;

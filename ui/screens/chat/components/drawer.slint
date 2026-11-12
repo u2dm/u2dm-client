@@ -9,6 +9,7 @@ import { AppStyle, Fonts, Glyph, IconSize, Metrics, Motion, Radius, Size, Space,
 import { ConnectionState } from "../../../enums.slint";
 import { EncryptionView, SessionView } from "../../../views.slint";
 import { Actions } from "../../../actions.slint";
+import { Overlays } from "../../../local.slint";
 
 component DrawerRow inherits Rectangle {
     in property <Icon> icon;
@@ -106,6 +107,7 @@ export component Drawer inherits Rectangle {
     }
 
     if root.open: ModalHost {
+        layer: Overlays.drawer;
         label: @tr("Account menu");
         dismissed => {
             root.dismiss();

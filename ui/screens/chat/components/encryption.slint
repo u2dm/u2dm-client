@@ -662,11 +662,14 @@ export component EncryptionDialog inherits ModalHost {
     dismissed => {
         Actions.close-encryption();
     }
+    reclaimed => {
+        header.focus-close();
+    }
 
     copier := CopyFeedback { }
 
     ScrollingDialogCard {
-        VerificationHeader {
+        header := VerificationHeader {
             icon: IconSet.KeyRound;
             title: @tr("Encryption");
             subtitle: @tr("This session and your recovery key");

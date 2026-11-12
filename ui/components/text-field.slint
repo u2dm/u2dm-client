@@ -148,8 +148,12 @@ export component TextField inherits Rectangle {
     }
 
     changed text => {
-        if self.text == "" {
+        if self.text == "" && self.revealed {
+            let focused = revealed-input.has-focus;
             self.revealed = false;
+            if focused {
+                input.focus();
+            }
         }
     }
 

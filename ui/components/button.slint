@@ -6,7 +6,7 @@ import { AppStyle, Fonts, IconSize, Metrics, Opacity, Radius, Size, Space, Weigh
 import { DotPulse } from "./dot-pulse.slint";
 import { ShadedClickArea, StateLayer } from "./state-layer.slint";
 import { TipSource } from "./tip.slint";
-import { TipScope } from "../local.slint";
+import { FocusRegion, TipScope } from "../local.slint";
 
 export component AppButton inherits Rectangle {
     in property <string> text;
@@ -19,6 +19,9 @@ export component AppButton inherits Rectangle {
     in property <bool> busy: false;
     in property <bool> filled: true;
     in property <color> tint: Palette.accent-background;
+    in property <FocusRegion> region: FocusRegion.none;
+    in property <string> place;
+    in property <bool> region-row: false;
     out property <bool> has-focus: touch.has-focus;
 
     callback clicked();
@@ -47,6 +50,9 @@ export component AppButton inherits Rectangle {
         enabled: root.interactive;
         above-modal: root.above-modal;
         label: root.label;
+        region: root.region;
+        place: root.place;
+        region-row: root.region-row;
         accessible-description: root.description;
         ring-inset: -Metrics.ring-outset;
         ring-radius: Radius.md + Metrics.ring-outset;
@@ -116,6 +122,8 @@ export component IconButton inherits Rectangle {
     in property <string> tip-keys;
     in property <bool> tip-below;
     in property <TipScope> tip-scope: TipScope.any;
+    in property <FocusRegion> region: FocusRegion.none;
+    in property <string> place;
     out property <bool> has-focus: touch.has-focus;
     out property <bool> has-hover: touch.has-hover;
 
@@ -145,6 +153,8 @@ export component IconButton inherits Rectangle {
         enabled: root.interactive;
         above-modal: root.above-modal;
         label: root.label;
+        region: root.region;
+        place: root.place;
         accessible-description: root.description;
         ring-inset: -root.ring-outset;
         ring-radius: root.radius + root.ring-outset;

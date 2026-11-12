@@ -2,7 +2,7 @@ import { ReactionPicker, ReactionStrip } from "./reaction-picker.slint";
 import { ReactionDetail } from "./reaction-detail.slint";
 import { PollVoters } from "./poll-voters.slint";
 import { ModalHost, Placement, TipCard } from "../../../../components/overlay.slint";
-import { MetaMark, MetaTip, ReactionPopup, Reactions, SettingsEntry, Shell } from "../../../../local.slint";
+import { MetaMark, MetaTip, Overlays, ReactionPopup, Reactions, SettingsEntry, Shell } from "../../../../local.slint";
 import { Actions } from "../../../../actions.slint";
 import { Deliveries, DeliveryStatus, ShieldReasons } from "../../../../messages.slint";
 import { SettingsPage } from "../../../../enums.slint";
@@ -24,6 +24,7 @@ component ReactionPopover inherits ModalHost {
     width: 100%;
     height: 100%;
     dim: false;
+    layer: Overlays.popup;
     dismissed => {
         Reactions.close();
         root.closed();

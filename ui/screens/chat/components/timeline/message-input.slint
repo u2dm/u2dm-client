@@ -15,7 +15,7 @@ import { LinkButton } from "../../../../components/button.slint";
 import { ModalHost } from "../../../../components/overlay.slint";
 import { FocusRing, FocusTrail, Interaction } from "../../../../components/a11y.slint";
 import { Actions } from "../../../../actions.slint";
-import { Composer, Polls, Reactions, Shell } from "../../../../local.slint";
+import { Composer, FocusHome, FocusRegion, Overlays, Polls, Reactions, Shell } from "../../../../local.slint";
 import { ComposerDraft, EditedMessage, ReplyDraft } from "../../../../types.slint";
 import { IdentityAlertView, RoomView, UnsentView, UpgradeView } from "../../../../views.slint";
 import { IdentityAlertKind, UpgradeLink } from "../../../../enums.slint";
@@ -184,6 +184,8 @@ export component MessageInput inherits Rectangle {
     changed field-focused => {
         if !self.field-focused {
             FocusTrail.leave();
+        } else {
+            FocusHome.entered(FocusRegion.composer, "");
         }
     }
 
@@ -375,6 +377,7 @@ export component MessageInput inherits Rectangle {
     }
 
     if Shell.picker-open: ModalHost {
+        layer: Overlays.popup;
         x: root.overlay-x;
         y: root.overlay-y;
         width: root.overlay-width;
@@ -413,6 +416,7 @@ export component MessageInput inherits Rectangle {
     }
 
     if Shell.attach-open: ModalHost {
+        layer: Overlays.popup;
         x: root.overlay-x;
         y: root.overlay-y;
         width: root.overlay-width;
@@ -545,6 +549,7 @@ export component MessageInput inherits Rectangle {
                 root.restore-unsent();
             }
             discard-clicked => {
+                field.focus-input();
                 root.settle-unsent();
             }
         }
@@ -561,6 +566,7 @@ export component MessageInput inherits Rectangle {
             sender: Composer.reply-sender;
             preview: Composer.reply-preview;
             cancel-clicked => {
+                field.focus-input();
                 Composer.clear-reply();
             }
         }

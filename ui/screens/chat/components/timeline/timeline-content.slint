@@ -3,7 +3,7 @@ import { IconDisplay, IconSet } from "@lucide";
 
 import { StatusPill } from "../../../../components/status-pill.slint";
 import { TimelineScroller } from "./timeline-scroller.slint";
-import { Probe } from "../../../../local.slint";
+import { FocusHome, FocusRegion, Probe } from "../../../../local.slint";
 import { ClickArea } from "../../../../components/a11y.slint";
 import { RoomView } from "../../../../views.slint";
 import { AppStyle, Fonts, IconSize, Metrics, Radius, Size, Space, Weight } from "../../../../theme.slint";
@@ -120,6 +120,9 @@ export component TimelineContent inherits Rectangle {
         x: parent.width - self.width - Space.xl;
         y: parent.height - self.height - Space.xl - root.bottom-inset;
         clicked => {
+            if self.has-focus {
+                FocusHome.ask(FocusRegion.composer);
+            }
             scroller.jump-to-latest();
         }
     }

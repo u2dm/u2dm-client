@@ -18,7 +18,7 @@ import { NotifyModes } from "./notify-modes.slint";
 import { AppStyle, Fonts, IconSize, Metrics, Radius, Size, Space, Weight } from "../../../theme.slint";
 import { RosterStatus, UserMessageKind } from "../../../enums.slint";
 import { RoomInfoView } from "../../../views.slint";
-import { Shell } from "../../../local.slint";
+import { Overlays, Shell } from "../../../local.slint";
 import { Actions } from "../../../actions.slint";
 
 component NotifyRow inherits ListItemArea {
@@ -749,6 +749,7 @@ export component RoomInfoDialog inherits ModalHost {
 
     dim-opacity: AppStyle.dialog-scrim;
     label: @tr("Room info");
+    defers: sheet.notify-picker-open;
     dismissed => {
         if Shell.user-info-open {
             Actions.close-user-info();
@@ -809,6 +810,7 @@ export component RoomInfoDialog inherits ModalHost {
     }
 
     if sheet.notify-picker-open: NotifyPickerHost {
+        layer: Overlays.room-info;
         anchor-x: sheet.picker-x;
         anchor-y: sheet.picker-y;
         dismissed => {

@@ -101,6 +101,8 @@ pub trait UiBackend: Sized + 'static {
     fn call_window() -> Option<Self::CallWindow>;
     fn keep_call_window(window: Option<Self::CallWindow>) -> Option<Self::CallWindow>;
     fn notification_text(window: &Self::Window, words: &NoticeWords<'_>) -> SharedString;
+    fn recover_focus(window: &Self::Window, level: i32, eager: bool) -> SharedString;
+    fn recover_call_focus(window: &Self::CallWindow, level: i32, eager: bool) -> SharedString;
 
     fn with_timeline<R>(f: impl FnOnce(&SpliceModel<Self::Message>) -> R) -> R {
         f(&Self::models().timeline)

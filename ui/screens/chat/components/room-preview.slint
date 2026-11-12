@@ -152,6 +152,9 @@ component Banner inherits HorizontalLayout {
 }
 
 export component RoomPreviewDialog inherits ModalHost {
+    reclaimed => {
+        sheet.focus-close();
+    }
     property <bool> entry: RoomPreviewView.entry;
     property <RoomPreviewStatus> status: RoomPreviewView.status;
     property <bool> clears-close-chip: !root.entry && root.status != RoomPreviewStatus.loaded;
@@ -178,7 +181,7 @@ export component RoomPreviewDialog inherits ModalHost {
         }
     }
 
-    SheetCard {
+    sheet := SheetCard {
         max-card-height: Metrics.room-preview-max-height;
         body-padding-top: root.clears-close-chip ? Space.md + Size.md + Space.sm : Space.xl;
         body-spacing: 0;

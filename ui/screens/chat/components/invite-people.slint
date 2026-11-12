@@ -223,6 +223,9 @@ export component InvitePeopleDialog inherits ModalHost {
         MetaTip.clear();
         search.focus();
     }
+    reclaimed => {
+        search.focus();
+    }
 
     DialogCard {
         x: (root.width - self.width) / 2;

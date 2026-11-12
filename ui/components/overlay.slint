@@ -1,4 +1,5 @@
 import { Palette, ScrollView } from "std-widgets.slint";
+import { FocusKeeper, Overlays } from "../local.slint";
 import { AppStyle, Fonts, Motion, Opacity, Radius, Size, Space, Weight } from "../theme.slint";
 
 export global Placement {
@@ -116,12 +117,23 @@ export component ModalHost inherits Rectangle {
     in property <bool> light-dismiss: true;
     in property <bool> any-button-dismisses: false;
     in property <string> label;
+    in property <int> layer: -1;
+    in property <bool> defers: false;
     out property <bool> dismissing-by-pointer: false;
 
     callback dismissed();
     callback opened();
+    callback reclaimed();
 
     property <bool> entered: false;
+    property <int> reclaims: FocusKeeper.reclaims;
+
+    changed reclaims => {
+        if root.layer >= 0 && Overlays.top == root.layer && !root.defers {
+            keys.focus();
+            root.reclaimed();
+        }
+    }
 
     function dismiss-by-pointer() {
         root.dismissing-by-pointer = true;

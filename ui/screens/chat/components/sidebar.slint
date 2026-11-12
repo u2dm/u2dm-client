@@ -24,7 +24,7 @@ import { AppStyle, Fonts, IconSize, Metrics, Motion, Opacity, Size, Space, Strok
 import { InviteKind, RemovalKind, RoomCallMark, RoomRowKind, RoomScope, ServiceKind } from "../../../enums.slint";
 import { DirectoryView, SpaceIndexView } from "../../../views.slint";
 import { Actions } from "../../../actions.slint";
-import { RoomMenu, RoomMenuOrigin, RoomMenuReturn, RoomSearch, Subspaces } from "../../../local.slint";
+import { FocusHome, FocusRegion, RoomMenu, RoomMenuOrigin, RoomMenuReturn, RoomSearch, Subspaces } from "../../../local.slint";
 
 component SidebarSearch inherits FocusScope {
     in property <bool> above-modal: false;
@@ -32,9 +32,25 @@ component SidebarSearch inherits FocusScope {
 
     callback accepted();
 
+    property <int> focus-asks: FocusHome.asks;
+
     height: Size.md;
     focus-on-click: false;
     focus-on-tab-navigation: false;
+
+    changed field-focused => {
+        if self.field-focused {
+            FocusHome.entered(FocusRegion.rooms, "search");
+        }
+    }
+
+    changed focus-asks => {
+        if FocusHome.asked == FocusRegion.rooms && root.visible
+            && (FocusHome.asked-place == "search"
+                || (FocusHome.asked-place == "" && DirectoryView.selected-room-id == "")) {
+            field.focus();
+        }
+    }
 
     key-pressed(event) => {
         if event.text == Key.Escape && RoomSearch.query != "" {
@@ -385,6 +401,7 @@ component RoomRow inherits ListItemArea {
     property <bool> has-unread: root.entry.alert || root.entry.mention || root.entry.hint;
     property <bool> joined: root.selected && root.joins-timeline;
     property <int> menu-returns: RoomMenu.focus-returns;
+    property <int> focus-asks: FocusHome.asks;
 
     pure function heading-text(kind: RoomRowKind) -> string {
         if kind == RoomRowKind.invites-heading || RowHeadings.folds-invites(kind) {
@@ -450,6 +467,9 @@ component RoomRow inherits ListItemArea {
     enabled: !root.is-heading;
     ring-inset: Space.sm;
     ring-radius: Metrics.sidebar-tab-radius;
+    region: FocusRegion.rooms;
+    place: root.entry.id;
+    region-row: true;
     label: root.describe(root.entry);
     accessible-expandable: root.folds-invites;
     accessible-expanded: root.unfolded;
@@ -479,6 +499,13 @@ component RoomRow inherits ListItemArea {
 
     changed menu-returns => {
         if RoomMenu.returns-to(RoomMenuReturn.row, root.entry.id) {
+            root.take-focus();
+        }
+    }
+
+    changed focus-asks => {
+        if FocusHome.asked == FocusRegion.rooms && root.enabled
+            && root.entry.id == (FocusHome.asked-place != "" ? FocusHome.asked-place : DirectoryView.selected-room-id) {
             root.take-focus();
         }
     }

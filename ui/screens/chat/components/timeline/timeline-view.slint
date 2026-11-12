@@ -16,7 +16,7 @@ import { CopyNotifier } from "../../../../components/copier.slint";
 import { AudioView, CallView, DirectoryView, PresenceView, RoomView, TypingView, WindowView } from "../../../../views.slint";
 import { PresenceWords, TypingLine } from "../../../../messages.slint";
 import { Actions } from "../../../../actions.slint";
-import { CallMode, CallPanel, CallSheetOpener, CallSize, CallSurface, LocalState, ReplySwipe, RoomMenu, RoomMenuOrigin, RoomMenuReturn, RoomSearch, Shell } from "../../../../local.slint";
+import { CallMode, CallPanel, CallSheetOpener, CallSize, CallSurface, FocusHome, FocusRegion, LocalState, Overlays, ReplySwipe, RoomMenu, RoomMenuOrigin, RoomMenuReturn, RoomSearch, Shell } from "../../../../local.slint";
 import { StatusPill } from "../../../../components/status-pill.slint";
 import { NowPlayingBar } from "./now-playing-bar.slint";
 import { PinnedBar } from "./pinned-bar.slint";
@@ -162,8 +162,15 @@ export component TimelineView inherits Rectangle {
             - self.title-least;
         property <int> menu-returns: RoomMenu.focus-returns;
         property <int> sheet-returns: CallPanel.sheet-returns;
+        property <int> focus-asks: FocusHome.asks;
         property <bool> call-takes-row: root.call-owns-header;
         property <bool> row-given;
+        property <string> focused-control: title-area.has-focus ? "info"
+            : start-button.has-focus ? "start"
+            : join-button.has-focus ? "join"
+            : pane-button.has-focus ? "pane"
+            : room-menu-button.has-focus ? "menu"
+            : "";
 
         x: root.chat-x;
         y: 0;
@@ -199,6 +206,32 @@ export component TimelineView inherits Rectangle {
                 start-button.take-focus();
             } else if root.offers-call-join {
                 join-button.take-focus();
+            }
+        }
+
+        changed focused-control => {
+            if self.focused-control != "" {
+                FocusHome.entered(FocusRegion.header, self.focused-control);
+            }
+        }
+
+        changed focus-asks => {
+            if FocusHome.asked != FocusRegion.header || self.row-given {
+                return;
+            }
+            let place = FocusHome.asked-place;
+            if place == "pane" && root.room-info-pane-fits {
+                pane-button.take-focus();
+            } else if place == "menu" {
+                room-menu-button.take-focus();
+            } else if (place == "start" || place == "join") && root.offers-call-start {
+                start-button.take-focus();
+            } else if (place == "start" || place == "join") && root.offers-call-join {
+                join-button.take-focus();
+            } else if !root.room-info-pane-shown {
+                title-area.take-focus();
+            } else {
+                room-menu-button.take-focus();
             }
         }
 
@@ -328,6 +361,7 @@ export component TimelineView inherits Rectangle {
     if root.has-room: stage := Rectangle {
         property <bool> swipe-within-reach: ReplySwipe.within-reach;
         property <int> menu-returns: RoomMenu.focus-returns;
+        property <int> focus-asks: FocusHome.asks;
         property <bool> opened-from-search: RoomSearch.opened(root.room-id) && Shell.background-reachable;
         property <bool> call-covered: root.call-covers-timeline;
         property <bool> composer-covered;
@@ -405,6 +439,12 @@ export component TimelineView inherits Rectangle {
 
         changed composer-requests => {
             self.refocus-composer();
+        }
+
+        changed focus-asks => {
+            if FocusHome.asked == FocusRegion.composer {
+                self.refocus-composer();
+            }
         }
 
         function refocus-composer() {
@@ -748,6 +788,7 @@ export component TimelineView inherits Rectangle {
         }
 
         if CallPanel.menu-open && root.shows-band: ModalHost {
+            layer: Overlays.popup;
             x: -root.x;
             y: 0;
             width: root.overlay-width;

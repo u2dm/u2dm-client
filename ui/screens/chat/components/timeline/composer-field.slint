@@ -93,6 +93,7 @@ export component ComposerField inherits Rectangle {
     in property <bool> emoji-shown: true;
     out property <length> row-inset: Space.sm;
     out property <int> caret: 0;
+    property <int> kept-caret: 0;
     out property <bool> input-focused: text-input.has-focus;
     out property <int> edits: 0;
 
@@ -126,6 +127,20 @@ export component ComposerField inherits Rectangle {
     changed writable => {
         if !self.writable {
             text-input.clear-focus();
+        }
+    }
+
+    changed caret => {
+        if !self.input-focused {
+            self.kept-caret = self.caret;
+        }
+    }
+
+    changed input-focused => {
+        if !self.input-focused {
+            self.kept-caret = self.caret;
+        } else if text-input.anchor-position-byte-offset != text-input.cursor-position-byte-offset {
+            root.place-caret(self.kept-caret);
         }
     }
 

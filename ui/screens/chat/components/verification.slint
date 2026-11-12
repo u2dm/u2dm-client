@@ -150,6 +150,10 @@ export component VerificationHeader inherits HorizontalLayout {
 
     callback close-clicked();
 
+    public function focus-close() {
+        close.take-focus();
+    }
+
     spacing: Space.lg;
 
     Rectangle {
@@ -185,7 +189,7 @@ export component VerificationHeader inherits HorizontalLayout {
         }
     }
 
-    IconButton {
+    close := IconButton {
         cross-axis-self-alignment: center;
         icon: IconSet.X;
         above-modal: true;
@@ -203,13 +207,18 @@ component AnswerPair inherits HorizontalLayout {
     in property <bool> refusing;
     in property <string> agree-text;
     in property <bool> agreeing;
+    in property <int> reclaims;
 
     callback refused();
     callback agreed();
 
     spacing: Space.lg;
 
-    AppButton {
+    changed reclaims => {
+        refuse.take-focus();
+    }
+
+    refuse := AppButton {
         horizontal-stretch: 1;
         above-modal: true;
         text: root.refuse-text;
@@ -237,14 +246,23 @@ component AnswerPair inherits HorizontalLayout {
 }
 
 export component VerificationDialog inherits ModalHost {
+    property <int> reclaimed-steps;
+
     dim-opacity: AppStyle.dialog-scrim;
     label: @tr("Device verification");
     dismissed => {
         Actions.dismiss-verification();
     }
+    reclaimed => {
+        if VerificationView.step == VerificationPhase.confirming {
+            header.focus-close();
+        } else {
+            root.reclaimed-steps += 1;
+        }
+    }
 
     card := ScrollingDialogCard {
-        VerificationHeader {
+        header := VerificationHeader {
             title: VerificationView.is-self ? @tr("Device verification") : @tr("User verification");
             subtitle: VerificationView.is-self
                 ? @tr("One of your own sessions")
@@ -267,6 +285,7 @@ export component VerificationDialog inherits ModalHost {
             }
 
             AnswerPair {
+                reclaims: root.reclaimed-steps;
                 refuse-text: @tr("Decline");
                 refusing: VerificationView.activity == VerificationActivity.declining;
                 agree-text: @tr("Accept");
@@ -299,6 +318,10 @@ export component VerificationDialog inherits ModalHost {
             }
 
             AppButton {
+                property <int> reclaims: root.reclaimed-steps;
+                changed reclaims => {
+                    self.take-focus();
+                }
                 above-modal: true;
                 text: @tr("Cancel");
                 icon: IconSet.X;
@@ -322,6 +345,7 @@ export component VerificationDialog inherits ModalHost {
             }
 
             AnswerPair {
+                reclaims: root.reclaimed-steps;
                 refuse-text: @tr("They don't match");
                 refuse-tint: AppStyle.danger;
                 refusing: VerificationView.activity == VerificationActivity.declining;
@@ -370,6 +394,10 @@ export component VerificationDialog inherits ModalHost {
             }
 
             AppButton {
+                property <int> reclaims: root.reclaimed-steps;
+                changed reclaims => {
+                    self.take-focus();
+                }
                 above-modal: true;
                 text: @tr("Done");
                 icon: IconSet.Check;
@@ -394,6 +422,10 @@ export component VerificationDialog inherits ModalHost {
             }
 
             AppButton {
+                property <int> reclaims: root.reclaimed-steps;
+                changed reclaims => {
+                    self.take-focus();
+                }
                 above-modal: true;
                 text: @tr("Close");
                 filled: false;

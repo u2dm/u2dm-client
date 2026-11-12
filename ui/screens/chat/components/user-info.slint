@@ -325,6 +325,9 @@ component ModerationRows inherits VerticalLayout {
 }
 
 export component UserInfoDialog inherits ModalHost {
+    reclaimed => {
+        sheet.focus-close();
+    }
     property <bool> offers-actions: !UserInfoView.is-self
         && !UserInfoView.read-failed
         && !UserInfoView.retrying;
@@ -458,7 +461,7 @@ export component UserInfoDialog inherits ModalHost {
 
     link-copy := CopyFeedback { }
 
-    SheetCard {
+    sheet := SheetCard {
         max-card-height: Metrics.user-info-max-height;
         close-label: @tr("Close the profile");
         close-clicked => {

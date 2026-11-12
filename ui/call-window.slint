@@ -2,7 +2,7 @@ import { Actions } from "./actions.slint";
 import { ModalHost, Placement } from "./components/overlay.slint";
 import { ThemeFollower } from "./components/theme-follower.slint";
 import { TipLayer } from "./components/tip.slint";
-import { CallPanel, CallSize, Shell } from "./local.slint";
+import { CallPanel, CallSize, Overlays, Shell } from "./local.slint";
 import { AppStyle, Metrics, Space } from "./theme.slint";
 import { CallView } from "./views.slint";
 import { CallAnnouncer } from "./screens/chat/components/call/call-announcer.slint";
@@ -123,6 +123,7 @@ component CallContent inherits FocusScope {
     }
 
     if CallPanel.menu-open: ModalHost {
+        layer: Overlays.popup;
         x: 0;
         y: 0;
         width: root.width;

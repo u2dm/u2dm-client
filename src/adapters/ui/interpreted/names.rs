@@ -135,6 +135,11 @@ pub mod notification_text {
     pub const RING: &str = "ring";
 }
 
+pub mod focus_keeper {
+    pub const NAME: &str = "FocusKeeper";
+    pub const RECOVER: &str = "recover";
+}
+
 pub mod window_props {
     pub const INPUT_USERNAME: &str = "input-username";
     pub const INPUT_MESSAGE: &str = "input-message";

@@ -848,6 +848,13 @@ export component SettingsDialog inherits ModalHost {
             header.focus-back();
         }
     }
+    reclaimed => {
+        if root.wide || SettingsView.listing {
+            nav.take-focus(true);
+        } else {
+            header.focus-back();
+        }
+    }
 
     if !root.wide && SettingsView.listing: Rectangle {
         width: 0;

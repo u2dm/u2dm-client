@@ -4,7 +4,7 @@ import { Icon, IconDisplay, IconSet } from "@lucide";
 import { AttachmentKind, UserMessageKind } from "../../../../enums.slint";
 import { AttachmentView, DirectoryView } from "../../../../views.slint";
 import { Actions } from "../../../../actions.slint";
-import { Composer, Reactions, Shell } from "../../../../local.slint";
+import { Composer, Overlays, Reactions, Shell } from "../../../../local.slint";
 import { ReplyDraft } from "../../../../types.slint";
 import { AppStyle, Fonts, IconSize, Metrics, Radius, Space, Stroke, Weight } from "../../../../theme.slint";
 import { ErrorBanner } from "../../../../components/banner.slint";
@@ -96,6 +96,7 @@ component MediaPreview inherits Rectangle {
 export component AttachmentDialog inherits ModalHost {
     dim-opacity: AppStyle.dialog-scrim;
     label: @tr("Send an attachment");
+    defers: root.emoji-picker-open;
     dismissed => {
         if mentions.shown && !root.dismissing-by-pointer {
             mentions.dismiss();
@@ -316,6 +317,7 @@ export component AttachmentDialog inherits ModalHost {
     }
 
     if root.emoji-picker-open: ModalHost {
+        layer: Overlays.attachment;
         dim: false;
         label: @tr("Emoji and emote picker");
         dismissed => {

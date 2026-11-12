@@ -5,10 +5,12 @@ import { MessageEntry } from "../../../../types.slint";
 
 import { MessageShape } from "./message-body.slint";
 import { QuickReactions } from "./quick-reactions.slint";
-import { Interaction } from "../../../../components/a11y.slint";
+import { FocusTrail, Interaction } from "../../../../components/a11y.slint";
 import { Pill } from "../../../../components/pill.slint";
 import {
     Composer,
+    FocusHome,
+    FocusRegion,
     MessageMenu,
     AnchorRect,
     Reactions,
@@ -156,6 +158,15 @@ export component RowActions inherits Rectangle {
         }
     }
 
+    property <int> focus-asks: FocusHome.asks;
+
+    changed focus-asks => {
+        if FocusHome.asked == FocusRegion.timeline && FocusHome.asked-place != ""
+            && FocusHome.asked-place == root.msg.unique-id && root.has-actions {
+            action-focus.focus();
+        }
+    }
+
     action-focus := FocusScope {
         x: 0;
         y: 0;
@@ -167,6 +178,12 @@ export component RowActions inherits Rectangle {
         accessible-label: root.action-label(root.focused-action);
         accessible-action-default => {
             root.run-action(root.focused-action);
+        }
+        focus-gained(reason) => {
+            FocusHome.entered-row(FocusRegion.timeline, root.msg.unique-id);
+        }
+        focus-lost(reason) => {
+            FocusTrail.leave();
         }
         key-pressed(event) => {
             if Interaction.requests-menu(event) {

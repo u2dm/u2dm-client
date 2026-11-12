@@ -56,6 +56,9 @@ component RemovalCover inherits SheetCover {
 }
 
 export component RemovalDialog inherits ModalHost {
+    reclaimed => {
+        sheet.focus-close();
+    }
     dim-opacity: AppStyle.dialog-scrim;
     label: RemovalView.kind == RemovalKind.banned
         ? @tr("Banned from {}", RemovalView.name)
@@ -68,7 +71,7 @@ export component RemovalDialog inherits ModalHost {
         MetaTip.clear();
     }
 
-    SheetCard {
+    sheet := SheetCard {
         max-card-height: Metrics.removal-max-height;
         close-label: @tr("Close");
         close-clicked => {

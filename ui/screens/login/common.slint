@@ -3,6 +3,7 @@ import { IconDisplay, IconSet, Icon } from "@lucide";
 import { LoginActivity } from "../../enums.slint";
 import { TextField } from "../../components/text-field.slint";
 import { Hairline } from "../../components/divider.slint";
+import { FocusHome, FocusRegion } from "../../local.slint";
 import { AppStyle, Fonts, IconSize, Metrics, Motion, Radius, Size, Space, Stroke, Tracking, Weight } from "../../theme.slint";
 
 component MatrixBracket inherits Rectangle {
@@ -140,17 +141,32 @@ export component LabelledField inherits VerticalLayout {
     in property <string> placeholder;
     in property <bool> secret;
     in property <bool> enabled: true;
+    in property <bool> first;
     in-out property <string> text;
 
     callback accepted();
 
+    property <int> focus-asks: FocusHome.asks;
+
     spacing: Space.md;
+
+    init => {
+        if root.first {
+            field.focus-input();
+        }
+    }
+
+    changed focus-asks => {
+        if root.first && FocusHome.asked == FocusRegion.login {
+            field.focus-input();
+        }
+    }
 
     FieldLabel {
         text: root.heading;
     }
 
-    TextField {
+    field := TextField {
         icon: root.icon;
         label: root.label;
         placeholder: root.placeholder;

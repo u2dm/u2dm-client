@@ -82,24 +82,36 @@ export component PinnedBar inherits Rectangle {
             }
 
             previous-pin := IconButton {
+                property <bool> at-first: RoomView.pinned-index <= 0;
+                changed at-first => {
+                    if self.at-first && self.has-focus {
+                        next-pin.take-focus();
+                    }
+                }
                 cross-axis-self-alignment: center;
                 size: Size.target-min;
                 icon-size: IconSize.sm;
                 icon: IconSet.ChevronUp;
                 label: @tr("Previous pinned message");
-                enabled: RoomView.pinned-index > 0;
+                enabled: !self.at-first;
                 clicked => {
                     Actions.previous-pinned(RoomView.pinned-event-id);
                 }
             }
 
             next-pin := IconButton {
+                property <bool> at-last: RoomView.pinned-index + 1 >= RoomView.pinned-count;
+                changed at-last => {
+                    if self.at-last && self.has-focus {
+                        previous-pin.take-focus();
+                    }
+                }
                 cross-axis-self-alignment: center;
                 size: Size.target-min;
                 icon-size: IconSize.sm;
                 icon: IconSet.ChevronDown;
                 label: @tr("Next pinned message");
-                enabled: RoomView.pinned-index + 1 < RoomView.pinned-count;
+                enabled: !self.at-last;
                 clicked => {
                     Actions.next-pinned(RoomView.pinned-event-id);
                 }
