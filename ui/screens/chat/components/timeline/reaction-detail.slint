@@ -61,7 +61,12 @@ export component ReactionDetail inherits ListPopup {
 
     title: @tr("Reactions");
 
-    for entry in root.items: DetailRow {
+    for entry[index] in root.items: DetailRow {
+        init => {
+            if index == 0 {
+                self.take-focus();
+            }
+        }
         entry: entry;
         enabled: Reactions.may-toggle(entry);
         label: !self.enabled

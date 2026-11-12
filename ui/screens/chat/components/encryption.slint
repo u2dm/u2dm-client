@@ -662,6 +662,9 @@ export component EncryptionDialog inherits ModalHost {
     dismissed => {
         Actions.close-encryption();
     }
+    opened => {
+        header.focus-close();
+    }
     reclaimed => {
         header.focus-close();
     }

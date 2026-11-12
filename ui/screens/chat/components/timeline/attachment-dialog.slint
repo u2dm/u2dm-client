@@ -95,7 +95,7 @@ component MediaPreview inherits Rectangle {
 
 export component AttachmentDialog inherits ModalHost {
     dim-opacity: AppStyle.dialog-scrim;
-    label: @tr("Send an attachment");
+    label: root.heading();
     defers: root.emoji-picker-open;
     dismissed => {
         if mentions.shown && !root.dismissing-by-pointer {
@@ -320,11 +320,13 @@ export component AttachmentDialog inherits ModalHost {
         layer: Overlays.attachment;
         dim: false;
         label: @tr("Emoji and emote picker");
+        keeps-tab: true;
         dismissed => {
             root.close-picker();
         }
 
         PickerPanel {
+            takes-focus: true;
             width: min(root.width - Space.xl, Metrics.picker-width);
             height: max(
                 Metrics.picker-min-height,

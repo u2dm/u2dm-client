@@ -18,6 +18,10 @@ export component LogoutWarningDialog inherits ModalHost {
     opened => {
         Reactions.close();
         MetaTip.clear();
+        cancel.take-focus();
+    }
+    reclaimed => {
+        cancel.take-focus();
     }
 
     property <length> card-width: min(AppStyle.card-width-wide, root.width - AppStyle.card-inset);
@@ -79,7 +83,7 @@ export component LogoutWarningDialog inherits ModalHost {
             HorizontalLayout {
                 spacing: Space.lg;
 
-                AppButton {
+                cancel := AppButton {
                     horizontal-stretch: 1;
                     above-modal: true;
                     text: @tr("Cancel");

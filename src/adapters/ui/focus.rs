@@ -4,11 +4,39 @@ mod keys;
 use std::cell::Cell;
 
 use slint::winit_030::WinitWindowAccessor;
+use slint::winit_030::winit::event::{ElementState, WindowEvent};
 use slint::winit_030::winit::window::Window as WinitWindow;
 use slint::{ComponentHandle, Window};
 
+use self::keys::slint_text;
 use super::backend::UiBackend;
 use super::props::{BoolProp, UiProps};
+
+pub fn input_modality<B: UiBackend>(window: &B::Window) -> impl FnMut(&WindowEvent) + use<B> {
+    let weak = window.as_weak();
+    let mirrored = Cell::new(None);
+    move |event: &WindowEvent| {
+        let keyboard = match event {
+            WindowEvent::KeyboardInput {
+                event,
+                is_synthetic: false,
+                ..
+            } if event.state == ElementState::Pressed && slint_text(event).is_some() => true,
+            WindowEvent::MouseInput {
+                state: ElementState::Pressed,
+                ..
+            }
+            | WindowEvent::Touch(_) => false,
+            _ => return,
+        };
+        if mirrored.get() != Some(keyboard)
+            && let Some(window) = weak.upgrade()
+        {
+            mirrored.set(Some(keyboard));
+            window.set_bool(BoolProp::KeyboardInUse, keyboard);
+        }
+    }
+}
 
 pub fn focus_mirror<B: UiBackend>(window: &B::Window) -> impl FnMut(&Window) + use<B> {
     let weak = window.as_weak();

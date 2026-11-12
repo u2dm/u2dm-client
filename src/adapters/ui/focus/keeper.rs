@@ -35,6 +35,15 @@ pub struct FocusKeeper<C: ComponentHandle + 'static> {
     episode: Cell<Episode>,
 }
 
+pub fn step_focus(window: &Window, forward: bool) {
+    let inner = WindowInner::from_pub(window);
+    if forward {
+        inner.focus_next_item();
+    } else {
+        inner.focus_previous_item();
+    }
+}
+
 fn holds_nothing(window: &Window) -> bool {
     WindowInner::from_pub(window)
         .focus_item

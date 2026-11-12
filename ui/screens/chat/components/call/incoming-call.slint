@@ -9,9 +9,9 @@ import { AppStyle, Fonts, Glyph, IconSize, Metrics, Size, Space, Weight } from "
 import { CallView } from "../../../../views.slint";
 import { CallWords } from "../../../../messages.slint";
 import { Actions } from "../../../../actions.slint";
-import { CallPanel, Shell, TipScope } from "../../../../local.slint";
+import { CallPanel, FocusKeeper, Shell, TipScope } from "../../../../local.slint";
 
-export component IncomingCallCard inherits PickerCard {
+export component IncomingCallCard inherits FocusScope {
     in property <length> available-width;
 
     property <int> serial: CallView.ring-serial;
@@ -26,8 +26,24 @@ export component IncomingCallCard inherits PickerCard {
 
     width: min(Metrics.incoming-call-width, root.available-width - 2 * Metrics.incoming-call-inset);
     height: card-layout.preferred-height;
+    focus-on-click: false;
+    focus-on-tab-navigation: false;
     accessible-role: groupbox;
     accessible-label: CallWords.incoming(CallView.ring-video);
+
+    key-pressed(event) => {
+        if event.text != Key.Escape {
+            return EventResult.reject;
+        }
+        if root.asks-to-leave {
+            root.answer-takes-focus = true;
+            root.question-focused = false;
+            root.confirming = false;
+        } else {
+            FocusKeeper.restore();
+        }
+        return EventResult.accept;
+    }
 
     init => {
         CallPanel.ring-devices-open = false;
@@ -78,6 +94,11 @@ export component IncomingCallCard inherits PickerCard {
             camera: camera,
             leaving: CallView.active ? CallView.active-room-id : "",
         });
+    }
+
+    PickerCard {
+        width: 100%;
+        height: 100%;
     }
 
     TouchArea { }

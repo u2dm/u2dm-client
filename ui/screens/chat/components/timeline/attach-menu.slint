@@ -10,6 +10,8 @@ export component AttachMenu inherits PickerCard {
     callback document-chosen();
     callback poll-chosen();
 
+    in property <bool> takes-focus;
+
     width: Metrics.attach-menu-width;
     height: layout.preferred-height;
 
@@ -18,6 +20,11 @@ export component AttachMenu inherits PickerCard {
         spacing: Space.xs;
 
         if RoomView.may-send-messages: MenuRow {
+            init => {
+                if root.takes-focus {
+                    self.take-focus();
+                }
+            }
             height: Metrics.attach-row;
             icon: IconSet.Image;
             label: @tr("Photo or video");
@@ -36,6 +43,11 @@ export component AttachMenu inherits PickerCard {
         }
 
         if RoomView.may-start-polls: MenuRow {
+            init => {
+                if root.takes-focus && !RoomView.may-send-messages {
+                    self.take-focus();
+                }
+            }
             height: Metrics.attach-row;
             icon: IconSet.ChartBar;
             label: @tr("Poll");

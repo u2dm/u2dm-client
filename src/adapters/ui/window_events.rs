@@ -9,8 +9,8 @@ use super::activity::activity_watch;
 use super::backend::UiBackend;
 use super::call_window::take_token;
 use super::context_press::context_press;
-use super::focus::focus_mirror;
-use super::focus::keeper::FocusKeeper;
+use super::focus::keeper::{FocusKeeper, step_focus};
+use super::focus::{focus_mirror, input_modality};
 use super::swipe::reply_swipe;
 
 type Activity = Rc<RefCell<dyn FnMut(&WindowEvent)>>;
@@ -21,16 +21,24 @@ thread_local! {
 
 pub fn install_window_events<B: UiBackend>(window: &B::Window) {
     let mut mirror = focus_mirror::<B>(window);
+    let mut modality = input_modality::<B>(window);
     let activity: Activity = Rc::new(RefCell::new(activity_watch::<B>(window)));
     ACTIVITY.set(Some(Rc::clone(&activity)));
     let mut swipe = reply_swipe::<B>(window);
     let mut menu = context_press::<B>(window);
     let keeper = FocusKeeper::install(window, B::recover_focus);
+    let stepped = window.as_weak();
+    B::bind_focus_steps(window, move |forward| {
+        if let Some(window) = stepped.upgrade() {
+            step_focus(window.window(), forward);
+        }
+    });
     let main = window.as_weak();
     window
         .window()
         .on_winit_window_event(move |slint_window, event| {
             mirror(slint_window);
+            modality(event);
             (activity.borrow_mut())(event);
             take_token::<B>(event, &main);
             menu(event);

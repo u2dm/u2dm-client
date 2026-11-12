@@ -388,11 +388,13 @@ export component MessageInput inherits Rectangle {
             : root.offers-stickers
             ? @tr("Emoji, emote and sticker picker")
             : @tr("Emoji and emote picker");
+        keeps-tab: true;
         dismissed => {
             root.close-picker();
         }
 
         PickerPanel {
+            takes-focus: true;
             width: min(root.width - Space.xl, Metrics.picker-width);
             height: max(
                 Metrics.picker-min-height,
@@ -423,11 +425,13 @@ export component MessageInput inherits Rectangle {
         height: root.overlay-height;
         dim: false;
         label: root.attach-label;
+        keeps-tab: true;
         dismissed => {
             root.close-attach();
         }
 
         AttachMenu {
+            takes-focus: true;
             x: root.surface-inset + field.row-inset - root.overlay-x;
             y: -self.height - Space.md - root.overlay-y;
             photo-chosen => {

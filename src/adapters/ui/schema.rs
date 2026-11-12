@@ -603,6 +603,7 @@ macro_rules! bool_props {
         IdentityAlertBusy IdentityAlertView "IdentityAlertView" "busy" set_busy get_busy;
         WindowFocused WindowView "WindowView" "focused" set_focused get_focused;
         WindowActive WindowView "WindowView" "active" set_active get_active;
+        KeyboardInUse WindowView "WindowView" "keyboard-in-use" set_keyboard_in_use get_keyboard_in_use;
         CallWindowed WindowView "WindowView" "call-windowed" set_call_windowed get_call_windowed;
         ReplySwipeArmed ReplySwipe "ReplySwipe" "armed" set_armed get_armed;
         ReducedMotion Motion "Motion" "desktop-reduced" set_desktop_reduced get_desktop_reduced;

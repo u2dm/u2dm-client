@@ -19,8 +19,8 @@ use slint_interpreter::{
 use tokio::runtime::Runtime;
 use tokio::sync::{mpsc, watch};
 
-use self::args::{int_arg, seen_args, string_arg};
-use self::callbacks::{bind_hooks, bind_simple_callbacks, bind_void, warn_unbound};
+use self::args::{bool_arg, int_arg, seen_args, string_arg};
+use self::callbacks::{bind, bind_hooks, bind_simple_callbacks, bind_void, warn_unbound};
 use self::props::{mirror_bools, mirror_enums, mirror_ints, mirror_strings};
 use self::values::{enum_value, text_value, variant_of};
 #[cfg(feature = "demo")]
@@ -190,6 +190,19 @@ impl UiBackend for InterpretedBackend {
 
     fn recover_call_focus(window: &ComponentInstance, level: i32, eager: bool) -> SharedString {
         recover(window, level, eager)
+    }
+
+    fn bind_focus_steps(window: &ComponentInstance, step: impl Fn(bool) + 'static) {
+        let bound = bind(
+            window,
+            focus_keeper::NAME,
+            focus_keeper::STEP,
+            move |args| {
+                step(bool_arg(args, 0));
+                Value::Void
+            },
+        );
+        warn_unbound(bound, "the focus steps");
     }
 
     fn notification_text(window: &ComponentInstance, words: &NoticeWords<'_>) -> SharedString {

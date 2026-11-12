@@ -647,6 +647,10 @@ impl UiBackend for CompiledBackend {
         window.global::<FocusKeeper>().invoke_recover(level, eager)
     }
 
+    fn bind_focus_steps(window: &AppWindow, step: impl Fn(bool) + 'static) {
+        window.global::<FocusKeeper>().on_step(step);
+    }
+
     fn notification_text(window: &AppWindow, words: &NoticeWords<'_>) -> SharedString {
         let text = window.global::<NotificationText>();
         match *words {

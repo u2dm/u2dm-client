@@ -119,7 +119,9 @@ export component ModalHost inherits Rectangle {
     in property <string> label;
     in property <int> layer: -1;
     in property <bool> defers: false;
+    in property <bool> keeps-tab: false;
     out property <bool> dismissing-by-pointer: false;
+    out property <bool> holds-focus: keys.has-focus;
 
     callback dismissed();
     callback opened();
@@ -127,6 +129,22 @@ export component ModalHost inherits Rectangle {
 
     property <bool> entered: false;
     property <int> reclaims: FocusKeeper.reclaims;
+    property <bool> wrapping: false;
+
+    function tab-within(forward: bool) {
+        if root.wrapping {
+            keys.focus();
+            return;
+        }
+        root.wrapping = true;
+        if forward {
+            before-first.focus();
+        } else {
+            after-last.focus();
+        }
+        FocusKeeper.step(forward);
+        root.wrapping = false;
+    }
 
     changed reclaims => {
         if root.layer >= 0 && Overlays.top == root.layer && !root.defers {
@@ -157,6 +175,21 @@ export component ModalHost inherits Rectangle {
         capture-key-pressed(event) => {
             if event.text == Key.Escape {
                 root.dismissed();
+                return accept;
+            }
+            return reject;
+        }
+        key-pressed(event) => {
+            if !root.keeps-tab || !self.has-focus
+                || event.modifiers.control || event.modifiers.alt || event.modifiers.meta {
+                return reject;
+            }
+            if event.text == Key.Backtab || (event.text == Key.Tab && event.modifiers.shift) {
+                root.tab-within(false);
+                return accept;
+            }
+            if event.text == Key.Tab {
+                root.tab-within(true);
                 return accept;
             }
             return reject;
@@ -193,6 +226,30 @@ export component ModalHost inherits Rectangle {
             }
         }
 
+        before-first := FocusScope {
+            width: 0;
+            height: 0;
+            enabled: root.keeps-tab;
+            focus-on-click: false;
+            focus-gained(reason) => {
+                if reason == FocusReason.tab-navigation {
+                    root.tab-within(false);
+                }
+            }
+        }
+
         @children
+
+        after-last := FocusScope {
+            width: 0;
+            height: 0;
+            enabled: root.keeps-tab;
+            focus-on-click: false;
+            focus-gained(reason) => {
+                if reason == FocusReason.tab-navigation {
+                    root.tab-within(true);
+                }
+            }
+        }
     }
 }

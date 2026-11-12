@@ -158,7 +158,9 @@ export component ReadersDialog inherits ModalHost {
         header.focus-close();
     }
     reclaimed => {
-        SheetReturn.hand-back();
+        if !SheetReturn.hand-back() {
+            header.focus-close();
+        }
     }
 
     DialogCard {

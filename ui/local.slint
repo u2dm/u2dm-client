@@ -334,10 +334,12 @@ export global SheetReturn {
         root.opener = key;
     }
 
-    public function hand-back() {
-        if root.opener != "" {
-            root.returns += 1;
+    public function hand-back() -> bool {
+        if root.opener == "" {
+            return false;
         }
+        root.returns += 1;
+        return true;
     }
 
     public function forget() {
@@ -923,6 +925,8 @@ export global Overlays {
 
 export global FocusKeeper {
     out property <int> reclaims;
+
+    callback step(forward: bool);
 
     public function restore() {
         if Overlays.top != 0 {

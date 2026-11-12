@@ -844,7 +844,7 @@ export component SettingsDialog inherits ModalHost {
         root.report-layout();
         if root.wide || SettingsView.listing {
             nav.take-focus(root.keyed);
-        } else if root.keyed {
+        } else {
             header.focus-back();
         }
     }

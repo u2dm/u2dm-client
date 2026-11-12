@@ -620,6 +620,7 @@ export component AccountDialog inherits ModalHost {
     opened => {
         Reactions.close();
         MetaTip.clear();
+        header.focus-close();
     }
     reclaimed => {
         header.focus-close();

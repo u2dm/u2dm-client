@@ -2,7 +2,7 @@ import { Palette } from "std-widgets.slint";
 import { IconDisplay, IconSet } from "@lucide";
 
 import { AppStyle, Fonts, IconSize, Size, Space, Stroke } from "../theme.slint";
-import { FocusRing, FocusTrail } from "./a11y.slint";
+import { FocusRing, FocusTrail, Interaction } from "./a11y.slint";
 import { IconButton } from "./button.slint";
 
 export component SearchField inherits Rectangle {
@@ -49,7 +49,7 @@ export component SearchField inherits Rectangle {
                 width: parent.width;
                 height: parent.height;
                 text <=> root.query;
-                enabled: root.enabled;
+                enabled: Interaction.actionable(root.enabled, true);
                 color: Palette.foreground;
                 font-size: Fonts.label;
                 vertical-alignment: center;

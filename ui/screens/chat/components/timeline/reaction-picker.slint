@@ -125,6 +125,10 @@ export component ReactionPicker inherits PickerCard {
 
     in property <bool> encrypted: false;
 
+    public function focus-search() {
+        emoji.focus-search();
+    }
+
     VerticalLayout {
         padding: Space.md;
         spacing: Space.sm;
@@ -133,7 +137,7 @@ export component ReactionPicker inherits PickerCard {
             text: @tr("Reactions are not encrypted.");
         }
 
-        EmojiPicker {
+        emoji := EmojiPicker {
             vertical-stretch: 1;
             notice: false;
             picked(glyph) => {

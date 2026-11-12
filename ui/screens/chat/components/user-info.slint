@@ -353,6 +353,7 @@ export component UserInfoDialog inherits ModalHost {
     opened => {
         Reactions.close();
         MetaTip.clear();
+        sheet.focus-close();
     }
 
     changed shown-user => {

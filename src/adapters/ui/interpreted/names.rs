@@ -138,6 +138,7 @@ pub mod notification_text {
 pub mod focus_keeper {
     pub const NAME: &str = "FocusKeeper";
     pub const RECOVER: &str = "recover";
+    pub const STEP: &str = "step";
 }
 
 pub mod window_props {

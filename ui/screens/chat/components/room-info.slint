@@ -183,6 +183,7 @@ component NotifyPickerHost inherits ModalHost {
 
     dim: false;
     label: @tr("Notifications");
+    keeps-tab: true;
 
     PickerCard {
         x: Placement.fit(root.anchor-x - root.absolute-position.x, self.width, root.width, Space.md);
@@ -197,6 +198,11 @@ component NotifyPickerHost inherits ModalHost {
             spacing: Space.xs;
 
             for mode[index] in NotifyModes.all: NotifyRow {
+                init => {
+                    if self.current {
+                        self.take-focus();
+                    }
+                }
                 index: index;
                 icon: NotifyModes.icon(mode);
                 text: NotifyModes.choice(mode);
@@ -571,6 +577,10 @@ component RoomInfoSheet inherits Rectangle {
         scroll.content-y = 0;
     }
 
+    public function focus-close() {
+        close-chip.take-focus();
+    }
+
     public function close-picker() {
         root.notify-picker-open = false;
         tiles.focus-notifications();
@@ -768,9 +778,12 @@ export component RoomInfoDialog inherits ModalHost {
     defers: sheet.notify-picker-open;
     opened => {
         SheetReturn.forget();
+        sheet.focus-close();
     }
     reclaimed => {
-        SheetReturn.hand-back();
+        if !SheetReturn.hand-back() {
+            sheet.focus-close();
+        }
     }
     dismissed => {
         if Shell.user-info-open {

@@ -1,11 +1,12 @@
 import { Palette } from "std-widgets.slint";
 
 import { FocusHome, FocusRegion, Shell } from "../local.slint";
+import { WindowView } from "../views.slint";
 import { Metrics, Motion, Radius, Stroke } from "../theme.slint";
 
 export global Interaction {
     public pure function actionable(enabled: bool, above-modal: bool) -> bool {
-        return enabled && (above-modal || Shell.background-reachable);
+        return enabled && (above-modal ? !Shell.verification-open : Shell.background-reachable);
     }
 
     public pure function activates(key: string) -> bool {
@@ -171,6 +172,7 @@ export component ClickArea inherits Rectangle {
     in property <bool> enabled: true;
     in property <bool> hovers-when-disabled: false;
     in property <bool> above-modal: false;
+    in property <bool> topmost: false;
     in property <bool> draggable: false;
     in property <string> label;
     in property <bool> focusable: true;
@@ -191,7 +193,7 @@ export component ClickArea inherits Rectangle {
     callback moved(length);
     callback context-menu-requested() -> EventResult;
 
-    property <bool> actionable: Interaction.actionable(root.enabled, root.above-modal);
+    property <bool> actionable: root.topmost ? root.enabled : Interaction.actionable(root.enabled, root.above-modal);
     property <bool> focus-by-tab;
 
     public function take-focus() {
@@ -254,7 +256,7 @@ export component ClickArea inherits Rectangle {
 
     @children
 
-    if fs.has-focus || root.roving-focus: FocusRing {
+    if (fs.has-focus && (root.focus-by-tab || WindowView.keyboard-in-use)) || root.roving-focus: FocusRing {
         x: root.ring-inset;
         y: root.ring-inset;
         width: root.width - root.ring-inset * 2;

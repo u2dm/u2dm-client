@@ -90,6 +90,7 @@ export component InviteDialog inherits ModalHost {
     opened => {
         Reactions.close();
         MetaTip.clear();
+        sheet.focus-close();
     }
 
     sheet := SheetCard {

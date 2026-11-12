@@ -112,8 +112,12 @@ export component ReactionOverlay inherits Rectangle {
         label: @tr("React to a message");
         card-max-width: Metrics.picker-width;
         card-max-height: Metrics.picker-height;
+        keeps-tab: true;
+        opened => {
+            reaction-picker.focus-search();
+        }
 
-        ReactionPicker {
+        reaction-picker := ReactionPicker {
             encrypted: PackView.room-encrypted;
             picked(key) => {
                 Actions.toggle-reaction(Reactions.anchor.event-id, key);
@@ -135,6 +139,7 @@ export component ReactionOverlay inherits Rectangle {
         label: @tr("Everyone who reacted");
         card-max-width: Metrics.reaction-detail-width;
         card-max-height: Metrics.reaction-detail-height;
+        keeps-tab: true;
 
         ReactionDetail {
             items: Reactions.items;
@@ -148,6 +153,7 @@ export component ReactionOverlay inherits Rectangle {
         label: @tr("Who voted");
         card-max-width: Metrics.poll-voters-width;
         card-max-height: Metrics.poll-voters-height;
+        keeps-tab: true;
 
         PollVoters {
             answers: Reactions.target.poll-answers;

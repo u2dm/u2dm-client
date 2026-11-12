@@ -147,6 +147,7 @@ export component VerificationHeader inherits HorizontalLayout {
     in property <string> title;
     in property <string> subtitle;
     in property <string> close-label;
+    in property <bool> topmost;
 
     callback close-clicked();
 
@@ -193,6 +194,7 @@ export component VerificationHeader inherits HorizontalLayout {
         cross-axis-self-alignment: center;
         icon: IconSet.X;
         above-modal: true;
+        topmost: root.topmost;
         label: root.close-label;
         size: Size.md;
         clicked => {
@@ -221,6 +223,7 @@ component AnswerPair inherits HorizontalLayout {
     refuse := AppButton {
         horizontal-stretch: 1;
         above-modal: true;
+        topmost: true;
         text: root.refuse-text;
         icon: IconSet.X;
         filled: false;
@@ -235,6 +238,7 @@ component AnswerPair inherits HorizontalLayout {
     AppButton {
         horizontal-stretch: 1;
         above-modal: true;
+        topmost: true;
         text: root.agree-text;
         icon: IconSet.Check;
         enabled: !VerificationView.busy;
@@ -249,7 +253,8 @@ export component VerificationDialog inherits ModalHost {
     property <int> reclaimed-steps;
 
     dim-opacity: AppStyle.dialog-scrim;
-    label: @tr("Device verification");
+    label: VerificationView.is-self ? @tr("Device verification") : @tr("User verification");
+    keeps-tab: true;
     dismissed => {
         Actions.dismiss-verification();
     }
@@ -263,6 +268,7 @@ export component VerificationDialog inherits ModalHost {
 
     card := ScrollingDialogCard {
         header := VerificationHeader {
+            topmost: true;
             title: VerificationView.is-self ? @tr("Device verification") : @tr("User verification");
             subtitle: VerificationView.is-self
                 ? @tr("One of your own sessions")
@@ -323,6 +329,7 @@ export component VerificationDialog inherits ModalHost {
                     self.take-focus();
                 }
                 above-modal: true;
+                topmost: true;
                 text: @tr("Cancel");
                 icon: IconSet.X;
                 filled: false;
@@ -399,6 +406,7 @@ export component VerificationDialog inherits ModalHost {
                     self.take-focus();
                 }
                 above-modal: true;
+                topmost: true;
                 text: @tr("Done");
                 icon: IconSet.Check;
                 clicked => {
@@ -427,6 +435,7 @@ export component VerificationDialog inherits ModalHost {
                     self.take-focus();
                 }
                 above-modal: true;
+                topmost: true;
                 text: @tr("Close");
                 filled: false;
                 clicked => {

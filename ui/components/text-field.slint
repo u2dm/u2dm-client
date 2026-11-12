@@ -2,7 +2,7 @@ import { Palette } from "std-widgets.slint";
 import { IconDisplay, IconSet, Icon } from "@lucide";
 
 import { AppStyle, Fonts, IconSize, Opacity, Radius, Size, Space } from "../theme.slint";
-import { FocusReveal, FocusRing, FocusTrail } from "./a11y.slint";
+import { FocusReveal, FocusRing, FocusTrail, Interaction } from "./a11y.slint";
 import { IconButton } from "./button.slint";
 import { StateLayer } from "./state-layer.slint";
 
@@ -195,7 +195,7 @@ export component TextField inherits Rectangle {
                 width: 100%;
                 height: 100%;
                 visible: !root.revealed;
-                enabled: root.enabled && !root.revealed;
+                enabled: Interaction.actionable(root.enabled, true) && !root.revealed;
                 placeholder: root.placeholder;
                 input-type: root.secret ? InputType.password : InputType.text;
                 text <=> root.text;
@@ -208,7 +208,7 @@ export component TextField inherits Rectangle {
                 width: 100%;
                 height: 100%;
                 visible: root.revealed;
-                enabled: root.enabled && root.revealed;
+                enabled: Interaction.actionable(root.enabled, true) && root.revealed;
                 placeholder: root.placeholder;
                 text <=> root.text;
                 accepted => {

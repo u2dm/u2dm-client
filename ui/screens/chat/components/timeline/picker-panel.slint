@@ -32,6 +32,9 @@ export component PickerPanel inherits PickerCard {
     in property <bool> emoji: true;
     in property <bool> stickers: true;
     in property <bool> above-modal: false;
+    in property <bool> takes-focus;
+
+    property <bool> focus-pending: root.takes-focus;
 
     property <bool> shows-stickers: root.stickers
         && (root.section == PickerSection.stickers || !root.emoji);
@@ -71,6 +74,10 @@ export component PickerPanel inherits PickerCard {
                 width: 100%;
                 height: 100%;
                 above-modal: root.above-modal;
+                takes-focus: root.focus-pending;
+                took-focus => {
+                    root.focus-pending = false;
+                }
                 picked(glyph) => {
                     root.emoji-picked(glyph);
                 }

@@ -112,6 +112,12 @@ export component Drawer inherits Rectangle {
         dismissed => {
             root.dismiss();
         }
+        opened => {
+            expand-touch.take-focus();
+        }
+        reclaimed => {
+            expand-touch.take-focus();
+        }
 
         panel := Rectangle {
             property <bool> entered: false;

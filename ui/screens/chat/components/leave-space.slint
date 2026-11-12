@@ -46,6 +46,10 @@ export component LeaveSpaceDialog inherits ModalHost {
     opened => {
         Reactions.close();
         MetaTip.clear();
+        cancel.take-focus();
+    }
+    reclaimed => {
+        cancel.take-focus();
     }
 
     changed shown-space => {
@@ -121,7 +125,7 @@ export component LeaveSpaceDialog inherits ModalHost {
             HorizontalLayout {
                 spacing: Space.lg;
 
-                AppButton {
+                cancel := AppButton {
                     horizontal-stretch: 1;
                     above-modal: true;
                     text: @tr("Cancel");

@@ -178,6 +178,8 @@ export component RoomPreviewDialog inherits ModalHost {
         MetaTip.clear();
         if root.entry {
             entry-field.focus-field();
+        } else {
+            sheet.focus-close();
         }
     }
 

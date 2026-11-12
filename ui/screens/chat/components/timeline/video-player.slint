@@ -15,8 +15,25 @@ export component VideoPlayer inherits ModalHost {
     dismissed => {
         Actions.close-video();
     }
+    opened => {
+        if root.has-frame {
+            play.take-focus();
+        }
+    }
+    reclaimed => {
+        if root.has-frame {
+            play.take-focus();
+        }
+    }
 
     property <bool> has-error: VideoView.error != UserMessageKind.none;
+    property <bool> has-frame: VideoView.has-frame;
+
+    changed has-frame => {
+        if root.has-frame && root.holds-focus {
+            play.take-focus();
+        }
+    }
 
     VerticalLayout {
         padding: Metrics.video-stage-inset;
@@ -68,7 +85,7 @@ export component VideoPlayer inherits ModalHost {
             height: Metrics.video-controls-row;
             spacing: Space.lg;
 
-            ClickArea {
+            play := ClickArea {
                 cross-axis-self-alignment: center;
                 above-modal: true;
                 enabled: VideoView.has-frame;

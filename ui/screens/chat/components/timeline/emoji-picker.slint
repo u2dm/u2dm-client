@@ -73,6 +73,9 @@ component EmojiLine inherits Rectangle {
 export component EmojiPicker inherits Rectangle {
     callback picked(string);
     callback emote-picked(string, string);
+    callback took-focus();
+
+    in property <bool> takes-focus;
 
     in property <bool> above-modal: false;
     in property <bool> notice: true;
@@ -151,6 +154,10 @@ export component EmojiPicker inherits Rectangle {
 
     init => {
         root.lay-out();
+        if root.takes-focus {
+            root.focus-search();
+            root.took-focus();
+        }
     }
 
     changed columns => {

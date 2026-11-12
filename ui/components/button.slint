@@ -16,6 +16,7 @@ export component AppButton inherits Rectangle {
     in property <bool> trailing-icon: false;
     in property <bool> enabled: true;
     in property <bool> above-modal: false;
+    in property <bool> topmost: false;
     in property <bool> busy: false;
     in property <bool> filled: true;
     in property <color> tint: Palette.accent-background;
@@ -49,6 +50,7 @@ export component AppButton inherits Rectangle {
     touch := ClickArea {
         enabled: root.interactive;
         above-modal: root.above-modal;
+        topmost: root.topmost;
         label: root.label;
         region: root.region;
         place: root.place;
@@ -110,6 +112,7 @@ export component IconButton inherits Rectangle {
     in property <string> description;
     in property <bool> enabled: true;
     in property <bool> above-modal: false;
+    in property <bool> topmost: false;
     in property <bool> busy: false;
     in property <bool> pending: false;
     in property <length> size: Size.lg;
@@ -152,6 +155,7 @@ export component IconButton inherits Rectangle {
     touch := ClickArea {
         enabled: root.interactive;
         above-modal: root.above-modal;
+        topmost: root.topmost;
         label: root.label;
         region: root.region;
         place: root.place;

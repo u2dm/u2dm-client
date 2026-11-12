@@ -545,6 +545,7 @@ export component MessageMenuOverlay inherits Rectangle {
         height: 100%;
         dim: false;
         any-button-dismisses: true;
+        keeps-tab: true;
         label: @tr("Message actions");
         opened => {
             RoomMenu.close();

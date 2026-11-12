@@ -28,6 +28,7 @@ component SourceSection inherits VerticalLayout {
 
             TextInput {
                 text: root.json;
+                accessible-label: root.title;
                 read-only: true;
                 single-line: false;
                 wrap: word-wrap;
