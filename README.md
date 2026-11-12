@@ -13,7 +13,7 @@ Unable to Decrypt Message: a Matrix client built with Rust and Slint.
 
 ![u2dm screenshot](docs/screenshot.png)
 
-Early development.
+Early development. Close to first release.
 
 ## Features
 
