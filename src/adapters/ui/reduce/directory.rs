@@ -10,6 +10,7 @@ use crate::adapters::ui::dto::{space_child_to_dto, space_to_dto};
 use crate::adapters::ui::fields::{SpaceChildFields, SpaceFields};
 use crate::adapters::ui::props::{BoolProp, IntProp, StringProp, UiProps};
 use crate::adapters::ui::reconcile::{RoomListing, apply_rooms, apply_rows, rows_to_redo};
+use crate::adapters::ui::rows::row_index;
 use crate::commands::view::{DirectoryView, RoomMenuTarget, SpaceHeading, SpaceIndexView};
 use crate::util::saturating_i32;
 
@@ -30,6 +31,12 @@ pub(super) fn apply_room_menu(w: &(impl UiProps + ComponentHandle), menu: Option
     w.set_bool(BoolProp::RoomMenuHasCall, menu.has_call);
     w.set_text(StringProp::RoomMenuRoomId, menu.room_id.as_ref());
     run_change_handlers_next_frame(w);
+}
+
+fn publish_heading_rows(w: &impl UiProps, listing: RoomListing<'_>) {
+    let headings = listing.heading_rows();
+    w.set_int(IntProp::RoomsHeadingRow, row_index(headings.rooms));
+    w.set_int(IntProp::SpacesHeadingRow, row_index(headings.spaces));
 }
 
 pub(super) fn apply_directory<B: UiBackend>(
@@ -71,6 +78,7 @@ pub(super) fn apply_directory<B: UiBackend>(
         );
         refresh_selected_room_avatar(w, ctx.media);
         publish_selected_room_row(w, RoomListing::of(directory));
+        publish_heading_rows(w, RoomListing::of(directory));
     }
     for (model, listed, shown) in [
         (&ctx.models.spaces, spaces, last.map(|l| &l.spaces)),

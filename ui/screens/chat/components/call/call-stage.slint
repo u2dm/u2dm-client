@@ -68,6 +68,7 @@ export component CallStage inherits Rectangle {
     property <bool> scrolls-back: films.visible && root.scrolled > 0;
     property <bool> scrolls-on: films.visible && root.scrolled < root.scroll-span;
     property <int> cursor: -1;
+    property <string> cursor-key;
     property <bool> keys-focused: tile-keys.has-focus;
     property <length> tile-size: !root.focused ? root.tile-height
         : root.rail ? root.film-tile-height
@@ -101,6 +102,9 @@ export component CallStage inherits Rectangle {
     }
 
     function show-tile(index: int) {
+        if index >= 0 && index < root.count {
+            root.cursor-key = CallView.tiles[index].key;
+        }
         root.reveal(root.tile-start(index), root.tile-size);
     }
 
@@ -227,6 +231,10 @@ export component CallStage inherits Rectangle {
             selectable: !(tile.screen && tile.own);
             fits-video: root.fits-videos;
             cursor-on: root.keys-focused && root.cursor == i;
+            keyed: root.cursor-key != "" && tile.key == root.cursor-key;
+            keyed-built => {
+                root.cursor = i;
+            }
             shown: films.visible
                 && self.x + self.width > -films.content-x && self.x < films.width - films.content-x
                 && self.y + self.height > -films.content-y && self.y < films.height - films.content-y;

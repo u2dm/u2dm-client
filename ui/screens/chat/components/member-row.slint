@@ -27,9 +27,6 @@ export component MemberRow inherits ListItemArea {
     }
 
     pure function describe(entry: MemberEntry) -> string {
-        if entry.kind == MemberRowKind.invited-heading {
-            return @tr("Invited");
-        }
         if MemberRoles.label(entry.role) == "" {
             return entry.name == "" ? entry.user-id : @tr("{}, {}", entry.name, entry.user-id);
         }
@@ -45,21 +42,6 @@ export component MemberRow inherits ListItemArea {
     clicked => {
         SheetReturn.opened-by(root.has-focus ? root.key : "");
         Actions.open-user-info(root.entry.user-id);
-    }
-
-    if root.entry.kind == MemberRowKind.invited-heading: HorizontalLayout {
-        padding-left: Space.xl;
-        padding-right: Space.xl;
-        padding-bottom: Space.sm;
-
-        Text {
-            text: @tr("Invited");
-            font-size: Fonts.caption;
-            font-weight: Weight.semibold;
-            color: AppStyle.foreground-muted;
-            vertical-alignment: bottom;
-            accessible-role: none;
-        }
     }
 
     if root.entry.kind == MemberRowKind.member: HorizontalLayout {
@@ -106,6 +88,22 @@ export component MemberRow inherits ListItemArea {
             font-size: Fonts.caption;
             color: AppStyle.foreground-muted;
             accessible-role: none;
+        }
+    }
+}
+
+export component MembersHeading inherits Rectangle {
+    HorizontalLayout {
+        padding-left: Space.xl;
+        padding-right: Space.xl;
+        padding-bottom: Space.sm;
+
+        Text {
+            text: @tr("MemberRow" => "Invited");
+            font-size: Fonts.caption;
+            font-weight: Weight.semibold;
+            color: AppStyle.foreground-muted;
+            vertical-alignment: bottom;
         }
     }
 }

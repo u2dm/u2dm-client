@@ -4,12 +4,12 @@ import { Icon, IconDisplay, IconSet } from "@lucide";
 import { SpaceEntry } from "../../../types.slint";
 import { RailTileFace } from "./rail-tile.slint";
 import { ContextPress } from "./context-press.slint";
-import { ClickArea, Interaction, ListItemArea } from "../../../components/a11y.slint";
+import { Announcer, ClickArea, Interaction, ListItemArea, RovingList } from "../../../components/a11y.slint";
 import { StateLayer } from "../../../components/state-layer.slint";
 import { DirectoryView } from "../../../views.slint";
 import { RoomScope } from "../../../enums.slint";
 import { Actions } from "../../../actions.slint";
-import { FocusHome, FocusRegion, RoomMenu, RoomMenuOrigin, Shell } from "../../../local.slint";
+import { FocusHome, FocusRegion, RoomMenu, RoomMenuOrigin, Shell, SpaceOrder } from "../../../local.slint";
 import { AppStyle, Glyph, IconSize, Metrics, Motion, Radius, Size, Space, Stroke } from "../../../theme.slint";
 
 enum SpaceDrag {
@@ -25,13 +25,31 @@ component SpaceTile inherits ListItemArea {
     in property <bool> elevated;
     in property <bool> hidden;
     in property <bool> offers-menu;
+    in property <bool> alerts-invites;
+    in property <int> slot: -1;
 
     property <length> glyph-size: Size.xxl;
     property <length> marker-height: Size.lg;
     property <int> focus-asks: FocusHome.asks;
 
+    pure function describe(entry: SpaceEntry) -> string {
+        if entry.mention {
+            return @tr("{}, mentions you", entry.name);
+        }
+        if entry.alert && root.alerts-invites {
+            return @tr("{}, new invites", entry.name);
+        }
+        if entry.alert {
+            return @tr("{}, unread", entry.name);
+        }
+        if entry.hint {
+            return @tr("{}, new activity", entry.name);
+        }
+        return entry.name;
+    }
+
     height: Metrics.rail-row;
-    label: root.entry.name;
+    label: root.describe(root.entry);
     ring-radius: Radius.md;
     ring-inset: Metrics.rail-tile-inset;
     region: FocusRegion.rail;
@@ -54,6 +72,7 @@ component SpaceTile inherits ListItemArea {
             root.absolute-position.x + root.width,
             root.absolute-position.y + Space.sm,
             true);
+        RoomMenu.rail-slot = root.slot;
         return EventResult.accept;
     }
 
@@ -66,6 +85,7 @@ component SpaceTile inherits ListItemArea {
                 root.absolute-position.x + root.mouse-x,
                 root.absolute-position.y + root.mouse-y,
                 false);
+            RoomMenu.rail-slot = root.slot;
         }
     }
 
@@ -92,7 +112,7 @@ component SpaceTile inherits ListItemArea {
         RailTileFace {
             width: 100%;
             height: 100%;
-            caption: root.label;
+            caption: root.entry.name;
             initial: root.entry.initial;
             has-avatar: root.entry.has-avatar;
             avatar: root.entry.avatar;
@@ -134,8 +154,42 @@ export component SpaceRail inherits Rectangle {
 
     property <SpaceEntry> drag-entry;
     property <bool> drag-selected;
+    property <string> chosen: DirectoryView.room-scope == RoomScope.all ? "0"
+        : DirectoryView.room-scope == RoomScope.direct ? "1"
+        : DirectoryView.selected-space-id;
 
     background: AppStyle.nav;
+
+    init => {
+        rail-keys.cursor-key = root.chosen;
+    }
+
+    changed chosen => {
+        rail-keys.cursor-key = root.chosen;
+    }
+
+    function arrived(key: string, slot: int) -> bool {
+        if key == "" || key != SpaceOrder.moving {
+            return false;
+        }
+        let keyed = SpaceOrder.keyed;
+        moves.say(@tr("Moved {} to {} of {}", DirectoryView.spaces[slot].name, slot + root.fixed-tiles + 1,
+            DirectoryView.spaces.length + root.fixed-tiles));
+        SpaceOrder.settled();
+        return keyed;
+    }
+
+    function move-key(event: KeyEvent) -> EventResult {
+        if !event.modifiers.control || !event.modifiers.shift || event.modifiers.alt || event.modifiers.meta
+            || (event.text != Key.UpArrow && event.text != Key.DownArrow) {
+            return EventResult.reject;
+        }
+        let from = rail-keys.cursor - root.fixed-tiles;
+        if from >= 0 && from < DirectoryView.spaces.length {
+            SpaceOrder.move(from, event.text == Key.UpArrow ? from - 1 : from + 1, DirectoryView.spaces[from].id, true);
+        }
+        return EventResult.accept;
+    }
 
     function begin-drag(idx: int, entry: SpaceEntry, selected: bool) {
         root.drag-from = idx;
@@ -209,102 +263,164 @@ export component SpaceRail inherits Rectangle {
         }
     }
 
-    Flickable {
+    rail-keys := RovingList {
         x: 0;
         y: root.menu-height;
         width: root.width;
         height: root.height - root.menu-height;
-        interactive: !root.dragging;
-        content-width: root.width;
-        content-height: (DirectoryView.spaces.length + root.fixed-tiles) * root.row-height;
-        accessible-role: list;
-        accessible-label: @tr("Spaces");
-        accessible-item-count: DirectoryView.spaces.length + root.fixed-tiles;
-
-        SpaceTile {
-            x: 0;
-            y: 0;
-            width: root.width;
-            height: root.row-height;
-            draggable: false;
-            above-modal: root.above-modal;
-            index: 0;
-            entry: {
-                name: @tr("All Rooms"),
-                alert: DirectoryView.invites-pending,
-            };
-            has-icon: true;
-            icon: IconSet.MessagesSquare;
-            selected: DirectoryView.room-scope == RoomScope.all;
-            clicked => {
-                Actions.select-space("");
-            }
+        count: DirectoryView.spaces.length + root.fixed-tiles;
+        above-modal: root.above-modal;
+        other-key(event) => {
+            return root.move-key(event);
         }
 
-        SpaceTile {
-            x: 0;
-            y: root.row-height;
-            width: root.width;
-            height: root.row-height;
-            draggable: false;
-            above-modal: root.above-modal;
-            index: 1;
-            entry: {
-                name: @tr("DMs"),
-                alert: DirectoryView.direct-alert,
-                mention: DirectoryView.direct-mention,
-                hint: DirectoryView.direct-hint,
-            };
-            has-icon: true;
-            icon: IconSet.UserRound;
-            selected: DirectoryView.room-scope == RoomScope.direct;
-            clicked => {
-                Actions.select-direct();
-            }
-        }
+        Flickable {
+            interactive: !root.dragging;
+            content-width: root.width;
+            content-height: (DirectoryView.spaces.length + root.fixed-tiles) * root.row-height;
+            accessible-role: list;
+            accessible-label: @tr("Spaces");
+            accessible-item-count: DirectoryView.spaces.length + root.fixed-tiles;
 
-        for space[idx] in DirectoryView.spaces: SpaceTile {
-            x: 0;
-            y: (root.slot-for(idx) + root.fixed-tiles) * root.row-height;
-            width: root.width;
-            height: root.row-height;
-            draggable: true;
-            above-modal: root.above-modal;
-            index: idx + root.fixed-tiles;
-            hidden: root.dragging && idx == root.drag-from;
-            offers-menu: true;
-            entry: space;
-            selected: DirectoryView.selected-space-id == space.id;
-            animate y {
-                duration: Motion.travel(Motion.fast);
-                easing: ease-out;
-            }
-            changed pressed => {
-                if self.pressed {
-                    root.begin-drag(idx, space, DirectoryView.selected-space-id == space.id);
-                } else {
-                    root.end-drag();
+            SpaceTile {
+                property <int> keyed-at: self.place == rail-keys.cursor-key ? 0 : -1;
+
+                x: 0;
+                y: 0;
+                width: root.width;
+                height: root.row-height;
+                draggable: false;
+                above-modal: root.above-modal;
+                index: 0;
+                entry: {
+                    name: @tr("All Rooms"),
+                    alert: DirectoryView.invites-pending,
+                };
+                alerts-invites: true;
+                has-icon: true;
+                icon: IconSet.MessagesSquare;
+                selected: DirectoryView.room-scope == RoomScope.all;
+                tab-stop: self.cursor;
+                cursor: rail-keys.cursor == 0;
+                cursor-asks: rail-keys.asks;
+                cursor-taken => {
+                    rail-keys.took(0, self.place);
+                }
+                changed keyed-at => {
+                    if self.keyed-at >= 0 {
+                        rail-keys.cursor = self.keyed-at;
+                    }
+                }
+                clicked => {
+                    rail-keys.took(0, self.place);
+                    Actions.select-space("");
                 }
             }
-            moved(dy) => {
-                root.update-drag(dy);
-            }
-            clicked => {
-                if root.drag != SpaceDrag.moved {
-                    Actions.select-space(space.id);
+
+            SpaceTile {
+                property <int> keyed-at: self.place == rail-keys.cursor-key ? 1 : -1;
+
+                x: 0;
+                y: root.row-height;
+                width: root.width;
+                height: root.row-height;
+                draggable: false;
+                above-modal: root.above-modal;
+                index: 1;
+                entry: {
+                    name: @tr("DMs"),
+                    alert: DirectoryView.direct-alert,
+                    mention: DirectoryView.direct-mention,
+                    hint: DirectoryView.direct-hint,
+                };
+                has-icon: true;
+                icon: IconSet.UserRound;
+                selected: DirectoryView.room-scope == RoomScope.direct;
+                tab-stop: self.cursor;
+                cursor: rail-keys.cursor == 1;
+                cursor-asks: rail-keys.asks;
+                cursor-taken => {
+                    rail-keys.took(1, self.place);
+                }
+                changed keyed-at => {
+                    if self.keyed-at >= 0 {
+                        rail-keys.cursor = self.keyed-at;
+                    }
+                }
+                clicked => {
+                    rail-keys.took(1, self.place);
+                    Actions.select-direct();
                 }
             }
-        }
 
-        if root.dragging: SpaceTile {
-            x: 0;
-            y: (root.drag-from + root.fixed-tiles) * root.row-height + root.drag-dy;
-            width: root.width;
-            height: root.row-height;
-            enabled: false;
-            elevated: true;
-            entry: root.drag-entry;
-            selected: root.drag-selected;
+            for space[idx] in DirectoryView.spaces: SpaceTile {
+                property <int> keyed-at: space.id == rail-keys.cursor-key ? idx + root.fixed-tiles : -1;
+
+                x: 0;
+                y: (root.slot-for(idx) + root.fixed-tiles) * root.row-height;
+                width: root.width;
+                height: root.row-height;
+                draggable: true;
+                above-modal: root.above-modal;
+                index: idx + root.fixed-tiles;
+                slot: idx;
+                hidden: root.dragging && idx == root.drag-from;
+                offers-menu: true;
+                entry: space;
+                selected: DirectoryView.selected-space-id == space.id;
+                tab-stop: self.cursor;
+                cursor: rail-keys.cursor == idx + root.fixed-tiles;
+                cursor-asks: rail-keys.asks;
+                cursor-taken => {
+                    rail-keys.took(idx + root.fixed-tiles, space.id);
+                }
+                init => {
+                    if self.keyed-at >= 0 {
+                        rail-keys.cursor = self.keyed-at;
+                    }
+                    if root.arrived(space.id, idx) {
+                        self.take-focus();
+                    }
+                }
+                changed keyed-at => {
+                    if self.keyed-at >= 0 {
+                        rail-keys.cursor = self.keyed-at;
+                    }
+                }
+                animate y {
+                    duration: Motion.travel(Motion.fast);
+                    easing: ease-out;
+                }
+                changed pressed => {
+                    if self.pressed {
+                        root.begin-drag(idx, space, DirectoryView.selected-space-id == space.id);
+                    } else {
+                        root.end-drag();
+                    }
+                }
+                moved(dy) => {
+                    root.update-drag(dy);
+                }
+                clicked => {
+                    if root.drag != SpaceDrag.moved {
+                        rail-keys.took(idx + root.fixed-tiles, space.id);
+                        Actions.select-space(space.id);
+                    }
+                }
+            }
+
+            if root.dragging: SpaceTile {
+                x: 0;
+                y: (root.drag-from + root.fixed-tiles) * root.row-height + root.drag-dy;
+                width: root.width;
+                height: root.row-height;
+                enabled: false;
+                elevated: true;
+                entry: root.drag-entry;
+                selected: root.drag-selected;
+            }
         }
     }
+
+    moves := Announcer { }
 }

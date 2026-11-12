@@ -658,8 +658,28 @@ export global MessageMenu {
 
 export enum RoomMenuOrigin { list, header, rail, space-header }
 
+export global SpaceOrder {
+    out property <string> moving;
+    out property <bool> keyed;
+
+    public function move(from: int, to: int, key: string, by-keys: bool) {
+        if from == to || from < 0 || to < 0 || from >= DirectoryView.spaces.length || to >= DirectoryView.spaces.length {
+            return;
+        }
+        root.moving = key;
+        root.keyed = by-keys;
+        Actions.move-space(from, to);
+    }
+
+    public function settled() {
+        root.moving = "";
+        root.keyed = false;
+    }
+}
+
 export global RoomMenu {
     in-out property <string> key;
+    in-out property <int> rail-slot: -1;
     in-out property <RoomMenuOrigin> origin: RoomMenuOrigin.list;
     in-out property <length> at-x;
     in-out property <length> at-y;
@@ -675,6 +695,7 @@ export global RoomMenu {
 
     public function open(id: string, origin: RoomMenuOrigin, x: length, y: length, keyboard: bool) {
         root.key = id;
+        root.rail-slot = -1;
         root.origin = origin;
         root.at-x = x;
         root.at-y = y;

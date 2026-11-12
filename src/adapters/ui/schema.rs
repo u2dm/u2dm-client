@@ -651,6 +651,8 @@ macro_rules! int_props {
         SelectedGeneration DirectoryView "DirectoryView" "selected-generation" set_selected_generation get_selected_generation;
         SelectedRoomRow DirectoryView "DirectoryView" "selected-room-row" set_selected_room_row get_selected_room_row;
         SelectedRoomHeadings DirectoryView "DirectoryView" "selected-room-headings" set_selected_room_headings get_selected_room_headings;
+        RoomsHeadingRow DirectoryView "DirectoryView" "rooms-heading-row" set_rooms_heading_row get_rooms_heading_row;
+        SpacesHeadingRow DirectoryView "DirectoryView" "spaces-heading-row" set_spaces_heading_row get_spaces_heading_row;
         InviteColorIndex InviteView "InviteView" "color-index" set_color_index get_color_index;
         RemovalColorIndex RemovalView "RemovalView" "color-index" set_color_index get_color_index;
         LeaveSpaceRooms LeaveSpaceView "LeaveSpaceView" "rooms" set_rooms get_rooms;
@@ -706,6 +708,7 @@ macro_rules! int_props {
         RoomInfoMembers RoomInfoView "RoomInfoView" "members" set_members get_members;
         RoomInfoColorIndex RoomInfoView "RoomInfoView" "color-index" set_color_index get_color_index;
         RoomInfoPagesLanded RoomInfoView "RoomInfoView" "pages-landed" set_pages_landed get_pages_landed;
+        RoomInfoInvitedRow RoomInfoView "RoomInfoView" "invited-row" set_invited_row get_invited_row;
         RoomLinkSerial RoomMenuView "RoomMenuView" "link-serial" set_link_serial get_link_serial;
         UserInfoColorIndex UserInfoView "UserInfoView" "color-index" set_color_index get_color_index;
         RoomLogDropped RoomLogView "RoomLogView" "dropped" set_dropped get_dropped;

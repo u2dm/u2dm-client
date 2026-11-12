@@ -11,7 +11,7 @@ import { CallWords, MessagePreview, ServiceLabel } from "../../../messages.slint
 import { HeaderTitle } from "./header-title.slint";
 import { RowTitle } from "./row-title.slint";
 import { Avatar } from "../../../components/avatar.slint";
-import { ClickArea, Interaction, ListItemArea } from "../../../components/a11y.slint";
+import { ClickArea, Interaction, ListItemArea, RovingList } from "../../../components/a11y.slint";
 import { UnreadDot } from "./unread-dot.slint";
 import { SpaceBadge } from "./space-badge.slint";
 import { RoomEntry } from "../../../types.slint";
@@ -225,6 +225,38 @@ global RowHeadings {
     public pure function is-short(kind: RoomRowKind) -> bool {
         return root.is-heading(kind) || root.folds-invites(kind);
     }
+
+    public pure function text(kind: RoomRowKind) -> string {
+        if kind == RoomRowKind.invites-heading || root.folds-invites(kind) {
+            return @tr("RoomRow" => "Invites");
+        }
+        if kind == RoomRowKind.rooms-heading && DirectoryView.room-scope == RoomScope.direct {
+            return @tr("RoomRow" => "Direct messages");
+        }
+        if kind == RoomRowKind.rooms-heading {
+            return @tr("RoomRow" => "Rooms");
+        }
+        return @tr("RoomRow" => "Spaces");
+    }
+}
+
+component RowHeading inherits Rectangle {
+    in property <RoomRowKind> kind;
+    in property <bool> collapsed;
+
+    if !root.collapsed: HorizontalLayout {
+        padding-left: Space.lg;
+        padding-right: Space.lg;
+        padding-bottom: Space.sm;
+
+        Text {
+            text: RowHeadings.text(root.kind);
+            font-size: Fonts.caption;
+            font-weight: Weight.semibold;
+            color: AppStyle.foreground-muted;
+            vertical-alignment: bottom;
+        }
+    }
 }
 
 component InviteCount inherits Rectangle {
@@ -389,38 +421,21 @@ component RoomRow inherits ListItemArea {
     in property <bool> collapsed;
     in property <bool> joins-timeline;
     in property <length> avatar-size;
+    in property <bool> cursor-waits;
 
     property <bool> is-room: root.entry.kind == RoomRowKind.room;
     property <bool> is-invite: root.entry.kind == RoomRowKind.invite;
     property <bool> is-removal: root.entry.kind == RoomRowKind.removal;
     property <bool> is-space: root.entry.kind == RoomRowKind.space;
-    property <bool> is-heading: RowHeadings.is-heading(root.entry.kind);
     property <bool> folds-invites: RowHeadings.folds-invites(root.entry.kind);
     property <bool> unfolded: root.entry.kind == RoomRowKind.invites-unfolded;
-    property <bool> has-face: !root.is-heading && !root.folds-invites;
+    property <bool> has-face: !root.folds-invites;
     property <bool> has-unread: root.entry.alert || root.entry.mention || root.entry.hint;
     property <bool> joined: root.selected && root.joins-timeline;
-    property <int> focus-asks: FocusHome.asks;
-
-    pure function heading-text(kind: RoomRowKind) -> string {
-        if kind == RoomRowKind.invites-heading || RowHeadings.folds-invites(kind) {
-            return @tr("Invites");
-        }
-        if kind == RoomRowKind.rooms-heading && DirectoryView.room-scope == RoomScope.direct {
-            return @tr("Direct messages");
-        }
-        if kind == RoomRowKind.rooms-heading {
-            return @tr("Rooms");
-        }
-        return @tr("Spaces");
-    }
 
     pure function describe(entry: RoomEntry) -> string {
         if RowHeadings.folds-invites(entry.kind) {
             return @tr("{n} invite" | "{n} invites" % entry.invite-count);
-        }
-        if RowHeadings.is-heading(entry.kind) {
-            return root.heading-text(entry.kind);
         }
         if entry.kind == RoomRowKind.invite {
             return InviteLine.describe(entry);
@@ -463,7 +478,6 @@ component RoomRow inherits ListItemArea {
     }
 
     clip: true;
-    enabled: !root.is-heading;
     ring-inset: Space.sm;
     ring-radius: Metrics.sidebar-tab-radius;
     region: FocusRegion.rooms;
@@ -494,11 +508,7 @@ component RoomRow inherits ListItemArea {
         if (root.is-room || root.is-invite || root.is-removal) && !root.entry.has-avatar {
             Actions.request-room-avatar(root.entry.id);
         }
-    }
-
-    changed focus-asks => {
-        if FocusHome.asked == FocusRegion.rooms && root.enabled
-            && root.entry.id == (FocusHome.asked-place != "" ? FocusHome.asked-place : DirectoryView.selected-room-id) {
+        if root.cursor && root.cursor-waits {
             root.take-focus();
         }
     }
@@ -701,7 +711,7 @@ component RoomRow inherits ListItemArea {
 
         Text {
             horizontal-stretch: 1;
-            text: root.heading-text(root.entry.kind);
+            text: RowHeadings.text(root.entry.kind);
             font-size: Fonts.label;
             font-weight: Weight.semibold;
             vertical-alignment: center;
@@ -713,21 +723,6 @@ component RoomRow inherits ListItemArea {
             cross-axis-self-alignment: center;
             count: root.entry.invite-count;
             alert: !root.unfolded;
-        }
-    }
-
-    if !root.collapsed && root.is-heading: HorizontalLayout {
-        padding-left: Space.lg;
-        padding-right: Space.lg;
-        padding-bottom: Space.sm;
-
-        Text {
-            text: root.heading-text(root.entry.kind);
-            font-size: Fonts.caption;
-            font-weight: Weight.semibold;
-            color: AppStyle.foreground-muted;
-            vertical-alignment: bottom;
-            accessible-role: none;
         }
     }
 }
@@ -890,8 +885,78 @@ export component Sidebar inherits Rectangle {
         && !root.collapsed
         && DirectoryView.room-scope != RoomScope.space
         && DirectoryView.rooms.length == 0;
+    property <bool> invites-titled: DirectoryView.rooms.length > 0
+        && DirectoryView.rooms[0].kind == RoomRowKind.invites-heading;
+    property <int> listed: DirectoryView.rooms.length
+        - (root.invites-titled ? 1 : 0)
+        - (DirectoryView.rooms-heading-row >= 0 ? 1 : 0)
+        - (DirectoryView.spaces-heading-row >= 0 ? 1 : 0);
+    property <string> selected-room: DirectoryView.selected-room-id;
+    property <int> focus-asks: FocusHome.asks;
+    property <string> typed;
 
     background: AppStyle.nav;
+
+    pure function position(row: int) -> int {
+        return row
+            - (root.invites-titled && row > 0 ? 1 : 0)
+            - (DirectoryView.rooms-heading-row >= 0 && row > DirectoryView.rooms-heading-row ? 1 : 0)
+            - (DirectoryView.spaces-heading-row >= 0 && row > DirectoryView.spaces-heading-row ? 1 : 0);
+    }
+
+    function reveal-row(row: int) {
+        let pitch = room-list.content-height / max(1, DirectoryView.rooms.length);
+        room-list.content-y = -clamp(
+            row * pitch - (room-list.visible-height - root.row-height) / 2,
+            0px,
+            max(0px, room-list.content-height - room-list.visible-height));
+    }
+
+    function type-ahead(event: KeyEvent) -> EventResult {
+        if event.modifiers.control || event.modifiers.alt || event.modifiers.meta || event.text == ""
+            || event.text == " " || event.text == Key.Escape {
+            return EventResult.reject;
+        }
+        let typed = root.typed + event.text;
+        let found = Actions.room-row-starting-with(
+            typed,
+            DirectoryView.rooms,
+            root.typed == "" ? room-keys.cursor : room-keys.cursor - 1);
+        if found < 0 {
+            return EventResult.reject;
+        }
+        root.typed = typed;
+        typing.running = true;
+        typing.restart();
+        room-keys.move-to(found, 1);
+        return EventResult.accept;
+    }
+
+    changed selected-room => {
+        if root.selected-room != "" {
+            room-keys.cursor-key = root.selected-room;
+        }
+    }
+
+    changed focus-asks => {
+        if FocusHome.asked != FocusRegion.rooms {
+            return;
+        }
+        let place = FocusHome.asked-place != "" ? FocusHome.asked-place : root.selected-room;
+        if place != "" && Actions.room-row-of(place, DirectoryView.rooms) >= 0 {
+            room-keys.cursor-key = place;
+            room-keys.focus-cursor();
+        }
+    }
+
+    typing := Timer {
+        interval: Motion.typeahead-pause;
+        running: false;
+        triggered => {
+            self.running = false;
+            root.typed = "";
+        }
+    }
 
     function open-row(row: RoomEntry) {
         if row.kind == RoomRowKind.invites-folded {
@@ -1002,35 +1067,71 @@ export component Sidebar inherits Rectangle {
                 list-area := TouchArea {
                     vertical-stretch: 1;
 
-                    room-list := ListView {
-                        width: 100%;
-                        height: 100%;
-                        vertical-scrollbar-policy: room-column.scrolled-lately || room-column.pointer-at-scrollbar
-                            ? ScrollBarPolicy.as-needed
-                            : ScrollBarPolicy.always-off;
-                        accessible-role: list;
-                        accessible-label: @tr("Rooms");
-                        accessible-item-count: DirectoryView.rooms.length;
-                        scrolled => {
-                            room-column.scrolled-lately = true;
-                            scrollbar-linger.running = true;
-                            scrollbar-linger.restart();
+                    room-keys := RovingList {
+                        count: DirectoryView.rooms.length;
+                        unbuilt-rows: true;
+                        above-modal: root.above-modal;
+                        locates: true;
+                        page: max(1, floor(room-list.visible-height / root.row-height));
+                        locate(key) => {
+                            return Actions.room-row-of(key, DirectoryView.rooms);
+                        }
+                        skips(row) => {
+                            return RowHeadings.is-heading(DirectoryView.rooms[row].kind);
+                        }
+                        reveal(row) => {
+                            root.reveal-row(row);
+                        }
+                        other-key(event) => {
+                            return root.type-ahead(event);
                         }
 
-                        for room[idx] in DirectoryView.rooms: RoomRow {
-                            height: RowHeadings.is-short(room.kind) ? root.heading-height : root.row-height;
-                            index: idx;
-                            above-modal: root.above-modal;
-                            collapsed: root.collapsed;
-                            joins-timeline: root.joins-timeline;
-                            avatar-size: root.avatar-size;
-                            entry: room;
-                            selected: room.kind == RoomRowKind.room && room.id == DirectoryView.selected-room-id;
-                            clicked => {
-                                if room.kind == RoomRowKind.room && header.search-focused {
-                                    RoomSearch.opened-room = room.id;
+                        room-list := ListView {
+                            width: 100%;
+                            height: 100%;
+                            vertical-scrollbar-policy: room-column.scrolled-lately || room-column.pointer-at-scrollbar
+                                ? ScrollBarPolicy.as-needed
+                                : ScrollBarPolicy.always-off;
+                            accessible-role: list;
+                            accessible-label: @tr("Rooms");
+                            accessible-item-count: root.listed;
+                            scrolled => {
+                                room-column.scrolled-lately = true;
+                                scrollbar-linger.running = true;
+                                scrollbar-linger.restart();
+                            }
+
+                            for room[idx] in DirectoryView.rooms: Rectangle {
+                                height: RowHeadings.is-short(room.kind) ? root.heading-height : root.row-height;
+
+                                if RowHeadings.is-heading(room.kind): RowHeading {
+                                    kind: room.kind;
+                                    collapsed: root.collapsed;
                                 }
-                                root.open-row(room);
+
+                                if !RowHeadings.is-heading(room.kind): RoomRow {
+                                    index: root.position(idx);
+                                    above-modal: root.above-modal;
+                                    collapsed: root.collapsed;
+                                    joins-timeline: root.joins-timeline;
+                                    avatar-size: root.avatar-size;
+                                    entry: room;
+                                    selected: room.kind == RoomRowKind.room && room.id == DirectoryView.selected-room-id;
+                                    tab-stop: room-keys.items-tab-stop;
+                                    cursor: idx == room-keys.cursor;
+                                    cursor-asks: room-keys.asks;
+                                    cursor-waits: room-keys.waiting;
+                                    cursor-taken => {
+                                        room-keys.took(idx, room.id);
+                                    }
+                                    clicked => {
+                                        if room.kind == RoomRowKind.room && (header.search-focused || self.has-focus) {
+                                            RoomSearch.opened-room = room.id;
+                                        }
+                                        room-keys.took(idx, room.id);
+                                        root.open-row(room);
+                                    }
+                                }
                             }
                         }
                     }

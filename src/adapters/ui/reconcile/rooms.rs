@@ -32,6 +32,11 @@ pub struct ListedPlace {
     pub headings_above: usize,
 }
 
+pub struct ListedHeadings {
+    pub rooms: Option<usize>,
+    pub spaces: Option<usize>,
+}
+
 impl<'a> RoomListing<'a> {
     pub fn of(directory: &'a DirectoryView) -> Self {
         Self {
@@ -91,6 +96,19 @@ impl<'a> RoomListing<'a> {
             rows.extend(row);
         }
         rows
+    }
+
+    pub fn heading_rows(self) -> ListedHeadings {
+        let rows = self.rows();
+        let row_of = |wanted: Heading| {
+            rows.iter().position(
+                |listed| matches!(listed, ListedRow::Heading(heading) if *heading == wanted),
+            )
+        };
+        ListedHeadings {
+            rooms: row_of(Heading::Rooms),
+            spaces: row_of(Heading::Spaces),
+        }
     }
 
     pub fn place_of(self, room_id: &str) -> Option<ListedPlace> {

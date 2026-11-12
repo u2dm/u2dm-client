@@ -17,11 +17,12 @@ use crate::adapters::ui::present::{
 };
 use crate::adapters::ui::props::{BoolProp, ImageProp, IntProp, MessageProp, StringProp, UiProps};
 use crate::adapters::ui::reconcile::{apply_rows, rows_to_redo};
+use crate::adapters::ui::rows::row_index;
 use crate::adapters::ui::session::{ActiveBackend, UiSession, with_session};
 use crate::adapters::ui::splice_model::SpliceModel;
 use crate::commands::view::{
     AppViewState, CardStatus, CreateRoomView, InvitePeopleView, InviteView, LeaveSpaceView,
-    RemovalView, RoomCard, RoomInfoView, RoomLogView, RoomPreviewSheet, RoomPreviewView,
+    RemovalView, RoomCard, RoomInfoView, RoomLogView, RoomPreviewSheet, RoomPreviewView, RosterRow,
     ShownPreview, UserCard, UserInfoView,
 };
 use crate::domain::departure::{AdminStanding, Removal, RemovalList};
@@ -503,6 +504,10 @@ pub(super) fn apply_room_info<B: UiBackend>(
             &|row| member_row_to_dto(row, ctx.media).into(),
             &|entry| entry.user_id(),
         );
+        let invited = rows
+            .iter()
+            .position(|row| matches!(row, RosterRow::InvitedHeading));
+        w.set_int(IntProp::RoomInfoInvitedRow, row_index(invited));
     }
 }
 

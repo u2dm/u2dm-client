@@ -3,6 +3,7 @@ import { IconSet } from "@lucide";
 
 import { Avatar } from "../../../components/avatar.slint";
 import { AppButton, HeaderIconButton } from "../../../components/button.slint";
+import { ListItemArea, RovingList } from "../../../components/a11y.slint";
 import { RetryNotice } from "../../../components/retry-notice.slint";
 import { StatusPill } from "../../../components/status-pill.slint";
 import { SecondaryText } from "../../../components/text-roles.slint";
@@ -57,14 +58,33 @@ component ChildAvatar inherits Rectangle {
     }
 }
 
+global ChildActions {
+    public pure function joinable(entry: SpaceChildEntry) -> bool {
+        return entry.access == ChildAccess.join || entry.access == ChildAccess.joining;
+    }
+
+    public pure function openable(entry: SpaceChildEntry) -> bool {
+        return entry.access == ChildAccess.open || entry.access == ChildAccess.open-subspace;
+    }
+
+    public function act(entry: SpaceChildEntry) {
+        if root.openable(entry) {
+            Actions.open-space-child(entry.id);
+            if entry.access == ChildAccess.open {
+                Shell.nav-open = false;
+            }
+        } else if entry.access == ChildAccess.join {
+            Actions.join-space-child(entry.id);
+        }
+    }
+}
+
 component ChildAction inherits HorizontalLayout {
     in property <SpaceChildEntry> entry;
     in property <bool> above-modal;
 
-    property <bool> joinable: root.entry.access == ChildAccess.join
-        || root.entry.access == ChildAccess.joining;
-    property <bool> openable: root.entry.access == ChildAccess.open
-        || root.entry.access == ChildAccess.open-subspace;
+    property <bool> joinable: ChildActions.joinable(root.entry);
+    property <bool> openable: ChildActions.openable(root.entry);
 
     if root.joinable || root.openable: AppButton {
         height: Metrics.index-action;
@@ -72,27 +92,15 @@ component ChildAction inherits HorizontalLayout {
         text: root.openable ? @tr("Open")
             : root.entry.access == ChildAccess.joining ? @tr("Joining")
             : @tr("Join");
+        label: root.openable ? @tr("Open {}", root.entry.name)
+            : root.entry.access == ChildAccess.joining ? @tr("Joining {}", root.entry.name)
+            : @tr("Join {}", root.entry.name);
         filled: !root.openable;
         busy: root.entry.access == ChildAccess.joining;
         above-modal: root.above-modal;
-        region: FocusRegion.space-index;
-        place: root.entry.id;
-        region-row: true;
-        property <int> focus-asks: FocusHome.asks;
-        changed focus-asks => {
-            if FocusHome.asked == FocusRegion.space-index && FocusHome.asked-place == root.entry.id {
-                self.take-focus();
-            }
-        }
+        tab-stop: false;
         clicked => {
-            if root.openable {
-                Actions.open-space-child(root.entry.id);
-                if root.entry.access == ChildAccess.open {
-                    Shell.nav-open = false;
-                }
-            } else {
-                Actions.join-space-child(root.entry.id);
-            }
+            ChildActions.act(root.entry);
         }
     }
 
@@ -103,10 +111,9 @@ component ChildAction inherits HorizontalLayout {
     }
 }
 
-component ChildRow inherits Rectangle {
+component ChildRow inherits ListItemArea {
     in property <SpaceChildEntry> entry;
-    in property <int> index;
-    in property <bool> above-modal;
+    in property <bool> cursor-waits;
 
     pure function summary(entry: SpaceChildEntry) -> string {
         if entry.is-space {
@@ -131,9 +138,22 @@ component ChildRow inherits Rectangle {
         return @tr("{}, {}", entry.name, ChildAccessText.reason(entry.access));
     }
 
-    accessible-role: list-item;
-    accessible-item-index: root.index;
-    accessible-label: root.describe(root.entry);
+    label: root.describe(root.entry);
+    region: FocusRegion.space-index;
+    place: root.entry.id;
+    region-row: true;
+    shows-pointer: false;
+    clicked => {
+        if self.has-focus {
+            ChildActions.act(root.entry);
+        }
+    }
+
+    init => {
+        if root.cursor && root.cursor-waits {
+            root.take-focus();
+        }
+    }
 
     HorizontalLayout {
         padding-left: Space.lg;
@@ -237,6 +257,7 @@ export component SpaceIndexPane inherits Rectangle {
         || root.status == SpaceIndexStatus.more-failed;
     property <length> rows-height: SpaceIndexView.rows.length * Metrics.index-row;
     property <int> asked-after: -1;
+    property <int> focus-asks: FocusHome.asks;
     property <bool> wants-page: root.status == SpaceIndexStatus.partial
         && root.asked-after != SpaceIndexView.pages-landed
         && root.rows-height + rows-view.content-y - rows-view.visible-height <= Metrics.index-page-ahead;
@@ -263,6 +284,13 @@ export component SpaceIndexPane inherits Rectangle {
         root.page-if-wanted();
     }
 
+    changed focus-asks => {
+        if FocusHome.asked == FocusRegion.space-index && FocusHome.asked-place != ""
+            && FocusHome.asked-place == child-keys.cursor-key {
+            child-keys.focus-cursor();
+        }
+    }
+
     background: AppStyle.canvas;
     accessible-role: AccessibleRole.groupbox;
     accessible-label: root.title(SpaceIndexView.space-name);
@@ -276,16 +304,36 @@ export component SpaceIndexPane inherits Rectangle {
         Rectangle {
             vertical-stretch: 1;
 
-            rows-view := ListView {
-                accessible-role: list;
-                accessible-label: @tr("Rooms in this space");
-                accessible-item-count: SpaceIndexView.rows.length;
+            child-keys := RovingList {
+                count: SpaceIndexView.rows.length;
+                unbuilt-rows: true;
+                above-modal: root.above-modal;
+                page: max(1, floor(rows-view.visible-height / Metrics.index-row));
+                reveal(row) => {
+                    rows-view.content-y = -clamp(
+                        row * Metrics.index-row - (rows-view.visible-height - Metrics.index-row) / 2,
+                        0px,
+                        max(0px, rows-view.content-height - rows-view.visible-height));
+                }
 
-                for child[idx] in SpaceIndexView.rows: ChildRow {
-                    height: Metrics.index-row;
-                    index: idx;
-                    entry: child;
-                    above-modal: root.above-modal;
+                rows-view := ListView {
+                    accessible-role: list;
+                    accessible-label: @tr("Rooms in this space");
+                    accessible-item-count: SpaceIndexView.rows.length;
+
+                    for child[idx] in SpaceIndexView.rows: ChildRow {
+                        height: Metrics.index-row;
+                        index: idx;
+                        entry: child;
+                        above-modal: root.above-modal;
+                        tab-stop: child-keys.items-tab-stop;
+                        cursor: idx == child-keys.cursor;
+                        cursor-asks: child-keys.asks;
+                        cursor-waits: child-keys.waiting;
+                        cursor-taken => {
+                            child-keys.took(idx, child.id);
+                        }
+                    }
                 }
             }
 

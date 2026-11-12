@@ -22,6 +22,25 @@ impl TitleQuery {
     }
 }
 
+pub fn next_starting_with<S: AsRef<str>>(
+    names: &[S],
+    prefix: &str,
+    after: Option<usize>,
+) -> Option<usize> {
+    let prefix = folded(prefix);
+    if prefix.is_empty() || names.is_empty() {
+        return None;
+    }
+    let start = after.map_or(0, |after| after + 1);
+    (0..names.len())
+        .map(|offset| (start + offset) % names.len())
+        .find(|&index| {
+            names
+                .get(index)
+                .is_some_and(|name| folded(name.as_ref()).starts_with(&prefix))
+        })
+}
+
 pub(crate) fn folded(text: &str) -> String {
     text.to_lowercase()
         .nfd()

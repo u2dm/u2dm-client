@@ -1,4 +1,4 @@
-import { FocusHome, FocusRegion, Shell } from "../local.slint";
+import { FocusHome, FocusKeeper, FocusRegion, Shell } from "../local.slint";
 import { WindowView } from "../views.slint";
 import { AppStyle, Metrics, Motion, Radius, Stroke } from "../theme.slint";
 
@@ -196,6 +196,8 @@ export component ClickArea inherits Rectangle {
     in property <bool> draggable: false;
     in property <string> label;
     in property <bool> focusable: true;
+    in property <bool> tab-stop: true;
+    in property <bool> shows-pointer: true;
     in property <bool> roving-focus: false;
     in property <length> ring-radius: Radius.sm;
     in property <length> ring-inset: 0;
@@ -239,7 +241,7 @@ export component ClickArea inherits Rectangle {
         width: 0;
         height: root.height + 2 * root.ring-overhang;
         enabled: root.enabled && root.focusable;
-        focus-on-tab-navigation: root.actionable && root.focusable;
+        focus-on-tab-navigation: root.actionable && root.focusable && root.tab-stop;
         focus-gained(reason) => {
             root.focus-by-tab = reason == FocusReason.tab-navigation;
             if root.region != FocusRegion.none && root.region-row {
@@ -265,7 +267,7 @@ export component ClickArea inherits Rectangle {
 
     touch := TouchArea {
         enabled: root.enabled || root.hovers-when-disabled;
-        mouse-cursor: root.enabled ? pointer : default;
+        mouse-cursor: root.enabled && root.shows-pointer ? pointer : default;
         moved => {
             if root.enabled && root.draggable {
                 root.moved(self.mouse-y - self.pressed-y);
@@ -312,11 +314,198 @@ export component Announcer inherits Text {
 export component ListItemArea inherits ClickArea {
     in property <bool> selected: false;
     in property <int> index: -1;
+    in property <bool> cursor: false;
+    in property <int> cursor-asks;
+
+    callback cursor-taken();
 
     accessible-role: list-item;
     accessible-item-selectable: true;
     accessible-item-selected: root.selected;
     accessible-item-index: root.index;
+
+    changed cursor-asks => {
+        if root.cursor {
+            root.take-focus();
+        }
+    }
+
+    changed has-focus => {
+        if self.has-focus {
+            root.cursor-taken();
+        }
+    }
+}
+
+export component RovingList inherits FocusScope {
+    in property <int> count;
+    in property <bool> horizontal: false;
+    in property <bool> wraps: false;
+    in property <bool> unbuilt-rows: false;
+    in property <bool> above-modal: false;
+    in property <bool> locates: false;
+    in property <int> page: 1;
+    in-out property <int> cursor: 0;
+    in-out property <string> cursor-key;
+    out property <int> asks;
+    out property <bool> waiting;
+    out property <bool> items-tab-stop: !root.unbuilt-rows;
+
+    callback reveal(int);
+    pure callback locate(string) -> int;
+    pure callback skips(int) -> bool;
+    callback other-key(KeyEvent) -> EventResult;
+
+    public function focus-cursor() {
+        if root.count == 0 {
+            return;
+        }
+        root.relocate();
+        root.cursor = root.resting(root.cursor, 1);
+        root.waiting = true;
+        root.asks += 1;
+        built.running = true;
+        built.restart();
+    }
+
+    public function move-to(index: int, step: int) {
+        if root.count == 0 {
+            return;
+        }
+        root.cursor = root.resting(index, step);
+        root.cursor-key = "";
+        root.focus-cursor();
+    }
+
+    public function took(index: int, key: string) {
+        root.cursor = index;
+        root.cursor-key = key;
+        root.waiting = false;
+    }
+
+    function relocate() {
+        if root.locates && root.cursor-key != "" {
+            let at = root.locate(root.cursor-key);
+            if at >= 0 {
+                root.cursor = at;
+            }
+        }
+    }
+
+    pure function resting(index: int, step: int) -> int {
+        let first = clamp(index, 0, root.count - 1);
+        if !root.skips(first) {
+            return first;
+        }
+        if first + step >= 0 && first + step < root.count && !root.skips(first + step) {
+            return first + step;
+        }
+        if first - step >= 0 && first - step < root.count && !root.skips(first - step) {
+            return first - step;
+        }
+        return first;
+    }
+
+    function leave(forward: bool) {
+        if forward {
+            tail.focus();
+        } else {
+            head.focus();
+        }
+        FocusKeeper.step(forward);
+    }
+
+    focus-on-tab-navigation: false;
+    focus-on-click: false;
+
+    key-pressed(event) => {
+        root.relocate();
+        if root.unbuilt-rows && !event.modifiers.control && !event.modifiers.alt && !event.modifiers.meta {
+            if event.text == Key.Backtab || (event.text == Key.Tab && event.modifiers.shift) {
+                root.leave(false);
+                return accept;
+            }
+            if event.text == Key.Tab {
+                root.leave(true);
+                return accept;
+            }
+        }
+        if root.count > 0 && Interaction.unmodified(event) {
+            if event.text == (root.horizontal ? Key.RightArrow : Key.DownArrow) {
+                root.move-to(root.wraps && root.cursor >= root.count - 1 ? 0 : root.cursor + 1, 1);
+                return accept;
+            }
+            if event.text == (root.horizontal ? Key.LeftArrow : Key.UpArrow) {
+                root.move-to(root.wraps && root.cursor <= 0 ? root.count - 1 : root.cursor - 1, -1);
+                return accept;
+            }
+            if event.text == Key.Home {
+                root.move-to(0, 1);
+                return accept;
+            }
+            if event.text == Key.End {
+                root.move-to(root.count - 1, -1);
+                return accept;
+            }
+            if event.text == Key.PageDown {
+                root.move-to(root.cursor + root.page, 1);
+                return accept;
+            }
+            if event.text == Key.PageUp {
+                root.move-to(root.cursor - root.page, -1);
+                return accept;
+            }
+        }
+        return root.other-key(event);
+    }
+
+    built := Timer {
+        interval: 1ms;
+        running: false;
+        triggered => {
+            self.running = false;
+            if root.waiting {
+                root.reveal(root.cursor);
+                unbuilt.running = true;
+                unbuilt.restart();
+            }
+        }
+    }
+
+    unbuilt := Timer {
+        interval: Motion.slow;
+        running: false;
+        triggered => {
+            self.running = false;
+            root.waiting = false;
+        }
+    }
+
+    head := FocusScope {
+        width: 0;
+        height: 0;
+        enabled: root.unbuilt-rows && root.count > 0 && Interaction.actionable(true, root.above-modal);
+        focus-on-click: false;
+        focus-gained(reason) => {
+            if reason == FocusReason.tab-navigation {
+                root.focus-cursor();
+            }
+        }
+    }
+
+    @children
+
+    tail := FocusScope {
+        width: 0;
+        height: 0;
+        enabled: root.unbuilt-rows && root.count > 0 && Interaction.actionable(true, root.above-modal);
+        focus-on-click: false;
+        focus-gained(reason) => {
+            if reason == FocusReason.tab-navigation {
+                root.focus-cursor();
+            }
+        }
+    }
 }
 
 export component RovingKeys inherits FocusScope {

@@ -2,7 +2,7 @@ import { Palette, ScrollView, Spinner } from "std-widgets.slint";
 import { IconDisplay, IconSet, Icon } from "@lucide";
 
 import { Avatar } from "../../../components/avatar.slint";
-import { ClickArea, FocusReveal, FocusRing, FocusTrail, Interaction, ListItemArea } from "../../../components/a11y.slint";
+import { ClickArea, FocusReveal, FocusRing, FocusTrail, Interaction, ListItemArea, RovingList } from "../../../components/a11y.slint";
 import { CopyFeedback } from "../../../components/copier.slint";
 import { DialogCard, ModalHost, PickerCard, Placement } from "../../../components/overlay.slint";
 import { ErrorBanner } from "../../../components/banner.slint";
@@ -11,7 +11,7 @@ import { RetryNotice } from "../../../components/retry-notice.slint";
 import { ActionTile } from "./action-tile.slint";
 import { DetailLine } from "./detail-line.slint";
 import { ChipClearance, CopyLinkTile, SheetCloseChip, SheetCover, TilePrompt, TileRow } from "./sheet.slint";
-import { MemberRow } from "./member-row.slint";
+import { MemberRow, MembersHeading } from "./member-row.slint";
 import { SearchField } from "../../../components/search-field.slint";
 import { NotifyModes } from "./notify-modes.slint";
 import { AppStyle, Fonts, IconSize, Metrics, Radius, Size, Space, Weight } from "../../../theme.slint";
@@ -471,6 +471,7 @@ component InvitePeopleRow inherits ClickArea {
 component MemberSection inherits VerticalLayout {
     in property <bool> above-modal;
     in property <bool> docked;
+    in property <int> page-rows: 1;
     out property <length> search-top: search-row.y;
     out property <length> list-top: member-list.y;
 
@@ -528,15 +529,47 @@ component MemberSection inherits VerticalLayout {
         height: member-rows.preferred-height;
         accessible-role: list;
         accessible-label: @tr("Members");
-        accessible-item-count: RoomInfoView.rows.length;
+        accessible-item-count: RoomInfoView.rows.length - (RoomInfoView.invited-row >= 0 ? 1 : 0);
 
-        member-rows := VerticalLayout {
-            for entry[idx] in RoomInfoView.rows: MemberRow {
-                height: Metrics.room-info-row;
-                index: idx;
-                entry: entry;
-                above-modal: root.above-modal;
-                region: root.docked ? FocusRegion.pane : FocusRegion.none;
+        member-keys := RovingList {
+            count: RoomInfoView.rows.length;
+            above-modal: root.above-modal;
+            page: root.page-rows;
+            skips(row) => {
+                return row == RoomInfoView.invited-row;
+            }
+
+            member-rows := VerticalLayout {
+                for entry[idx] in RoomInfoView.rows: Rectangle {
+                    height: Metrics.room-info-row;
+
+                    if idx == RoomInfoView.invited-row: MembersHeading { }
+
+                    if idx != RoomInfoView.invited-row: MemberRow {
+                        property <int> keyed-at: entry.user-id == member-keys.cursor-key ? idx : -1;
+
+                        index: RoomInfoView.invited-row >= 0 && idx > RoomInfoView.invited-row ? idx - 1 : idx;
+                        entry: entry;
+                        above-modal: root.above-modal;
+                        region: root.docked ? FocusRegion.pane : FocusRegion.none;
+                        tab-stop: self.cursor;
+                        cursor: idx == member-keys.cursor;
+                        cursor-asks: member-keys.asks;
+                        cursor-taken => {
+                            member-keys.took(idx, entry.user-id);
+                        }
+                        init => {
+                            if self.keyed-at >= 0 {
+                                member-keys.cursor = self.keyed-at;
+                            }
+                        }
+                        changed keyed-at => {
+                            if self.keyed-at >= 0 {
+                                member-keys.cursor = self.keyed-at;
+                            }
+                        }
+                    }
+                }
             }
         }
     }
@@ -765,6 +798,7 @@ component RoomInfoSheet inherits Rectangle {
                 members := MemberSection {
                     above-modal: root.above-modal;
                     docked: root.docked;
+                    page-rows: max(1, floor(scroll.visible-height / Metrics.room-info-row));
                     search-edited(text) => {
                         root.scroll-search-into-view();
                         Actions.filter-room-members(text);

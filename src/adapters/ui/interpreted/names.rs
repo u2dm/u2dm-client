@@ -16,6 +16,8 @@ pub mod callback {
     pub const SET_PACK_GLOBAL: &str = "set-pack-global";
     pub const POLL_ANSWER_TEXTS: &str = "poll-answer-texts";
     pub const SETTINGS_MATCHES: &str = "settings-matches";
+    pub const ROOM_ROW_OF: &str = "room-row-of";
+    pub const ROOM_ROW_STARTING_WITH: &str = "room-row-starting-with";
     pub const ROOM_LOG_TEXT: &str = "room-log-text";
     pub const REQUEST_MEDIA: &str = "request-media";
     pub const REQUEST_ROOM_AVATAR: &str = "request-room-avatar";

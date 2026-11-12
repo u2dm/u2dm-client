@@ -52,6 +52,7 @@ import {
     RoomDefaultRequest,
     AccountNotificationsRequest,
     SettingsIndexEntry,
+    RoomEntry,
 } from "./types.slint";
 import { NotifyMode, PackSurface } from "./enums.slint";
 
@@ -204,6 +205,8 @@ export global Actions {
     callback edit-poll(EditPollRequest) -> DraftVerdict;
     pure callback poll-answer-texts([PollAnswerEntry]) -> [string];
     pure callback settings-matches(string, [SettingsIndexEntry]) -> [int];
+    pure callback room-row-of(string, [RoomEntry]) -> int;
+    pure callback room-row-starting-with(string, [RoomEntry], int) -> int;
     callback cancel-attachment();
     callback request-pack-cell(string);
     callback request-custom-emoji(string);

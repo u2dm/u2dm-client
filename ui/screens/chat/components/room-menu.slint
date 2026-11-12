@@ -7,7 +7,7 @@ import { CopyNotice } from "../../../components/copy-notice.slint";
 import { ConfirmChoice, Confirmations, MenuCard, MenuConfirmation } from "../../../components/menu.slint";
 import { MenuRow } from "../../../components/menu-row.slint";
 import { ModalHost, Placement } from "../../../components/overlay.slint";
-import { CallPanel, LocalState, MessageMenu, Overlays, RoomMenu, RoomMenuOrigin, Shell, SpaceIndexEntry, SubspacePlacement, Subspaces } from "../../../local.slint";
+import { CallPanel, LocalState, MessageMenu, Overlays, RoomMenu, RoomMenuOrigin, Shell, SpaceIndexEntry, SpaceOrder, SubspacePlacement, Subspaces } from "../../../local.slint";
 import { Actions } from "../../../actions.slint";
 import { DirectoryView, RoomMenuView, SpaceIndexView } from "../../../views.slint";
 import { NotifyMode } from "../../../enums.slint";
@@ -23,6 +23,8 @@ enum RoomMenuAction {
     new-room,
     topics-in-column,
     topics-as-tabs,
+    move-up,
+    move-down,
     copy-link,
     logs,
     leave,
@@ -70,6 +72,12 @@ global RoomMenuActions {
         if action == RoomMenuAction.topics-as-tabs {
             return @tr("Show topics as tabs");
         }
+        if action == RoomMenuAction.move-up {
+            return @tr("Move up");
+        }
+        if action == RoomMenuAction.move-down {
+            return @tr("Move down");
+        }
         if action == RoomMenuAction.copy-link {
             return @tr("Copy link");
         }
@@ -116,6 +124,12 @@ global RoomMenuActions {
         }
         if action == RoomMenuAction.topics-as-tabs {
             return IconSet.PanelTopOpen;
+        }
+        if action == RoomMenuAction.move-up {
+            return IconSet.ArrowUp;
+        }
+        if action == RoomMenuAction.move-down {
+            return IconSet.ArrowDown;
         }
         if action == RoomMenuAction.copy-link {
             return IconSet.Link;
@@ -215,6 +229,12 @@ component RoomMenuCard inherits MenuCard {
             root.offered.push(Subspaces.placement == SubspacePlacement.tabs
                 ? RoomMenuAction.topics-in-column
                 : RoomMenuAction.topics-as-tabs);
+        }
+        if RoomMenu.rail-slot > 0 {
+            root.offered.push(RoomMenuAction.move-up);
+        }
+        if RoomMenu.rail-slot >= 0 && RoomMenu.rail-slot < DirectoryView.spaces.length - 1 {
+            root.offered.push(RoomMenuAction.move-down);
         }
         root.offered.push(RoomMenuAction.copy-link);
         root.offered.push(RoomMenuAction.leave);
@@ -588,6 +608,13 @@ export component RoomMenuOverlay inherits Rectangle {
         if action == RoomMenuAction.topics-as-tabs {
             Subspaces.place(SubspacePlacement.tabs, false);
             RoomMenu.close();
+            return;
+        }
+        if action == RoomMenuAction.move-up || action == RoomMenuAction.move-down {
+            let slot = RoomMenu.rail-slot;
+            let keyed = RoomMenu.by-keyboard;
+            RoomMenu.close();
+            SpaceOrder.move(slot, action == RoomMenuAction.move-up ? slot - 1 : slot + 1, id, keyed);
             return;
         }
         if action == RoomMenuAction.leave && RoomMenuView.is-space {

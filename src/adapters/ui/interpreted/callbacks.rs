@@ -24,7 +24,7 @@ use crate::adapters::ui::decode::{
 use crate::adapters::ui::router::{DraftVerdict, EditedRow, EditedText};
 use crate::adapters::ui::schema::simple_callbacks;
 use crate::adapters::ui::video::{self, millis_to_duration};
-use crate::adapters::ui::{audio, drafts, emote, mention, router, settings_search};
+use crate::adapters::ui::{audio, drafts, emote, list_keys, mention, router, settings_search};
 use crate::app::input::CommandSender;
 use crate::commands::ui::{ComposerActivity, TimelineVisibility, ViewportChanged, WindowAttention};
 use crate::error::{AppError, Result};
@@ -417,6 +417,21 @@ impl SlintUiAdapter {
 
         bind_action(&self.instance, callback::ROOM_LOG_TEXT, |_| {
             text_value(shown_room_log_text())
+        })?;
+
+        bind_action(&self.instance, callback::ROOM_ROW_OF, |args| {
+            num(list_keys::row_with_id(
+                room_fields(args.get(1), "id"),
+                &string_arg(args, 0),
+            ))
+        })?;
+
+        bind_action(&self.instance, callback::ROOM_ROW_STARTING_WITH, |args| {
+            num(list_keys::row_starting_with(
+                &room_fields(args.get(1), "name"),
+                &string_arg(args, 0),
+                int_arg(args, 2).unwrap_or(-1),
+            ))
         })
     }
 
@@ -503,4 +518,14 @@ pub(super) fn warn_unbound(bound: Result<()>, what: &str) {
     if let Err(e) = bound {
         tracing::warn!("failed to bind {what}: {e}");
     }
+}
+
+fn room_fields(rows: Option<&Value>, name: &str) -> Vec<String> {
+    model_of(rows)
+        .iter()
+        .map(|row| match row {
+            Value::Struct(row) => field(&row, name),
+            _ => String::new(),
+        })
+        .collect()
 }

@@ -260,8 +260,10 @@ export component CallTileView inherits Rectangle {
     in property <bool> fits-video: false;
     in property <bool> above-modal: false;
     in property <bool> cursor-on: false;
+    in property <bool> keyed: false;
 
     callback wants-focus();
+    callback keyed-built();
 
     property <string> state-text: CallWords.tile(root.tile.state);
     property <string> title: CallWords.tile-title(root.tile);
@@ -372,9 +374,17 @@ export component CallTileView inherits Rectangle {
             CallPanel.focus-stage = false;
             CallPanel.gallery-takes-focus += 1;
         }
+        if root.keyed {
+            root.keyed-built();
+        }
     }
     changed feed => {
         root.report();
+    }
+    changed keyed => {
+        if root.keyed {
+            root.keyed-built();
+        }
     }
     changed wanted-width => {
         if !root.zooms {

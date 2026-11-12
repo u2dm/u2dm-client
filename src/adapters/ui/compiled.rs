@@ -69,7 +69,9 @@ use super::schema::{
 };
 use super::session::active_models;
 use super::video::{self, millis_to_duration};
-use super::{about, audio, drafts, emoji, emote, mention, motion, reduce, router, settings_search};
+use super::{
+    about, audio, drafts, emoji, emote, list_keys, mention, motion, reduce, router, settings_search,
+};
 use crate::app::input::CommandSender;
 use crate::commands::effects::{Effect, VerificationActivity};
 use crate::commands::messages::{UserMessage, UserMessageKind};
@@ -710,6 +712,14 @@ impl SlintUiAdapter {
         actions(win).on_add_keyword(move |text| router::add_keyword(&tx, &text));
 
         actions(win).on_room_log_text(|| SharedString::from(shown_room_log_text()));
+
+        actions(win)
+            .on_room_row_of(|id, rows| list_keys::row_with_id(rows.iter().map(|row| row.id), &id));
+
+        actions(win).on_room_row_starting_with(|prefix, rows, after| {
+            let names: Vec<SharedString> = rows.iter().map(|row| row.name).collect();
+            list_keys::row_starting_with(&names, &prefix, after)
+        });
     }
 
     fn bind_reaction_callbacks(win: &AppWindow, cmd_tx: &CommandSender) {

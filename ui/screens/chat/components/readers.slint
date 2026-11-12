@@ -1,5 +1,6 @@
 import { Palette, ScrollView, Spinner } from "std-widgets.slint";
 
+import { RovingList } from "../../../components/a11y.slint";
 import { DialogHeader } from "../../../components/dialog-header.slint";
 import { DialogCard, ModalHost } from "../../../components/overlay.slint";
 import { RetryNotice } from "../../../components/retry-notice.slint";
@@ -120,14 +121,38 @@ component ReaderRows inherits Rectangle {
         content-width: self.visible-width;
         content-height: rows.preferred-height;
 
-        rows := VerticalLayout {
+        reader-keys := RovingList {
             width: scroll.visible-width;
+            height: rows.preferred-height;
+            count: ReadersView.rows.length;
+            above-modal: root.above-modal;
+            page: max(1, floor(scroll.visible-height / Metrics.readers-row));
 
-            for entry[idx] in ReadersView.rows: MemberRow {
-                height: Metrics.readers-row;
-                index: idx;
-                entry: entry;
-                above-modal: root.above-modal;
+            rows := VerticalLayout {
+                for entry[idx] in ReadersView.rows: MemberRow {
+                    property <int> keyed-at: entry.user-id == reader-keys.cursor-key ? idx : -1;
+
+                    height: Metrics.readers-row;
+                    index: idx;
+                    entry: entry;
+                    above-modal: root.above-modal;
+                    tab-stop: self.cursor;
+                    cursor: idx == reader-keys.cursor;
+                    cursor-asks: reader-keys.asks;
+                    cursor-taken => {
+                        reader-keys.took(idx, entry.user-id);
+                    }
+                    init => {
+                        if self.keyed-at >= 0 {
+                            reader-keys.cursor = self.keyed-at;
+                        }
+                    }
+                    changed keyed-at => {
+                        if self.keyed-at >= 0 {
+                            reader-keys.cursor = self.keyed-at;
+                        }
+                    }
+                }
             }
         }
     }

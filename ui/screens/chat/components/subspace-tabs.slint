@@ -2,7 +2,7 @@ import { Palette } from "std-widgets.slint";
 
 import { UnreadDot } from "./unread-dot.slint";
 import { ContextPress } from "./context-press.slint";
-import { Interaction, ListItemArea } from "../../../components/a11y.slint";
+import { Interaction, ListItemArea, RovingList } from "../../../components/a11y.slint";
 import { AppStyle, Fonts, Metrics, Radius, Space, Weight } from "../../../theme.slint";
 import { DirectoryView } from "../../../views.slint";
 import { Actions } from "../../../actions.slint";
@@ -33,6 +33,7 @@ component SubspaceTab inherits ListItemArea {
 
     width: min(content.preferred-width, Metrics.subspace-tab-max);
     height: Metrics.subspace-tab;
+    accessible-role: tab;
     border-radius: Radius.sm;
     ring-radius: Radius.sm;
     region: root.menu-id != "" ? FocusRegion.rooms : FocusRegion.none;
@@ -117,38 +118,87 @@ component SubspaceTab inherits ListItemArea {
     }
 }
 
-export component SubspaceTabs inherits FlexboxLayout {
+export component SubspaceTabs inherits Rectangle {
     in property <bool> above-modal: false;
 
-    padding-left: Space.lg;
-    padding-right: Space.lg;
-    padding-bottom: Space.md;
-    spacing: Space.sm;
-    accessible-role: list;
-    accessible-label: @tr("Topics");
-    accessible-item-count: DirectoryView.subspaces.length + 1;
+    property <string> chosen: "tab:\{DirectoryView.selected-subspace-id}";
 
-    SubspaceTab {
-        index: 0;
-        above-modal: root.above-modal;
-        text: @tr("All in {}", DirectoryView.selected-space-name);
-        selected: DirectoryView.selected-subspace-id == "";
-        clicked => {
-            Actions.select-subspace("");
-        }
+    height: tabs.preferred-height;
+
+    init => {
+        tab-keys.cursor-key = root.chosen;
     }
 
-    for subspace[idx] in DirectoryView.subspaces: SubspaceTab {
-        index: idx + 1;
+    changed chosen => {
+        tab-keys.cursor-key = root.chosen;
+    }
+
+    tab-keys := RovingList {
+        count: DirectoryView.subspaces.length + 1;
         above-modal: root.above-modal;
-        text: subspace.name;
-        menu-id: subspace.id;
-        alert: subspace.alert;
-        mention: subspace.mention;
-        hint: subspace.hint;
-        selected: DirectoryView.selected-subspace-id == subspace.id;
-        clicked => {
-            Actions.select-subspace(subspace.id);
+        horizontal: true;
+        wraps: true;
+
+        tabs := FlexboxLayout {
+            padding-left: Space.lg;
+            padding-right: Space.lg;
+            padding-bottom: Space.md;
+            spacing: Space.sm;
+            accessible-role: tab-list;
+            accessible-label: @tr("Topics");
+            accessible-item-count: DirectoryView.subspaces.length + 1;
+
+            SubspaceTab {
+                property <int> keyed-at: self.place == tab-keys.cursor-key ? 0 : -1;
+
+                index: 0;
+                above-modal: root.above-modal;
+                text: @tr("All in {}", DirectoryView.selected-space-name);
+                selected: DirectoryView.selected-subspace-id == "";
+                tab-stop: self.cursor;
+                cursor: tab-keys.cursor == 0;
+                cursor-asks: tab-keys.asks;
+                cursor-taken => {
+                    tab-keys.took(0, self.place);
+                }
+                changed keyed-at => {
+                    if self.keyed-at >= 0 {
+                        tab-keys.cursor = self.keyed-at;
+                    }
+                }
+                clicked => {
+                    tab-keys.took(0, self.place);
+                    Actions.select-subspace("");
+                }
+            }
+
+            for subspace[idx] in DirectoryView.subspaces: SubspaceTab {
+                property <int> keyed-at: self.place == tab-keys.cursor-key ? idx + 1 : -1;
+
+                index: idx + 1;
+                above-modal: root.above-modal;
+                text: subspace.name;
+                menu-id: subspace.id;
+                alert: subspace.alert;
+                mention: subspace.mention;
+                hint: subspace.hint;
+                selected: DirectoryView.selected-subspace-id == subspace.id;
+                tab-stop: self.cursor;
+                cursor: tab-keys.cursor == idx + 1;
+                cursor-asks: tab-keys.asks;
+                cursor-taken => {
+                    tab-keys.took(idx + 1, self.place);
+                }
+                changed keyed-at => {
+                    if self.keyed-at >= 0 {
+                        tab-keys.cursor = self.keyed-at;
+                    }
+                }
+                clicked => {
+                    tab-keys.took(idx + 1, self.place);
+                    Actions.select-subspace(subspace.id);
+                }
+            }
         }
     }
 }

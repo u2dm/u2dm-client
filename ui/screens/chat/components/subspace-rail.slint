@@ -4,13 +4,14 @@ import { Icon, IconSet } from "@lucide";
 import { RailTileFace } from "./rail-tile.slint";
 import { ContextPress } from "./context-press.slint";
 import { AppStyle, Metrics, Radius, Size, Space, Weight } from "../../../theme.slint";
-import { Interaction, ListItemArea } from "../../../components/a11y.slint";
+import { Interaction, ListItemArea, RovingList } from "../../../components/a11y.slint";
 import { IconButton } from "../../../components/button.slint";
 import { DirectoryView } from "../../../views.slint";
 import { Actions } from "../../../actions.slint";
 import { FocusHome, FocusRegion, RoomMenu, RoomMenuOrigin, SubspacePlacement, Subspaces } from "../../../local.slint";
 
 component SubspaceTile inherits ListItemArea {
+    in property <string> caption;
     in property <string> initial;
     in property <bool> has-avatar;
     in property <image> avatar;
@@ -23,7 +24,21 @@ component SubspaceTile inherits ListItemArea {
 
     property <int> focus-asks: FocusHome.asks;
 
+    pure function describe() -> string {
+        if root.mention {
+            return @tr("{}, mentions you", root.caption);
+        }
+        if root.alert {
+            return @tr("{}, unread", root.caption);
+        }
+        if root.hint {
+            return @tr("{}, new activity", root.caption);
+        }
+        return root.caption;
+    }
+
     height: Metrics.rail-row;
+    label: root.describe();
     ring-radius: Radius.md;
     ring-inset: Metrics.rail-tile-inset;
     region: root.menu-id != "" ? FocusRegion.rail : FocusRegion.none;
@@ -75,7 +90,7 @@ component SubspaceTile inherits ListItemArea {
     RailTileFace {
         width: 100%;
         height: 100%;
-        caption: root.label;
+        caption: root.caption;
         initial: root.initial;
         has-avatar: root.has-avatar;
         avatar: root.avatar;
@@ -101,8 +116,17 @@ export component SubspaceRail inherits Rectangle {
 
     property <length> row-height: Metrics.rail-row;
     property <length> switch-band: Metrics.header-row;
+    property <string> chosen: "sub:\{DirectoryView.selected-subspace-id}";
 
     background: AppStyle.nav;
+
+    init => {
+        tile-keys.cursor-key = root.chosen;
+    }
+
+    changed chosen => {
+        tile-keys.cursor-key = root.chosen;
+    }
 
     if root.offers-tabs: IconButton {
         x: (root.width - self.width) / 2;
@@ -120,47 +144,80 @@ export component SubspaceRail inherits Rectangle {
         }
     }
 
-    Flickable {
+    tile-keys := RovingList {
         y: root.switch-band;
         width: root.width;
         height: root.height - root.switch-band;
-        content-width: root.width;
-        content-height: (DirectoryView.subspaces.length + 1) * root.row-height;
+        count: DirectoryView.subspaces.length + 1;
+        above-modal: root.above-modal;
 
-        VerticalLayout {
-            alignment: start;
-            accessible-role: list;
-            accessible-label: @tr("Topics");
-            accessible-item-count: DirectoryView.subspaces.length + 1;
+        Flickable {
+            content-width: root.width;
+            content-height: (DirectoryView.subspaces.length + 1) * root.row-height;
 
-            SubspaceTile {
-                height: root.row-height;
-                above-modal: root.above-modal;
-                index: 0;
-                label: @tr("All");
-                has-icon: true;
-                icon: IconSet.MessagesSquare;
-                selected: DirectoryView.selected-subspace-id == "";
-                clicked => {
-                    Actions.select-subspace("");
+            VerticalLayout {
+                alignment: start;
+                accessible-role: list;
+                accessible-label: @tr("Topics");
+                accessible-item-count: DirectoryView.subspaces.length + 1;
+
+                SubspaceTile {
+                    property <int> keyed-at: self.place == tile-keys.cursor-key ? 0 : -1;
+
+                    height: root.row-height;
+                    above-modal: root.above-modal;
+                    index: 0;
+                    caption: @tr("All");
+                    has-icon: true;
+                    icon: IconSet.MessagesSquare;
+                    selected: DirectoryView.selected-subspace-id == "";
+                    tab-stop: self.cursor;
+                    cursor: tile-keys.cursor == 0;
+                    cursor-asks: tile-keys.asks;
+                    cursor-taken => {
+                        tile-keys.took(0, self.place);
+                    }
+                    changed keyed-at => {
+                        if self.keyed-at >= 0 {
+                            tile-keys.cursor = self.keyed-at;
+                        }
+                    }
+                    clicked => {
+                        tile-keys.took(0, self.place);
+                        Actions.select-subspace("");
+                    }
                 }
-            }
 
-            for subspace[idx] in DirectoryView.subspaces: SubspaceTile {
-                height: root.row-height;
-                above-modal: root.above-modal;
-                index: idx + 1;
-                label: subspace.name;
-                menu-id: subspace.id;
-                initial: subspace.initial;
-                has-avatar: subspace.has-avatar;
-                avatar: subspace.avatar;
-                alert: subspace.alert;
-                mention: subspace.mention;
-                hint: subspace.hint;
-                selected: DirectoryView.selected-subspace-id == subspace.id;
-                clicked => {
-                    Actions.select-subspace(subspace.id);
+                for subspace[idx] in DirectoryView.subspaces: SubspaceTile {
+                    property <int> keyed-at: self.place == tile-keys.cursor-key ? idx + 1 : -1;
+
+                    height: root.row-height;
+                    above-modal: root.above-modal;
+                    index: idx + 1;
+                    caption: subspace.name;
+                    menu-id: subspace.id;
+                    initial: subspace.initial;
+                    has-avatar: subspace.has-avatar;
+                    avatar: subspace.avatar;
+                    alert: subspace.alert;
+                    mention: subspace.mention;
+                    hint: subspace.hint;
+                    selected: DirectoryView.selected-subspace-id == subspace.id;
+                    tab-stop: self.cursor;
+                    cursor: tile-keys.cursor == idx + 1;
+                    cursor-asks: tile-keys.asks;
+                    cursor-taken => {
+                        tile-keys.took(idx + 1, self.place);
+                    }
+                    changed keyed-at => {
+                        if self.keyed-at >= 0 {
+                            tile-keys.cursor = self.keyed-at;
+                        }
+                    }
+                    clicked => {
+                        tile-keys.took(idx + 1, self.place);
+                        Actions.select-subspace(subspace.id);
+                    }
                 }
             }
         }

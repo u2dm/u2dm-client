@@ -17,6 +17,7 @@ export component AppButton inherits Rectangle {
     in property <bool> enabled: true;
     in property <bool> above-modal: false;
     in property <bool> topmost: false;
+    in property <bool> tab-stop: true;
     in property <bool> busy: false;
     in property <bool> filled: true;
     in property <color> tint: Palette.accent-background;
@@ -51,6 +52,7 @@ export component AppButton inherits Rectangle {
         enabled: root.interactive;
         above-modal: root.above-modal;
         topmost: root.topmost;
+        tab-stop: root.tab-stop;
         label: root.label;
         region: root.region;
         place: root.place;

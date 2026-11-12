@@ -61,6 +61,8 @@ export global DirectoryView {
     in property <string> selected-room-id;
     in property <int> selected-room-row: -1;
     in property <int> selected-room-headings;
+    in property <int> rooms-heading-row: -1;
+    in property <int> spaces-heading-row: -1;
     in property <RoomScope> room-scope: RoomScope.all;
     in property <string> selected-space-id;
     in property <string> selected-space-name;
@@ -140,6 +142,7 @@ export global RoomInfoView {
     in property <bool> may-invite;
     in property <RosterStatus> roster: RosterStatus.loading;
     in property <[MemberEntry]> rows;
+    in property <int> invited-row: -1;
     in property <bool> has-more;
     in property <int> pages-landed;
     in property <UserMessageKind> error: UserMessageKind.none;
