@@ -14,6 +14,7 @@ export component CallStage inherits Rectangle {
     in property <bool> hides-strip;
 
     property <length> gap: Space.sm;
+    property <length> gutter: Metrics.ring-outset;
     property <float> aspect: Metrics.call-tile-aspect;
     property <bool> focused: CallView.stage.length > 0;
     property <string> staged-key: root.focused ? CallView.stage[0].key : "";
@@ -58,7 +59,7 @@ export component CallStage inherits Rectangle {
     property <length> film-length: root.count * root.film-pitch - root.gap;
     property <length> pitch: root.focused ? root.film-pitch : root.tile-height + root.gap;
     property <bool> across: root.focused && !root.rail;
-    property <length> scroll-room: root.across ? films.width : films.height;
+    property <length> scroll-room: (root.across ? films.width : films.height) - 2 * root.gutter;
     property <length> film-lead: max(0px, (root.scroll-room - root.film-length) / 2);
     property <length> scrolled: root.across ? -films.content-x : -films.content-y;
     property <length> scroll-span: root.across
@@ -201,25 +202,25 @@ export component CallStage inherits Rectangle {
     }
 
     films := Flickable {
-        x: root.rail ? root.width - Metrics.call-rail : 0;
-        y: root.focused && !root.rail ? root.height - root.film-height : 0;
-        width: root.rail ? Metrics.call-rail : root.width;
-        height: !root.focused || root.rail ? root.height : root.film-height;
+        x: (root.rail ? root.width - Metrics.call-rail : 0) - root.gutter;
+        y: (root.focused && !root.rail ? root.height - root.film-height : 0) - root.gutter;
+        width: (root.rail ? Metrics.call-rail : root.width) + 2 * root.gutter;
+        height: (!root.focused || root.rail ? root.height : root.film-height) + 2 * root.gutter;
         visible: !root.focused || root.has-strip;
-        content-width: root.across ? max(self.width, root.film-length) : self.width;
-        content-height: !root.focused ? max(self.height, root.grid-height)
-            : root.rail ? max(self.height, root.film-length)
+        content-width: root.across ? max(self.width, root.film-length + 2 * root.gutter) : self.width;
+        content-height: !root.focused ? max(self.height, root.grid-height + 2 * root.gutter)
+            : root.rail ? max(self.height, root.film-length + 2 * root.gutter)
             : self.height;
         interactive: root.scroll-span > 0;
 
         for tile[i] in CallView.tiles: CallTileView {
-            x: !root.focused
+            x: root.gutter + (!root.focused
                 ? (root.width - root.row-width) / 2 + mod(i, root.columns) * (root.tile-width + root.gap)
                     + (floor(i / root.columns) == root.rows - 1 ? root.last-row-indent : 0px)
-                : root.rail ? 0px : root.film-lead + i * root.film-pitch;
-            y: !root.focused
+                : root.rail ? 0px : root.film-lead + i * root.film-pitch);
+            y: root.gutter + (!root.focused
                 ? root.grid-top + floor(i / root.columns) * (root.tile-height + root.gap)
-                : root.rail ? root.film-lead + i * root.film-pitch : 0px;
+                : root.rail ? root.film-lead + i * root.film-pitch : 0px);
             width: !root.focused ? root.tile-width : root.film-width;
             height: !root.focused ? root.tile-height : root.film-tile-height;
             tile: tile;
@@ -238,8 +239,8 @@ export component CallStage inherits Rectangle {
     }
 
     if root.scrolls-back: IconButton {
-        x: root.across ? films.x + Space.sm : films.x + (films.width - self.width) / 2;
-        y: root.across ? films.y + (films.height - self.height) / 2 : films.y + Space.sm;
+        x: root.across ? films.x + root.gutter + Space.sm : films.x + (films.width - self.width) / 2;
+        y: root.across ? films.y + (films.height - self.height) / 2 : films.y + root.gutter + Space.sm;
         size: Size.md;
         fill: AppStyle.elevated;
         tint: AppStyle.foreground-strong;
@@ -251,10 +252,12 @@ export component CallStage inherits Rectangle {
     }
 
     if root.scrolls-on: IconButton {
-        x: root.across ? films.x + films.width - self.width - Space.sm : films.x + (films.width - self.width) / 2;
+        x: root.across
+            ? films.x + films.width - root.gutter - self.width - Space.sm
+            : films.x + (films.width - self.width) / 2;
         y: root.across
             ? films.y + (films.height - self.height) / 2
-            : films.y + films.height - self.height - Space.sm;
+            : films.y + films.height - root.gutter - self.height - Space.sm;
         size: Size.md;
         fill: AppStyle.elevated;
         tint: AppStyle.foreground-strong;

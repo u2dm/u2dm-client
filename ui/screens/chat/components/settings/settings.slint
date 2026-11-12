@@ -718,9 +718,11 @@ export component SettingsDialog inherits ModalHost {
         let top = pane.absolute-position.y;
         let left = pane.absolute-position.x;
         let start = top + pane.content-y;
+        let middle-x = FocusReveal.x + FocusReveal.width / 2;
+        let middle-y = FocusReveal.y + FocusReveal.height / 2;
         if root.listing || header.holds-focus
-            || FocusReveal.x < left || FocusReveal.x >= left + pane.width
-            || FocusReveal.y < start || FocusReveal.y >= start + pane.content-height {
+            || middle-x < left || middle-x >= left + pane.width
+            || middle-y < start || middle-y >= start + pane.content-height {
             return;
         }
         let above = top - FocusReveal.y;
@@ -942,8 +944,8 @@ export component SettingsDialog inherits ModalHost {
                 }
 
                 pane := ScrollView {
-                    x: root.pane-x;
-                    width: card.shown-width - root.pane-x;
+                    x: root.pane-x - Metrics.ring-outset;
+                    width: card.shown-width - root.pane-x + Metrics.ring-outset;
                     height: parent.height;
                     visible: !root.listing;
                     content-width: self.visible-width;
@@ -951,6 +953,7 @@ export component SettingsDialog inherits ModalHost {
 
                     page-body := VerticalLayout {
                         width: pane.visible-width;
+                        padding-left: Metrics.ring-outset;
                         padding-top: Space.lg;
                         padding-right: root.pad;
                         padding-bottom: root.pad;

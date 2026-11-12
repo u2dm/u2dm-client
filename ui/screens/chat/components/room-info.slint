@@ -2,7 +2,7 @@ import { Palette, ScrollView, Spinner } from "std-widgets.slint";
 import { IconDisplay, IconSet, Icon } from "@lucide";
 
 import { Avatar } from "../../../components/avatar.slint";
-import { ClickArea, Interaction, ListItemArea } from "../../../components/a11y.slint";
+import { ClickArea, FocusReveal, FocusRing, FocusTrail, Interaction, ListItemArea } from "../../../components/a11y.slint";
 import { CopyFeedback } from "../../../components/copier.slint";
 import { DialogCard, ModalHost, PickerCard, Placement } from "../../../components/overlay.slint";
 import { ErrorBanner } from "../../../components/banner.slint";
@@ -10,13 +10,13 @@ import { NoticeLine } from "../../../components/notice-line.slint";
 import { RetryNotice } from "../../../components/retry-notice.slint";
 import { ActionTile } from "./action-tile.slint";
 import { DetailLine } from "./detail-line.slint";
-import { CopyLinkTile, SheetCloseChip, SheetCover, TilePrompt, TileRow } from "./sheet.slint";
+import { ChipClearance, CopyLinkTile, SheetCloseChip, SheetCover, TilePrompt, TileRow } from "./sheet.slint";
 import { MemberRow } from "./member-row.slint";
 import { SearchField } from "../../../components/search-field.slint";
 import { NotifyModes } from "./notify-modes.slint";
 import { AppStyle, Fonts, IconSize, Metrics, Radius, Size, Space, Weight } from "../../../theme.slint";
 import { RosterStatus, UserMessageKind } from "../../../enums.slint";
-import { RoomInfoView } from "../../../views.slint";
+import { RoomInfoView, WindowView } from "../../../views.slint";
 import { FocusHome, FocusRegion, Overlays, SheetReturn, Shell } from "../../../local.slint";
 import { Actions } from "../../../actions.slint";
 
@@ -108,7 +108,7 @@ component TopicText inherits Rectangle {
             }
         }
 
-        if root.selecting: TextInput {
+        if root.selecting: topic-input := TextInput {
             text: root.plain;
             font-family: Fonts.emoji;
             font-size: Fonts.body;
@@ -126,8 +126,17 @@ component TopicText inherits Rectangle {
             }
             changed has-focus => {
                 if !self.has-focus {
+                    FocusTrail.leave();
                     root.selecting = false;
                 }
+            }
+
+            if topic-input.has-focus && WindowView.keyboard-in-use: FocusRing {
+                x: -Metrics.ring-outset;
+                y: -Metrics.ring-outset;
+                width: parent.width + 2 * Metrics.ring-outset;
+                height: parent.height + 2 * Metrics.ring-outset;
+                radius: Radius.xs + Metrics.ring-outset;
             }
         }
     }
@@ -556,6 +565,8 @@ component RoomInfoSheet inherits Rectangle {
         && root.asked-after != RoomInfoView.pages-landed
         && root.rows-bottom + scroll.content-y - scroll.visible-height <= Metrics.room-info-page-ahead;
 
+    property <int> reveal-serial: FocusReveal.serial;
+
     forward-focus: keys;
 
     init => {
@@ -564,6 +575,16 @@ component RoomInfoSheet inherits Rectangle {
 
     changed wants-page => {
         root.page-if-wanted();
+    }
+
+    changed reveal-serial => {
+        let clear = ChipClearance.content-y(scroll.content-y, scroll.absolute-position.y,
+            scroll.absolute-position.x, scroll.width, scroll.content-height,
+            close-chip.absolute-position.x - Metrics.ring-outset,
+            scroll.absolute-position.y + close-chip.clear-below);
+        if !close-chip.has-focus && clear != scroll.content-y {
+            scroll.content-y = clear;
+        }
     }
 
     changed shown-room => {

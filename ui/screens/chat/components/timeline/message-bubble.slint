@@ -21,6 +21,7 @@ import { StateLayer } from "../../../../components/state-layer.slint";
 import {
     AnchorRect,
     Composer,
+    FocusRegion,
     MessageMenu,
     ReactionPopup,
     Reactions,
@@ -62,6 +63,10 @@ component BubbleReply inherits ClickArea {
     enabled: root.msg.reply-event-id != "";
     label: @tr("Go to the message this replies to");
     ring-radius: Radius.md;
+    ring-color: root.msg.is-own ? AppStyle.ring-own : AppStyle.ring;
+    region: FocusRegion.timeline;
+    region-row: true;
+    place: root.msg.unique-id;
     clicked => {
         Actions.jump-to-event(root.msg.reply-event-id);
     }
@@ -108,6 +113,7 @@ component BubbleFooter inherits HorizontalLayout {
         horizontal-stretch: 0;
         padding-bottom: Space.sm;
         reactions: root.msg.reactions;
+        row-key: root.msg.unique-id;
         is-own: root.is-own;
         can-react: root.has-remote-id;
         event-id: root.msg.event-id;
@@ -470,6 +476,7 @@ export component MessageBubble inherits VerticalLayout {
             width: bubble.width;
             flex-wrap: FlexboxLayoutWrap.no-wrap;
             reactions: root.msg.reactions;
+            row-key: root.msg.unique-id;
             can-react: root.has-remote-id;
             event-id: root.msg.event-id;
             detail-anchor() => {
@@ -486,6 +493,7 @@ export component MessageBubble inherits VerticalLayout {
             height: Metrics.reaction-chip;
             alignment: root.is-own ? end : start;
             local-id: root.msg.local-id;
+            row-key: root.msg.unique-id;
         }
 
         actions := RowActions {

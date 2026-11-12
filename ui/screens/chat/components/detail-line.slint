@@ -1,38 +1,60 @@
 import { Palette } from "std-widgets.slint";
 
-import { AppStyle, Fonts, Space } from "../../../theme.slint";
+import { FocusRing, FocusTrail } from "../../../components/a11y.slint";
+import { WindowView } from "../../../views.slint";
+import { AppStyle, Fonts, Metrics, Radius, Space } from "../../../theme.slint";
 
-export component DetailLine inherits VerticalLayout {
+export component DetailLine inherits Rectangle {
     in property <string> value;
     in property <string> caption;
     in property <bool> selectable: true;
     in property <bool> enabled: true;
 
-    spacing: Space.xs;
+    property <bool> focused;
 
-    if root.selectable: TextInput {
-        text: root.value;
-        enabled: root.enabled;
-        read-only: true;
-        single-line: false;
-        wrap: word-wrap;
-        font-size: Fonts.body;
-        color: Palette.foreground;
-        selection-background-color: Palette.selection-background;
-        selection-foreground-color: Palette.selection-foreground;
-        accessible-label: root.caption;
+    height: lines.preferred-height;
+
+    lines := VerticalLayout {
+        spacing: Space.xs;
+
+        if root.selectable: TextInput {
+            text: root.value;
+            enabled: root.enabled;
+            read-only: true;
+            single-line: false;
+            wrap: word-wrap;
+            font-size: Fonts.body;
+            color: Palette.foreground;
+            selection-background-color: Palette.selection-background;
+            selection-foreground-color: Palette.selection-foreground;
+            accessible-label: root.caption;
+            changed has-focus => {
+                root.focused = self.has-focus;
+                if !self.has-focus {
+                    FocusTrail.leave();
+                }
+            }
+        }
+
+        if !root.selectable: Text {
+            text: root.value;
+            font-size: Fonts.body;
+            wrap: word-wrap;
+        }
+
+        Text {
+            text: root.caption;
+            font-size: Fonts.caption;
+            color: AppStyle.foreground-muted;
+            accessible-role: none;
+        }
     }
 
-    if !root.selectable: Text {
-        text: root.value;
-        font-size: Fonts.body;
-        wrap: word-wrap;
-    }
-
-    Text {
-        text: root.caption;
-        font-size: Fonts.caption;
-        color: AppStyle.foreground-muted;
-        accessible-role: none;
+    if root.focused && WindowView.keyboard-in-use: FocusRing {
+        x: -Metrics.ring-outset;
+        y: -Metrics.ring-outset;
+        width: root.width + 2 * Metrics.ring-outset;
+        height: root.height + 2 * Metrics.ring-outset;
+        radius: Radius.xs + Metrics.ring-outset;
     }
 }

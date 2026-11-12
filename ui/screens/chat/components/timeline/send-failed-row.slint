@@ -1,10 +1,12 @@
 
 import { LinkButton } from "../../../../components/button.slint";
 import { Actions } from "../../../../actions.slint";
+import { FocusRegion } from "../../../../local.slint";
 import { AppStyle, Glyph, Space, Weight } from "../../../../theme.slint";
 
 export component SendFailedRow inherits HorizontalLayout {
     in property <string> local-id;
+    in property <string> row-key;
 
     spacing: Space.sm;
 
@@ -19,6 +21,9 @@ export component SendFailedRow inherits HorizontalLayout {
     LinkButton {
         text: @tr("Retry");
         font-size: Glyph.xs;
+        region: FocusRegion.timeline;
+        region-row: true;
+        place: root.row-key;
         label: @tr("Retry sending this message");
         clicked => {
             Actions.retry-send(root.local-id);
@@ -29,6 +34,9 @@ export component SendFailedRow inherits HorizontalLayout {
         text: @tr("Discard");
         tint: AppStyle.danger-muted;
         font-size: Glyph.xs;
+        region: FocusRegion.timeline;
+        region-row: true;
+        place: root.row-key;
         label: @tr("Discard this message");
         clicked => {
             Actions.discard-send(root.local-id);

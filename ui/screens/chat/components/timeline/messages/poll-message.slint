@@ -1,10 +1,10 @@
 import { Palette } from "std-widgets.slint";
 import { IconDisplay, IconSet } from "@lucide";
 import { MessageEntry, PollAnswerEntry } from "../../../../../types.slint";
-import { ClickArea, Interaction } from "../../../../../components/a11y.slint";
+import { ClickArea, FocusTrail, Interaction } from "../../../../../components/a11y.slint";
 import { PollPhase } from "../../../../../enums.slint";
 import { Actions } from "../../../../../actions.slint";
-import { Polls, ReactionPopup, Reactions } from "../../../../../local.slint";
+import { FocusHome, FocusRegion, Polls, ReactionPopup, Reactions } from "../../../../../local.slint";
 import { RoomView } from "../../../../../views.slint";
 import { AppStyle, Fonts, IconSize, Metrics, Radius, Space, Stroke, Weight } from "../../../../../theme.slint";
 import { ShadedClickArea } from "../../../../../components/state-layer.slint";
@@ -33,6 +33,9 @@ component CheckKeys inherits FocusScope {
     accessible-checkable: true;
     accessible-action-default => {
         root.activated();
+    }
+    focus-lost(reason) => {
+        FocusTrail.leave();
     }
     key-pressed(event) => {
         if root.count == 0 {
@@ -152,6 +155,8 @@ component PollAnswerRow inherits Rectangle {
         enabled: root.votable;
         focusable: false;
         roving-focus: root.cursor;
+        ring-color: root.is-own ? AppStyle.ring-own : AppStyle.ring;
+        region: FocusRegion.timeline;
         label: root.description;
         accessible-checkable: true;
         accessible-checked: root.answer.mine;
@@ -168,6 +173,8 @@ component PollAnswerRow inherits Rectangle {
         enabled: root.votable;
         focusable: false;
         roving-focus: root.cursor;
+        ring-color: root.is-own ? AppStyle.ring-own : AppStyle.ring;
+        region: FocusRegion.timeline;
         label: root.description;
         accessible-checkable: true;
         accessible-checked: root.answer.mine;
@@ -223,7 +230,9 @@ component PollFooterButton inherits ShadedClickArea {
     width: max(caption.preferred-width, other-caption.preferred-width) + 2 * Space.md;
     height: Metrics.poll-footer;
     border-radius: self.height / 2;
-    ring-radius: self.height / 2;
+    ring-inset: root.destructive ? -Metrics.ring-outset : 0;
+    ring-radius: self.height / 2 - root.ring-inset;
+    ring-color: root.is-own ? AppStyle.ring-own : AppStyle.ring;
     label: caption.text;
     background: root.destructive ? AppStyle.poll-end-fill : transparent;
     ink: root.caption-color;
@@ -337,6 +346,9 @@ export component PollMessage inherits Rectangle {
         }
         changed has-focus => {
             root.keyboard-focus = self.has-focus;
+            if self.has-focus {
+                FocusHome.entered-row(FocusRegion.timeline, root.msg.unique-id);
+            }
         }
     }
 
@@ -351,6 +363,9 @@ export component PollMessage inherits Rectangle {
         }
         changed has-focus => {
             root.keyboard-focus = self.has-focus;
+            if self.has-focus {
+                FocusHome.entered-row(FocusRegion.timeline, root.msg.unique-id);
+            }
         }
     }
 
@@ -420,6 +435,9 @@ export component PollMessage inherits Rectangle {
                 text: @tr("Edit");
                 label: @tr("Edit poll");
                 is-own: root.msg.is-own;
+                region: FocusRegion.timeline;
+                region-row: true;
+                place: root.msg.unique-id;
                 clicked => {
                     Polls.edit(root.msg);
                 }
@@ -428,6 +446,9 @@ export component PollMessage inherits Rectangle {
             if root.shows-voters: PollFooterButton {
                 text: @tr("View votes");
                 is-own: root.msg.is-own;
+                region: FocusRegion.timeline;
+                region-row: true;
+                place: root.msg.unique-id;
                 clicked => {
                     Reactions.open-popup({
                         event-id: root.msg.event-id,
@@ -445,6 +466,9 @@ export component PollMessage inherits Rectangle {
                 text: @tr("End poll");
                 destructive: true;
                 is-own: root.msg.is-own;
+                region: FocusRegion.timeline;
+                region-row: true;
+                place: root.msg.unique-id;
                 clicked => {
                     root.end-poll();
                 }
@@ -455,6 +479,9 @@ export component PollMessage inherits Rectangle {
                 flipped-text: @tr("Keep it open");
                 flipped: root.confirming-end;
                 is-own: root.msg.is-own;
+                region: FocusRegion.timeline;
+                region-row: true;
+                place: root.msg.unique-id;
                 clicked => {
                     root.toggle-end-confirmation();
                 }

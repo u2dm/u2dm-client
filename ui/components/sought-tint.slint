@@ -51,7 +51,7 @@ export component SoughtTint inherits Rectangle {
             root.keyed = SettingsSearch.keyed;
             SettingsSearch.sought = SettingKey.none;
             root.lit = true;
-            FocusReveal.ask(root.absolute-position.x, root.absolute-position.y, root.height);
+            FocusReveal.ask(root.absolute-position.x, root.absolute-position.y, root.width, root.height);
             hand-over.running = true;
             hold.running = true;
             hold.restart();

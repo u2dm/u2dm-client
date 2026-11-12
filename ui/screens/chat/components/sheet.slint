@@ -1,11 +1,12 @@
 import { ScrollView } from "std-widgets.slint";
 import { IconSet } from "@lucide";
 
+import { FocusReveal } from "../../../components/a11y.slint";
 import { Avatar } from "../../../components/avatar.slint";
 import { IconButton } from "../../../components/button.slint";
 import { DialogCard } from "../../../components/overlay.slint";
 import { ActionTile } from "./action-tile.slint";
-import { AppStyle, Fonts, Glyph, Size, Space, Weight } from "../../../theme.slint";
+import { AppStyle, Fonts, Glyph, Metrics, Size, Space, Weight } from "../../../theme.slint";
 
 export component SheetCover inherits VerticalLayout {
     in property <length> avatar-size;
@@ -47,11 +48,27 @@ export component SheetCover inherits VerticalLayout {
     @children
 }
 
+export global ChipClearance {
+    public pure function content-y(content-y: length, top: length, left: length, width: length,
+        content-height: length, chip-left: length, chip-bottom: length) -> length {
+        let start = top + content-y;
+        let middle-x = FocusReveal.x + FocusReveal.width / 2;
+        let middle-y = FocusReveal.y + FocusReveal.height / 2;
+        if middle-x < left || middle-x >= left + width || middle-y < start || middle-y >= start + content-height
+            || FocusReveal.x + FocusReveal.width <= chip-left {
+            return content-y;
+        }
+        return min(0px, content-y + max(0px, chip-bottom - FocusReveal.y));
+    }
+}
+
 export component SheetCloseChip inherits Rectangle {
     in property <brush> surface;
     in property <string> label;
     in property <bool> above-modal;
     out property <length> reserve: root.width + Space.lg;
+    out property <length> clear-below: root.y + root.height + Space.md;
+    out property <bool> has-focus: button.has-focus;
 
     callback clicked();
 
@@ -92,6 +109,17 @@ export component SheetCard inherits Rectangle {
         body.preferred-height,
         root.height - AppStyle.card-inset,
         root.max-card-height);
+    property <int> reveal-serial: FocusReveal.serial;
+
+    changed reveal-serial => {
+        let clear = ChipClearance.content-y(scroll.content-y, scroll.absolute-position.y,
+            scroll.absolute-position.x, scroll.width, scroll.content-height,
+            close-chip.absolute-position.x - Metrics.ring-outset,
+            scroll.absolute-position.y + close-chip.clear-below);
+        if !close-chip.has-focus && clear != scroll.content-y {
+            scroll.content-y = clear;
+        }
+    }
 
     width: 100%;
     height: 100%;
@@ -103,7 +131,7 @@ export component SheetCard inherits Rectangle {
         height: root.card-height;
         clip: true;
 
-        ScrollView {
+        scroll := ScrollView {
             width: 100%;
             height: 100%;
             content-width: root.card-width;

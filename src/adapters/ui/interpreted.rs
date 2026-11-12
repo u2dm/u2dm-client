@@ -31,7 +31,6 @@ use super::dto::{PackSurface, pack_surface_named};
 #[cfg(feature = "demo")]
 use super::dump;
 use super::notices::NoticeWords;
-#[cfg(feature = "demo")]
 use super::props::{BoolProp, UiProps};
 use super::schema::model_props;
 use super::session::active_models;
@@ -190,6 +189,10 @@ impl UiBackend for InterpretedBackend {
 
     fn recover_call_focus(window: &ComponentInstance, level: i32, eager: bool) -> SharedString {
         recover(window, level, eager)
+    }
+
+    fn set_call_keyboard_in_use(window: &ComponentInstance, keyboard: bool) {
+        window.set_bool(BoolProp::KeyboardInUse, keyboard);
     }
 
     fn bind_focus_steps(window: &ComponentInstance, step: impl Fn(bool) + 'static) {

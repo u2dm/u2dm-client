@@ -10,7 +10,7 @@ use super::backend::UiBackend;
 use super::call_window::take_token;
 use super::context_press::context_press;
 use super::focus::keeper::{FocusKeeper, step_focus};
-use super::focus::{focus_mirror, input_modality};
+use super::focus::{call_input_modality, focus_mirror, input_modality};
 use super::swipe::reply_swipe;
 
 type Activity = Rc<RefCell<dyn FnMut(&WindowEvent)>>;
@@ -52,9 +52,11 @@ pub fn install_window_events<B: UiBackend>(window: &B::Window) {
 pub fn install_call_window_events<B: UiBackend>(call: &B::CallWindow, main: &B::Window) {
     let activity = ACTIVITY.with_borrow(Clone::clone);
     let main = main.as_weak();
+    let mut modality = call_input_modality::<B>(call);
     let keeper = FocusKeeper::install(call, B::recover_call_focus);
     call.window()
         .on_winit_window_event(move |slint_window, event| {
+            modality(event);
             if let Some(activity) = &activity {
                 (activity.borrow_mut())(event);
             }

@@ -1,8 +1,6 @@
-import { Palette } from "std-widgets.slint";
-
 import { FocusHome, FocusRegion, Shell } from "../local.slint";
 import { WindowView } from "../views.slint";
-import { Metrics, Motion, Radius, Stroke } from "../theme.slint";
+import { AppStyle, Metrics, Motion, Radius, Stroke } from "../theme.slint";
 
 export global Interaction {
     public pure function actionable(enabled: bool, above-modal: bool) -> bool {
@@ -34,12 +32,20 @@ export global Interaction {
 export global FocusReveal {
     out property <length> x;
     out property <length> y;
+    out property <length> width;
     out property <length> height;
+    out property <FocusRegion> region;
     out property <int> serial;
 
-    public function ask(x: length, y: length, height: length) {
+    public function ask(x: length, y: length, width: length, height: length) {
+        root.ask-in(FocusRegion.none, x, y, width, height);
+    }
+
+    public function ask-in(region: FocusRegion, x: length, y: length, width: length, height: length) {
+        root.region = region;
         root.x = x;
         root.y = y;
+        root.width = width;
         root.height = height;
         root.serial += 1;
     }
@@ -78,6 +84,9 @@ export global FocusTrail {
 export component FocusRing inherits Rectangle {
     in property <length> thickness: Stroke.emphasis;
     in property <length> radius: Radius.sm;
+    in property <color> tint: AppStyle.ring;
+    in property <bool> halo: false;
+    in property <FocusRegion> region: FocusRegion.none;
 
     property <bool> travels;
     property <bool> landed;
@@ -144,6 +153,7 @@ export component FocusRing inherits Rectangle {
         root.moving = true;
         root.landed = true;
         FocusTrail.arrive(root.absolute-position.x, root.absolute-position.y, root.width, root.height, root.radius);
+        FocusReveal.ask-in(root.region, root.absolute-position.x, root.absolute-position.y, root.width, root.height);
         settle.running = true;
     }
 
@@ -163,8 +173,18 @@ export component FocusRing inherits Rectangle {
         height: root.bottom - root.top;
         border-radius: root.corner;
         border-width: root.thickness;
-        border-color: Palette.accent-background;
+        border-color: root.tint;
         opacity: root.shown;
+
+        if root.halo: Rectangle {
+            x: root.thickness;
+            y: root.thickness;
+            width: parent.width - 2 * root.thickness;
+            height: parent.height - 2 * root.thickness;
+            border-radius: max(0px, root.corner - root.thickness);
+            border-width: Stroke.hairline;
+            border-color: AppStyle.ring-halo;
+        }
     }
 }
 
@@ -179,6 +199,8 @@ export component ClickArea inherits Rectangle {
     in property <bool> roving-focus: false;
     in property <length> ring-radius: Radius.sm;
     in property <length> ring-inset: 0;
+    in property <color> ring-color: AppStyle.ring;
+    in property <bool> ring-halo: false;
     in property <FocusRegion> region: FocusRegion.none;
     in property <string> place;
     in property <bool> region-row: false;
@@ -195,6 +217,7 @@ export component ClickArea inherits Rectangle {
 
     property <bool> actionable: root.topmost ? root.enabled : Interaction.actionable(root.enabled, root.above-modal);
     property <bool> focus-by-tab;
+    property <length> ring-overhang: max(0px, -root.ring-inset);
 
     public function take-focus() {
         fs.focus();
@@ -212,12 +235,13 @@ export component ClickArea inherits Rectangle {
 
     fs := FocusScope {
         x: 0;
+        y: -root.ring-overhang;
         width: 0;
+        height: root.height + 2 * root.ring-overhang;
         enabled: root.enabled && root.focusable;
         focus-on-tab-navigation: root.actionable && root.focusable;
         focus-gained(reason) => {
             root.focus-by-tab = reason == FocusReason.tab-navigation;
-            FocusReveal.ask(root.absolute-position.x, root.absolute-position.y, root.height);
             if root.region != FocusRegion.none && root.region-row {
                 FocusHome.entered-row(root.region, root.place);
             } else if root.region != FocusRegion.none {
@@ -262,6 +286,9 @@ export component ClickArea inherits Rectangle {
         width: root.width - root.ring-inset * 2;
         height: root.height - root.ring-inset * 2;
         radius: root.ring-radius;
+        tint: root.ring-color;
+        halo: root.ring-halo;
+        region: root.region;
     }
 }
 
@@ -318,6 +345,9 @@ export component RovingKeys inherits FocusScope {
     focus-gained(reason) => {
         if root.cursor < 0 && (root.ring-on-any-focus || reason == FocusReason.tab-navigation) {
             root.cursor = root.start-at;
+        }
+        if root.cursor >= 0 {
+            root.moved(root.cursor);
         }
     }
 

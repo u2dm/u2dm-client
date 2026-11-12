@@ -4,7 +4,9 @@ import { BodyLine, BodyPiece, MessageEntry } from "../../../../../types.slint";
 import { EmojiArt, MessageKind, SpoilerState } from "../../../../../enums.slint";
 import { Actions } from "../../../../../actions.slint";
 import { FocusHome, FocusRegion, TextSelection } from "../../../../../local.slint";
-import { AppStyle, Fonts, IconSize, Metrics, Space } from "../../../../../theme.slint";
+import { WindowView } from "../../../../../views.slint";
+import { FocusRing, FocusTrail } from "../../../../../components/a11y.slint";
+import { AppStyle, Fonts, IconSize, Metrics, Radius, Space } from "../../../../../theme.slint";
 import { CustomEmojiImage, EmojiBox } from "../custom-emoji.slint";
 
 component BodyPieceView inherits HorizontalLayout {
@@ -166,7 +168,7 @@ export component TextMessage inherits Rectangle {
             }
         }
 
-        if root.selecting: TextInput {
+        if root.selecting: select-input := TextInput {
             text: root.msg.body;
             font-family: Fonts.emoji;
             font-size: Fonts.body;
@@ -185,6 +187,7 @@ export component TextMessage inherits Rectangle {
             }
             changed has-focus => {
                 if !self.has-focus {
+                    FocusTrail.leave();
                     TextSelection.clear();
                 } else {
                     FocusHome.entered-row(FocusRegion.timeline, root.msg.unique-id);
@@ -197,6 +200,16 @@ export component TextMessage inherits Rectangle {
                     return accept;
                 }
                 return reject;
+            }
+
+            if select-input.has-focus && WindowView.keyboard-in-use: FocusRing {
+                x: -Metrics.ring-outset;
+                y: -Metrics.ring-outset;
+                width: parent.width + 2 * Metrics.ring-outset;
+                height: parent.height + 2 * Metrics.ring-outset;
+                radius: Radius.xs + Metrics.ring-outset;
+                tint: root.msg.is-own ? AppStyle.ring-own : AppStyle.ring;
+                region: FocusRegion.timeline;
             }
         }
     }

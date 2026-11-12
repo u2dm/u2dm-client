@@ -144,6 +144,10 @@ export global AppStyle {
     out property <color> link: Palette.accent-background;
     out property <color> link-own: Palette.foreground;
 
+    out property <color> ring: Palette.accent-background;
+    out property <color> ring-own: Palette.foreground;
+    out property <color> ring-halo: Palette.background;
+
     out property <color> border: Palette.foreground.mix(Palette.background, 0.12);
     out property <color> accent-background-soft: Palette.accent-background.transparentize(0.85);
     out property <color> accent-divider: Palette.accent-background.mix(Palette.background, 0.3);
@@ -372,6 +376,9 @@ export global Metrics {
     out property <length> reaction-strip-overlap: Space.lg;
     out property <length> reaction-strip-width: root.reaction-strip-cell + 2 * root.reaction-strip-pad;
     out property <length> reaction-strip-overhang: root.reaction-strip-width - root.reaction-strip-overlap;
+    out property <length> row-action-pill: Size.target-min + 2 * Space.xs;
+    out property <length> row-action-overlap: Space.sm;
+    out property <length> row-action-overhang: root.row-action-pill - root.row-action-overlap;
     out property <length> reaction-detail-width: 260px;
     out property <length> reaction-detail-height: 260px;
     out property <length> unread-dot: 12px;

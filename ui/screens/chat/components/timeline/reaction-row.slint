@@ -5,7 +5,7 @@ import { EmojiArt, ReactionSend } from "../../../../enums.slint";
 import { ReactionKeys } from "../../../../messages.slint";
 import { Avatar } from "../../../../components/avatar.slint";
 import { Pill } from "../../../../components/pill.slint";
-import { AnchorRect, Reactions } from "../../../../local.slint";
+import { AnchorRect, FocusRegion, Reactions } from "../../../../local.slint";
 import { AppStyle, Fonts, Glyph, IconSize, Metrics, Opacity, Space, Weight } from "../../../../theme.slint";
 import { CustomEmojiImage } from "./custom-emoji.slint";
 
@@ -58,6 +58,7 @@ component ReactionChip inherits Pill {
     property <bool> failed: root.entry.send == ReactionSend.failed;
 
     height: Metrics.reaction-chip;
+    ring-color: root.is-own ? AppStyle.ring-own : AppStyle.ring;
     fill: root.failed
         ? AppStyle.danger-background
         : root.entry.mine ? AppStyle.chip-fill-mine : (root.is-own ? AppStyle.chip-fill : AppStyle.overlay-hover);
@@ -86,6 +87,7 @@ component ReactionChip inherits Pill {
 
 export component ReactionRow inherits FlexboxLayout {
     in property <[ReactionEntry]> reactions;
+    in property <string> row-key;
     in property <bool> is-own;
     in property <bool> can-react;
     in property <int> tracked-index: -1;
@@ -121,6 +123,9 @@ export component ReactionRow inherits FlexboxLayout {
 
         entry: entry;
         is-own: root.is-own;
+        region: FocusRegion.timeline;
+        region-row: true;
+        place: root.row-key;
         enabled: root.toggles(entry);
         label: root.chip-label(entry);
         clicked => {

@@ -2,7 +2,7 @@ import { IconDisplay, IconSet } from "@lucide";
 
 import { Actions } from "../../../../actions.slint";
 import { Avatar } from "../../../../components/avatar.slint";
-import { ClickArea, FocusRing } from "../../../../components/a11y.slint";
+import { ClickArea, FocusRing, FocusTrail } from "../../../../components/a11y.slint";
 import { IconButton, LinkButton } from "../../../../components/button.slint";
 import { CallStates } from "../../../../call-states.slint";
 import { CallPanel, Shell, TipScope } from "../../../../local.slint";
@@ -417,6 +417,9 @@ export component CallTileView inherits Rectangle {
         changed has-focus => {
             root.viewer-focused = self.has-focus;
             CallPanel.viewer-focused = self.has-focus;
+            if !self.has-focus {
+                FocusTrail.leave();
+            }
         }
         key-pressed(event) => {
             if event.modifiers.control || event.modifiers.alt || event.modifiers.meta {
@@ -699,24 +702,25 @@ export component CallTileView inherits Rectangle {
     }
 
     if root.zooms && root.viewer-focused: FocusRing {
-        x: 0;
-        y: 0;
-        width: root.width;
-        height: root.picture-height;
-        radius: Radius.md;
+        x: -Metrics.ring-outset;
+        y: -Metrics.ring-outset;
+        width: root.width + 2 * Metrics.ring-outset;
+        height: root.picture-height + 2 * Metrics.ring-outset;
+        radius: Radius.md + Metrics.ring-outset;
     }
 
     if root.cursor-on && !root.selectable: FocusRing {
-        x: 0;
-        y: 0;
-        width: root.width;
-        height: root.height;
-        radius: Radius.md;
+        x: -Metrics.ring-outset;
+        y: -Metrics.ring-outset;
+        width: root.width + 2 * Metrics.ring-outset;
+        height: root.height + 2 * Metrics.ring-outset;
+        radius: Radius.md + Metrics.ring-outset;
     }
 
     if root.selectable: ClickArea {
         above-modal: root.above-modal;
-        ring-radius: Radius.md;
+        ring-inset: -Metrics.ring-outset;
+        ring-radius: Radius.md + Metrics.ring-outset;
         label: CallWords.focus-on(root.title);
         focusable: false;
         roving-focus: root.cursor-on;

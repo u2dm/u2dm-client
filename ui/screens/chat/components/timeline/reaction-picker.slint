@@ -4,6 +4,7 @@ import { EmojiPicker } from "./emoji-picker.slint";
 import { ClickArea } from "../../../../components/a11y.slint";
 import { LinkButton } from "../../../../components/button.slint";
 import { PickerCard } from "../../../../components/overlay.slint";
+import { Reactions } from "../../../../local.slint";
 import { UnencryptedNotice } from "./picker-grid.slint";
 import { QuickReactions, StripCell } from "./quick-reactions.slint";
 import { AppStyle, IconSize, Metrics, Motion, Size, Space } from "../../../../theme.slint";
@@ -21,6 +22,7 @@ export component ReactionStrip inherits PickerCard {
     property <length> content-height: root.cell-count * root.pitch - root.gap;
     property <length> open-height: root.cells-when-open * root.pitch - root.gap;
     property <int> focused-cells: 0;
+    property <bool> keyed: Reactions.keyed-react != "" && Reactions.keyed-react == Reactions.strip-anchor.event-id;
 
     out property <bool> open: hover-area.has-hover || root.focused-cells > 0;
 
@@ -106,6 +108,7 @@ export component ReactionStrip inherits PickerCard {
                     key: QuickReactions.strip-key(index);
                     label: self.key;
                     enabled: root.open || index == QuickReactions.strip-default;
+                    roving-focus: root.keyed && index == QuickReactions.strip-default;
                     clicked => {
                         root.picked(self.key);
                     }

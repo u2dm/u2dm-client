@@ -647,6 +647,10 @@ impl UiBackend for CompiledBackend {
         window.global::<FocusKeeper>().invoke_recover(level, eager)
     }
 
+    fn set_call_keyboard_in_use(window: &CallWindow, keyboard: bool) {
+        window.global::<WindowView>().set_keyboard_in_use(keyboard);
+    }
+
     fn bind_focus_steps(window: &AppWindow, step: impl Fn(bool) + 'static) {
         window.global::<FocusKeeper>().on_step(step);
     }

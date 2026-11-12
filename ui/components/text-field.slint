@@ -2,7 +2,7 @@ import { Palette } from "std-widgets.slint";
 import { IconDisplay, IconSet, Icon } from "@lucide";
 
 import { AppStyle, Fonts, IconSize, Opacity, Radius, Size, Space } from "../theme.slint";
-import { FocusReveal, FocusRing, FocusTrail, Interaction } from "./a11y.slint";
+import { FocusRing, FocusTrail, Interaction } from "./a11y.slint";
 import { IconButton } from "./button.slint";
 import { StateLayer } from "./state-layer.slint";
 
@@ -142,8 +142,6 @@ export component TextField inherits Rectangle {
     changed has-focus => {
         if !self.has-focus {
             FocusTrail.leave();
-        } else {
-            FocusReveal.ask(root.absolute-position.x, root.absolute-position.y, root.height);
         }
     }
 

@@ -88,7 +88,7 @@ component QuickReactionsRow inherits Rectangle {
     }
 
     function reveal() {
-        FocusReveal.ask(root.absolute-position.x, root.absolute-position.y, root.height);
+        FocusReveal.ask(root.absolute-position.x, root.absolute-position.y, root.width, root.height);
     }
 
     pure function slot-label(index: int) -> string {
@@ -274,7 +274,7 @@ component SkinToneRow inherits Rectangle {
         }
         changed has-focus => {
             if self.has-focus {
-                FocusReveal.ask(root.absolute-position.x, root.absolute-position.y, root.height);
+                FocusReveal.ask(root.absolute-position.x, root.absolute-position.y, root.width, root.height);
             }
         }
     }

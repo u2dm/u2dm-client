@@ -7,6 +7,7 @@ import { AudioKind, MediaState } from "../../../../../enums.slint";
 import { Clocks } from "../../../../../messages.slint";
 import { Actions } from "../../../../../actions.slint";
 import { AudioView } from "../../../../../views.slint";
+import { FocusRegion } from "../../../../../local.slint";
 import { AppStyle, Fonts, Metrics, Space, Weight } from "../../../../../theme.slint";
 import { MediaButton } from "./media-button.slint";
 
@@ -174,6 +175,9 @@ export component AudioMessage inherits HorizontalLayout {
             track-height: Metrics.audio-track-line;
             played: root.msg.is-own ? AppStyle.audio-wave-played-own : AppStyle.audio-wave-played;
             rest: AppStyle.audio-wave-rest;
+            ring-color: root.msg.is-own ? AppStyle.ring-own : AppStyle.ring;
+            region: FocusRegion.timeline;
+            place: root.msg.unique-id;
             position-ms: AudioView.position-ms;
             duration-ms: AudioView.duration-ms;
             label: @tr("Track position");

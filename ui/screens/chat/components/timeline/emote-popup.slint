@@ -20,7 +20,8 @@ component EmoteSuggestion inherits ListItemArea {
     height: Metrics.mention-row;
     focusable: false;
     selected: root.highlighted;
-    background: root.highlighted ? AppStyle.overlay-hover : transparent;
+    roving-focus: root.highlighted;
+    background: root.has-hover ? AppStyle.overlay-hover : transparent;
     label: @tr(":{}:, {}", root.entry.shortcode, root.pack);
 
     init => {

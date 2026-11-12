@@ -87,6 +87,9 @@ export component LoadMediaPill inherits Pill {
     pad: root.icon-only ? (Size.md - IconSize.sm) / 2 : Space.lg;
     fill: AppStyle.overlay-hover;
     label: root.text;
+    region: root.row-key != "" ? FocusRegion.timeline : FocusRegion.none;
+    region-row: true;
+    place: root.row-key;
     clicked => {
         if root.has-focus && root.row-key != "" {
             FocusHome.entered-row(FocusRegion.timeline, root.row-key);
@@ -190,6 +193,9 @@ component MediaFailurePanel inherits VerticalLayout {
             pad: root.cramped ? Space.sm : Space.lg;
             fill: AppStyle.overlay-hover;
             label: root.external-label;
+            region: FocusRegion.timeline;
+            region-row: true;
+            place: root.msg.unique-id;
             clicked => {
                 Actions.open-media(root.msg.event-id);
             }
@@ -267,6 +273,11 @@ export component MediaFrame inherits VerticalLayout {
                 enabled: root.openable;
                 label: root.open-label;
                 ring-radius: Radius.xs;
+                ring-color: root.msg.is-own ? AppStyle.ring-own : AppStyle.ring;
+                ring-halo: true;
+                region: FocusRegion.timeline;
+                region-row: true;
+                place: root.msg.unique-id;
                 width: 100%;
                 height: 100%;
                 clicked => {

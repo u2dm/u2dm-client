@@ -4,7 +4,7 @@ import { CallWords, ServiceLabel, UpgradeLinks } from "../../../../../messages.s
 import { LinkButton } from "../../../../../components/button.slint";
 import { Actions } from "../../../../../actions.slint";
 import { CallOffer, ServiceKind, UpgradeLink } from "../../../../../enums.slint";
-import { CallPanel } from "../../../../../local.slint";
+import { CallPanel, FocusRegion } from "../../../../../local.slint";
 import { CallView, DirectoryView, UpgradeView } from "../../../../../views.slint";
 import { ReaderCount, Readers } from "../delivery-mark.slint";
 
@@ -82,6 +82,9 @@ export component ServiceMessage inherits VerticalLayout {
                 : CallWords.call-back(root.msg.sender);
             tint: CallView.offer == CallOffer.refused ? AppStyle.foreground-muted : AppStyle.link;
             pad: 2 * Space.sm;
+            region: FocusRegion.timeline;
+            region-row: true;
+            place: root.msg.unique-id;
             clicked => {
                 CallPanel.open-sheet(
                     DirectoryView.selected-room-id,
@@ -99,6 +102,9 @@ export component ServiceMessage inherits VerticalLayout {
             enabled: !root.joining-older-room;
             tint: root.joining-older-room ? AppStyle.foreground-disabled : AppStyle.link;
             pad: 2 * Space.sm;
+            region: FocusRegion.timeline;
+            region-row: true;
+            place: root.msg.unique-id;
             clicked => {
                 if UpgradeView.predecessor == UpgradeLink.open {
                     Actions.select-room(UpgradeView.predecessor-id);

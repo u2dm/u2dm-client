@@ -4,6 +4,7 @@ import { SendState } from "../../../../../enums.slint";
 import { AppStyle, IconSize, Metrics } from "../../../../../theme.slint";
 import { UploadProgress } from "./media-frame.slint";
 import { ShadedClickArea } from "../../../../../components/state-layer.slint";
+import { FocusRegion } from "../../../../../local.slint";
 
 export component MediaButton inherits ShadedClickArea {
     in property <Icon> icon;
@@ -22,6 +23,10 @@ export component MediaButton inherits ShadedClickArea {
     border-radius: self.height / 2;
     ring-inset: -Metrics.ring-outset;
     ring-radius: self.height / 2 + Metrics.ring-outset;
+    ring-color: root.msg.is-own ? AppStyle.ring-own : AppStyle.ring;
+    region: FocusRegion.timeline;
+    region-row: true;
+    place: root.msg.unique-id;
     background: root.msg.is-own ? AppStyle.media-button-own : AppStyle.media-button;
     ink: root.glyph;
 

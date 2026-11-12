@@ -1,9 +1,12 @@
 import { ListView } from "std-widgets.slint";
 
 import { MessageBubble } from "./message-bubble.slint";
+import { FocusReveal } from "../../../../components/a11y.slint";
 import { RoomView, SettingsView } from "../../../../views.slint";
 import { MediaState } from "../../../../enums.slint";
 import { Actions } from "../../../../actions.slint";
+import { FocusRegion } from "../../../../local.slint";
+import { Metrics, Space } from "../../../../theme.slint";
 
 export component TimelineScroller inherits Rectangle {
     in property <length> available-width;
@@ -16,6 +19,7 @@ export component TimelineScroller inherits Rectangle {
     in property <bool> detached;
     in property <length> top-inset;
     in property <length> bottom-inset;
+    in property <length> floating-band;
     in property <length> composer-top;
 
     out property <bool> at-top: flickable.at-top;
@@ -41,6 +45,13 @@ export component TimelineScroller inherits Rectangle {
     property <duration> blink-interval: 400ms;
     property <int> blink-phases-left: 0;
     property <bool> focus-lit: mod(root.blink-phases-left, 2) == 1;
+    property <int> reveal-serial: FocusReveal.serial;
+
+    changed reveal-serial => {
+        if FocusReveal.region == FocusRegion.timeline && !flickable.anchor-held {
+            flickable.keep-clear(FocusReveal.y - root.absolute-position.y, FocusReveal.height);
+        }
+    }
 
     public function jump-to-latest() {
         flickable.release-anchor();
@@ -273,6 +284,16 @@ export component TimelineScroller inherits Rectangle {
             self.scroll-content-to(-max(self.max-scroll-y, 0px));
         }
 
+        public function keep-clear(top: length, size: length) {
+            let above = root.top-inset + Space.md - top;
+            let below = top + size - (root.height - root.bottom-inset - root.floating-band - Space.md);
+            if above > 0 {
+                self.content-y = self.clamped-content-y(self.content-y + above);
+            } else if below > 0 {
+                self.content-y = self.clamped-content-y(self.content-y - min(below, -above));
+            }
+        }
+
         public function adopt-timeline() {
             if root.timeline-token == self.seen-timeline-token {
                 return;
@@ -415,7 +436,7 @@ export component TimelineScroller inherits Rectangle {
         }
 
         for msg[row] in RoomView.timeline: VerticalLayout {
-            padding-top: row == 0 ? root.top-inset : 0px;
+            padding-top: row == 0 ? root.top-inset + Metrics.row-action-overhang : 0px;
             padding-bottom: row == RoomView.timeline.length - 1 ? root.bottom-inset : 0px;
 
             MessageBubble {

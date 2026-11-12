@@ -1,11 +1,12 @@
 import { Palette, ScrollView, Spinner } from "std-widgets.slint";
 
+import { FocusRing, FocusTrail } from "../../../components/a11y.slint";
 import { CopyFeedback } from "../../../components/copier.slint";
 import { DialogHeader } from "../../../components/dialog-header.slint";
 import { DialogCard, ModalHost } from "../../../components/overlay.slint";
 import { SectionLabel } from "../../../components/text-roles.slint";
 import { SourceEncryption, SourceStatus } from "../../../enums.slint";
-import { SourceView } from "../../../views.slint";
+import { SourceView, WindowView } from "../../../views.slint";
 import { Actions } from "../../../actions.slint";
 import { AppStyle, Fonts, Metrics, Radius, Size, Space } from "../../../theme.slint";
 
@@ -26,7 +27,7 @@ component SourceSection inherits VerticalLayout {
         VerticalLayout {
             padding: Space.md;
 
-            TextInput {
+            json-input := TextInput {
                 text: root.json;
                 accessible-label: root.title;
                 read-only: true;
@@ -37,7 +38,18 @@ component SourceSection inherits VerticalLayout {
                 color: Palette.foreground;
                 selection-background-color: Palette.selection-background;
                 selection-foreground-color: Palette.selection-foreground;
+                changed has-focus => {
+                    if !self.has-focus {
+                        FocusTrail.leave();
+                    }
+                }
             }
+        }
+
+        if json-input.has-focus && WindowView.keyboard-in-use: FocusRing {
+            width: 100%;
+            height: 100%;
+            radius: parent.border-radius;
         }
     }
 }

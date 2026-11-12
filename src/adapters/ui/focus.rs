@@ -14,6 +14,25 @@ use super::props::{BoolProp, UiProps};
 
 pub fn input_modality<B: UiBackend>(window: &B::Window) -> impl FnMut(&WindowEvent) + use<B> {
     let weak = window.as_weak();
+    follow_modality(move |keyboard| {
+        if let Some(window) = weak.upgrade() {
+            window.set_bool(BoolProp::KeyboardInUse, keyboard);
+        }
+    })
+}
+
+pub fn call_input_modality<B: UiBackend>(
+    call: &B::CallWindow,
+) -> impl FnMut(&WindowEvent) + use<B> {
+    let weak = call.as_weak();
+    follow_modality(move |keyboard| {
+        if let Some(call) = weak.upgrade() {
+            B::set_call_keyboard_in_use(&call, keyboard);
+        }
+    })
+}
+
+fn follow_modality(write: impl Fn(bool)) -> impl FnMut(&WindowEvent) {
     let mirrored = Cell::new(None);
     move |event: &WindowEvent| {
         let keyboard = match event {
@@ -29,11 +48,9 @@ pub fn input_modality<B: UiBackend>(window: &B::Window) -> impl FnMut(&WindowEve
             | WindowEvent::Touch(_) => false,
             _ => return,
         };
-        if mirrored.get() != Some(keyboard)
-            && let Some(window) = weak.upgrade()
-        {
+        if mirrored.get() != Some(keyboard) {
             mirrored.set(Some(keyboard));
-            window.set_bool(BoolProp::KeyboardInUse, keyboard);
+            write(keyboard);
         }
     }
 }
