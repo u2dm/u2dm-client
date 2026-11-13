@@ -539,7 +539,6 @@ export global Reactions {
     in-out property <ReactionPopup> popup: ReactionPopup.none;
 
     in-out property <AnchorRect> strip-anchor: { row: -1 };
-    in-out property <string> keyed-react;
     in-out property <bool> bubble-hovered: false;
     in-out property <bool> strip-hovered: false;
     in-out property <bool> strip-revealed: false;
@@ -894,6 +893,27 @@ export global FocusHome {
     }
 }
 
+export global TimelineCursor {
+    out property <string> inside;
+    out property <int> exits;
+
+    public pure function lets-tab(region: FocusRegion, row: bool, place: string) -> bool {
+        return region != FocusRegion.timeline || !row || (root.inside != "" && root.inside == place);
+    }
+
+    public function enter(row: string) {
+        root.inside = row;
+    }
+
+    public function leave() {
+        root.inside = "";
+    }
+
+    public function exit() {
+        root.exits += 1;
+    }
+}
+
 export enum ScreenKey { none, next-region, previous-region, previous-room, next-room, previous-unread-room, next-unread-room }
 
 export global ScreenKeys {
@@ -1055,6 +1075,7 @@ export global LocalState {
         RoomSearch.query = "";
         RoomSearch.opened-room = "";
         RoomSearch.sought = false;
+        TimelineCursor.leave();
         Subspaces.forget();
         TextSelection.clear();
         Reactions.close();
@@ -1067,6 +1088,7 @@ export global LocalState {
     }
 
     public function forget-room() {
+        TimelineCursor.leave();
         TextSelection.clear();
         Reactions.close();
         MessageMenu.close();

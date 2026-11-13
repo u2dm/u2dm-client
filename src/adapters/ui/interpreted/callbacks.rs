@@ -13,9 +13,9 @@ use super::values::{
 };
 use super::{InterpretedBackend, SlintUiAdapter};
 use crate::adapters::ui::backend::{
-    RECENT_SPEAKERS, adopted_room_key, current_edited_row, last_editable_row, newest_message_row,
-    on_main, recent_speakers, reorder_spaces, row_of_message, selected_room_key,
-    shown_room_log_text, unread_below,
+    RECENT_SPEAKERS, adopted_room_key, current_edited_row, first_unread_row, last_editable_row,
+    newest_message_row, on_main, recent_speakers, reorder_spaces, row_of_key, row_of_message,
+    selected_room_key, shown_room_log_text, unread_below,
 };
 use crate::adapters::ui::call_window::{self, WindowHooks};
 use crate::adapters::ui::decode::{
@@ -235,6 +235,14 @@ impl SlintUiAdapter {
 
         bind_action(&self.instance, callback::NEWEST_MESSAGE_ROW, |_| {
             num(newest_message_row::<InterpretedBackend>())
+        })?;
+
+        bind_action(&self.instance, callback::TIMELINE_ROW_OF, |args| {
+            num(row_of_key::<InterpretedBackend>(&string_arg(args, 0)))
+        })?;
+
+        bind_action(&self.instance, callback::FIRST_UNREAD_ROW, |_| {
+            num(first_unread_row::<InterpretedBackend>())
         })?;
 
         bind_action(&self.instance, callback::ROW_OF_MESSAGE, |args| {

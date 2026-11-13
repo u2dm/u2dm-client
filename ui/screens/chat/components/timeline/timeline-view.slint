@@ -11,12 +11,12 @@ import { AppStyle, Fonts, Glyph, Metrics, Size, Space, Stroke } from "../../../.
 import { HeaderIconButton } from "../../../../components/button.slint";
 import { CloseWatch } from "../../../../components/close-watch.slint";
 import { PresenceLine, TimelineState } from "../../../../enums.slint";
-import { ClickArea, RegionScope } from "../../../../components/a11y.slint";
+import { ClickArea, Interaction, RegionScope } from "../../../../components/a11y.slint";
 import { CopyNotifier } from "../../../../components/copier.slint";
 import { AudioView, CallView, DirectoryView, PresenceView, RoomView, TypingView, WindowView } from "../../../../views.slint";
 import { PresenceWords, TypingLine } from "../../../../messages.slint";
 import { Actions } from "../../../../actions.slint";
-import { CallMode, CallPanel, CallSize, CallSurface, FocusHome, FocusRegion, LocalState, Overlays, ReplySwipe, RoomMenu, RoomMenuOrigin, RoomSearch, Shell } from "../../../../local.slint";
+import { CallMode, CallPanel, CallSize, CallSurface, FocusHome, FocusKeeper, FocusRegion, LocalState, Overlays, ReplySwipe, RoomMenu, RoomMenuOrigin, RoomSearch, Shell } from "../../../../local.slint";
 import { StatusPill } from "../../../../components/status-pill.slint";
 import { NowPlayingBar } from "./now-playing-bar.slint";
 import { PinnedBar } from "./pinned-bar.slint";
@@ -480,11 +480,19 @@ export component TimelineView inherits Rectangle {
             visible: !root.call-covers-timeline;
             region: FocusRegion.timeline;
 
-            TimelineContent {
+            content := TimelineContent {
                 available-width: stage.chat-width;
                 top-inset: stage.call-above-chat + root.pinned-height + root.now-playing-height;
                 bottom-inset: input.height + root.spacing + root.dock-height;
                 composer-top: stage.height - root.dock-height - input.height;
+                leave(forward) => {
+                    if forward {
+                        timeline-after.focus();
+                    } else {
+                        timeline-before.focus();
+                    }
+                    FocusKeeper.step(forward);
+                }
             }
         }
 
@@ -596,6 +604,30 @@ export component TimelineView inherits Rectangle {
             region: FocusRegion.timeline;
 
             NowPlayingBar { }
+        }
+
+        timeline-before := FocusScope {
+            width: 0;
+            height: 0;
+            enabled: !root.call-covers-timeline && RoomView.timeline.length > 0 && Interaction.actionable(true, false);
+            focus-on-click: false;
+            focus-gained(reason) => {
+                if reason == FocusReason.tab-navigation {
+                    content.focus-cursor();
+                }
+            }
+        }
+
+        timeline-after := FocusScope {
+            width: 0;
+            height: 0;
+            enabled: !root.call-covers-timeline && RoomView.timeline.length > 0 && Interaction.actionable(true, false);
+            focus-on-click: false;
+            focus-gained(reason) => {
+                if reason == FocusReason.tab-navigation {
+                    content.focus-cursor();
+                }
+            }
         }
 
         if root.is-blocking-status: StatusPill {

@@ -1,6 +1,6 @@
 import { Palette } from "std-widgets.slint";
 import { FocusRing, FocusTrail, Interaction } from "./a11y.slint";
-import { FocusHome, FocusRegion } from "../local.slint";
+import { FocusHome, FocusRegion, TimelineCursor } from "../local.slint";
 import { AppStyle, Metrics } from "../theme.slint";
 
 export enum ScrubCommit {
@@ -88,7 +88,7 @@ export component ScrubBar inherits Rectangle {
     focus := FocusScope {
         width: 0;
         enabled: root.actionable;
-        focus-on-tab-navigation: root.actionable;
+        focus-on-tab-navigation: root.actionable && TimelineCursor.lets-tab(root.region, true, root.place);
         focus-gained(reason) => {
             if root.region != FocusRegion.none {
                 FocusHome.entered-row(root.region, root.place);

@@ -12,8 +12,9 @@ pub(super) use self::art::{apply_pack_art, apply_pack_avatar};
 use self::art::{place_custom_emoji, place_pack_cell};
 use self::avatars::apply_avatar_ready;
 pub(super) use self::queries::{
-    RECENT_SPEAKERS, adopted_room_key, current_edited_row, last_editable_row, newest_message_row,
-    recent_speakers, row_of_message, selected_room_key, shown_room_log_text, unread_below,
+    RECENT_SPEAKERS, adopted_room_key, current_edited_row, first_unread_row, last_editable_row,
+    newest_message_row, recent_speakers, row_of_key, row_of_message, selected_room_key,
+    shown_room_log_text, unread_below,
 };
 use super::call_video;
 use super::call_video::Host;

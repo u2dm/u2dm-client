@@ -22,7 +22,6 @@ export component ReactionStrip inherits PickerCard {
     property <length> content-height: root.cell-count * root.pitch - root.gap;
     property <length> open-height: root.cells-when-open * root.pitch - root.gap;
     property <int> focused-cells: 0;
-    property <bool> keyed: Reactions.keyed-react != "" && Reactions.keyed-react == Reactions.strip-anchor.event-id;
 
     out property <bool> open: hover-area.has-hover || root.focused-cells > 0;
 
@@ -108,7 +107,6 @@ export component ReactionStrip inherits PickerCard {
                     key: QuickReactions.strip-key(index);
                     label: self.key;
                     enabled: root.open || index == QuickReactions.strip-default;
-                    roving-focus: root.keyed && index == QuickReactions.strip-default;
                     clicked => {
                         root.picked(self.key);
                     }

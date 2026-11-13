@@ -4,7 +4,7 @@ import { MessageEntry, PollAnswerEntry } from "../../../../../types.slint";
 import { ClickArea, FocusTrail, Interaction } from "../../../../../components/a11y.slint";
 import { PollPhase } from "../../../../../enums.slint";
 import { Actions } from "../../../../../actions.slint";
-import { FocusHome, FocusRegion, Polls, ReactionPopup, Reactions } from "../../../../../local.slint";
+import { FocusHome, FocusRegion, Polls, ReactionPopup, Reactions, TimelineCursor } from "../../../../../local.slint";
 import { RoomView } from "../../../../../views.slint";
 import { AppStyle, Fonts, IconSize, Metrics, Radius, Space, Stroke, Weight } from "../../../../../theme.slint";
 import { ShadedClickArea } from "../../../../../components/state-layer.slint";
@@ -338,6 +338,8 @@ export component PollMessage inherits Rectangle {
     if root.multiple: CheckKeys {
         count: root.answer-count;
         cursor <=> root.cursor;
+        focus-on-tab-navigation: Interaction.actionable(root.answer-count > 0, false)
+            && TimelineCursor.lets-tab(FocusRegion.timeline, true, root.msg.unique-id);
         accessible-label: root.describe(root.focused-answer);
         accessible-checked: root.focused-answer.mine;
         accessible-enabled: root.focused-answer.votable && root.voting;
@@ -355,6 +357,8 @@ export component PollMessage inherits Rectangle {
     if !root.multiple: RadioKeys {
         count: root.answer-count;
         cursor <=> root.cursor;
+        focus-on-tab-navigation: Interaction.actionable(root.answer-count > 0, false)
+            && TimelineCursor.lets-tab(FocusRegion.timeline, true, root.msg.unique-id);
         accessible-label: root.describe(root.focused-answer);
         accessible-checked: root.focused-answer.mine;
         accessible-enabled: root.focused-answer.votable && root.voting;

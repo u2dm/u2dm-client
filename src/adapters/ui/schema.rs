@@ -941,6 +941,9 @@ macro_rules! shortcut_props {
         NextUnreadRoom     set_next_unread_room     get_next_unread_room     "next-unread-room";
         ToggleMicrophone   set_toggle_microphone    get_toggle_microphone    "toggle-microphone";
         ToggleCamera       set_toggle_camera        get_toggle_camera        "toggle-camera";
+        Reply              set_reply                get_reply                "reply";
+        Edit               set_edit                 get_edit                 "edit";
+        FirstUnread        set_first_unread         get_first_unread         "first-unread";
     } };
 }
 pub(crate) use shortcut_props;

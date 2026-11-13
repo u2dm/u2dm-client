@@ -28,8 +28,9 @@ use u2dm_ui::{Probe, RoomMenu, WindowTitle};
 
 use super::backend::{
     self, Models, RECENT_SPEAKERS, UiBackend, adopted_room_key, current_edited_row,
-    last_editable_row, newest_message_row, on_main, recent_speakers, reorder_spaces,
-    row_of_message, selected_room_key, shown_room_log_text, unread_below,
+    first_unread_row, last_editable_row, newest_message_row, on_main, recent_speakers,
+    reorder_spaces, row_of_key, row_of_message, selected_room_key, shown_room_log_text,
+    unread_below,
 };
 use super::call_window::{self, WindowHooks};
 use super::decode::{
@@ -843,6 +844,8 @@ impl SlintUiAdapter {
 
         actions(win).on_last_editable_row(last_editable_row::<CompiledBackend>);
         actions(win).on_newest_message_row(newest_message_row::<CompiledBackend>);
+        actions(win).on_timeline_row_of(|key| row_of_key::<CompiledBackend>(&key));
+        actions(win).on_first_unread_row(first_unread_row::<CompiledBackend>);
         actions(win).on_row_of_message(|event_id, local_id| {
             row_of_message::<CompiledBackend>(&event_id, &local_id)
         });

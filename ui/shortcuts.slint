@@ -11,6 +11,9 @@ export global Shortcuts {
     in property <KeyChord> next-unread-room;
     in property <KeyChord> toggle-microphone;
     in property <KeyChord> toggle-camera;
+    in property <KeyChord> reply;
+    in property <KeyChord> edit;
+    in property <KeyChord> first-unread;
 
     public pure function matches(event: KeyEvent, chord: KeyChord) -> bool {
         return chord.key != ""

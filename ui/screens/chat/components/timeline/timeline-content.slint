@@ -3,9 +3,11 @@ import { IconDisplay, IconSet } from "@lucide";
 
 import { StatusPill } from "../../../../components/status-pill.slint";
 import { TimelineScroller } from "./timeline-scroller.slint";
-import { FocusHome, FocusRegion, Probe } from "../../../../local.slint";
-import { ClickArea } from "../../../../components/a11y.slint";
-import { RoomView } from "../../../../views.slint";
+import { Composer, FocusHome, FocusRegion, Probe, TimelineCursor } from "../../../../local.slint";
+import { ClickArea, Interaction, RovingList } from "../../../../components/a11y.slint";
+import { DirectoryView, RoomView } from "../../../../views.slint";
+import { MessageKind } from "../../../../enums.slint";
+import { Shortcuts } from "../../../../shortcuts.slint";
 import { Actions } from "../../../../actions.slint";
 import { AppStyle, Fonts, IconSize, Metrics, Radius, Size, Space, Weight } from "../../../../theme.slint";
 import { StateLayer } from "../../../../components/state-layer.slint";
@@ -60,39 +62,178 @@ export component TimelineContent inherits Rectangle {
     in property <length> bottom-inset;
     in property <length> composer-top;
 
+    callback leave(bool);
+
     property <int> focus-asks: FocusHome.asks;
+    property <int> exits: TimelineCursor.exits;
+    property <int> landings: scroller.landings;
+    property <string> jumped-to: RoomView.focus-event-id;
+    property <string> room: DirectoryView.selected-room-id;
+    property <bool> keyboard-here: FocusHome.region == FocusRegion.timeline;
 
     clip: true;
     accessible-role: main;
     accessible-label: @tr("Messages in {}", RoomView.selected-room-name);
 
+    public function focus-cursor() {
+        if RoomView.timeline.length == 0 {
+            return;
+        }
+        if timeline-keys.cursor-key == "" {
+            let newest = Actions.newest-message-row();
+            timeline-keys.cursor = newest >= 0 ? newest : RoomView.timeline.length - 1;
+        }
+        timeline-keys.focus-cursor();
+    }
+
+    pure function cursor-row() -> int {
+        let at = timeline-keys.cursor-key == "" ? -1 : Actions.timeline-row-of(timeline-keys.cursor-key);
+        return at >= 0 ? at : timeline-keys.cursor;
+    }
+
+    function reply(row: int) -> EventResult {
+        if row < 0 || row >= RoomView.timeline.length || RoomView.timeline[row].event-id == ""
+            || RoomView.timeline[row].message-type == MessageKind.service || Composer.editing
+            || !RoomView.may-send-messages {
+            return EventResult.reject;
+        }
+        Composer.reply-to(RoomView.timeline[row]);
+        FocusHome.ask-anew(FocusRegion.composer);
+        return EventResult.accept;
+    }
+
+    function edit(row: int) -> EventResult {
+        if row < 0 || row >= RoomView.timeline.length || !RoomView.timeline[row].text-editable
+            || !RoomView.may-send-messages {
+            return EventResult.reject;
+        }
+        FocusHome.entered(FocusRegion.composer, "");
+        Composer.request-edit(RoomView.timeline[row]);
+        return EventResult.accept;
+    }
+
     changed focus-asks => {
-        if FocusHome.asked == FocusRegion.timeline && FocusHome.asked-place == "" {
-            let row = Actions.newest-message-row();
-            if row >= 0 {
-                FocusHome.ask-at(FocusRegion.timeline, RoomView.timeline[row].unique-id);
-            }
+        if FocusHome.asked != FocusRegion.timeline {
+            return;
+        }
+        if FocusHome.asked-place != "" {
+            timeline-keys.cursor-key = FocusHome.asked-place;
+        }
+        root.focus-cursor();
+    }
+
+    changed exits => {
+        timeline-keys.leave(true);
+        TimelineCursor.leave();
+    }
+
+    changed keyboard-here => {
+        if !self.keyboard-here {
+            TimelineCursor.leave();
         }
     }
 
-    scroller := TimelineScroller {
-        width: parent.width;
-        height: parent.height;
-        available-width: root.available-width;
-        anchor-index: RoomView.anchor-index;
-        timeline-token: RoomView.timeline-token;
-        prepend-token: RoomView.prepend-token;
-        backwards-loading: RoomView.backwards-loading;
-        older-history-available: RoomView.older-history-available;
-        forwards-loading: RoomView.forwards-loading;
-        detached: RoomView.timeline-detached;
-        top-inset: root.top-inset;
-        bottom-inset: root.bottom-inset;
-        floating-band: RoomView.timeline.length > 0
-            && (!self.following || RoomView.backwards-loading || RoomView.forwards-loading)
-            ? Space.xl + Size.xl
-            : 0;
-        composer-top: root.composer-top;
+    changed jumped-to => {
+        if self.jumped-to != "" {
+            timeline-keys.cursor-key = self.jumped-to;
+        }
+    }
+
+    changed landings => {
+        if RoomView.focus-event-id != "" && root.keyboard-here {
+            timeline-keys.cursor-key = RoomView.focus-event-id;
+            timeline-keys.focus-cursor();
+        }
+    }
+
+    changed room => {
+        timeline-keys.cursor-key = "";
+    }
+
+    timeline-keys := RovingList {
+        count: RoomView.timeline.length;
+        unbuilt-rows: true;
+        edges-elsewhere: true;
+        passes-tab: TimelineCursor.inside != "";
+        locates: true;
+        page: scroller.page;
+        locate(key) => {
+            return Actions.timeline-row-of(key);
+        }
+        reveal(row) => {
+            scroller.reveal-row(row);
+        }
+        leave-to(forward) => {
+            root.leave(forward);
+        }
+
+        row-keys := FocusScope {
+            focus-on-click: false;
+            focus-on-tab-navigation: false;
+            key-pressed(event) => {
+                if TimelineCursor.inside != "" {
+                    if event.text == Key.Escape {
+                        TimelineCursor.leave();
+                        timeline-keys.focus-cursor();
+                        return accept;
+                    }
+                    return reject;
+                }
+                if Shortcuts.matches(event, Shortcuts.reply) {
+                    return root.reply(root.cursor-row());
+                }
+                if Shortcuts.matches(event, Shortcuts.edit) {
+                    return root.edit(root.cursor-row());
+                }
+                if Shortcuts.matches(event, Shortcuts.first-unread) {
+                    let unread = Actions.first-unread-row();
+                    if unread >= 0 {
+                        timeline-keys.move-to(unread, 1);
+                    }
+                    return accept;
+                }
+                if event.text == Key.Escape {
+                    FocusHome.ask-anew(FocusRegion.composer);
+                    return accept;
+                }
+                if Interaction.unmodified(event) && (event.text == Key.UpArrow || event.text == Key.PageUp)
+                    && root.cursor-row() <= 0 {
+                    if RoomView.older-history-available && !RoomView.backwards-loading {
+                        Actions.paginate-backwards();
+                    }
+                    return accept;
+                }
+                return reject;
+            }
+
+            scroller := TimelineScroller {
+                width: parent.width;
+                height: parent.height;
+                available-width: root.available-width;
+                anchor-index: RoomView.anchor-index;
+                timeline-token: RoomView.timeline-token;
+                prepend-token: RoomView.prepend-token;
+                backwards-loading: RoomView.backwards-loading;
+                older-history-available: RoomView.older-history-available;
+                forwards-loading: RoomView.forwards-loading;
+                detached: RoomView.timeline-detached;
+                top-inset: root.top-inset;
+                bottom-inset: root.bottom-inset;
+                floating-band: RoomView.timeline.length > 0
+                    && (!self.following || RoomView.backwards-loading || RoomView.forwards-loading)
+                    ? Space.xl + Size.xl
+                    : 0;
+                composer-top: root.composer-top;
+                cursor: timeline-keys.cursor;
+                cursor-asks: timeline-keys.asks;
+                cursor-waits: timeline-keys.waiting;
+                keyboard-row: root.keyboard-here ? timeline-keys.cursor : -1;
+                cursor-taken(row, key) => {
+                    timeline-keys.took(row, key);
+                    TimelineCursor.leave();
+                }
+            }
+        }
     }
 
     if Probe.enabled: probe-scroll := Rectangle {
@@ -141,6 +282,7 @@ export component TimelineContent inherits Rectangle {
             if self.has-focus {
                 FocusHome.ask(FocusRegion.composer);
             }
+            timeline-keys.cursor-key = "";
             scroller.jump-to-latest();
         }
     }

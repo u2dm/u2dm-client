@@ -44,6 +44,22 @@ pub fn last_editable_row<B: UiBackend>() -> i32 {
     }))
 }
 
+pub fn row_of_key<B: UiBackend>(key: &str) -> i32 {
+    if key.is_empty() {
+        return -1;
+    }
+    row_index(B::with_timeline(|timeline| {
+        timeline
+            .last_position(|entry: &B::Message| entry.event_id() == key || entry.unique_id() == key)
+    }))
+}
+
+pub fn first_unread_row<B: UiBackend>() -> i32 {
+    row_index(B::with_timeline(|timeline| {
+        timeline.last_position(|entry: &B::Message| entry.first_unread())
+    }))
+}
+
 pub fn newest_message_row<B: UiBackend>() -> i32 {
     row_index(B::with_timeline(|timeline| {
         timeline.last_position(|entry: &B::Message| {

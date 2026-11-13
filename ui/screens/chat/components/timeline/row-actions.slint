@@ -5,13 +5,10 @@ import { MessageEntry } from "../../../../types.slint";
 
 import { MessageShape } from "./message-body.slint";
 import { QuickReactions } from "./quick-reactions.slint";
-import { FocusTrail, Interaction } from "../../../../components/a11y.slint";
 import { Pill } from "../../../../components/pill.slint";
 import {
     Composer,
-    FocusHome,
     FocusRegion,
-    MessageMenu,
     AnchorRect,
     Reactions,
     TextSelection,
@@ -31,6 +28,7 @@ export component RowActions inherits Rectangle {
     in property <MessageEntry> msg;
     in property <bool> bubble-hovered;
     in property <bool> strip-mine;
+    in property <bool> row-focused;
 
     callback anchor() -> AnchorRect;
 
@@ -43,9 +41,6 @@ export component RowActions inherits Rectangle {
     property <bool> has-actions: root.row-actions.length > 0;
 
     property <bool> action-hovered: false;
-    property <int> action-cursor: 0;
-    property <RowAction> focused-action: root.row-actions[min(root.action-cursor, root.row-actions.length - 1)];
-    property <bool> react-keyed: action-focus.has-focus && root.focused-action == RowAction.react;
 
     property <length> pill-height: Metrics.row-action-pill;
     property <length> pill-gap: Space.sm;
@@ -57,7 +52,7 @@ export component RowActions inherits Rectangle {
         && (root.bubble-hovered
         || root.action-hovered
         || root.strip-mine
-        || action-focus.has-focus);
+        || root.row-focused);
 
     pure function action-label(action: RowAction) -> string {
         if action == RowAction.edit {
@@ -134,16 +129,6 @@ export component RowActions inherits Rectangle {
         return root.can-react;
     }
 
-    function open-menu() {
-        let anchor = root.anchor();
-        MessageMenu.open(
-            anchor,
-            root.msg.unique-id,
-            root.msg.is-own ? anchor.x + anchor.width - Metrics.message-menu-width : anchor.x,
-            anchor.y,
-            true);
-    }
-
     function run-action(action: RowAction) {
         if !root.available(action) {
             return;
@@ -156,68 +141,6 @@ export component RowActions inherits Rectangle {
             Composer.reply-to(root.msg);
         } else {
             Actions.toggle-reaction(root.msg.event-id, QuickReactions.default-key);
-        }
-    }
-
-    property <int> focus-asks: FocusHome.asks;
-
-    init => {
-        if Reactions.keyed-react == root.msg.event-id && !root.react-keyed {
-            Reactions.keyed-react = "";
-        }
-    }
-
-    changed react-keyed => {
-        if root.react-keyed {
-            Reactions.keyed-react = root.msg.event-id;
-        } else if Reactions.keyed-react == root.msg.event-id {
-            Reactions.keyed-react = "";
-        }
-    }
-
-    changed focus-asks => {
-        if FocusHome.asked == FocusRegion.timeline && FocusHome.asked-place != ""
-            && FocusHome.asked-place == root.msg.unique-id && root.has-actions {
-            action-focus.focus();
-        }
-    }
-
-    action-focus := FocusScope {
-        x: 0;
-        y: 0;
-        width: 0;
-        height: 0;
-        focus-on-click: false;
-        focus-on-tab-navigation: Interaction.actionable(root.has-actions, false);
-        accessible-role: button;
-        accessible-label: root.action-label(root.focused-action);
-        accessible-action-default => {
-            root.run-action(root.focused-action);
-        }
-        focus-gained(reason) => {
-            FocusHome.entered-row(FocusRegion.timeline, root.msg.unique-id);
-        }
-        focus-lost(reason) => {
-            FocusTrail.leave();
-        }
-        key-pressed(event) => {
-            if Interaction.requests-menu(event) {
-                root.open-menu();
-                return accept;
-            }
-            if event.text == Key.RightArrow {
-                root.action-cursor = Interaction.next(root.action-cursor, root.row-actions.length);
-                return accept;
-            }
-            if event.text == Key.LeftArrow {
-                root.action-cursor = Interaction.previous(root.action-cursor, root.row-actions.length);
-                return accept;
-            }
-            if Interaction.activates(event.text) {
-                root.run-action(root.focused-action);
-                return accept;
-            }
-            return reject;
         }
     }
 
@@ -258,7 +181,6 @@ export component RowActions inherits Rectangle {
             visible: self.enabled;
             focusable: false;
             region: FocusRegion.timeline;
-            roving-focus: action-focus.has-focus && root.focused-action == RowAction.edit;
             clicked => {
                 root.run-action(RowAction.edit);
             }
@@ -282,7 +204,6 @@ export component RowActions inherits Rectangle {
             visible: self.enabled;
             focusable: false;
             region: FocusRegion.timeline;
-            roving-focus: action-focus.has-focus && root.focused-action == RowAction.select-text;
             clicked => {
                 root.run-action(RowAction.select-text);
             }
@@ -304,7 +225,6 @@ export component RowActions inherits Rectangle {
             visible: self.enabled;
             focusable: false;
             region: FocusRegion.timeline;
-            roving-focus: action-focus.has-focus && root.focused-action == RowAction.reply;
             clicked => {
                 root.run-action(RowAction.reply);
             }
@@ -332,8 +252,7 @@ export component RowActions inherits Rectangle {
             visible: self.enabled;
             focusable: false;
             region: FocusRegion.timeline;
-            roving-focus: root.react-keyed;
-            opacity: root.strip-mine && !root.react-keyed ? 0 : 1;
+            opacity: root.strip-mine ? 0 : 1;
 
             animate opacity {
                 duration: Motion.fast;

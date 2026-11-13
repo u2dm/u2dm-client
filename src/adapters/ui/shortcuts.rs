@@ -24,5 +24,6 @@ fn slint_key(key: NamedKey) -> Key {
         NamedKey::F6 => Key::F6,
         NamedKey::Up => Key::UpArrow,
         NamedKey::Down => Key::DownArrow,
+        NamedKey::PageUp => Key::PageUp,
     }
 }

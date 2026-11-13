@@ -12,10 +12,13 @@ pub enum ShortcutCommand {
     NextUnreadRoom,
     ToggleMicrophone,
     ToggleCamera,
+    Reply,
+    Edit,
+    FirstUnread,
 }
 
 impl ShortcutCommand {
-    pub const ALL: [Self; 10] = [
+    pub const ALL: [Self; 13] = [
         Self::OpenSettings,
         Self::FindRoom,
         Self::NextRegion,
@@ -26,6 +29,9 @@ impl ShortcutCommand {
         Self::NextUnreadRoom,
         Self::ToggleMicrophone,
         Self::ToggleCamera,
+        Self::Reply,
+        Self::Edit,
+        Self::FirstUnread,
     ];
 
     const fn default_chord(self) -> KeyChord {
@@ -44,6 +50,9 @@ impl ShortcutCommand {
             }
             Self::ToggleMicrophone => KeyChord::new(Modifiers::CONTROL, ChordKey::Character('d')),
             Self::ToggleCamera => KeyChord::new(Modifiers::CONTROL, ChordKey::Character('e')),
+            Self::Reply => KeyChord::new(Modifiers::NONE, ChordKey::Character('r')),
+            Self::Edit => KeyChord::new(Modifiers::NONE, ChordKey::Character('e')),
+            Self::FirstUnread => KeyChord::new(Modifiers::SHIFT, ChordKey::Named(NamedKey::PageUp)),
         }
     }
 }
@@ -53,6 +62,7 @@ pub enum NamedKey {
     F6,
     Up,
     Down,
+    PageUp,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]

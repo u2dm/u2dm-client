@@ -5,6 +5,8 @@ pub mod callback {
     pub const EDIT_MESSAGE: &str = "edit-message";
     pub const LAST_EDITABLE_ROW: &str = "last-editable-row";
     pub const NEWEST_MESSAGE_ROW: &str = "newest-message-row";
+    pub const TIMELINE_ROW_OF: &str = "timeline-row-of";
+    pub const FIRST_UNREAD_ROW: &str = "first-unread-row";
     pub const ROW_OF_MESSAGE: &str = "row-of-message";
     pub const SUGGEST_MENTIONS: &str = "suggest-mentions";
     pub const MENTION_AT: &str = "mention-at";

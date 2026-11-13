@@ -1,4 +1,4 @@
-import { FocusHome, FocusKeeper, FocusRegion, ScreenKey, ScreenKeys, Shell } from "../local.slint";
+import { FocusHome, FocusKeeper, FocusRegion, ScreenKey, ScreenKeys, Shell, TimelineCursor } from "../local.slint";
 import { WindowView } from "../views.slint";
 import { AppStyle, Metrics, Motion, Radius, Stroke } from "../theme.slint";
 
@@ -199,6 +199,7 @@ export component ClickArea inherits Rectangle {
     in property <bool> tab-stop: true;
     in property <bool> shows-pointer: true;
     in property <bool> roving-focus: false;
+    in property <bool> rings-itself: true;
     in property <length> ring-radius: Radius.sm;
     in property <length> ring-inset: 0;
     in property <color> ring-color: AppStyle.ring;
@@ -210,6 +211,7 @@ export component ClickArea inherits Rectangle {
     out property <bool> pressed: touch.pressed;
     out property <bool> has-focus: fs.has-focus;
     out property <bool> tabbed-to: fs.has-focus && root.focus-by-tab;
+    out property <bool> ringed: (fs.has-focus && (root.focus-by-tab || WindowView.keyboard-in-use)) || root.roving-focus;
     out property <length> mouse-x: touch.mouse-x;
     out property <length> mouse-y: touch.mouse-y;
 
@@ -241,7 +243,8 @@ export component ClickArea inherits Rectangle {
         width: 0;
         height: root.height + 2 * root.ring-overhang;
         enabled: root.enabled && root.focusable;
-        focus-on-tab-navigation: root.actionable && root.focusable && root.tab-stop;
+        focus-on-tab-navigation: root.actionable && root.focusable && root.tab-stop
+            && TimelineCursor.lets-tab(root.region, root.region-row, root.place);
         focus-gained(reason) => {
             root.focus-by-tab = reason == FocusReason.tab-navigation;
             if root.region != FocusRegion.none && root.region-row {
@@ -282,7 +285,7 @@ export component ClickArea inherits Rectangle {
 
     @children
 
-    if (fs.has-focus && (root.focus-by-tab || WindowView.keyboard-in-use)) || root.roving-focus: FocusRing {
+    if root.rings-itself && root.ringed: FocusRing {
         x: root.ring-inset;
         y: root.ring-inset;
         width: root.width - root.ring-inset * 2;
@@ -360,6 +363,8 @@ export component RovingList inherits FocusScope {
     in property <bool> horizontal: false;
     in property <bool> wraps: false;
     in property <bool> unbuilt-rows: false;
+    in property <bool> edges-elsewhere: false;
+    in property <bool> passes-tab: false;
     in property <bool> above-modal: false;
     in property <bool> locates: false;
     in property <int> page: 1;
@@ -373,6 +378,7 @@ export component RovingList inherits FocusScope {
     pure callback locate(string) -> int;
     pure callback skips(int) -> bool;
     callback other-key(KeyEvent) -> EventResult;
+    callback leave-to(bool);
 
     public function focus-cursor() {
         if root.count == 0 {
@@ -424,7 +430,11 @@ export component RovingList inherits FocusScope {
         return first;
     }
 
-    function leave(forward: bool) {
+    public function leave(forward: bool) {
+        if root.edges-elsewhere {
+            root.leave-to(forward);
+            return;
+        }
         if forward {
             tail.focus();
         } else {
@@ -438,7 +448,8 @@ export component RovingList inherits FocusScope {
 
     key-pressed(event) => {
         root.relocate();
-        if root.unbuilt-rows && !event.modifiers.control && !event.modifiers.alt && !event.modifiers.meta {
+        if root.unbuilt-rows && !root.passes-tab && !event.modifiers.control && !event.modifiers.alt
+            && !event.modifiers.meta {
             if event.text == Key.Backtab || (event.text == Key.Tab && event.modifiers.shift) {
                 root.leave(false);
                 return accept;
@@ -502,7 +513,8 @@ export component RovingList inherits FocusScope {
     head := FocusScope {
         width: 0;
         height: 0;
-        enabled: root.unbuilt-rows && root.count > 0 && Interaction.actionable(true, root.above-modal);
+        enabled: root.unbuilt-rows && !root.edges-elsewhere && root.count > 0
+            && Interaction.actionable(true, root.above-modal);
         focus-on-click: false;
         focus-gained(reason) => {
             if reason == FocusReason.tab-navigation {
@@ -516,7 +528,8 @@ export component RovingList inherits FocusScope {
     tail := FocusScope {
         width: 0;
         height: 0;
-        enabled: root.unbuilt-rows && root.count > 0 && Interaction.actionable(true, root.above-modal);
+        enabled: root.unbuilt-rows && !root.edges-elsewhere && root.count > 0
+            && Interaction.actionable(true, root.above-modal);
         focus-on-click: false;
         focus-gained(reason) => {
             if reason == FocusReason.tab-navigation {

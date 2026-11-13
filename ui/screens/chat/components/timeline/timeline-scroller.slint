@@ -2,7 +2,7 @@ import { ListView } from "std-widgets.slint";
 
 import { MessageBubble } from "./message-bubble.slint";
 import { FocusReveal } from "../../../../components/a11y.slint";
-import { RoomView, SettingsView } from "../../../../views.slint";
+import { RoomView, SettingsView, WindowView } from "../../../../views.slint";
 import { MediaState } from "../../../../enums.slint";
 import { Actions } from "../../../../actions.slint";
 import { FocusRegion } from "../../../../local.slint";
@@ -21,6 +21,12 @@ export component TimelineScroller inherits Rectangle {
     in property <length> bottom-inset;
     in property <length> floating-band;
     in property <length> composer-top;
+    in property <int> cursor: -1;
+    in property <int> cursor-asks;
+    in property <bool> cursor-waits;
+    in property <int> keyboard-row: -1;
+
+    callback cursor-taken(int, string);
 
     out property <bool> at-top: flickable.at-top;
     out property <bool> at-bottom: flickable.at-bottom;
@@ -35,6 +41,9 @@ export component TimelineScroller inherits Rectangle {
     out property <int> seen-prepend-token: flickable.seen-prepend-token;
     out property <length> anchor-target: flickable.anchor-target;
     out property <bool> needs-older-rows: flickable.needs-older-rows;
+    out property <int> page: max(1, floor(flickable.visible-height
+        / max(1px, flickable.content-height / max(1, flickable.item-count))));
+    out property <int> landings;
 
     property <int> max-anchor-scrolls: 20;
     property <duration> settle-interval: 60ms;
@@ -51,6 +60,17 @@ export component TimelineScroller inherits Rectangle {
         if FocusReveal.region == FocusRegion.timeline && !flickable.anchor-held {
             flickable.keep-clear(FocusReveal.y - root.absolute-position.y, FocusReveal.height);
         }
+    }
+
+    public function reveal-row(row: int) {
+        flickable.release-anchor();
+        if row >= flickable.item-count - 1 {
+            flickable.scroll-to-bottom();
+            flickable.auto-scroll = !root.detached;
+            return;
+        }
+        let pitch = flickable.content-height / max(1, flickable.item-count);
+        flickable.content-y = flickable.clamped-content-y(-(row * pitch - (flickable.visible-height - pitch) / 2));
     }
 
     public function jump-to-latest() {
@@ -120,6 +140,8 @@ export component TimelineScroller inherits Rectangle {
     }
 
     flickable := ListView {
+        accessible-label: @tr("Messages");
+        accessible-item-count: RoomView.timeline.length;
         width: parent.width;
         height: root.list-height > 0 ? min(parent.height, root.list-height) : parent.height;
         y: parent.height - self.height;
@@ -190,6 +212,7 @@ export component TimelineScroller inherits Rectangle {
             && self.item-count > self.prev-item-count;
 
         property <int> seen-timeline-token: 0;
+        property <int> counted: 0;
         property <bool> anchor-held: false;
         property <int> anchor-scrolls: 0;
         property <int> reported-row: -1;
@@ -257,7 +280,13 @@ export component TimelineScroller inherits Rectangle {
         }
 
         changed item-count => {
+            let adopting = root.timeline-token != self.seen-timeline-token;
             self.adopt-timeline();
+            let keyboard-behind = !adopting && root.keyboard-row >= 0 && root.keyboard-row < self.counted - 1;
+            self.counted = self.item-count;
+            if keyboard-behind && !self.anchor-held {
+                self.auto-scroll = false;
+            }
             if self.auto-scroll && !self.anchor-held {
                 self.settling = true;
                 self.scroll-to-bottom();
@@ -309,6 +338,7 @@ export component TimelineScroller inherits Rectangle {
             self.prev-content-y = 0;
             self.prev-distance-to-end = 0;
             self.prev-item-count = 0;
+            self.counted = self.item-count;
             if root.anchor-index >= 0 {
                 self.anchor-held = true;
                 self.auto-scroll = false;
@@ -353,6 +383,7 @@ export component TimelineScroller inherits Rectangle {
             }
             if RoomView.focus-event-id != "" {
                 root.blink-focus();
+                root.landings += 1;
             }
         }
 
@@ -436,6 +467,7 @@ export component TimelineScroller inherits Rectangle {
         }
 
         for msg[row] in RoomView.timeline: VerticalLayout {
+            z: row == root.keyboard-row && WindowView.keyboard-in-use ? 1 : 0;
             padding-top: row == 0 ? root.top-inset + Metrics.row-action-overhang : 0px;
             padding-bottom: row == RoomView.timeline.length - 1 ? root.bottom-inset : 0px;
 
@@ -446,6 +478,12 @@ export component TimelineScroller inherits Rectangle {
                 available-width: root.available-width;
                 composer-top: root.composer-top;
                 focus-lit: root.focus-lit;
+                cursor: row == root.cursor;
+                cursor-asks: root.cursor-asks;
+                cursor-waits: root.cursor-waits;
+                cursor-taken => {
+                    root.cursor-taken(row, msg.event-id != "" ? msg.event-id : msg.unique-id);
+                }
 
                 property <bool> crosses-reading-edge: self.height > 0
                     && self.absolute-position.y < root.composer-top

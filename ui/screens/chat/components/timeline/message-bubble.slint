@@ -3,7 +3,7 @@ import { IconDisplay, IconSet } from "@lucide";
 
 import { MessageEntry } from "../../../../types.slint";
 
-import { MessagePreview } from "../../../../messages.slint";
+import { MessagePreview, ServiceLabel } from "../../../../messages.slint";
 import { ReplyQuote } from "./reply-quote.slint";
 import { ServiceMessage } from "./messages/service-message.slint";
 import { UnreadDivider } from "./unread-divider.slint";
@@ -16,11 +16,12 @@ import { SenderLine } from "./sender-line.slint";
 import { MessageMeta } from "./message-meta.slint";
 import { ContextPress } from "../context-press.slint";
 import { Avatar } from "../../../../components/avatar.slint";
-import { ClickArea } from "../../../../components/a11y.slint";
+import { ClickArea, FocusRing, ListItemArea } from "../../../../components/a11y.slint";
 import { StateLayer } from "../../../../components/state-layer.slint";
 import {
     AnchorRect,
     Composer,
+    FocusKeeper,
     FocusRegion,
     MessageMenu,
     ReactionPopup,
@@ -28,11 +29,110 @@ import {
     ReplySwipe,
     Shell,
     TextSelection,
+    TimelineCursor,
 } from "../../../../local.slint";
 import { Actions } from "../../../../actions.slint";
 import { RoomView } from "../../../../views.slint";
 import { AppStyle, Glyph, IconSize, Metrics, Motion, Opacity, Radius, Size, Space, Stroke } from "../../../../theme.slint";
 import { MessageKind, SendState } from "../../../../enums.slint";
+
+global RowWords {
+    public pure function describe(msg: MessageEntry) -> string {
+        let who = msg.is-own ? @tr("You") : msg.sender;
+        let what = MessagePreview.label(msg.preview-kind, msg.preview-body);
+        let said = msg.message-type == MessageKind.service
+            ? ServiceLabel.explained(msg.service-kind, msg.sender, msg.service-target, msg.service-reason)
+            : msg.timestamp == "" ? @tr("{}: {}", who, what) : @tr("{}, {}: {}", who, msg.timestamp, what);
+        let marked = msg.mentions-you ? @tr("{}, mentions you", said) : said;
+        let edited = msg.edited ? @tr("{}, edited", marked) : marked;
+        let reacted = msg.reactions.length == 0
+            ? edited
+            : @tr("{}, {}", edited, @tr("{n} reaction" | "{n} reactions" % msg.reactions.length));
+        if msg.send-state == SendState.failed {
+            return @tr("{}, not sent", reacted);
+        }
+        if msg.send-state != SendState.sent {
+            return @tr("{}, sending", reacted);
+        }
+        return reacted;
+    }
+}
+
+component TimelineRow inherits ListItemArea {
+    in property <MessageEntry> msg;
+    in property <bool> cursor-waits;
+
+    property <bool> inside: TimelineCursor.inside != "" && TimelineCursor.inside == root.msg.unique-id;
+    property <bool> entering;
+
+    tab-stop: false;
+    shows-pointer: false;
+    region: FocusRegion.timeline;
+    region-row: true;
+    place: root.msg.unique-id;
+    label: RowWords.describe(root.msg);
+    accessible-item-selectable: false;
+
+    init => {
+        if root.cursor && root.cursor-waits {
+            after-layout.running = true;
+        }
+    }
+
+    after-layout := Timer {
+        interval: 1ms;
+        running: false;
+        triggered => {
+            self.running = false;
+            if root.cursor && root.cursor-waits {
+                root.take-focus();
+            }
+        }
+    }
+
+    clicked => {
+        if self.has-focus {
+            TimelineCursor.enter(root.msg.unique-id);
+            root.entering = true;
+            inside-start.focus();
+            FocusKeeper.step(true);
+            root.entering = false;
+        }
+    }
+
+    inside-start := FocusScope {
+        width: 0;
+        height: 0;
+        enabled: root.inside;
+        focus-on-click: false;
+        focus-gained(reason) => {
+            if reason == FocusReason.tab-navigation && !root.entering {
+                TimelineCursor.leave();
+                root.take-focus();
+            }
+        }
+    }
+
+    @children
+
+    inside-end := FocusScope {
+        width: 0;
+        height: 0;
+        enabled: root.inside;
+        focus-on-click: false;
+        focus-gained(reason) => {
+            if reason != FocusReason.tab-navigation {
+                return;
+            }
+            if root.entering {
+                TimelineCursor.leave();
+                root.take-focus();
+            } else {
+                TimelineCursor.exit();
+            }
+        }
+    }
+}
 
 component BubbleReactions inherits ReactionRow {
     in property <string> event-id;
@@ -170,6 +270,11 @@ export component MessageBubble inherits VerticalLayout {
     in property <int> timeline-row;
     in property <length> composer-top;
     in property <bool> focus-lit;
+    in property <bool> cursor;
+    in property <int> cursor-asks;
+    in property <bool> cursor-waits;
+
+    callback cursor-taken();
 
     property <color> bubble-color: root.is-own
         ? AppStyle.bubble-own
@@ -244,13 +349,40 @@ export component MessageBubble inherits VerticalLayout {
             }
         }
 
-        service := ServiceMessage {
+        TimelineRow {
             msg: root.msg;
-            timeline-row: root.timeline-row;
+            index: root.timeline-row;
+            cursor: root.cursor;
+            cursor-asks: root.cursor-asks;
+            cursor-waits: root.cursor-waits;
+            cursor-taken => {
+                root.cursor-taken();
+            }
+            context-menu-requested => {
+                MessageMenu.open(
+                    {
+                        event-id: root.msg.event-id,
+                        row: root.timeline-row,
+                        x: service-row.absolute-position.x,
+                        y: service-row.absolute-position.y,
+                        width: service-row.width,
+                        height: service-row.height,
+                    },
+                    root.msg.unique-id,
+                    service-row.absolute-position.x + Space.xl,
+                    service-row.absolute-position.y + service-row.height,
+                    true);
+                return EventResult.accept;
+            }
+
+            service := ServiceMessage {
+                msg: root.msg;
+                timeline-row: root.timeline-row;
+            }
         }
     }
 
-    if !root.is-service: message-row := Rectangle {
+    if !root.is-service: message-row := TimelineRow {
         property <bool> has-composer: root.composer-top > 0px;
         property <length> row-top: self.absolute-position.y;
         property <bool> starts-above-composer: !self.has-composer
@@ -283,6 +415,26 @@ export component MessageBubble inherits VerticalLayout {
         property <AnchorRect> tracked-anchor: root.strip-mine
             ? bubble.anchor()
             : { row: -1 };
+
+        msg: root.msg;
+        index: root.timeline-row;
+        cursor: root.cursor;
+        cursor-asks: root.cursor-asks;
+        cursor-waits: root.cursor-waits;
+        rings-itself: false;
+        cursor-taken => {
+            root.cursor-taken();
+        }
+        context-menu-requested => {
+            let anchor = bubble.anchor();
+            MessageMenu.open(
+                anchor,
+                root.msg.unique-id,
+                root.is-own ? anchor.x + anchor.width - Metrics.message-menu-width : anchor.x,
+                anchor.y,
+                true);
+            return EventResult.accept;
+        }
 
         changed tracked-anchor => {
             Reactions.follow-bubble(self.tracked-anchor);
@@ -504,9 +656,19 @@ export component MessageBubble inherits VerticalLayout {
             msg: root.msg;
             bubble-hovered: message-row.bubble-hovered;
             strip-mine: root.strip-mine;
+            row-focused: message-row.has-focus;
             anchor() => {
                 return bubble.anchor();
             }
+        }
+
+        if message-row.ringed: FocusRing {
+            x: message-row.bubble-x - Metrics.ring-outset;
+            y: message-row.bubble-top - Metrics.ring-outset;
+            width: bubble.width + 2 * Metrics.ring-outset;
+            height: bubble.height + 2 * Metrics.ring-outset;
+            radius: Radius.md + Metrics.ring-outset;
+            region: FocusRegion.timeline;
         }
     }
 }
