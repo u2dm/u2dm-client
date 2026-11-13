@@ -291,7 +291,7 @@ export component CallBand inherits Rectangle {
     }
 
     background: root.lead-inset > 0 ? transparent : AppStyle.call-band;
-    accessible-role: groupbox;
+    accessible-role: region;
     accessible-label: @tr("Call in {}", CallView.active-room-name);
 
     TouchArea {

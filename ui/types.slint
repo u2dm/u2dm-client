@@ -646,3 +646,12 @@ export struct EditPollRequest {
     multiple: bool,
     hide-results: bool,
 }
+
+export struct KeyChord {
+    key: string,
+    control: bool,
+    alt: bool,
+    shift: bool,
+    meta: bool,
+    any-shift: bool,
+}

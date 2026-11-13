@@ -13,23 +13,23 @@ use u2dm_ui::{
     BodyLine, BodyPiece, CallConnectionEntry, CallDeviceEntry, CallPersonEntry, CallTileEntry,
     CallView, CallWindow, ComposerDraft, CreateRoomView, DirectoryView,
     DraftVerdict as UiDraftVerdict, EmojiEntry, EmojiRow, EmojiStore, EncryptionView, FocusKeeper,
-    IdentityAlertView, IgnoredPersonEntry, InvitePeopleView, InviteView, InviteeEntry,
+    IdentityAlertView, IgnoredPersonEntry, InvitePeopleView, InviteView, InviteeEntry, KeyChord,
     KeywordEntry, LeaveSpaceView, LogLineEntry, LoginView, LogoutView, MemberEntry, MentionWord,
     MentionsView, MessageEntry, Motion, NotificationText, PackCell, PackRow, PackTabEntry,
     PackView, PollAnswerEntry, PresenceView, ReactionEntry, ReactorAvatar, ReadersView,
     RemovalView, ReplySwipe, RoomEntry, RoomInfoView, RoomLogView, RoomMenuView, RoomPreviewView,
-    RoomView, SessionView, SettingsView, SourceView, SpaceChildEntry, SpaceEntry, SpaceIndexView,
-    SpoilerCover, TextSplice, TouchpadView, TypingView, UnsentView, UpgradeView, UserDeviceEntry,
-    UserInfoView, UserMessage as UiUserMessage, VerificationEmoji, VerificationView, VideoView,
-    WindowView,
+    RoomView, SessionView, SettingsView, Shortcuts, SourceView, SpaceChildEntry, SpaceEntry,
+    SpaceIndexView, SpoilerCover, TextSplice, TouchpadView, TypingView, UnsentView, UpgradeView,
+    UserDeviceEntry, UserInfoView, UserMessage as UiUserMessage, VerificationEmoji,
+    VerificationView, VideoView, WindowView,
 };
 #[cfg(feature = "demo")]
 use u2dm_ui::{Probe, RoomMenu, WindowTitle};
 
 use super::backend::{
     self, Models, RECENT_SPEAKERS, UiBackend, adopted_room_key, current_edited_row,
-    last_editable_row, on_main, recent_speakers, reorder_spaces, row_of_message, selected_room_key,
-    shown_room_log_text, unread_below,
+    last_editable_row, newest_message_row, on_main, recent_speakers, reorder_spaces,
+    row_of_message, selected_room_key, shown_room_log_text, unread_below,
 };
 use super::call_window::{self, WindowHooks};
 use super::decode::{
@@ -64,13 +64,14 @@ use super::schema::{
     call_person_fields, call_tile_fields, enum_props, ignored_person_fields, image_props,
     int_props, invitee_fields, keyword_fields, log_line_fields, member_row_fields, message_fields,
     model_props, pack_cell_fields, pack_row_fields, pack_tab_fields, poll_answer_fields,
-    reaction_fields, reactor_fields, room_fields, simple_callbacks, slint_enums,
+    reaction_fields, reactor_fields, room_fields, shortcut_props, simple_callbacks, slint_enums,
     space_child_fields, space_fields, string_props, user_device_fields,
 };
 use super::session::active_models;
 use super::video::{self, millis_to_duration};
 use super::{
-    about, audio, drafts, emoji, emote, list_keys, mention, motion, reduce, router, settings_search,
+    about, audio, drafts, emoji, emote, list_keys, mention, motion, reduce, router,
+    settings_search, shortcuts,
 };
 use crate::app::input::CommandSender;
 use crate::commands::effects::{Effect, VerificationActivity};
@@ -107,6 +108,7 @@ use crate::domain::settings::{
     CallLayout, ClockChoice, MotionChoice, ReceiptVisibility, SendKey, SettingFlag, Settings,
     ThemeChoice,
 };
+use crate::domain::shortcut::{KeyChord as Chord, ShortcutCommand, ShortcutTable};
 use crate::domain::sync::ConnectionStatus;
 use crate::domain::timeline::{SourceEncryption, TimelineStatus};
 use crate::domain::user_info::{DeviceTrust, IdentityTrust, RoomMembership};
@@ -320,6 +322,37 @@ fn bind_hooks(actions: &Actions<'_>, hooks: WindowHooks) {
     actions.on_show_main_window(show_main_window);
 }
 
+macro_rules! write_shortcuts {
+    ($window:ident $table:ident; $($command:ident $set:ident $get:ident $lit:literal;)*) => {
+        let shortcuts = $window.global::<Shortcuts>();
+        for command in ShortcutCommand::ALL {
+            let chord = slint_chord($table.chord(command));
+            match command {
+                $( ShortcutCommand::$command => shortcuts.$set(chord), )*
+            }
+        }
+    };
+}
+
+macro_rules! copy_shortcuts {
+    ($from:ident $to:ident; $($command:ident $set:ident $get:ident $lit:literal;)*) => {
+        let (from, to) = ($from.global::<Shortcuts>(), $to.global::<Shortcuts>());
+        $( to.$set(from.$get()); )*
+    };
+}
+
+fn slint_chord(chord: Option<Chord>) -> KeyChord {
+    let held = shortcuts::held_with(chord);
+    KeyChord {
+        key: shortcuts::key_text(chord),
+        control: held.control,
+        alt: held.alt,
+        shift: held.shift,
+        meta: held.meta,
+        any_shift: shortcuts::ignores_shift(chord),
+    }
+}
+
 impl UiProps for AppWindow {
     string_props!(impl_prop_setter set_string StringProp SharedString;);
     bool_props!(impl_prop_setter set_bool BoolProp bool;);
@@ -370,6 +403,10 @@ impl UiProps for AppWindow {
             .collect();
         self.global::<SettingsView>()
             .set_quick_reactions(string_model(keys));
+    }
+
+    fn apply_shortcuts(&self, table: &ShortcutTable) {
+        shortcut_props!(write_shortcuts self table;);
     }
 
     fn apply_emoji_model(&self, emojis: &[DomainVerificationEmoji]) {
@@ -624,6 +661,7 @@ impl UiBackend for CompiledBackend {
         mirror_bools(main, &window);
         mirror_ints(main, &window);
         mirror_enums(main, &window);
+        shortcut_props!(copy_shortcuts main window;);
         attach_mirrored_models(&window, &Self::models());
         if let Some(tx) = call_window::commands() {
             bind_simple_callbacks(&call_actions(&window), main, &tx);
@@ -720,6 +758,18 @@ impl SlintUiAdapter {
             let names: Vec<SharedString> = rows.iter().map(|row| row.name).collect();
             list_keys::row_starting_with(&names, &prefix, after)
         });
+
+        actions(win).on_room_beside(|id, rows, forward, unread| {
+            let listed: Vec<list_keys::ListedRoom<SharedString>> = rows
+                .iter()
+                .map(|row| list_keys::ListedRoom {
+                    joined: row.kind == RoomRowKind::Room.slint(),
+                    unread: list_keys::wants_reading(row.alert, row.hint, row.muted),
+                    id: row.id,
+                })
+                .collect();
+            list_keys::room_beside(&listed, &id, forward, unread)
+        });
     }
 
     fn bind_reaction_callbacks(win: &AppWindow, cmd_tx: &CommandSender) {
@@ -792,6 +842,7 @@ impl SlintUiAdapter {
         });
 
         actions(win).on_last_editable_row(last_editable_row::<CompiledBackend>);
+        actions(win).on_newest_message_row(newest_message_row::<CompiledBackend>);
         actions(win).on_row_of_message(|event_id, local_id| {
             row_of_message::<CompiledBackend>(&event_id, &local_id)
         });

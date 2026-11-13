@@ -36,6 +36,7 @@ use crate::domain::settings::quick_reactions::QuickReactions;
 use crate::domain::settings::{
     CallLayout, ClockChoice, MotionChoice, ReceiptVisibility, SendKey, ThemeChoice,
 };
+use crate::domain::shortcut::ShortcutTable;
 use crate::domain::sync::ConnectionStatus;
 use crate::domain::timeline::{SourceEncryption, TimelineStatus};
 use crate::domain::user_info::{IdentityTrust, RoomMembership};
@@ -133,6 +134,7 @@ pub trait UiProps {
     fn apply_room_info_topic(&self, topic: StyledText);
     fn apply_login_messages(&self, messages: &[UserMessage]);
     fn apply_quick_reactions(&self, reactions: &QuickReactions);
+    fn apply_shortcuts(&self, table: &ShortcutTable);
     fn apply_emoji_model(&self, emojis: &[DomainVerificationEmoji]);
     fn clear_emoji_model(&self);
     fn clear_text_inputs(&self);

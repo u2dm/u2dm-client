@@ -42,6 +42,7 @@ pub(crate) mod schema;
 mod sending;
 mod session;
 mod settings_search;
+mod shortcuts;
 mod splice_model;
 mod spoilers;
 mod swipe;

@@ -4,6 +4,7 @@ import { Actions } from "./actions.slint";
 import { EditedMessage, MessageEntry, ReactionEntry, ReplyDraft } from "./types.slint";
 import { MessagePreview } from "./messages.slint";
 import { Metrics } from "./theme.slint";
+import { Shortcuts } from "./shortcuts.slint";
 
 export struct AnchorRect {
     event-id: string,
@@ -827,9 +828,16 @@ export global Subspaces {
 export global RoomSearch {
     in-out property <string> query;
     in-out property <string> opened-room;
+    in-out property <bool> sought;
+    out property <int> seeks;
 
     public pure function opened(room-id: string) -> bool {
         return root.opened-room != "" && root.opened-room == room-id;
+    }
+
+    public function seek() {
+        root.sought = true;
+        root.seeks += 1;
     }
 
     public function clear() {
@@ -841,7 +849,7 @@ export global RoomSearch {
     }
 }
 
-export enum FocusRegion { none, login, rail, rooms, header, timeline, composer, pane, call, space-index, screen }
+export enum FocusRegion { none, login, rail, rooms, header, band, timeline, composer, dock, pane, space-index, screen }
 
 export global FocusHome {
     out property <FocusRegion> region: FocusRegion.none;
@@ -870,8 +878,12 @@ export global FocusHome {
     }
 
     public function ask-anew(region: FocusRegion) {
+        root.ask-at(region, "");
+    }
+
+    public function ask-at(region: FocusRegion, place: string) {
         root.asked = region;
-        root.asked-place = "";
+        root.asked-place = place;
         root.asks += 1;
     }
 
@@ -879,6 +891,46 @@ export global FocusHome {
         root.region = FocusRegion.none;
         root.place = "";
         root.row = false;
+    }
+}
+
+export enum ScreenKey { none, next-region, previous-region, previous-room, next-room, previous-unread-room, next-unread-room }
+
+export global ScreenKeys {
+    out property <ScreenKey> pressed: ScreenKey.none;
+    out property <FocusRegion> from: FocusRegion.none;
+    out property <int> presses;
+
+    public pure function of(event: KeyEvent) -> ScreenKey {
+        if Shortcuts.matches(event, Shortcuts.next-region) {
+            return ScreenKey.next-region;
+        }
+        if Shortcuts.matches(event, Shortcuts.previous-region) {
+            return ScreenKey.previous-region;
+        }
+        if Shortcuts.matches(event, Shortcuts.previous-room) {
+            return ScreenKey.previous-room;
+        }
+        if Shortcuts.matches(event, Shortcuts.next-room) {
+            return ScreenKey.next-room;
+        }
+        if Shortcuts.matches(event, Shortcuts.previous-unread-room) {
+            return ScreenKey.previous-unread-room;
+        }
+        if Shortcuts.matches(event, Shortcuts.next-unread-room) {
+            return ScreenKey.next-unread-room;
+        }
+        return ScreenKey.none;
+    }
+
+    public pure function repeats(key: ScreenKey) -> bool {
+        return key == ScreenKey.next-region || key == ScreenKey.previous-region;
+    }
+
+    public function press(key: ScreenKey, from: FocusRegion) {
+        root.pressed = key;
+        root.from = from;
+        root.presses += 1;
     }
 }
 
@@ -1002,6 +1054,7 @@ export global LocalState {
         CallPanel.forget();
         RoomSearch.query = "";
         RoomSearch.opened-room = "";
+        RoomSearch.sought = false;
         Subspaces.forget();
         TextSelection.clear();
         Reactions.close();

@@ -7,7 +7,7 @@ import { AppStyle, Metrics, Space } from "./theme.slint";
 import { CallView } from "./views.slint";
 import { CallAnnouncer } from "./screens/chat/components/call/call-announcer.slint";
 import { CallBand } from "./screens/chat/components/call/call-band.slint";
-import { CallKey, CallKeys } from "./screens/chat/components/call/call-controls.slint";
+import { CallKeys } from "./screens/chat/components/call/call-controls.slint";
 import { CallDetailsDialog } from "./screens/chat/components/call/call-details.slint";
 import { CallDock } from "./screens/chat/components/call/call-dock.slint";
 import { CallDockMenus } from "./screens/chat/components/call/call-dock-menus.slint";
@@ -23,9 +23,9 @@ component CallContent inherits FocusScope {
     focus-on-click: false;
     focus-on-tab-navigation: false;
 
-    key-pressed(event) => {
+    capture-key-pressed(event) => {
         let key = CallKeys.of(event);
-        if key == CallKey.none || key == CallKey.chat || Shell.modal-over-nav || !CallView.active {
+        if !CallKeys.toggles(key) || Shell.modal-over-nav || !CallView.active {
             return reject;
         }
         if !event.repeat {

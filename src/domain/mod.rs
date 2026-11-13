@@ -90,6 +90,7 @@ pub mod room_state;
 pub mod server_rules;
 pub mod sessions;
 pub mod settings;
+pub mod shortcut;
 pub mod space_index;
 pub mod sync;
 pub mod timeline;

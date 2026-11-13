@@ -206,6 +206,10 @@ component SpaceIndexHeader inherits Rectangle {
     height: Metrics.header-row;
     background: AppStyle.canvas;
 
+    public function focus-close() {
+        close.take-focus();
+    }
+
     Rectangle {
         y: parent.height - self.height;
         height: Stroke.hairline;
@@ -285,18 +289,25 @@ export component SpaceIndexPane inherits Rectangle {
     }
 
     changed focus-asks => {
-        if FocusHome.asked == FocusRegion.space-index && FocusHome.asked-place != ""
-            && FocusHome.asked-place == child-keys.cursor-key {
+        if FocusHome.asked != FocusRegion.space-index {
+            return;
+        }
+        let place = FocusHome.asked-place;
+        if place != "" && place == child-keys.cursor-key {
             child-keys.focus-cursor();
+        } else if place == "" && root.has-rows {
+            child-keys.focus-cursor();
+        } else if place == "" || place == "close" {
+            header.focus-close();
         }
     }
 
     background: AppStyle.canvas;
-    accessible-role: AccessibleRole.groupbox;
+    accessible-role: main;
     accessible-label: root.title(SpaceIndexView.space-name);
 
     VerticalLayout {
-        SpaceIndexHeader {
+        header := SpaceIndexHeader {
             title: root.title(SpaceIndexView.space-name);
             above-modal: root.above-modal;
         }

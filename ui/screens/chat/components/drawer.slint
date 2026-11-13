@@ -10,11 +10,13 @@ import { ConnectionState } from "../../../enums.slint";
 import { EncryptionView, SessionView } from "../../../views.slint";
 import { Actions } from "../../../actions.slint";
 import { Overlays } from "../../../local.slint";
+import { Shortcuts } from "../../../shortcuts.slint";
 
 component DrawerRow inherits Rectangle {
     in property <Icon> icon;
     in property <string> label;
     in property <string> description: root.label;
+    in property <string> keys;
     in property <color> tint: Palette.foreground;
     in property <color> icon-tint: root.tint;
 
@@ -31,6 +33,7 @@ component DrawerRow inherits Rectangle {
     touch := ClickArea {
         above-modal: true;
         label: root.description;
+        accessible-description: root.keys == "" ? "" : @tr("Shortcut: {}", root.keys);
         ring-radius: 0;
         clicked => {
             root.clicked();
@@ -304,6 +307,7 @@ export component Drawer inherits Rectangle {
                     width: 100%;
                     icon: IconSet.Settings;
                     label: @tr("Settings");
+                    keys: Shortcuts.label(Shortcuts.open-settings);
                     clicked => {
                         root.dismiss();
                         Actions.open-settings();

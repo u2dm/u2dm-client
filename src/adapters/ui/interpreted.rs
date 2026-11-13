@@ -11,7 +11,7 @@ use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::Arc;
 
-use names::{callback, focus_keeper, notification_text, window_props};
+use names::{callback, focus_keeper, notification_text, shortcuts, window_props};
 use slint::ModelRc;
 use slint_interpreter::{
     Compiler, ComponentDefinition, ComponentHandle, ComponentInstance, SharedString, Value,
@@ -164,6 +164,7 @@ impl UiBackend for InterpretedBackend {
         mirror_bools(main, &window);
         mirror_ints(main, &window);
         mirror_enums(main, &window);
+        copy_shortcuts(main, &window);
         attach_mirrored_models(&window, &Self::models());
         if let Some(tx) = call_window::commands() {
             let bound = bind_simple_callbacks(&window, main, &tx);
@@ -244,6 +245,18 @@ impl UiBackend for InterpretedBackend {
                 );
                 SharedString::new()
             }
+        }
+    }
+}
+
+fn copy_shortcuts(main: &ComponentInstance, window: &ComponentInstance) {
+    for name in props::shortcut_names() {
+        match main.get_global_property(shortcuts::NAME, name) {
+            Ok(chord) => set_global(window, shortcuts::NAME, name, chord),
+            Err(e) => tracing::warn!(
+                "failed to read property '{}.{name}': {e:?}",
+                shortcuts::NAME
+            ),
         }
     }
 }

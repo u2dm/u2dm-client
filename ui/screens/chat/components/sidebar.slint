@@ -11,7 +11,7 @@ import { CallWords, MessagePreview, ServiceLabel } from "../../../messages.slint
 import { HeaderTitle } from "./header-title.slint";
 import { RowTitle } from "./row-title.slint";
 import { Avatar } from "../../../components/avatar.slint";
-import { ClickArea, Interaction, ListItemArea, RovingList } from "../../../components/a11y.slint";
+import { ClickArea, Interaction, ListItemArea, RegionScope, RovingList } from "../../../components/a11y.slint";
 import { UnreadDot } from "./unread-dot.slint";
 import { SpaceBadge } from "./space-badge.slint";
 import { RoomEntry } from "../../../types.slint";
@@ -25,6 +25,7 @@ import { InviteKind, RemovalKind, RoomCallMark, RoomRowKind, RoomScope, ServiceK
 import { DirectoryView, SpaceIndexView } from "../../../views.slint";
 import { Actions } from "../../../actions.slint";
 import { FocusHome, FocusRegion, RoomMenu, RoomMenuOrigin, RoomSearch, Subspaces } from "../../../local.slint";
+import { Shortcuts } from "../../../shortcuts.slint";
 
 component SidebarSearch inherits FocusScope {
     in property <bool> above-modal: false;
@@ -33,10 +34,18 @@ component SidebarSearch inherits FocusScope {
     callback accepted();
 
     property <int> focus-asks: FocusHome.asks;
+    property <int> seeks: RoomSearch.seeks;
+    property <bool> reachable: root.visible && Interaction.actionable(true, root.above-modal);
 
     height: Size.md;
     focus-on-click: false;
     focus-on-tab-navigation: false;
+    accessible-role: search;
+    accessible-label: @tr("Room search");
+
+    init => {
+        root.take-seek();
+    }
 
     changed field-focused => {
         if self.field-focused {
@@ -49,6 +58,21 @@ component SidebarSearch inherits FocusScope {
             && (FocusHome.asked-place == "search"
                 || (FocusHome.asked-place == "" && DirectoryView.selected-room-id == "")) {
             field.focus();
+        }
+    }
+
+    changed seeks => {
+        root.take-seek();
+    }
+
+    changed reachable => {
+        root.take-seek();
+    }
+
+    function take-seek() {
+        if RoomSearch.sought && root.reachable {
+            RoomSearch.sought = false;
+            field.seek();
         }
     }
 
@@ -68,6 +92,7 @@ component SidebarSearch inherits FocusScope {
         label: DirectoryView.room-scope == RoomScope.direct
             ? @tr("Search direct messages")
             : @tr("Search rooms and spaces");
+        description: Shortcuts.find-room.key == "" ? "" : @tr("Shortcut: {}", Shortcuts.label(Shortcuts.find-room));
         query <=> RoomSearch.query;
         above-modal: root.above-modal;
         enabled: Interaction.actionable(true, root.above-modal);
@@ -731,6 +756,7 @@ component RoomColumnHeader inherits Rectangle {
     in property <bool> collapsed;
     in property <bool> above-modal;
     out property <bool> search-focused: search.visible && search.field-focused;
+    out property <bool> search-shown: search.visible;
 
     callback search-accepted();
 
@@ -896,6 +922,8 @@ export component Sidebar inherits Rectangle {
     property <string> typed;
 
     background: AppStyle.nav;
+    accessible-role: navigation;
+    accessible-label: @tr("Spaces and rooms");
 
     pure function position(row: int) -> int {
         return row
@@ -932,6 +960,10 @@ export component Sidebar inherits Rectangle {
         return EventResult.accept;
     }
 
+    init => {
+        room-keys.cursor-key = root.selected-room;
+    }
+
     changed selected-room => {
         if root.selected-room != "" {
             room-keys.cursor-key = root.selected-room;
@@ -942,9 +974,12 @@ export component Sidebar inherits Rectangle {
         if FocusHome.asked != FocusRegion.rooms {
             return;
         }
-        let place = FocusHome.asked-place != "" ? FocusHome.asked-place : root.selected-room;
+        let place = FocusHome.asked-place;
         if place != "" && Actions.room-row-of(place, DirectoryView.rooms) >= 0 {
             room-keys.cursor-key = place;
+            room-keys.focus-cursor();
+        } else if place == "" && DirectoryView.rooms.length > 0
+            && (root.selected-room != "" || !header.search-shown) {
             room-keys.focus-cursor();
         }
     }
@@ -997,18 +1032,28 @@ export component Sidebar inherits Rectangle {
 
     HorizontalLayout {
 
-        rail := SpaceRail {
+        RegionScope {
             width: root.rail-width;
-            above-modal: root.above-modal;
+            region: FocusRegion.rail;
+
+            SpaceRail {
+                above-modal: root.above-modal;
+            }
         }
 
-        if Subspaces.in-column(root.collapsed): SubspaceRail {
+        if Subspaces.in-column(root.collapsed): RegionScope {
             width: root.subrail-width;
-            above-modal: root.above-modal;
-            offers-tabs: !root.collapsed;
+            region: FocusRegion.rail;
+
+            SubspaceRail {
+                above-modal: root.above-modal;
+                offers-tabs: !root.collapsed;
+            }
         }
 
-        room-column := Rectangle {
+        room-column := RegionScope {
+            region: FocusRegion.rooms;
+
             property <length> selected-top: list-area.y + room-list.content-y
                 + (DirectoryView.selected-room-row - DirectoryView.selected-room-headings) * root.row-height
                 + DirectoryView.selected-room-headings * root.heading-height;

@@ -4,8 +4,8 @@ use slint::{Rgb8Pixel, SharedPixelBuffer};
 use slint_interpreter::{ComponentInstance, SharedString, Value};
 
 use super::names::{
-    login_view, room_info_view, settings_view, user_message, verification_emoji, verification_view,
-    video_view, window_props,
+    key_chord, login_view, room_info_view, settings_view, shortcuts, user_message,
+    verification_emoji, verification_view, video_view, window_props,
 };
 #[cfg(feature = "demo")]
 use super::values::variant_of;
@@ -19,7 +19,10 @@ use crate::adapters::ui::present::{IdentityAlertKind, ServiceKind, VerifyStep};
 #[cfg(feature = "demo")]
 use crate::adapters::ui::props::EnumProp;
 use crate::adapters::ui::props::{BoolProp, ImageProp, IntProp, StringProp, UiProps};
-use crate::adapters::ui::schema::{bool_props, enum_props, image_props, int_props, string_props};
+use crate::adapters::ui::schema::{
+    bool_props, enum_props, image_props, int_props, shortcut_props, string_props,
+};
+use crate::adapters::ui::shortcuts::{held_with, ignores_shift, key_text};
 use crate::commands::effects::VerificationActivity;
 use crate::commands::messages::{UserMessage, UserMessageKind};
 use crate::commands::view::{
@@ -47,6 +50,7 @@ use crate::domain::settings::quick_reactions::QuickReactions;
 use crate::domain::settings::{
     CallLayout, ClockChoice, MotionChoice, ReceiptVisibility, SendKey, ThemeChoice,
 };
+use crate::domain::shortcut::{KeyChord, ShortcutCommand, ShortcutTable};
 use crate::domain::sync::ConnectionStatus;
 use crate::domain::timeline::{SourceEncryption, TimelineStatus};
 use crate::domain::user_info::{IdentityTrust, RoomMembership};
@@ -226,6 +230,17 @@ impl UiProps for ComponentInstance {
         );
     }
 
+    fn apply_shortcuts(&self, table: &ShortcutTable) {
+        for command in ShortcutCommand::ALL {
+            set_global(
+                self,
+                shortcuts::NAME,
+                shortcut_name(command),
+                chord_value(table.chord(command)),
+            );
+        }
+    }
+
     fn apply_emoji_model(&self, emojis: &[DomainVerificationEmoji]) {
         let entries: Vec<Value> = emojis
             .iter()
@@ -258,4 +273,32 @@ impl UiProps for ComponentInstance {
         set_prop(self, window_props::INPUT_USERNAME, empty.clone());
         set_prop(self, window_props::INPUT_MESSAGE, empty);
     }
+}
+
+macro_rules! name_shortcuts {
+    ($($command:ident $set:ident $get:ident $lit:literal;)*) => {
+        fn shortcut_name(command: ShortcutCommand) -> &'static str {
+            match command {
+                $( ShortcutCommand::$command => $lit, )*
+            }
+        }
+    };
+}
+
+shortcut_props!(name_shortcuts);
+
+pub(super) fn shortcut_names() -> impl Iterator<Item = &'static str> {
+    ShortcutCommand::ALL.into_iter().map(shortcut_name)
+}
+
+fn chord_value(chord: Option<KeyChord>) -> Value {
+    let held = held_with(chord);
+    struct_value([
+        (key_chord::KEY, text_value(key_text(chord))),
+        (key_chord::CONTROL, Value::Bool(held.control)),
+        (key_chord::ALT, Value::Bool(held.alt)),
+        (key_chord::SHIFT, Value::Bool(held.shift)),
+        (key_chord::META, Value::Bool(held.meta)),
+        (key_chord::ANY_SHIFT, Value::Bool(ignores_shift(chord))),
+    ])
 }

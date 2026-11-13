@@ -18,12 +18,14 @@ use crate::domain::settings::{
     Alerts, Appearance, CallPreferences, MediaPreferences, Messaging, ReactionPreferences,
     RowFilter, Settings,
 };
+use crate::domain::shortcut::ShortcutTable;
 use crate::util::{format_bytes, saturating_i32};
 
 pub(in crate::adapters::ui) fn seed_settings<W: UiProps>(w: &W, values: &Settings) {
     use_clock(values.appearance.clock);
     apply_values(w, values);
     w.apply_quick_reactions(&values.reactions.quick);
+    w.apply_shortcuts(&ShortcutTable::default());
 }
 
 pub(super) fn apply_settings<W: UiProps + ComponentHandle>(

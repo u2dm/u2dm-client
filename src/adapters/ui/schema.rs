@@ -929,6 +929,22 @@ macro_rules! enum_props {
 }
 pub(crate) use enum_props;
 
+macro_rules! shortcut_props {
+    ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
+        OpenSettings       set_open_settings        get_open_settings        "open-settings";
+        FindRoom           set_find_room            get_find_room            "find-room";
+        NextRegion         set_next_region          get_next_region          "next-region";
+        PreviousRegion     set_previous_region      get_previous_region      "previous-region";
+        PreviousRoom       set_previous_room        get_previous_room        "previous-room";
+        NextRoom           set_next_room            get_next_room            "next-room";
+        PreviousUnreadRoom set_previous_unread_room get_previous_unread_room "previous-unread-room";
+        NextUnreadRoom     set_next_unread_room     get_next_unread_room     "next-unread-room";
+        ToggleMicrophone   set_toggle_microphone    get_toggle_microphone    "toggle-microphone";
+        ToggleCamera       set_toggle_camera        get_toggle_camera        "toggle-camera";
+    } };
+}
+pub(crate) use shortcut_props;
+
 macro_rules! model_props {
     ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
         timeline Message SpliceModel RoomView "RoomView" "timeline" set_timeline;

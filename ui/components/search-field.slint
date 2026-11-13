@@ -8,6 +8,7 @@ import { IconButton } from "./button.slint";
 export component SearchField inherits Rectangle {
     in property <string> placeholder;
     in property <string> label: root.placeholder;
+    in property <string> description;
     in property <bool> shows-icon: true;
     in-out property <string> query: "";
     in property <bool> above-modal: false;
@@ -21,6 +22,11 @@ export component SearchField inherits Rectangle {
     background: AppStyle.control;
 
     forward-focus: input;
+
+    public function seek() {
+        input.focus();
+        input.select-all();
+    }
 
     changed has-focus => {
         if !self.has-focus {
@@ -55,6 +61,7 @@ export component SearchField inherits Rectangle {
                 vertical-alignment: center;
                 single-line: true;
                 accessible-label: root.label;
+                accessible-description: root.description;
                 accessible-placeholder-text: root.placeholder;
                 edited => {
                     root.edited(self.text);

@@ -12,11 +12,13 @@ import { CallDockMenus } from "./components/call/call-dock-menus.slint";
 import { ResizeEdge, ResizeHandle } from "../../components/resize-handle.slint";
 import { RoomInfoPlacement, RoomScope, UserMessageKind } from "../../enums.slint";
 import { UserMessages } from "../../messages.slint";
-import { AppStyle, IconSize, Metrics, Radius, Size, Space } from "../../theme.slint";
+import { AppStyle, IconSize, Metrics, Motion, Radius, Size, Space } from "../../theme.slint";
 import { IconButton } from "../../components/button.slint";
 import { CallView, DirectoryView, RoomInfoView, RoomView, SpaceIndexView, WindowView } from "../../views.slint";
 import { Actions } from "../../actions.slint";
-import { CallPanel, FocusHome, FocusKeeper, FocusRegion, LocalState, MessageMenu, Overlays, RoomSearch, SettingsEntry, Shell, Subspaces } from "../../local.slint";
+import { CallPanel, FocusHome, FocusKeeper, FocusRegion, LocalState, MessageMenu, Overlays, RoomMenu, RoomSearch, ScreenKey, ScreenKeys, SettingsEntry, Shell, Subspaces } from "../../local.slint";
+import { Announcer, RegionScope } from "../../components/a11y.slint";
+import { Shortcuts } from "../../shortcuts.slint";
 
 component Toast inherits Rectangle {
     property <bool> is-file-saved: RoomView.toast-message == UserMessageKind.file-saved;
@@ -119,37 +121,27 @@ export component ChatScreen inherits FocusScope {
     focus-on-click: false;
     focus-on-tab-navigation: false;
 
-    pure function opens-settings(event: KeyEvent) -> bool {
-        return event.text == ","
-            && event.modifiers.control
-            && !event.modifiers.shift
-            && !event.modifiers.alt
-            && !event.modifiers.meta;
-    }
-
-    key-pressed(event) => {
-        if root.opens-settings(event) {
+    capture-key-pressed(event) => {
+        if Shortcuts.matches(event, Shortcuts.open-settings) {
             if Shell.modal-over-nav || event.repeat {
                 return reject;
             }
-            LocalState.close-popovers();
-            MessageMenu.close();
+            root.close-popups();
             SettingsEntry.by-keys = true;
             Actions.open-settings();
             return accept;
         }
-        let key = CallKeys.of(event);
-        if key == CallKey.none || Shell.modal-over-nav {
-            return reject;
-        }
-        if key == CallKey.chat {
-            if !Shell.background-reachable || CallPanel.menu-open || CallPanel.devices-open || CallPanel.reactions-open
-                || CallPanel.more-open || CallPanel.people-open {
+        if Shortcuts.matches(event, Shortcuts.find-room) {
+            if Shell.modal-over-nav {
                 return reject;
             }
-            return timeline.show-call-chat() ? EventResult.accept : EventResult.reject;
+            if !event.repeat {
+                root.find-room();
+            }
+            return accept;
         }
-        if !CallView.active {
+        let key = CallKeys.of(event);
+        if !CallKeys.toggles(key) || Shell.modal-over-nav || !CallView.active {
             return reject;
         }
         if !event.repeat {
@@ -159,6 +151,219 @@ export component ChatScreen inherits FocusScope {
             CallKeys.press(key);
         }
         return accept;
+    }
+
+    key-pressed(event) => {
+        let screen-key = ScreenKeys.of(event);
+        if screen-key != ScreenKey.none {
+            if !event.repeat || ScreenKeys.repeats(screen-key) {
+                root.run-screen-key(screen-key, FocusRegion.none);
+            }
+            return accept;
+        }
+        if CallKeys.of(event) != CallKey.chat || Shell.modal-over-nav {
+            return reject;
+        }
+        if !Shell.background-reachable || CallPanel.menu-open || CallPanel.devices-open || CallPanel.reactions-open
+            || CallPanel.more-open || CallPanel.people-open {
+            return reject;
+        }
+        return timeline.show-call-chat() ? EventResult.accept : EventResult.reject;
+    }
+
+    function close-popups() {
+        LocalState.close-popovers();
+        MessageMenu.close();
+        RoomMenu.close();
+    }
+
+    function find-room() {
+        root.close-popups();
+        if root.compact && SpaceIndexView.visible {
+            Actions.close-space-index();
+        }
+        if root.in-space {
+            Actions.select-space("");
+        }
+        if root.compact && root.has-room {
+            Shell.nav-open = true;
+        }
+        if !root.compact && root.nav-collapsed {
+            root.sidebar-width = Metrics.sidebar-default;
+        }
+        RoomSearch.seek();
+        seek-wait.running = true;
+        seek-wait.restart();
+    }
+
+    seek-wait := Timer {
+        interval: Motion.focus-wait;
+        running: false;
+        triggered => {
+            self.running = false;
+            RoomSearch.sought = false;
+        }
+    }
+
+    function run-screen-key(key: ScreenKey, from: FocusRegion) {
+        if Shell.modal-over-nav {
+            return;
+        }
+        if key == ScreenKey.next-region || key == ScreenKey.previous-region {
+            if Overlays.top == 0 {
+                root.cycle(from, key == ScreenKey.next-region);
+            }
+            return;
+        }
+        root.switch-room(
+            from,
+            key == ScreenKey.next-room || key == ScreenKey.next-unread-room,
+            key == ScreenKey.previous-unread-room || key == ScreenKey.next-unread-room);
+    }
+
+    function switch-room(from: FocusRegion, forward: bool, unread: bool) {
+        let row = Actions.room-beside(DirectoryView.selected-room-id, DirectoryView.rooms, forward, unread);
+        if row < 0 {
+            if unread {
+                room-news.say(@tr("No unread rooms"));
+            }
+            return;
+        }
+        root.close-popups();
+        if from == FocusRegion.timeline {
+            FocusHome.ask-anew(FocusRegion.composer);
+        }
+        if from == FocusRegion.space-index {
+            FocusHome.forget();
+        }
+        Actions.select-room(DirectoryView.rooms[row].id);
+        if from == FocusRegion.rooms {
+            FocusHome.ask-at(FocusRegion.rooms, DirectoryView.rooms[row].id);
+        }
+        if from == FocusRegion.pane {
+            FocusHome.ask-anew(FocusRegion.pane);
+        }
+        room-news.say(DirectoryView.rooms[row].name);
+    }
+
+    property <int> region-count: 9;
+
+    pure function region-at(slot: int) -> FocusRegion {
+        if slot == 0 {
+            return FocusRegion.rail;
+        }
+        if slot == 1 {
+            return FocusRegion.rooms;
+        }
+        if slot == 2 {
+            return FocusRegion.space-index;
+        }
+        if slot == 3 {
+            return FocusRegion.header;
+        }
+        if slot == 4 {
+            return FocusRegion.band;
+        }
+        if slot == 5 {
+            return FocusRegion.timeline;
+        }
+        if slot == 6 {
+            return FocusRegion.composer;
+        }
+        if slot == 7 {
+            return FocusRegion.dock;
+        }
+        if slot == 8 {
+            return FocusRegion.pane;
+        }
+        return FocusRegion.none;
+    }
+
+    pure function slot-of(region: FocusRegion) -> int {
+        if region == FocusRegion.rail {
+            return 0;
+        }
+        if region == FocusRegion.rooms {
+            return 1;
+        }
+        if region == FocusRegion.space-index {
+            return 2;
+        }
+        if region == FocusRegion.header {
+            return 3;
+        }
+        if region == FocusRegion.band {
+            return 4;
+        }
+        if region == FocusRegion.timeline {
+            return 5;
+        }
+        if region == FocusRegion.composer {
+            return 6;
+        }
+        if region == FocusRegion.dock {
+            return 7;
+        }
+        if region == FocusRegion.pane {
+            return 8;
+        }
+        return -1;
+    }
+
+    pure function present(region: FocusRegion) -> bool {
+        if region == FocusRegion.rail || region == FocusRegion.rooms {
+            return !root.compact || root.shows-room-list;
+        }
+        if region == FocusRegion.space-index {
+            return SpaceIndexView.visible;
+        }
+        if region == FocusRegion.dock {
+            return root.shows-dock;
+        }
+        if region == FocusRegion.pane {
+            return root.room-info-pane-shown;
+        }
+        if !root.has-room || SpaceIndexView.visible || root.shows-room-list {
+            return false;
+        }
+        if region == FocusRegion.header {
+            return !timeline.call-owns-header;
+        }
+        if region == FocusRegion.band {
+            return timeline.shows-call-media;
+        }
+        if region == FocusRegion.timeline {
+            return !timeline.call-covers-timeline && RoomView.timeline.length > 0;
+        }
+        if region == FocusRegion.composer {
+            return !timeline.call-covers-timeline && RoomView.may-send-messages;
+        }
+        return false;
+    }
+
+    pure function region-beside(slot: int, forward: bool, by: int) -> FocusRegion {
+        return root.region-at(mod(slot + (forward ? by : -by) + 2 * root.region-count, root.region-count));
+    }
+
+    pure function next-present(slot: int, forward: bool) -> FocusRegion {
+        return root.present(root.region-beside(slot, forward, 1)) ? root.region-beside(slot, forward, 1)
+            : root.present(root.region-beside(slot, forward, 2)) ? root.region-beside(slot, forward, 2)
+            : root.present(root.region-beside(slot, forward, 3)) ? root.region-beside(slot, forward, 3)
+            : root.present(root.region-beside(slot, forward, 4)) ? root.region-beside(slot, forward, 4)
+            : root.present(root.region-beside(slot, forward, 5)) ? root.region-beside(slot, forward, 5)
+            : root.present(root.region-beside(slot, forward, 6)) ? root.region-beside(slot, forward, 6)
+            : root.present(root.region-beside(slot, forward, 7)) ? root.region-beside(slot, forward, 7)
+            : root.present(root.region-beside(slot, forward, 8)) ? root.region-beside(slot, forward, 8)
+            : root.present(root.region-beside(slot, forward, 9)) ? root.region-beside(slot, forward, 9)
+            : FocusRegion.none;
+    }
+
+    function cycle(from: FocusRegion, forward: bool) {
+        let slot = root.slot-of(from);
+        let target = root.next-present(slot >= 0 ? slot : (forward ? -1 : root.region-count), forward);
+        if target != FocusRegion.none && target != from {
+            FocusHome.ask-anew(target);
+        }
     }
 
     init => {
@@ -188,10 +393,19 @@ export component ChatScreen inherits FocusScope {
     property <int> overlay-top: Overlays.top;
     property <int> shown-overlay-top;
 
+    property <int> screen-presses: ScreenKeys.presses;
+
     changed focus-asks => {
         if FocusHome.asked == FocusRegion.screen {
             root.focus();
         }
+        if FocusHome.asked == FocusRegion.dock && root.shows-dock {
+            dock.focus-first();
+        }
+    }
+
+    changed screen-presses => {
+        root.run-screen-key(ScreenKeys.pressed, ScreenKeys.from);
     }
 
     changed overlay-top => {
@@ -362,12 +576,16 @@ export component ChatScreen inherits FocusScope {
         }
     }
 
-    if SpaceIndexView.visible: SpaceIndexPane {
+    if SpaceIndexView.visible: RegionScope {
         x: root.timeline-x;
         y: 0;
         width: root.timeline-width;
         height: root.height - root.dock-height;
-        above-modal: Shell.nav-on-top;
+        region: FocusRegion.space-index;
+
+        SpaceIndexPane {
+            above-modal: Shell.nav-on-top;
+        }
     }
 
     if !root.compact: ResizeHandle {
@@ -409,16 +627,21 @@ export component ChatScreen inherits FocusScope {
         }
     }
 
-    dock := CallDock {
+    RegionScope {
         x: root.timeline-x;
         y: root.height - self.height;
         width: root.timeline-width;
+        height: dock.height;
         visible: root.shows-dock;
-        above-modal: Shell.nav-on-top;
-        stage-shown: root.call-stage-on-screen || WindowView.call-windowed;
-        chat-shown: root.call-chat-on-screen;
-        returned => {
-            timeline.focus-composer();
+        region: FocusRegion.dock;
+
+        dock := CallDock {
+            above-modal: Shell.nav-on-top;
+            stage-shown: root.call-stage-on-screen || WindowView.call-windowed;
+            chat-shown: root.call-chat-on-screen;
+            returned => {
+                timeline.focus-composer();
+            }
         }
     }
 
@@ -476,4 +699,6 @@ export component ChatScreen inherits FocusScope {
     }
 
     announcer := CallAnnouncer { }
+
+    room-news := Announcer { }
 }

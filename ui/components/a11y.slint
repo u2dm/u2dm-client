@@ -1,4 +1,4 @@
-import { FocusHome, FocusKeeper, FocusRegion, Shell } from "../local.slint";
+import { FocusHome, FocusKeeper, FocusRegion, ScreenKey, ScreenKeys, Shell } from "../local.slint";
 import { WindowView } from "../views.slint";
 import { AppStyle, Metrics, Motion, Radius, Stroke } from "../theme.slint";
 
@@ -309,6 +309,24 @@ export component Announcer inherits Text {
     text: root.said;
     color: transparent;
     accessible-live-region: root.urgent ? AccessibleLiveness.assertive : AccessibleLiveness.polite;
+}
+
+export component RegionScope inherits FocusScope {
+    in property <FocusRegion> region;
+
+    focus-on-click: false;
+    focus-on-tab-navigation: false;
+
+    capture-key-pressed(event) => {
+        let key = ScreenKeys.of(event);
+        if key == ScreenKey.none {
+            return reject;
+        }
+        if !event.repeat || ScreenKeys.repeats(key) {
+            ScreenKeys.press(key, root.region);
+        }
+        return accept;
+    }
 }
 
 export component ListItemArea inherits ClickArea {

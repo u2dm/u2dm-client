@@ -56,8 +56,8 @@ component SpaceTile inherits ListItemArea {
     place: root.entry.id != "" ? root.entry.id : "\{root.index}";
 
     changed focus-asks => {
-        if FocusHome.asked == FocusRegion.rail && root.enabled
-            && (FocusHome.asked-place != "" ? FocusHome.asked-place == root.place : root.selected) {
+        if FocusHome.asked == FocusRegion.rail && root.enabled && FocusHome.asked-place != ""
+            && FocusHome.asked-place == root.place {
             root.take-focus();
         }
     }
@@ -158,6 +158,8 @@ export component SpaceRail inherits Rectangle {
         : DirectoryView.room-scope == RoomScope.direct ? "1"
         : DirectoryView.selected-space-id;
 
+    property <int> focus-asks: FocusHome.asks;
+
     background: AppStyle.nav;
 
     init => {
@@ -166,6 +168,12 @@ export component SpaceRail inherits Rectangle {
 
     changed chosen => {
         rail-keys.cursor-key = root.chosen;
+    }
+
+    changed focus-asks => {
+        if FocusHome.asked == FocusRegion.rail && FocusHome.asked-place == "" {
+            rail-keys.focus-cursor();
+        }
     }
 
     function arrived(key: string, slot: int) -> bool {

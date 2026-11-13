@@ -9,6 +9,7 @@ import { CallWords } from "../../../../messages.slint";
 import { Actions } from "../../../../actions.slint";
 import { CallMenuOpener, CallPanel, TipScope } from "../../../../local.slint";
 import { CallView } from "../../../../views.slint";
+import { Shortcuts } from "../../../../shortcuts.slint";
 import { AppStyle, IconSize, Metrics, Space } from "../../../../theme.slint";
 
 export enum CallToggleState { off, on, pending, failed, unavailable }
@@ -20,27 +21,28 @@ export global CallKeys {
         if event.text == Key.Escape {
             return CallKey.chat;
         }
-        if !event.modifiers.control || event.modifiers.shift || event.modifiers.alt || event.modifiers.meta {
-            return CallKey.none;
-        }
-        if event.text == "d" || event.text == "D" {
+        if Shortcuts.matches(event, Shortcuts.toggle-microphone) {
             return CallKey.microphone;
         }
-        if event.text == "e" || event.text == "E" {
+        if Shortcuts.matches(event, Shortcuts.toggle-camera) {
             return CallKey.camera;
         }
         return CallKey.none;
     }
 
+    public pure function toggles(key: CallKey) -> bool {
+        return key == CallKey.microphone || key == CallKey.camera;
+    }
+
     public pure function binding(key: CallKey) -> string {
         if key == CallKey.microphone {
-            return @tr("Ctrl+D");
+            return Shortcuts.label(Shortcuts.toggle-microphone);
         }
         if key == CallKey.camera {
-            return @tr("Ctrl+E");
+            return Shortcuts.label(Shortcuts.toggle-camera);
         }
         if key == CallKey.chat {
-            return @tr("Esc");
+            return Shortcuts.label({ key: Key.Escape });
         }
         return "";
     }

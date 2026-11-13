@@ -188,6 +188,7 @@ export global Actions {
     callback send-message(SendMessageRequest) -> DraftVerdict;
     callback edit-message(EditMessageRequest) -> DraftVerdict;
     callback last-editable-row() -> int;
+    callback newest-message-row() -> int;
     callback suggest-mentions(string);
     callback end-mentions();
     pure callback mention-at(string, int) -> MentionWord;
@@ -207,6 +208,7 @@ export global Actions {
     pure callback settings-matches(string, [SettingsIndexEntry]) -> [int];
     pure callback room-row-of(string, [RoomEntry]) -> int;
     pure callback room-row-starting-with(string, [RoomEntry], int) -> int;
+    pure callback room-beside(string, [RoomEntry], bool, bool) -> int;
     callback cancel-attachment();
     callback request-pack-cell(string);
     callback request-custom-emoji(string);

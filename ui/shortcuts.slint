@@ -1,0 +1,116 @@
+import { KeyChord } from "./types.slint";
+
+export global Shortcuts {
+    in property <KeyChord> open-settings;
+    in property <KeyChord> find-room;
+    in property <KeyChord> next-region;
+    in property <KeyChord> previous-region;
+    in property <KeyChord> previous-room;
+    in property <KeyChord> next-room;
+    in property <KeyChord> previous-unread-room;
+    in property <KeyChord> next-unread-room;
+    in property <KeyChord> toggle-microphone;
+    in property <KeyChord> toggle-camera;
+
+    public pure function matches(event: KeyEvent, chord: KeyChord) -> bool {
+        return chord.key != ""
+            && event.text.to-lowercase() == chord.key
+            && event.modifiers.control == chord.control
+            && event.modifiers.alt == chord.alt
+            && event.modifiers.meta == chord.meta
+            && (chord.any-shift || event.modifiers.shift == chord.shift);
+    }
+
+    public pure function label(chord: KeyChord) -> string {
+        if chord.key == "" {
+            return "";
+        }
+        return (chord.meta ? @tr("Key" => "Super") + "+" : "")
+            + (chord.control ? @tr("Key" => "Ctrl") + "+" : "")
+            + (chord.alt ? @tr("Key" => "Alt") + "+" : "")
+            + (chord.shift ? @tr("Key" => "Shift") + "+" : "")
+            + root.key-name(chord.key);
+    }
+
+    pure function key-name(key: string) -> string {
+        if key == Key.UpArrow {
+            return @tr("Key" => "Up");
+        }
+        if key == Key.DownArrow {
+            return @tr("Key" => "Down");
+        }
+        if key == Key.LeftArrow {
+            return @tr("Key" => "Left");
+        }
+        if key == Key.RightArrow {
+            return @tr("Key" => "Right");
+        }
+        if key == Key.PageUp {
+            return @tr("Key" => "Page Up");
+        }
+        if key == Key.PageDown {
+            return @tr("Key" => "Page Down");
+        }
+        if key == Key.Home {
+            return @tr("Key" => "Home");
+        }
+        if key == Key.End {
+            return @tr("Key" => "End");
+        }
+        if key == Key.Return {
+            return @tr("Key" => "Enter");
+        }
+        if key == Key.Escape {
+            return @tr("Key" => "Esc");
+        }
+        if key == Key.Tab {
+            return @tr("Key" => "Tab");
+        }
+        if key == Key.Space {
+            return @tr("Key" => "Space");
+        }
+        if key == Key.Backspace {
+            return @tr("Key" => "Backspace");
+        }
+        if key == Key.Delete {
+            return @tr("Key" => "Delete");
+        }
+        if key == Key.F1 {
+            return "F1";
+        }
+        if key == Key.F2 {
+            return "F2";
+        }
+        if key == Key.F3 {
+            return "F3";
+        }
+        if key == Key.F4 {
+            return "F4";
+        }
+        if key == Key.F5 {
+            return "F5";
+        }
+        if key == Key.F6 {
+            return "F6";
+        }
+        if key == Key.F7 {
+            return "F7";
+        }
+        if key == Key.F8 {
+            return "F8";
+        }
+        if key == Key.F9 {
+            return "F9";
+        }
+        if key == Key.F10 {
+            return "F10";
+        }
+        if key == Key.F11 {
+            return "F11";
+        }
+        if key == Key.F12 {
+            return "F12";
+        }
+        return key.to-uppercase();
+    }
+}

@@ -5,7 +5,7 @@ use slint::Model;
 use super::UiBackend;
 use super::avatars::indexed_timeline_row;
 use crate::adapters::ui::fields::MessageFields;
-use crate::adapters::ui::present::room_log_text;
+use crate::adapters::ui::present::{MessageKind, room_log_text};
 use crate::adapters::ui::props::{IntProp, StringProp, UiProps};
 use crate::adapters::ui::reduce::is_latest_adoption;
 use crate::adapters::ui::router::EditedRow;
@@ -41,6 +41,14 @@ pub fn unread_below<B: UiBackend>(first_unseen_row: i32) -> u32 {
 pub fn last_editable_row<B: UiBackend>() -> i32 {
     row_index(B::with_timeline(|timeline| {
         timeline.last_position(|entry: &B::Message| entry.text_editable())
+    }))
+}
+
+pub fn newest_message_row<B: UiBackend>() -> i32 {
+    row_index(B::with_timeline(|timeline| {
+        timeline.last_position(|entry: &B::Message| {
+            entry.message_type() != MessageKind::Service.ui_name()
+        })
     }))
 }
 

@@ -141,6 +141,8 @@ export component MessageInput inherits Rectangle {
 
     background: AppStyle.composer-gradient;
     height: field.height + root.surface-inset;
+    accessible-role: form;
+    accessible-label: @tr("Message composer");
 
     changed edit-requests => {
         root.begin-edit(Composer.requested-edit, Composer.requested-edit.original);

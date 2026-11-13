@@ -8,8 +8,8 @@ use chrono::{Locale, SecondsFormat, Timelike};
 use pure_rust_locales::locale_match;
 
 use super::schema::{
-    define_ui_enum, deliveries, identity_alert_kinds, message_kinds, poll_phases, service_kinds,
-    shield_reasons, verification_phases,
+    define_ui_enum, define_ui_names, deliveries, identity_alert_kinds, message_kinds, poll_phases,
+    service_kinds, shield_reasons, verification_phases,
 };
 use crate::commands::messages::{UserMessage, UserMessageKind};
 use crate::commands::view::RoomLogView;
@@ -363,6 +363,7 @@ pub fn preview_subject(body: &MessageBody) -> Option<&str> {
 }
 
 message_kinds!(define_ui_enum MessageKind;);
+message_kinds!(define_ui_names MessageKind;);
 
 pub fn message_kind(body: &MessageBody) -> MessageKind {
     match body {

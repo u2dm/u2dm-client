@@ -8,19 +8,20 @@ use super::args::{
 use super::emoji_rows::setup_emoji_store;
 use super::names::{callback, composer_draft};
 use super::values::{
-    draft_verdict_value, mention_word_value, model_of, model_value, no_draft_value, num,
-    text_splice_value, text_value, variant_of, word_value,
+    draft_verdict_value, enum_value, mention_word_value, model_of, model_value, no_draft_value,
+    num, text_splice_value, text_value, variant_of, word_value,
 };
 use super::{InterpretedBackend, SlintUiAdapter};
 use crate::adapters::ui::backend::{
-    RECENT_SPEAKERS, adopted_room_key, current_edited_row, last_editable_row, on_main,
-    recent_speakers, reorder_spaces, row_of_message, selected_room_key, shown_room_log_text,
-    unread_below,
+    RECENT_SPEAKERS, adopted_room_key, current_edited_row, last_editable_row, newest_message_row,
+    on_main, recent_speakers, reorder_spaces, row_of_message, selected_room_key,
+    shown_room_log_text, unread_below,
 };
 use crate::adapters::ui::call_window::{self, WindowHooks};
 use crate::adapters::ui::decode::{
     AvatarSlot, request_avatar, request_custom_emoji, request_media, request_pack_cell,
 };
+use crate::adapters::ui::dto::RoomRowKind;
 use crate::adapters::ui::router::{DraftVerdict, EditedRow, EditedText};
 use crate::adapters::ui::schema::simple_callbacks;
 use crate::adapters::ui::video::{self, millis_to_duration};
@@ -232,6 +233,10 @@ impl SlintUiAdapter {
             num(last_editable_row::<InterpretedBackend>())
         })?;
 
+        bind_action(&self.instance, callback::NEWEST_MESSAGE_ROW, |_| {
+            num(newest_message_row::<InterpretedBackend>())
+        })?;
+
         bind_action(&self.instance, callback::ROW_OF_MESSAGE, |args| {
             num(row_of_message::<InterpretedBackend>(
                 &string_arg(args, 0),
@@ -432,6 +437,15 @@ impl SlintUiAdapter {
                 &string_arg(args, 0),
                 int_arg(args, 2).unwrap_or(-1),
             ))
+        })?;
+
+        bind_action(&self.instance, callback::ROOM_BESIDE, |args| {
+            num(list_keys::room_beside(
+                &listed_rooms(args.get(1)),
+                &string_arg(args, 0),
+                bool_arg(args, 2),
+                bool_arg(args, 3),
+            ))
         })
     }
 
@@ -518,6 +532,25 @@ pub(super) fn warn_unbound(bound: Result<()>, what: &str) {
     if let Err(e) = bound {
         tracing::warn!("failed to bind {what}: {e}");
     }
+}
+
+fn listed_rooms(rows: Option<&Value>) -> Vec<list_keys::ListedRoom<String>> {
+    let room = enum_value(&RoomRowKind::Room);
+    model_of(rows)
+        .iter()
+        .filter_map(|row| match row {
+            Value::Struct(row) => Some(list_keys::ListedRoom {
+                joined: row.get_field("kind") == Some(&room),
+                unread: list_keys::wants_reading(
+                    flag(&row, "alert"),
+                    flag(&row, "hint"),
+                    flag(&row, "muted"),
+                ),
+                id: field(&row, "id"),
+            }),
+            _ => None,
+        })
+        .collect()
 }
 
 fn room_fields(rows: Option<&Value>, name: &str) -> Vec<String> {

@@ -19,6 +19,11 @@ const CALL_REACTIONS_DOMAIN: &str = "src/domain/call/reactions.rs";
 const CALL_REACTIONS_MENU: &str = "ui/screens/chat/components/call/call-reactions-menu.slint";
 const QUICK_REACTIONS_DOMAIN: &str = "src/domain/settings/quick_reactions.rs";
 const QUICK_REACTIONS_VIEW: &str = "ui/views.slint";
+const SHORTCUTS_SLINT: &str = "ui/shortcuts.slint";
+const SHORTCUT_PROPS: (&str, &str) = (
+    "macro_rules! shortcut_props {",
+    "pub(crate) use shortcut_props;",
+);
 
 struct EnumCoverage {
     slint_enum: &'static str,
@@ -227,6 +232,7 @@ fn main() {
     check_scenario_catalogs();
     check_call_reaction_options();
     check_default_quick_reactions();
+    check_shortcut_props_name_the_global();
     check_overlay_layers_follow_mount_order();
     check_generated_ui_stays_in_its_adapter();
     sync_lucide_lsp_lib();
@@ -449,6 +455,42 @@ fn check_default_quick_reactions() {
         starred.trim() == shown_starred.trim(),
         "{QUICK_REACTIONS_VIEW} starts with one-click-reaction {shown_starred}, but \
          {QUICK_REACTIONS_DOMAIN} defaults DEFAULT_ONE_CLICK to {starred}: they must be equal"
+    );
+}
+
+fn check_shortcut_props_name_the_global() {
+    println!("cargo::rerun-if-changed={SHORTCUTS_SLINT}");
+    println!("cargo::rerun-if-changed={SCHEMA_FILE}");
+    let (Ok(global), Ok(schema)) = (
+        fs::read_to_string(SHORTCUTS_SLINT),
+        fs::read_to_string(SCHEMA_FILE),
+    ) else {
+        panic!(
+            "failed to read {SHORTCUTS_SLINT} or {SCHEMA_FILE}, so the shortcut properties cannot \
+             be compared"
+        );
+    };
+    let declared: Vec<&str> = global
+        .lines()
+        .filter_map(|line| {
+            line.trim()
+                .strip_prefix("in property <KeyChord> ")?
+                .strip_suffix(';')
+        })
+        .collect();
+    let listed: Vec<&str> = quoted_literals(section(
+        &schema,
+        SCHEMA_FILE,
+        SHORTCUT_PROPS,
+        "the shortcut properties",
+    ))
+    .collect();
+    assert!(
+        declared == listed,
+        "the `shortcut_props!` table in {SCHEMA_FILE} names {listed:?} but `Shortcuts` in \
+         {SHORTCUTS_SLINT} declares {declared:?}. Interpreted mode writes the chords by these \
+         names, so a mismatch leaves a shortcut unbound at runtime. Keep both lists identical and \
+         in the same order."
     );
 }
 

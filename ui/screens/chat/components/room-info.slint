@@ -635,6 +635,10 @@ component RoomInfoSheet inherits Rectangle {
         close-chip.take-focus();
     }
 
+    public function focus-first() {
+        tiles.focus-notifications();
+    }
+
     public function close-picker() {
         root.notify-picker-open = false;
         tiles.focus-notifications();
@@ -885,12 +889,22 @@ export component RoomInfoPane inherits RoomInfoSheet {
     in property <length> overlay-width;
     in property <length> overlay-height;
 
+    property <int> focus-asks: FocusHome.asks;
+
     docked: true;
 
     background: AppStyle.pane;
     surface: AppStyle.pane;
+    accessible-role: complementary;
+    accessible-label: @tr("Room info");
     dismissed => {
         Shell.room-info-pane-open = false;
+    }
+
+    changed focus-asks => {
+        if FocusHome.asked == FocusRegion.pane && FocusHome.asked-place == "" {
+            root.focus-first();
+        }
     }
 
     if root.notify-picker-open: NotifyPickerHost {

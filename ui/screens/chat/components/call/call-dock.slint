@@ -365,6 +365,16 @@ export component CallDock inherits Rectangle {
         more.take-focus();
     }
 
+    public function focus-first() {
+        if !root.failed {
+            mic.take-focus();
+        } else if CallView.failure-retry {
+            retry.take-focus();
+        } else {
+            dismiss.take-focus();
+        }
+    }
+
     public pure function focuses(key: CallKey) -> bool {
         return (key == CallKey.microphone && mic.has-focus) || (key == CallKey.camera && camera.has-focus);
     }
@@ -575,8 +585,8 @@ export component CallDock inherits Rectangle {
 
     height: root.status-extra + root.share-extra + root.row-height;
     background: root.failed ? AppStyle.danger-background : AppStyle.call-band;
-    accessible-role: groupbox;
-    accessible-label: root.failed ? failure.text : @tr("Call in {}", CallView.active-room-name);
+    accessible-role: region;
+    accessible-label: root.failed ? failure.text : @tr("Call controls");
 
     status := CallStatus {
         x: root.pad;

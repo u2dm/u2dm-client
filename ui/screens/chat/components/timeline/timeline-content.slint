@@ -6,6 +6,7 @@ import { TimelineScroller } from "./timeline-scroller.slint";
 import { FocusHome, FocusRegion, Probe } from "../../../../local.slint";
 import { ClickArea } from "../../../../components/a11y.slint";
 import { RoomView } from "../../../../views.slint";
+import { Actions } from "../../../../actions.slint";
 import { AppStyle, Fonts, IconSize, Metrics, Radius, Size, Space, Weight } from "../../../../theme.slint";
 import { StateLayer } from "../../../../components/state-layer.slint";
 
@@ -59,7 +60,20 @@ export component TimelineContent inherits Rectangle {
     in property <length> bottom-inset;
     in property <length> composer-top;
 
+    property <int> focus-asks: FocusHome.asks;
+
     clip: true;
+    accessible-role: main;
+    accessible-label: @tr("Messages in {}", RoomView.selected-room-name);
+
+    changed focus-asks => {
+        if FocusHome.asked == FocusRegion.timeline && FocusHome.asked-place == "" {
+            let row = Actions.newest-message-row();
+            if row >= 0 {
+                FocusHome.ask-at(FocusRegion.timeline, RoomView.timeline[row].unique-id);
+            }
+        }
+    }
 
     scroller := TimelineScroller {
         width: parent.width;

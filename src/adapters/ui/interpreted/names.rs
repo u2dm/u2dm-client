@@ -4,6 +4,7 @@ pub mod callback {
     pub const DISMISS_UNSENT: &str = "dismiss-unsent";
     pub const EDIT_MESSAGE: &str = "edit-message";
     pub const LAST_EDITABLE_ROW: &str = "last-editable-row";
+    pub const NEWEST_MESSAGE_ROW: &str = "newest-message-row";
     pub const ROW_OF_MESSAGE: &str = "row-of-message";
     pub const SUGGEST_MENTIONS: &str = "suggest-mentions";
     pub const MENTION_AT: &str = "mention-at";
@@ -18,6 +19,7 @@ pub mod callback {
     pub const SETTINGS_MATCHES: &str = "settings-matches";
     pub const ROOM_ROW_OF: &str = "room-row-of";
     pub const ROOM_ROW_STARTING_WITH: &str = "room-row-starting-with";
+    pub const ROOM_BESIDE: &str = "room-beside";
     pub const ROOM_LOG_TEXT: &str = "room-log-text";
     pub const REQUEST_MEDIA: &str = "request-media";
     pub const REQUEST_ROOM_AVATAR: &str = "request-room-avatar";
@@ -116,6 +118,19 @@ pub mod room_info_view {
 pub mod settings_view {
     pub const NAME: &str = "SettingsView";
     pub const QUICK_REACTIONS: &str = "quick-reactions";
+}
+
+pub mod shortcuts {
+    pub const NAME: &str = "Shortcuts";
+}
+
+pub mod key_chord {
+    pub const KEY: &str = "key";
+    pub const CONTROL: &str = "control";
+    pub const ALT: &str = "alt";
+    pub const SHIFT: &str = "shift";
+    pub const META: &str = "meta";
+    pub const ANY_SHIFT: &str = "any-shift";
 }
 
 pub mod login_view {
