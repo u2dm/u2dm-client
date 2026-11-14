@@ -116,7 +116,7 @@ export component TextMessage inherits Rectangle {
 
     function follow-link(url: string) {
         if root.is-spoiler-cover(url) {
-            Actions.reveal-spoilers(root.msg.unique-id);
+            Actions.show-spoilers(root.msg.unique-id, true);
         } else {
             Actions.open-link(url);
         }
@@ -150,7 +150,7 @@ export component TextMessage inherits Rectangle {
     accessible-label: root.msg.body;
     accessible-action-default => {
         if root.msg.spoilers == SpoilerState.covered {
-            Actions.reveal-spoilers(root.msg.unique-id);
+            Actions.show-spoilers(root.msg.unique-id, true);
         } else {
             TextSelection.select(root.msg.unique-id);
         }
@@ -176,6 +176,7 @@ export component TextMessage inherits Rectangle {
             wrap: word-wrap;
             read-only: true;
             single-line: false;
+            accessible-label: @tr("Text of the message");
             selection-background-color: Palette.selection-background;
             selection-foreground-color: Palette.selection-foreground;
 

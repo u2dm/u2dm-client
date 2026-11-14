@@ -1059,6 +1059,7 @@ macro_rules! slint_enums {
             reaction_sends ReactionSend ReactionSend;
             emoji_arts EmojiArt EmojiArt;
             spoiler_states SpoilerState SpoilerState;
+            link_kinds LinkKind LinkKind;
             deliveries Delivery Delivery;
             shields Shield Shield;
             shield_reasons ShieldReason ShieldReason;
@@ -1420,6 +1421,15 @@ macro_rules! spoiler_states {
     } };
 }
 pub(crate) use spoiler_states;
+
+macro_rules! link_kinds {
+    ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
+        Web    Web    "web";
+        Person Person "person";
+        Room   Room   "room";
+    } };
+}
+pub(crate) use link_kinds;
 
 macro_rules! deliveries {
     ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
@@ -2414,6 +2424,7 @@ macro_rules! message_fields {
         body set_body "body" text;
         styled set_styled "styled" styled;
         has_links set_has_links "has-links" flag;
+        links set_links "links" structs(MessageLink);
         mentions_you set_mentions_you "mentions-you" flag;
         body_lines set_body_lines "body-lines" structs(BodyLine);
         emote_only set_emote_only "emote-only" flag;
@@ -2512,6 +2523,16 @@ macro_rules! poll_answer_fields {
     } };
 }
 pub(crate) use poll_answer_fields;
+
+macro_rules! message_link_fields {
+    ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
+        label set_label "label" text;
+        url set_url "url" text;
+        target set_target "target" text;
+        kind set_kind "kind" enumk(LinkKind);
+    } };
+}
+pub(crate) use message_link_fields;
 
 macro_rules! reaction_fields {
     ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*

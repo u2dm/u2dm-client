@@ -1,4 +1,4 @@
-import { AudioKind, CallDeviceKind, CallDeviceStatus, CallLayout, CallLinkState, CallTileState, ChildAccess, ClockChoice, DecryptionFailure, Delivery, DeviceTrust, EmojiArt, InviteKind, InviteeState, LogLevel, MediaFailure, MediaState, MemberRole, MemberRowKind, MessageKind, MotionChoice, PackOrigin, PollPhase, PreviewKind, ReactionSend, ReceiptVisibility, RemovalKind, RoomAccess, RoomCallMark, RoomClass, RoomDefault, RoomKind, RoomRowKind, SendKey, SendState, ServiceKind, SettingFlag, SettingKey, SettingsLayout, SettingsPage, Shield, ShieldReason, SpoilerState, ThemeChoice, UserMessageKind } from "./enums.slint";
+import { AudioKind, CallDeviceKind, CallDeviceStatus, CallLayout, CallLinkState, CallTileState, ChildAccess, ClockChoice, DecryptionFailure, Delivery, DeviceTrust, EmojiArt, InviteKind, InviteeState, LinkKind, LogLevel, MediaFailure, MediaState, MemberRole, MemberRowKind, MessageKind, MotionChoice, PackOrigin, PollPhase, PreviewKind, ReactionSend, ReceiptVisibility, RemovalKind, RoomAccess, RoomCallMark, RoomClass, RoomDefault, RoomKind, RoomRowKind, SendKey, SendState, ServiceKind, SettingFlag, SettingKey, SettingsLayout, SettingsPage, Shield, ShieldReason, SpoilerState, ThemeChoice, UserMessageKind } from "./enums.slint";
 
 export struct RoomEntry {
     id: string,
@@ -381,6 +381,13 @@ export struct ReactionEntry {
     avatars: [ReactorAvatar],
 }
 
+export struct MessageLink {
+    label: string,
+    url: string,
+    target: string,
+    kind: LinkKind,
+}
+
 export struct PollAnswerEntry {
     id: string,
     label: string,
@@ -416,6 +423,7 @@ export struct MessageEntry {
     body: string,
     styled: styled-text,
     has-links: bool,
+    links: [MessageLink],
     mentions-you: bool,
     body-lines: [BodyLine],
     emote-only: bool,

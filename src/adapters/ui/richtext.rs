@@ -5,6 +5,7 @@ mod writer;
 use std::borrow::Cow;
 use std::collections::{BTreeSet, HashMap};
 use std::hash::Hash;
+use std::mem;
 
 use slint::{SharedString, StyledText};
 
@@ -32,8 +33,15 @@ pub struct StyledBody {
     pub styled: StyledText,
     pub plain: SharedString,
     pub has_links: bool,
+    pub links: Vec<BodyLink>,
     pub mentions_you: bool,
     pub has_spoilers: bool,
+}
+
+#[derive(Clone)]
+pub struct BodyLink {
+    pub label: String,
+    pub destination: String,
 }
 
 #[derive(Clone)]
@@ -294,6 +302,7 @@ fn unstyled_body(text: &str) -> StyledBody {
         styled: StyledText::from_plain_text(text),
         plain: SharedString::from(text),
         has_links: false,
+        links: Vec::new(),
         mentions_you: false,
         has_spoilers: false,
     }
@@ -307,6 +316,7 @@ fn build(html: &str, mut writer: Writer<'_>) -> Option<StyledBody> {
         return None;
     }
 
+    let links = mem::take(&mut writer.links);
     let markdown = writer.markdown.trim();
     let plain = writer.plain.trim();
     if markdown.is_empty() {
@@ -318,6 +328,7 @@ fn build(html: &str, mut writer: Writer<'_>) -> Option<StyledBody> {
             styled,
             plain: SharedString::from(plain),
             has_links: writer.has_links,
+            links,
             mentions_you: writer.mentions_you,
             has_spoilers: writer.has_spoilers,
         }),
@@ -379,6 +390,7 @@ fn build_plain(text: &str, mut writer: Writer<'_>) -> Option<StyledBody> {
             styled,
             plain: SharedString::from(writer.plain.as_str()),
             has_links: writer.has_links,
+            links: mem::take(&mut writer.links),
             mentions_you: writer.mentions_you,
             has_spoilers: false,
         }),

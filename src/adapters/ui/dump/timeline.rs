@@ -3,7 +3,8 @@ use slint::Model;
 
 use crate::adapters::ui::backend::UiBackend;
 use crate::adapters::ui::fields::{
-    BodyLineFields, BodyPieceFields, MessageFields, PollAnswerFields, ReactionFields,
+    BodyLineFields, BodyPieceFields, MessageFields, MessageLinkFields, PollAnswerFields,
+    ReactionFields,
 };
 
 #[derive(Serialize)]
@@ -17,6 +18,14 @@ pub struct ReactionRowDump {
     pub overflow: bool,
     pub reactors: String,
     pub hidden_reactors: i32,
+}
+
+#[derive(Serialize)]
+pub struct LinkRowDump {
+    pub label: String,
+    pub url: String,
+    pub target: String,
+    pub kind: String,
 }
 
 #[derive(Serialize)]
@@ -50,6 +59,7 @@ pub struct TimelineRowDump {
     pub sender_id: String,
     pub body: String,
     pub has_links: bool,
+    pub links: Vec<LinkRowDump>,
     pub mentions_you: bool,
     pub emote_only: bool,
     pub spoilers: String,
@@ -114,6 +124,11 @@ pub(super) fn timeline_row<B: UiBackend>(row: usize, entry: &B::Message) -> Time
         sender_id: entry.sender_id().to_owned(),
         body: entry.body().to_owned(),
         has_links: entry.has_links(),
+        links: entry
+            .links()
+            .iter()
+            .map(|link| link_row::<B>(&link))
+            .collect(),
         mentions_you: entry.mentions_you(),
         emote_only: entry.emote_only(),
         spoilers: entry.spoilers().to_owned(),
@@ -198,6 +213,15 @@ fn body_emoji<B: UiBackend>(entry: &B::Message) -> Vec<BodyEmojiDump> {
                 .collect::<Vec<_>>()
         })
         .collect()
+}
+
+fn link_row<B: UiBackend>(entry: &B::MessageLink) -> LinkRowDump {
+    LinkRowDump {
+        label: entry.label().to_owned(),
+        url: entry.url().to_owned(),
+        target: entry.target().to_owned(),
+        kind: entry.kind().to_owned(),
+    }
 }
 
 fn poll_answer_row<B: UiBackend>(entry: &B::PollAnswer) -> PollAnswerRowDump {

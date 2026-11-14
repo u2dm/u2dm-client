@@ -45,9 +45,12 @@ global RowWords {
             : msg.timestamp == "" ? @tr("{}: {}", who, what) : @tr("{}, {}: {}", who, msg.timestamp, what);
         let marked = msg.mentions-you ? @tr("{}, mentions you", said) : said;
         let edited = msg.edited ? @tr("{}, edited", marked) : marked;
-        let reacted = msg.reactions.length == 0
+        let linked = msg.links.length == 0
             ? edited
-            : @tr("{}, {}", edited, @tr("{n} reaction" | "{n} reactions" % msg.reactions.length));
+            : @tr("{}, {}", edited, @tr("{n} link" | "{n} links" % msg.links.length));
+        let reacted = msg.reactions.length == 0
+            ? linked
+            : @tr("{}, {}", linked, @tr("{n} reaction" | "{n} reactions" % msg.reactions.length));
         if msg.send-state == SendState.failed {
             return @tr("{}, not sent", reacted);
         }
@@ -62,7 +65,7 @@ component TimelineRow inherits ListItemArea {
     in property <MessageEntry> msg;
     in property <bool> cursor-waits;
 
-    property <bool> inside: TimelineCursor.inside != "" && TimelineCursor.inside == root.msg.unique-id;
+    out property <bool> inside: TimelineCursor.inside != "" && TimelineCursor.inside == root.msg.unique-id;
     property <bool> entering;
 
     tab-stop: false;
@@ -657,6 +660,7 @@ export component MessageBubble inherits VerticalLayout {
             bubble-hovered: message-row.bubble-hovered;
             strip-mine: root.strip-mine;
             row-focused: message-row.has-focus;
+            inside: message-row.inside;
             anchor() => {
                 return bubble.anchor();
             }

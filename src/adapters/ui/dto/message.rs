@@ -2,7 +2,9 @@ use std::path::PathBuf;
 
 use slint::{Image, SharedString, StyledText};
 
-use super::body::{BodyLineDto, message_body, preview_line, row_body_and_preview};
+use super::body::{
+    BodyLineDto, MessageLinkDto, message_body, message_links, preview_line, row_body_and_preview,
+};
 use super::reactions::{ReactionDto, reaction_dtos};
 use crate::adapters::ui::decode::{
     AvatarSlot, DecodeFailure, Decoded, MediaSlot, TimelineItemKey, is_animatable,
@@ -17,7 +19,8 @@ use crate::adapters::ui::present::{
 };
 use crate::adapters::ui::richtext::{Cover, Spoilers};
 use crate::adapters::ui::schema::{
-    define_ui_enum, define_ui_names, emoji_arts, media_failures, media_states, spoiler_states,
+    define_ui_enum, define_ui_names, emoji_arts, link_kinds, media_failures, media_states,
+    spoiler_states,
 };
 use crate::domain::media::{
     AudioKind, AudioMeta, ContentKey, FileMeta, MediaFailure, ThumbnailOutcome, file_extension,
@@ -41,6 +44,8 @@ media_failures!(define_ui_enum MediaFailureKind;);
 emoji_arts!(define_ui_enum EmojiArt;);
 
 spoiler_states!(define_ui_enum SpoilerState;);
+
+link_kinds!(define_ui_enum LinkKind;);
 
 pub const REVEALABLE: Spoilers = Spoilers::Covered(Cover::Link);
 
@@ -86,6 +91,7 @@ pub struct MessageDto {
     pub body: SharedString,
     pub styled: StyledText,
     pub has_links: bool,
+    pub links: Vec<MessageLinkDto>,
     pub mentions_you: bool,
     pub body_lines: Vec<BodyLineDto>,
     pub emote_only: bool,
@@ -382,11 +388,7 @@ pub fn message_to_dto(m: &TimelineMessage, pinned: bool, media: &dyn MediaCache)
     let (body, preview_body) = row_body_and_preview(&item, m, media);
     let mut dto = MessageDto {
         unique_id: SharedString::from(&m.unique_id),
-        local_id: m
-            .local_id
-            .as_deref()
-            .map(SharedString::from)
-            .unwrap_or_default(),
+        local_id: SharedString::from(m.local_id.as_deref().unwrap_or_default()),
         sender: SharedString::from(message_sender_label(m)),
         sender_id: SharedString::from(&m.sender),
         pronouns: pronoun_labels(&m.sender_pronouns)
@@ -396,6 +398,7 @@ pub fn message_to_dto(m: &TimelineMessage, pinned: bool, media: &dyn MediaCache)
         body: body.rich.plain,
         styled: body.rich.styled,
         has_links: body.rich.has_links,
+        links: message_links(&body.rich.links),
         mentions_you: body.rich.mentions_you,
         body_lines: body.lines,
         emote_only: body.emote_only,

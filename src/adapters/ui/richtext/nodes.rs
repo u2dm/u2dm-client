@@ -10,7 +10,7 @@ use super::writer::{
     BULLET, CELL_GAP, Content, InlineStyle, LIST_INDENT, Line, NBSP, OpenStyle, Piece,
     TAB_AS_SPACES, Writer,
 };
-use super::{Cover, MAX_DEPTH, MAX_NODES, REVEAL_LINK, Spoilers};
+use super::{BodyLink, Cover, MAX_DEPTH, MAX_NODES, REVEAL_LINK, Spoilers};
 use crate::adapters::body_emoji;
 use crate::adapters::ui::{autolink, permalink};
 
@@ -235,10 +235,15 @@ impl Writer<'_> {
     }
 
     fn labelled_link(&mut self, label: &str, href: &str) {
-        self.link_around(href, |w| w.text(label));
+        if self.link_around(href, |w| w.text(label)) {
+            self.links.push(BodyLink {
+                label: label.to_owned(),
+                destination: href.to_owned(),
+            });
+        }
     }
 
-    fn link_around(&mut self, href: &str, write_label: impl FnOnce(&mut Self)) {
+    fn link_around(&mut self, href: &str, write_label: impl FnOnce(&mut Self)) -> bool {
         self.link_open = true;
         let bracket_at = self.markdown.len();
         self.markdown.push('[');
@@ -246,11 +251,13 @@ impl Writer<'_> {
         self.close_link(href);
         self.link_open = false;
 
-        if self.spans_one_line(bracket_at + 1) {
+        let kept = self.spans_one_line(bracket_at + 1);
+        if kept {
             self.has_links = true;
         } else {
             self.markdown.replace_range(bracket_at..=bracket_at, "");
         }
+        kept
     }
 
     pub(super) fn link_to(&mut self, destination: &str, write_link: impl FnOnce(&mut Self)) {

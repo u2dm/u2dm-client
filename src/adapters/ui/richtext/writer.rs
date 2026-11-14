@@ -5,8 +5,8 @@ use slint::{StyledText, StyledTextFromMarkdownError};
 
 use super::html::collapse_whitespace;
 use super::{
-    CoverLabels, InlineContent, InlineLine, InlinePiece, MAX_INLINE_PIECES, MAX_MARKDOWN_LEN,
-    Reading, RoomWord, Spoilers, emote_lead,
+    BodyLink, CoverLabels, InlineContent, InlineLine, InlinePiece, MAX_INLINE_PIECES,
+    MAX_MARKDOWN_LEN, Reading, RoomWord, Spoilers, emote_lead,
 };
 use crate::adapters::ui::autolink;
 use crate::domain::mention;
@@ -166,6 +166,7 @@ pub(super) struct Writer<'own> {
     pub(super) markdown: String,
     pub(super) plain: String,
     pub(super) has_links: bool,
+    pub(super) links: Vec<BodyLink>,
     pub(super) mentions_you: bool,
     pub(super) has_spoilers: bool,
     pub(super) tags_room: bool,
@@ -379,6 +380,10 @@ impl<'own> Writer<'own> {
                 w.close_link(&destination);
             });
             self.has_links = true;
+            self.links.push(BodyLink {
+                label: label.to_owned(),
+                destination,
+            });
             written = span.end;
         }
         self.push_words(text.get(written..).unwrap_or_default());

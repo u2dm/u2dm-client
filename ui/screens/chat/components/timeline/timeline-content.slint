@@ -3,7 +3,7 @@ import { IconDisplay, IconSet } from "@lucide";
 
 import { StatusPill } from "../../../../components/status-pill.slint";
 import { TimelineScroller } from "./timeline-scroller.slint";
-import { Composer, FocusHome, FocusRegion, Probe, TimelineCursor } from "../../../../local.slint";
+import { Composer, FocusHome, FocusRegion, Probe, TextSelection, TimelineCursor } from "../../../../local.slint";
 import { ClickArea, Interaction, RovingList } from "../../../../components/a11y.slint";
 import { DirectoryView, RoomView } from "../../../../views.slint";
 import { MessageKind } from "../../../../enums.slint";
@@ -113,7 +113,7 @@ export component TimelineContent inherits Rectangle {
     }
 
     changed focus-asks => {
-        if FocusHome.asked != FocusRegion.timeline {
+        if FocusHome.asked != FocusRegion.timeline || TextSelection.holds(FocusHome.asked-place) {
             return;
         }
         if FocusHome.asked-place != "" {

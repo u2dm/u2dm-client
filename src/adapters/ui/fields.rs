@@ -2,16 +2,16 @@ use slint::{Image, ModelRc, SharedString, StyledText};
 
 use super::backend::UiBackend;
 use super::dto::{
-    CallTileMark, EmojiArt, MediaFailureKind, MediaState, MemberRowKind, RoomCallMark, RoomRowKind,
-    SpoilerState,
+    CallTileMark, EmojiArt, LinkKind, MediaFailureKind, MediaState, MemberRowKind, RoomCallMark,
+    RoomRowKind, SpoilerState,
 };
 use super::present::{Delivery, MessageKind, PollPhase, ServiceKind, ShieldReason};
 use super::schema::{
     body_line_fields, body_piece_fields, call_connection_fields, call_device_fields,
     call_person_fields, call_tile_fields, ignored_person_fields, invitee_fields, keyword_fields,
-    log_line_fields, member_row_fields, message_fields, pack_cell_fields, pack_row_fields,
-    pack_tab_fields, poll_answer_fields, reaction_fields, reactor_fields, room_fields,
-    space_child_fields, space_fields, user_device_fields,
+    log_line_fields, member_row_fields, message_fields, message_link_fields, pack_cell_fields,
+    pack_row_fields, pack_tab_fields, poll_answer_fields, reaction_fields, reactor_fields,
+    room_fields, space_child_fields, space_fields, user_device_fields,
 };
 use crate::commands::messages::UserMessageKind;
 use crate::commands::view::{ChildAccess, DeviceStatus, InviteeState, LinkView};
@@ -61,6 +61,7 @@ macro_rules! declare_fields {
 }
 
 message_fields!(declare_fields MessageFields;);
+message_link_fields!(declare_fields MessageLinkFields;);
 body_line_fields!(declare_fields BodyLineFields;);
 body_piece_fields!(declare_fields BodyPieceFields;);
 reaction_fields!(declare_fields ReactionFields;);

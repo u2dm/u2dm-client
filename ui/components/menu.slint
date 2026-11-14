@@ -36,6 +36,7 @@ export component MenuCard inherits PickerCard {
 }
 
 export component MenuScroll inherits ScrollView {
+    in property <length> spacing: Space.xs;
     out property <length> rows-height: rows.preferred-height;
 
     public function reveal(top: length, size: length) {
@@ -55,7 +56,7 @@ export component MenuScroll inherits ScrollView {
         width: root.visible-width;
         padding-left: Space.sm;
         padding-right: Space.sm;
-        spacing: Space.xs;
+        spacing: root.spacing;
 
         @children
     }

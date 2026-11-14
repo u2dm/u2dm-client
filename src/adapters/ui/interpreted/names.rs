@@ -33,7 +33,7 @@ pub mod callback {
     pub const TOGGLE_AUDIO: &str = "toggle-audio";
     pub const SEEK_AUDIO: &str = "seek-audio";
     pub const BROWSE_PACKS: &str = "browse-packs";
-    pub const REVEAL_SPOILERS: &str = "reveal-spoilers";
+    pub const SHOW_SPOILERS: &str = "show-spoilers";
     pub const CALL_TILE_SEEN: &str = "call-tile-seen";
     pub const CALL_MEDIA_SHOWN: &str = "call-media-shown";
     pub const WATCH_MICROPHONE: &str = "watch-microphone";

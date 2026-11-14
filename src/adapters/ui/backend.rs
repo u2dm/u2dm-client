@@ -27,14 +27,16 @@ use super::decode::{
 use super::dto::{
     BodyLineDto, CallConnectionDto, CallDeviceDto, CallPersonDto, CallTileDto, IgnoredPersonDto,
     InviteeDto, KeywordDto, LogLineDto, MediaFailureKind, MediaState, MemberRowDto, MessageDto,
-    PackBrowse, PackRowDto, PackSurface, PackTabDto, RoomDto, RowBody, SpaceChildDto, SpaceDto,
-    ThumbUpdate, UserDeviceDto, decode_failure_kind, enrich_to_update,
+    MessageLinkDto, PackBrowse, PackRowDto, PackSurface, PackTabDto, REVEALABLE, RoomDto, RowBody,
+    SpaceChildDto, SpaceDto, ThumbUpdate, UserDeviceDto, decode_failure_kind, enrich_to_update,
+    message_links,
 };
 use super::fields::{
     BodyLineFields, BodyPieceFields, CallConnectionFields, CallDeviceFields, CallPersonFields,
     CallTileFields, IgnoredPersonFields, InviteeFields, KeywordFields, LogLineFields,
-    MemberRowFields, MessageFields, PackCellFields, PackRowFields, PackTabFields, PollAnswerFields,
-    ReactionFields, ReactorFields, RoomFields, SpaceChildFields, SpaceFields, UserDeviceFields,
+    MemberRowFields, MessageFields, MessageLinkFields, PackCellFields, PackRowFields,
+    PackTabFields, PollAnswerFields, ReactionFields, ReactorFields, RoomFields, SpaceChildFields,
+    SpaceFields, UserDeviceFields,
 };
 use super::handoff::follow_handoffs;
 use super::multiplex::spawn_event_multiplexer;
@@ -42,11 +44,12 @@ use super::notices::{NoticeWords, follow_activations};
 use super::props::UiProps;
 use super::reconcile::{reorder_rows, timeline_row_of};
 use super::reduce::{dispatch_effect, set_pack_browse};
+use super::richtext::{BodyLink, Spoilers};
 use super::rows::locate_row;
 use super::schema::model_props;
 use super::session::begin_session;
 use super::splice_model::SpliceModel;
-use super::spoilers::reveal_row;
+use super::spoilers::mark_row;
 use super::window_events::install_window_events;
 use crate::commands::effects::Effect;
 use crate::commands::view::AppViewState;
@@ -61,6 +64,7 @@ pub trait UiBackend: Sized + 'static {
     type Window: ComponentHandle + UiProps + 'static;
     type CallWindow: ComponentHandle + 'static;
     type Message: MessageFields<Self> + Clone + From<MessageDto> + 'static;
+    type MessageLink: MessageLinkFields<Self> + Clone + From<MessageLinkDto> + 'static;
     type BodyLine: BodyLineFields<Self> + Clone + From<BodyLineDto> + 'static;
     type BodyPiece: BodyPieceFields<Self> + Clone + 'static;
     type Reaction: ReactionFields<Self> + Clone + 'static;
@@ -95,7 +99,7 @@ pub trait UiBackend: Sized + 'static {
     fn models() -> Rc<Models<Self>>;
     fn attach_models(window: &Self::Window, models: &Models<Self>);
     fn bind_browse_packs(window: &Self::Window, browse: impl Fn(PackSurface, &str, i32) + 'static);
-    fn bind_reveal_spoilers(window: &Self::Window, reveal: impl Fn(&str) + 'static);
+    fn bind_show_spoilers(window: &Self::Window, show: impl Fn(&str, bool) + 'static);
     fn bind_window_hooks(window: &Self::Window, hooks: WindowHooks);
     fn bind_call_preview_seen(window: &Self::Window, seen: impl Fn(&str, i32, i32, bool) + 'static);
     fn new_call_window(main: &Self::Window, hooks: WindowHooks) -> Option<Self::CallWindow>;
@@ -173,8 +177,9 @@ pub fn spawn_event_handler<B: UiBackend>(
     });
 
     let media = Arc::clone(&media_cache);
-    B::bind_reveal_spoilers(window, move |unique_id| {
-        reveal_spoilers::<B>(unique_id, media.as_ref());
+    B::bind_show_spoilers(window, move |unique_id, shown| {
+        let spoilers = if shown { Spoilers::Shown } else { REVEALABLE };
+        show_spoilers::<B>(unique_id, spoilers, media.as_ref());
     });
 
     let weak = window.as_weak();
@@ -333,11 +338,11 @@ fn patch_timeline_row<B: UiBackend>(
     })
 }
 
-fn reveal_spoilers<B: UiBackend>(unique_id: &str, media: &dyn MediaCache) {
-    let Some(covered) = reveal_row(unique_id) else {
+fn show_spoilers<B: UiBackend>(unique_id: &str, spoilers: Spoilers, media: &dyn MediaCache) {
+    let Some(covered) = mark_row(unique_id, spoilers) else {
         return;
     };
-    let body = covered.revealed(&TimelineItemKey::current(unique_id), media);
+    let body = covered.row_body(&TimelineItemKey::current(unique_id), spoilers, media);
     patch_timeline_row::<B>(unique_id, 0, |entry| show_row_body::<B>(entry, body));
 }
 
@@ -346,10 +351,20 @@ fn show_row_body<B: UiBackend>(entry: &mut B::Message, body: RowBody) {
     entry.set_body(body.rich.plain);
     entry.set_styled(body.rich.styled);
     entry.set_has_links(body.rich.has_links);
+    entry.set_links(link_rows::<B>(&body.rich.links));
     entry.set_mentions_you(body.rich.mentions_you);
     entry.set_body_lines(ModelRc::new(VecModel::from(lines)));
     entry.set_emote_only(body.emote_only);
     entry.set_spoilers(body.spoilers);
+}
+
+fn link_rows<B: UiBackend>(links: &[BodyLink]) -> ModelRc<B::MessageLink> {
+    ModelRc::new(
+        message_links(links)
+            .into_iter()
+            .map(B::MessageLink::from)
+            .collect::<VecModel<_>>(),
+    )
 }
 
 pub(super) fn apply_thumbnail_ready<B: UiBackend>(slot: &MediaSlot, outcome: DecodeOutcome<'_>) {

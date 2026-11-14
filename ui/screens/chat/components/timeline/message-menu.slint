@@ -1,23 +1,24 @@
 import { IconDisplay, IconSet, Icon } from "@lucide";
 
-import { MessageEntry } from "../../../../types.slint";
+import { MessageEntry, MessageLink } from "../../../../types.slint";
 import { ServiceLabel } from "../../../../messages.slint";
 import { MessageShape } from "./message-body.slint";
 import { QuickReactions, StripCell } from "./quick-reactions.slint";
 import { Readers } from "./delivery-mark.slint";
 import { ClickArea, Interaction, RovingKeys } from "../../../../components/a11y.slint";
-import { ConfirmChoice, Confirmations, MenuCard, MenuConfirmation } from "../../../../components/menu.slint";
+import { ConfirmChoice, Confirmations, MenuCard, MenuConfirmation, MenuScroll } from "../../../../components/menu.slint";
 import { MenuRow } from "../../../../components/menu-row.slint";
 import { ModalHost, PickerCard, Placement } from "../../../../components/overlay.slint";
 import { Composer, FocusHome, FocusRegion, LocalState, MessageMenu, Overlays, Polls, ReactionPopup, Reactions, RoomMenu, TextSelection } from "../../../../local.slint";
 import { Actions } from "../../../../actions.slint";
 import { RoomView } from "../../../../views.slint";
-import { MessageKind, SendState } from "../../../../enums.slint";
+import { LinkKind, MessageKind, SendState, SpoilerState } from "../../../../enums.slint";
 import { AppStyle, Glyph, IconSize, Metrics, Size, Space } from "../../../../theme.slint";
 
 enum MenuAction {
     reply,
     edit,
+    spoilers,
     copy-text,
     copy-link,
     save-as,
@@ -118,12 +119,17 @@ component QuickReactionBar inherits PickerCard {
 
 component MessageMenuCard inherits MenuCard {
     in property <MessageEntry> msg;
+    in property <length> room;
 
     callback chose(MenuAction);
+    callback link-chosen(MessageLink);
     callback confirmed();
     callback cancelled();
 
-    property <[MenuAction]> offered;
+    property <[MenuAction]> head;
+    property <[MenuAction]> tail;
+    property <int> links-at: root.head.length;
+    property <int> tail-at: root.links-at + root.msg.links.length;
     property <int> cursor: -1;
     property <bool> asking: MessageMenu.asking-delete;
     property <ConfirmChoice> confirm-cursor: ConfirmChoice.cancel;
@@ -139,8 +145,9 @@ component MessageMenuCard inherits MenuCard {
         || root.msg.message-type == MessageKind.file;
 
     width: Metrics.message-menu-width;
-    row-count: root.offered.length;
+    row-count: root.tail-at + root.tail.length;
     row-height: Metrics.message-menu-row;
+    height: min(root.row-count * root.row-height + 2 * root.pad, root.room);
 
     changed asking => {
         root.confirm-cursor = ConfirmChoice.cancel;
@@ -159,6 +166,9 @@ component MessageMenuCard inherits MenuCard {
         }
         if action == MenuAction.select-text {
             return MessageShape.has-selectable-text(root.msg);
+        }
+        if action == MenuAction.spoilers {
+            return root.msg.spoilers != SpoilerState.none;
         }
         if action == MenuAction.copy-link || action == MenuAction.view-source {
             return root.has-remote-id;
@@ -184,45 +194,49 @@ component MessageMenuCard inherits MenuCard {
     }
 
     public function open(keyboard: bool) {
-        root.offered = [];
+        root.head = [];
+        root.tail = [];
         if root.available(MenuAction.reply) {
-            root.offered.push(MenuAction.reply);
+            root.head.push(MenuAction.reply);
         }
         if root.available(MenuAction.edit) {
-            root.offered.push(MenuAction.edit);
+            root.head.push(MenuAction.edit);
+        }
+        if root.available(MenuAction.spoilers) {
+            root.head.push(MenuAction.spoilers);
         }
         if root.available(MenuAction.copy-text) {
-            root.offered.push(MenuAction.copy-text);
+            root.tail.push(MenuAction.copy-text);
         }
         if root.available(MenuAction.copy-link) {
-            root.offered.push(MenuAction.copy-link);
+            root.tail.push(MenuAction.copy-link);
         }
         if root.available(MenuAction.save-as) {
-            root.offered.push(MenuAction.save-as);
+            root.tail.push(MenuAction.save-as);
         }
         if root.available(MenuAction.view-profile) {
-            root.offered.push(MenuAction.view-profile);
+            root.tail.push(MenuAction.view-profile);
         }
         if root.available(MenuAction.read-by) {
-            root.offered.push(MenuAction.read-by);
+            root.tail.push(MenuAction.read-by);
         }
         if root.available(MenuAction.pin) {
-            root.offered.push(MenuAction.pin);
+            root.tail.push(MenuAction.pin);
         }
         if root.available(MenuAction.select-text) {
-            root.offered.push(MenuAction.select-text);
+            root.tail.push(MenuAction.select-text);
         }
         if root.available(MenuAction.view-source) {
-            root.offered.push(MenuAction.view-source);
+            root.tail.push(MenuAction.view-source);
         }
         if root.available(MenuAction.retry) {
-            root.offered.push(MenuAction.retry);
+            root.tail.push(MenuAction.retry);
         }
         if root.available(MenuAction.discard) {
-            root.offered.push(MenuAction.discard);
+            root.tail.push(MenuAction.discard);
         }
         if root.available(MenuAction.delete) {
-            root.offered.push(MenuAction.delete);
+            root.tail.push(MenuAction.delete);
         }
         root.cursor = keyboard ? 0 : -1;
         keys.focus();
@@ -261,6 +275,9 @@ component MessageMenuCard inherits MenuCard {
         }
         if action == MenuAction.select-text {
             return @tr("Select text");
+        }
+        if action == MenuAction.spoilers {
+            return root.msg.spoilers == SpoilerState.shown ? @tr("Hide spoilers") : @tr("Reveal spoilers");
         }
         if action == MenuAction.view-source {
             return @tr("View source");
@@ -309,6 +326,9 @@ component MessageMenuCard inherits MenuCard {
         if action == MenuAction.select-text {
             return IconSet.TextCursor;
         }
+        if action == MenuAction.spoilers {
+            return root.msg.spoilers == SpoilerState.shown ? IconSet.EyeOff : IconSet.Eye;
+        }
         if action == MenuAction.view-source {
             return IconSet.Code;
         }
@@ -325,14 +345,57 @@ component MessageMenuCard inherits MenuCard {
         return action == MenuAction.discard || action == MenuAction.delete;
     }
 
+    pure function link-label(link: MessageLink) -> string {
+        if link.kind == LinkKind.person {
+            return @tr("View profile of {}", link.label);
+        }
+        return @tr("Open link: {}", link.label);
+    }
+
+    pure function link-icon(link: MessageLink) -> Icon {
+        if link.kind == LinkKind.person {
+            return IconSet.UserRound;
+        }
+        if link.kind == LinkKind.room {
+            return IconSet.Hash;
+        }
+        return IconSet.ExternalLink;
+    }
+
+    pure function link-detail(link: MessageLink) -> string {
+        return link.target == link.label ? "" : link.target;
+    }
+
+    pure function is-link(index: int) -> bool {
+        return index >= root.links-at && index < root.tail-at;
+    }
+
+    pure function action-at(index: int) -> MenuAction {
+        return index < root.links-at ? root.head[index] : root.tail[index - root.tail-at];
+    }
+
+    pure function link-at(index: int) -> MessageLink {
+        return root.msg.links[index - root.links-at];
+    }
+
     pure function spoken-label() -> string {
         if root.asking {
             return root.confirm-cursor == ConfirmChoice.confirm ? @tr("Delete for everyone") : @tr("Cancel");
         }
-        if root.cursor >= 0 && root.cursor < root.offered.length {
-            return root.label-of(root.offered[root.cursor]);
+        if root.cursor < 0 || root.cursor >= root.row-count {
+            return @tr("Message actions");
         }
-        return @tr("Message actions");
+        if root.is-link(root.cursor) {
+            return root.link-label(root.link-at(root.cursor));
+        }
+        return root.label-of(root.action-at(root.cursor));
+    }
+
+    pure function spoken-detail() -> string {
+        if root.asking || !root.is-link(root.cursor) {
+            return "";
+        }
+        return root.link-detail(root.link-at(root.cursor));
     }
 
     function answer(choice: ConfirmChoice) {
@@ -356,8 +419,13 @@ component MessageMenuCard inherits MenuCard {
     }
 
     function choose-at(index: int) {
-        if index >= 0 && index < root.offered.length {
-            root.choose(root.offered[index]);
+        if index < 0 || index >= root.row-count {
+            return;
+        }
+        if root.is-link(index) {
+            root.link-chosen(root.link-at(index));
+        } else {
+            root.choose(root.action-at(index));
         }
     }
 
@@ -368,10 +436,11 @@ component MessageMenuCard inherits MenuCard {
     }
 
     keys := RovingKeys {
-        count: root.offered.length;
+        count: root.row-count;
         cursor <=> root.cursor;
         paused: root.asking;
         accessible-label: root.spoken-label();
+        accessible-description: root.spoken-detail();
         accessible-action-default => {
             if root.asking {
                 root.answer(root.confirm-cursor);
@@ -393,16 +462,57 @@ component MessageMenuCard inherits MenuCard {
     Rectangle {
         visible: !root.asking;
 
-        VerticalLayout {
-            padding: root.pad;
+        scroll := MenuScroll {
+            width: parent.width;
+            height: parent.height - 2 * root.pad;
+            spacing: 0;
 
-            for action[index] in root.offered: MenuRow {
+            for action[index] in root.head: MenuRow {
                 height: root.row-height;
                 icon: root.icon-of(action);
                 label: root.label-of(action);
                 destructive: root.destructive(action);
                 focusable: false;
                 roving-focus: keys.has-focus && root.cursor == index;
+                changed roving-focus => {
+                    if self.roving-focus {
+                        scroll.reveal(self.y, self.height);
+                    }
+                }
+                clicked => {
+                    root.choose(action);
+                }
+            }
+
+            for link[index] in root.msg.links: MenuRow {
+                height: root.row-height;
+                icon: root.link-icon(link);
+                label: root.link-label(link);
+                detail: root.link-detail(link);
+                focusable: false;
+                roving-focus: keys.has-focus && root.cursor == root.links-at + index;
+                changed roving-focus => {
+                    if self.roving-focus {
+                        scroll.reveal(self.y, self.height);
+                    }
+                }
+                clicked => {
+                    root.link-chosen(link);
+                }
+            }
+
+            for action[index] in root.tail: MenuRow {
+                height: root.row-height;
+                icon: root.icon-of(action);
+                label: root.label-of(action);
+                destructive: root.destructive(action);
+                focusable: false;
+                roving-focus: keys.has-focus && root.cursor == root.tail-at + index;
+                changed roving-focus => {
+                    if self.roving-focus {
+                        scroll.reveal(self.y, self.height);
+                    }
+                }
                 clicked => {
                     root.choose(action);
                 }
@@ -480,9 +590,15 @@ export component MessageMenuOverlay inherits Rectangle {
         Reactions.open-popup(anchor, ReactionPopup.picker);
     }
 
+    function follow(link: MessageLink) {
+        root.dismiss();
+        Actions.open-link(link.url);
+    }
+
     function run(action: MenuAction) {
         let msg = root.msg;
         if action == MenuAction.select-text {
+            FocusHome.entered-row(FocusRegion.timeline, msg.unique-id);
             MessageMenu.close();
             TextSelection.select(msg.unique-id);
             return;
@@ -517,6 +633,8 @@ export component MessageMenuOverlay inherits Rectangle {
         } else if action == MenuAction.edit {
             FocusHome.entered(FocusRegion.composer, "");
             Composer.request-edit(msg);
+        } else if action == MenuAction.spoilers {
+            Actions.show-spoilers(msg.unique-id, msg.spoilers == SpoilerState.covered);
         } else if action == MenuAction.copy-text {
             root.copy-requested(root.text-of(msg));
         } else if action == MenuAction.copy-link {
@@ -576,8 +694,12 @@ export component MessageMenuOverlay inherits Rectangle {
             x: host.card-x;
             y: host.card-y;
             msg: root.msg;
+            room: root.height - 2 * root.edge - host.headroom;
             chose(action) => {
                 root.run(action);
+            }
+            link-chosen(link) => {
+                root.follow(link);
             }
             confirmed => {
                 root.delete-confirmed();

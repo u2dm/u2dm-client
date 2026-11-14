@@ -1,15 +1,18 @@
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::{BTreeMap, BTreeSet, HashSet};
 
 use slint::{Image, SharedString, StyledText};
 
-use super::message::{EmojiArt, REVEALABLE, SpoilerState};
+use super::message::{EmojiArt, LinkKind, REVEALABLE, SpoilerState};
 use super::reactions::emoji_art;
 use crate::adapters::ui::decode::TimelineItemKey;
+use crate::adapters::ui::permalink;
 use crate::adapters::ui::present::{message_body_text, message_sender_label, preview_subject};
 use crate::adapters::ui::richtext::{
-    self, Cover, InlineContent, InlineLine, InlinePiece, RoomWord, Spoilers,
+    self, BodyLink, Cover, InlineContent, InlineLine, InlinePiece, RoomWord, Spoilers,
 };
 use crate::adapters::ui::spoilers::{keep_covered_body, spoilers_on};
+use crate::domain::link::LauncherSafeUrl;
+use crate::domain::matrix_link::MatrixLink;
 use crate::domain::message::{CustomEmoji, MessageBody, RichText, TimelineMessage};
 use crate::ports::media::MediaCache;
 use crate::util::saturating_i32;
@@ -32,6 +35,40 @@ pub struct BodyLineDto {
 
 fn one_line(text: &str) -> SharedString {
     SharedString::from(text.split_whitespace().collect::<Vec<_>>().join(" "))
+}
+
+#[derive(Clone)]
+pub struct MessageLinkDto {
+    pub label: SharedString,
+    pub url: SharedString,
+    pub target: SharedString,
+    pub kind: LinkKind,
+}
+
+pub fn message_links(links: &[BodyLink]) -> Vec<MessageLinkDto> {
+    let mut listed = HashSet::new();
+    links
+        .iter()
+        .filter(|link| listed.insert(link.destination.as_str()))
+        .filter_map(message_link)
+        .collect()
+}
+
+fn message_link(link: &BodyLink) -> Option<MessageLinkDto> {
+    let (kind, target) = match permalink::matrix_link(&link.destination) {
+        Some(MatrixLink::User(user_id)) => (LinkKind::Person, user_id.to_string()),
+        Some(MatrixLink::Room(room)) => (LinkKind::Room, room.room.to_string()),
+        None => {
+            LauncherSafeUrl::message_link(&link.destination)?;
+            (LinkKind::Web, link.destination.clone())
+        }
+    };
+    Some(MessageLinkDto {
+        label: SharedString::from(link.label.as_str()),
+        url: SharedString::from(link.destination.as_str()),
+        target: SharedString::from(target),
+        kind,
+    })
 }
 
 pub fn rich_body(text: &RichText) -> richtext::StyledBody {
@@ -169,8 +206,13 @@ impl CoveredBody {
         }
     }
 
-    pub fn revealed(&self, item: &TimelineItemKey, media: &dyn MediaCache) -> RowBody {
-        self.text().row_body(item, Spoilers::Shown, media)
+    pub fn row_body(
+        &self,
+        item: &TimelineItemKey,
+        spoilers: Spoilers,
+        media: &dyn MediaCache,
+    ) -> RowBody {
+        self.text().row_body(item, spoilers, media)
     }
 }
 

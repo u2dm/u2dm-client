@@ -86,6 +86,7 @@ impl UiBackend for InterpretedBackend {
     type Window = ComponentInstance;
     type CallWindow = ComponentInstance;
     type Message = Value;
+    type MessageLink = Value;
     type BodyLine = Value;
     type BodyPiece = Value;
     type Reaction = Value;
@@ -133,11 +134,11 @@ impl UiBackend for InterpretedBackend {
         warn_unbound(bound, "the pack browsing callback");
     }
 
-    fn bind_reveal_spoilers(window: &ComponentInstance, reveal: impl Fn(&str) + 'static) {
-        let bound = bind_void(window, callback::REVEAL_SPOILERS, move |args| {
-            reveal(&string_arg(args, 0));
+    fn bind_show_spoilers(window: &ComponentInstance, show: impl Fn(&str, bool) + 'static) {
+        let bound = bind_void(window, callback::SHOW_SPOILERS, move |args| {
+            show(&string_arg(args, 0), bool_arg(args, 1));
         });
-        warn_unbound(bound, "the spoiler reveal callback");
+        warn_unbound(bound, "the spoiler callback");
     }
 
     fn bind_window_hooks(window: &ComponentInstance, hooks: WindowHooks) {

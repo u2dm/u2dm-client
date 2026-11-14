@@ -1,14 +1,14 @@
 import { Palette } from "std-widgets.slint";
 import { IconSet } from "@lucide";
 import { MessageEntry } from "../../../../../types.slint";
-import { Interaction } from "../../../../../components/a11y.slint";
+import { FocusRing, FocusTrail, Interaction } from "../../../../../components/a11y.slint";
 import { ScrubBar, ScrubCommit } from "../../../../../components/scrub-bar.slint";
 import { AudioKind, MediaState } from "../../../../../enums.slint";
 import { Clocks } from "../../../../../messages.slint";
 import { Actions } from "../../../../../actions.slint";
 import { AudioView } from "../../../../../views.slint";
-import { FocusRegion } from "../../../../../local.slint";
-import { AppStyle, Fonts, Metrics, Space, Weight } from "../../../../../theme.slint";
+import { FocusHome, FocusRegion, TimelineCursor } from "../../../../../local.slint";
+import { AppStyle, Fonts, Metrics, Radius, Space, Weight } from "../../../../../theme.slint";
 import { MediaButton } from "./media-button.slint";
 
 component VoiceWaveform inherits Rectangle {
@@ -17,6 +17,7 @@ component VoiceWaveform inherits Rectangle {
     in property <bool> is-own;
     in property <bool> seekable;
     in property <int> duration-ms;
+    in property <string> place;
 
     callback seek-requested(int);
     callback activated();
@@ -50,6 +51,7 @@ component VoiceWaveform inherits Rectangle {
     accessible-action-decrement => {
         root.nudge(-root.step-ms);
     }
+    forward-focus: focus;
 
     for level[index] in root.levels: Rectangle {
         x: index * root.pitch + (root.pitch - root.bar) / 2;
@@ -75,6 +77,40 @@ component VoiceWaveform inherits Rectangle {
                 root.activated();
             }
         }
+    }
+
+    focus := FocusScope {
+        width: 0;
+        enabled: root.actionable;
+        focus-on-tab-navigation: root.actionable && root.seekable
+            && TimelineCursor.lets-tab(FocusRegion.timeline, true, root.place);
+        focus-gained(reason) => {
+            FocusHome.entered-row(FocusRegion.timeline, root.place);
+        }
+        focus-lost(reason) => {
+            FocusTrail.leave();
+        }
+        key-pressed(event) => {
+            if event.text == Key.RightArrow {
+                root.nudge(root.step-ms);
+                return accept;
+            }
+            if event.text == Key.LeftArrow {
+                root.nudge(-root.step-ms);
+                return accept;
+            }
+            return reject;
+        }
+    }
+
+    if focus.has-focus: FocusRing {
+        x: -Metrics.ring-outset;
+        y: -Metrics.ring-outset;
+        width: root.width + 2 * Metrics.ring-outset;
+        height: root.height + 2 * Metrics.ring-outset;
+        radius: Radius.xs + Metrics.ring-outset;
+        tint: root.is-own ? AppStyle.ring-own : AppStyle.ring;
+        region: FocusRegion.timeline;
     }
 }
 
@@ -140,6 +176,7 @@ export component AudioMessage inherits HorizontalLayout {
             is-own: root.msg.is-own;
             seekable: root.is-seekable;
             duration-ms: AudioView.duration-ms;
+            place: root.msg.unique-id;
             seek-requested(ms) => {
                 Actions.seek-audio(ms);
             }

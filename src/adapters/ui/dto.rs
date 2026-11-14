@@ -8,7 +8,8 @@ mod rooms;
 mod rules;
 
 pub(super) use self::body::{
-    BodyLineDto, BodyPieceDto, CoveredBody, RowBody, preview_line, rich_body,
+    BodyLineDto, BodyPieceDto, CoveredBody, MessageLinkDto, RowBody, message_links, preview_line,
+    rich_body,
 };
 pub(super) use self::call_rows::{
     CallConnectionDto, CallDeviceDto, CallNoticeMark, CallOfferMark, CallPersonDto, CallScreenMark,
@@ -17,8 +18,8 @@ pub(super) use self::call_rows::{
     call_person_to_dto, call_screen_mark, call_tile_to_dto, sheet_preview_mark, test_phase_mark,
 };
 pub(super) use self::message::{
-    EmojiArt, MediaFailureKind, MediaState, MessageDto, PollAnswerDto, QuotedMessage, REVEALABLE,
-    SpoilerState, ThumbUpdate, audio_row_update, decode_failure_kind, enrich_to_update,
+    EmojiArt, LinkKind, MediaFailureKind, MediaState, MessageDto, PollAnswerDto, QuotedMessage,
+    REVEALABLE, SpoilerState, ThumbUpdate, audio_row_update, decode_failure_kind, enrich_to_update,
     message_to_dto, quoted_message,
 };
 pub(super) use self::packs::{

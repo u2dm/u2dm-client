@@ -26,11 +26,15 @@ pub fn keep_covered_body(unique_id: &str, body: CoveredBody) {
     });
 }
 
-pub fn reveal_row(unique_id: &str) -> Option<CoveredBody> {
+pub fn mark_row(unique_id: &str, spoilers: Spoilers) -> Option<CoveredBody> {
     with_session(|session| {
         let rows = &mut session.spoilers;
         let body = rows.covered.get(unique_id)?.clone();
-        rows.revealed.insert(unique_id.to_owned()).then_some(body)
+        let changed = match spoilers {
+            Spoilers::Shown => rows.revealed.insert(unique_id.to_owned()),
+            Spoilers::Covered(_) => rows.revealed.remove(unique_id),
+        };
+        changed.then_some(body)
     })
 }
 

@@ -6,16 +6,17 @@ use super::names::{composer_draft, draft_verdict, mention_word, text_splice};
 use crate::adapters::ui::dto::{
     BodyLineDto, BodyPieceDto, CallConnectionDto, CallDeviceDto, CallNoticeMark, CallOfferMark,
     CallPersonDto, CallScreenMark, CallTileDto, CallTileMark, EmojiArt, IgnoredPersonDto,
-    InviteeDto, KeywordDto, LogLineDto, MediaFailureKind, MediaState, MemberRowDto, MemberRowKind,
-    MessageDto, PackCellDto, PackRowDto, PackSurface, PackTabDto, PollAnswerDto, ReactionDto,
-    ReactorAvatarDto, RoomCallMark, RoomDto, RoomRowKind, SheetPreviewMark, SpaceChildDto,
-    SpaceDto, SpoilerState, TestPhaseMark, UserDeviceDto,
+    InviteeDto, KeywordDto, LinkKind, LogLineDto, MediaFailureKind, MediaState, MemberRowDto,
+    MemberRowKind, MessageDto, MessageLinkDto, PackCellDto, PackRowDto, PackSurface, PackTabDto,
+    PollAnswerDto, ReactionDto, ReactorAvatarDto, RoomCallMark, RoomDto, RoomRowKind,
+    SheetPreviewMark, SpaceChildDto, SpaceDto, SpoilerState, TestPhaseMark, UserDeviceDto,
 };
 use crate::adapters::ui::fields::{
     BodyLineFields, BodyPieceFields, CallConnectionFields, CallDeviceFields, CallPersonFields,
     CallTileFields, IgnoredPersonFields, InviteeFields, KeywordFields, LogLineFields,
-    MemberRowFields, MessageFields, PackCellFields, PackRowFields, PackTabFields, PollAnswerFields,
-    ReactionFields, ReactorFields, RoomFields, SpaceChildFields, SpaceFields, UserDeviceFields,
+    MemberRowFields, MessageFields, MessageLinkFields, PackCellFields, PackRowFields,
+    PackTabFields, PollAnswerFields, ReactionFields, ReactorFields, RoomFields, SpaceChildFields,
+    SpaceFields, UserDeviceFields,
 };
 use crate::adapters::ui::mention;
 use crate::adapters::ui::present::{
@@ -25,9 +26,9 @@ use crate::adapters::ui::router::DraftVerdict;
 use crate::adapters::ui::schema::{
     body_line_fields, body_piece_fields, call_connection_fields, call_device_fields,
     call_person_fields, call_tile_fields, ignored_person_fields, invitee_fields, keyword_fields,
-    log_line_fields, member_row_fields, message_fields, pack_cell_fields, pack_row_fields,
-    pack_tab_fields, poll_answer_fields, reaction_fields, reactor_fields, room_fields, slint_enums,
-    space_child_fields, space_fields, user_device_fields,
+    log_line_fields, member_row_fields, message_fields, message_link_fields, pack_cell_fields,
+    pack_row_fields, pack_tab_fields, poll_answer_fields, reaction_fields, reactor_fields,
+    room_fields, slint_enums, space_child_fields, space_fields, user_device_fields,
 };
 use crate::commands::effects::VerificationActivity;
 use crate::commands::messages::UserMessageKind;
@@ -255,6 +256,8 @@ macro_rules! impl_value {
 }
 
 message_fields!(impl_value MessageDto MessageFields;);
+
+message_link_fields!(impl_value MessageLinkDto MessageLinkFields;);
 
 body_line_fields!(impl_value BodyLineDto BodyLineFields;);
 

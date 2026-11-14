@@ -15,12 +15,12 @@ use u2dm_ui::{
     DraftVerdict as UiDraftVerdict, EmojiEntry, EmojiRow, EmojiStore, EncryptionView, FocusKeeper,
     IdentityAlertView, IgnoredPersonEntry, InvitePeopleView, InviteView, InviteeEntry, KeyChord,
     KeywordEntry, LeaveSpaceView, LogLineEntry, LoginView, LogoutView, MemberEntry, MentionWord,
-    MentionsView, MessageEntry, Motion, NotificationText, PackCell, PackRow, PackTabEntry,
-    PackView, PollAnswerEntry, PresenceView, ReactionEntry, ReactorAvatar, ReadersView,
-    RemovalView, ReplySwipe, RoomEntry, RoomInfoView, RoomLogView, RoomMenuView, RoomPreviewView,
-    RoomView, SessionView, SettingsView, Shortcuts, SourceView, SpaceChildEntry, SpaceEntry,
-    SpaceIndexView, SpoilerCover, TextSplice, TouchpadView, TypingView, UnsentView, UpgradeView,
-    UserDeviceEntry, UserInfoView, UserMessage as UiUserMessage, VerificationEmoji,
+    MentionsView, MessageEntry, MessageLink, Motion, NotificationText, PackCell, PackRow,
+    PackTabEntry, PackView, PollAnswerEntry, PresenceView, ReactionEntry, ReactorAvatar,
+    ReadersView, RemovalView, ReplySwipe, RoomEntry, RoomInfoView, RoomLogView, RoomMenuView,
+    RoomPreviewView, RoomView, SessionView, SettingsView, Shortcuts, SourceView, SpaceChildEntry,
+    SpaceEntry, SpaceIndexView, SpoilerCover, TextSplice, TouchpadView, TypingView, UnsentView,
+    UpgradeView, UserDeviceEntry, UserInfoView, UserMessage as UiUserMessage, VerificationEmoji,
     VerificationView, VideoView, WindowView,
 };
 #[cfg(feature = "demo")]
@@ -39,18 +39,20 @@ use super::decode::{
 use super::dto::{
     BodyLineDto, BodyPieceDto, CallConnectionDto, CallDeviceDto, CallNoticeMark, CallOfferMark,
     CallPersonDto, CallScreenMark, CallTileDto, CallTileMark, EmojiArt, IgnoredPersonDto,
-    InviteeDto, KeywordDto, LogLineDto, MediaFailureKind, MediaState, MemberRowDto, MemberRowKind,
-    MessageDto, PackCellDto, PackRowDto, PackSurface, PackTabDto, PollAnswerDto, ReactionDto,
-    ReactorAvatarDto, RoomCallMark, RoomDto, RoomRowKind, SheetPreviewMark, SpaceChildDto,
-    SpaceDto, SpoilerState, TestPhaseMark, UserDeviceDto, pack_surface_named,
+    InviteeDto, KeywordDto, LinkKind, LogLineDto, MediaFailureKind, MediaState, MemberRowDto,
+    MemberRowKind, MessageDto, MessageLinkDto, PackCellDto, PackRowDto, PackSurface, PackTabDto,
+    PollAnswerDto, ReactionDto, ReactorAvatarDto, RoomCallMark, RoomDto, RoomRowKind,
+    SheetPreviewMark, SpaceChildDto, SpaceDto, SpoilerState, TestPhaseMark, UserDeviceDto,
+    pack_surface_named,
 };
 #[cfg(feature = "demo")]
 use super::dump;
 use super::fields::{
     BodyLineFields, BodyPieceFields, CallConnectionFields, CallDeviceFields, CallPersonFields,
     CallTileFields, IgnoredPersonFields, InviteeFields, KeywordFields, LogLineFields,
-    MemberRowFields, MessageFields, PackCellFields, PackRowFields, PackTabFields, PollAnswerFields,
-    ReactionFields, ReactorFields, RoomFields, SpaceChildFields, SpaceFields, UserDeviceFields,
+    MemberRowFields, MessageFields, MessageLinkFields, PackCellFields, PackRowFields,
+    PackTabFields, PollAnswerFields, ReactionFields, ReactorFields, RoomFields, SpaceChildFields,
+    SpaceFields, UserDeviceFields,
 };
 use super::notices::NoticeWords;
 use super::present::{
@@ -64,9 +66,10 @@ use super::schema::{
     body_line_fields, body_piece_fields, bool_props, call_connection_fields, call_device_fields,
     call_person_fields, call_tile_fields, enum_props, ignored_person_fields, image_props,
     int_props, invitee_fields, keyword_fields, log_line_fields, member_row_fields, message_fields,
-    model_props, pack_cell_fields, pack_row_fields, pack_tab_fields, poll_answer_fields,
-    reaction_fields, reactor_fields, room_fields, shortcut_props, simple_callbacks, slint_enums,
-    space_child_fields, space_fields, string_props, user_device_fields,
+    message_link_fields, model_props, pack_cell_fields, pack_row_fields, pack_tab_fields,
+    poll_answer_fields, reaction_fields, reactor_fields, room_fields, shortcut_props,
+    simple_callbacks, slint_enums, space_child_fields, space_fields, string_props,
+    user_device_fields,
 };
 use super::session::active_models;
 use super::video::{self, millis_to_duration};
@@ -554,6 +557,7 @@ macro_rules! impl_entry {
 }
 
 message_fields!(impl_entry MessageDto MessageFields MessageEntry;);
+message_link_fields!(impl_entry MessageLinkDto MessageLinkFields MessageLink;);
 body_line_fields!(impl_entry BodyLineDto BodyLineFields BodyLine;);
 body_piece_fields!(impl_entry BodyPieceDto BodyPieceFields BodyPiece;);
 reaction_fields!(impl_entry ReactionDto ReactionFields ReactionEntry;);
@@ -601,6 +605,7 @@ impl UiBackend for CompiledBackend {
     type Window = AppWindow;
     type CallWindow = CallWindow;
     type Message = MessageEntry;
+    type MessageLink = MessageLink;
     type BodyLine = BodyLine;
     type BodyPiece = BodyPiece;
     type Reaction = ReactionEntry;
@@ -640,8 +645,8 @@ impl UiBackend for CompiledBackend {
         });
     }
 
-    fn bind_reveal_spoilers(window: &AppWindow, reveal: impl Fn(&str) + 'static) {
-        actions(window).on_reveal_spoilers(move |unique_id| reveal(&unique_id));
+    fn bind_show_spoilers(window: &AppWindow, show: impl Fn(&str, bool) + 'static) {
+        actions(window).on_show_spoilers(move |unique_id, shown| show(&unique_id, shown));
     }
 
     fn bind_window_hooks(window: &AppWindow, hooks: WindowHooks) {
