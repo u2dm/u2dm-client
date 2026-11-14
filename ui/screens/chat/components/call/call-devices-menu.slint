@@ -97,6 +97,10 @@ export component CallDevicesMenu inherits PickerCard {
     property <int> count: root.devices + (root.in-call ? 1 : 0);
     property <bool> keys-focused: keys.has-focus;
     property <string> details-label: @tr("Connection details…");
+    out property <int> spoken-index: root.cursor < 0 ? -1
+        : root.cursor + 1 + (root.cursor >= root.microphones ? 1 : 0)
+            + (root.cursor >= root.microphones + root.speakers ? 1 : 0)
+            + (root.cursor >= root.devices && CallView.cameras.length == 0 ? 1 : 0);
 
     public function open(by-keys: bool) {
         root.open-at(CallDeviceKind.microphone, by-keys);
@@ -130,17 +134,6 @@ export component CallDevicesMenu inherits PickerCard {
         return CallView.cameras[index - root.microphones - root.speakers];
     }
 
-    pure function spoken-label() -> string {
-        if root.cursor < 0 || root.cursor >= root.count {
-            return @tr("Devices");
-        }
-        if root.cursor >= root.devices {
-            return root.details-label;
-        }
-        let entry = root.entry-at(root.cursor);
-        return CallWords.device-label(root.kind-at(root.cursor), entry.status, entry.name);
-    }
-
     function choose-at(index: int) {
         if index >= root.devices && index < root.count {
             root.details(true);
@@ -157,12 +150,6 @@ export component CallDevicesMenu inherits PickerCard {
     keys := RovingKeys {
         count: root.count;
         cursor <=> root.cursor;
-        accessible-label: root.spoken-label();
-        accessible-checkable: root.cursor >= 0 && root.cursor < root.devices;
-        accessible-checked: root.cursor >= 0 && root.cursor < root.devices && root.entry-at(root.cursor).chosen;
-        accessible-action-default => {
-            root.choose-at(max(root.cursor, 0));
-        }
         intercept(event) => {
             if event.text == Key.Tab || event.text == Key.Backtab {
                 return accept;

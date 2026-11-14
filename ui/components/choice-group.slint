@@ -83,16 +83,14 @@ export component ChoiceGroup inherits Rectangle {
         keys.focus();
     }
 
+    accessible-role: radio-group;
+    accessible-label: root.label;
+    accessible-item-count: root.options.length;
+    accessible-delegate-focus: keys.cursor < 0 ? root.selected : keys.cursor;
+
     keys := RovingKeys {
         count: root.options.length;
         cursor: root.selected;
-        accessible-role: radio-button;
-        accessible-label: @tr("{}: {}", root.label, root.options[max(self.cursor, 0)].text);
-        accessible-checkable: true;
-        accessible-checked: self.cursor == root.selected;
-        accessible-action-default => {
-            root.choose(max(self.cursor, 0));
-        }
         activated(index) => {
             root.choose(index);
         }
@@ -110,6 +108,7 @@ export component ChoiceGroup inherits Rectangle {
             text: option.text;
             detail: option.detail;
             checked: index == root.selected;
+            accessible-item-index: index;
             roving-focus: keys.has-focus && keys.cursor == index;
             clicked => {
                 root.choose(index);

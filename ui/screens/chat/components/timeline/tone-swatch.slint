@@ -41,6 +41,8 @@ export component ToneSwatch inherits Rectangle {
     in property <bool> focusable: true;
     in property <bool> roving-focus;
     in property <length> size: Size.xs;
+    in property <int> index: -1;
+    in property <string> description;
     callback clicked();
 
     width: root.size;
@@ -62,6 +64,8 @@ export component ToneSwatch inherits Rectangle {
         accessible-role: radio-button;
         accessible-checkable: true;
         accessible-checked: root.selected;
+        accessible-item-index: root.index;
+        accessible-description: root.description;
         clicked => {
             root.clicked();
         }

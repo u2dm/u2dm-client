@@ -7,7 +7,7 @@ import { CallDeviceTrouble, CallNotice, CallPhase } from "../../../../enums.slin
 import { CallWords } from "../../../../messages.slint";
 import { Actions } from "../../../../actions.slint";
 import { CallView } from "../../../../views.slint";
-import { CallMenuOpener, CallPanel } from "../../../../local.slint";
+import { CallMenuOpener, CallPanel, FocusRegion } from "../../../../local.slint";
 import { AppStyle, Fonts, IconSize, Size, Space } from "../../../../theme.slint";
 import { SharingMark } from "./sharing-mark.slint";
 import { SecondaryText } from "../../../../components/text-roles.slint";
@@ -113,6 +113,8 @@ export component CallStatus inherits VerticalLayout {
         if root.offers-details: LinkButton {
             property <int> asked: root.details-asked;
 
+            region: FocusRegion.dock;
+            place: "details";
             min-height: Size.sm;
             above-modal: root.above-modal;
             text: @tr("Details");

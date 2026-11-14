@@ -409,7 +409,7 @@ export component ChatScreen inherits FocusScope {
             root.focus();
         }
         if FocusHome.asked == FocusRegion.dock && root.shows-dock {
-            dock.focus-first();
+            dock.focus-place(FocusHome.asked-place);
         }
     }
 

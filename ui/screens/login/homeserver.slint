@@ -21,6 +21,8 @@ export component HomeserverScreen inherits LoginPage {
     private property <bool> is-ending-session: LoginView.activity == LoginActivity.signing-out
         || LoginView.activity == LoginActivity.cleaning-up;
 
+    step: 1;
+
     function submit() {
         if !root.is-checking && !root.is-ending-session && root.input-homeserver != "" {
             Actions.check-server(root.input-homeserver);
@@ -72,6 +74,6 @@ export component HomeserverScreen inherits LoginPage {
     }
 
     StepDots {
-        step: 1;
+        step: root.step;
     }
 }

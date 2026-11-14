@@ -13,7 +13,7 @@ import { ComposerStrip } from "./composer-strip.slint";
 import { AppStyle, Metrics, Space, Stroke } from "../../../../theme.slint";
 import { LinkButton } from "../../../../components/button.slint";
 import { ModalHost } from "../../../../components/overlay.slint";
-import { FocusRing, FocusTrail, Interaction } from "../../../../components/a11y.slint";
+import { Announcer, FocusRing, FocusTrail, Interaction } from "../../../../components/a11y.slint";
 import { Actions } from "../../../../actions.slint";
 import { Composer, FocusHome, FocusRegion, Overlays, Polls, Reactions, Shell } from "../../../../local.slint";
 import { ComposerDraft, EditedMessage, ReplyDraft } from "../../../../types.slint";
@@ -117,6 +117,7 @@ export component MessageInput inherits Rectangle {
         ? @tr("Send a message...")
         : (root.edits-caption ? @tr("Add a caption...") : @tr("Edit the message..."));
     property <bool> is-replying: Composer.reply-event-id != "";
+    property <string> replied-to: Composer.reply-event-id;
     property <bool> carries-replies: root.writable || RoomView.may-send-stickers;
     property <int> settled-submission: 0;
     property <bool> replaced: UpgradeView.successor != UpgradeLink.hidden
@@ -146,6 +147,12 @@ export component MessageInput inherits Rectangle {
 
     changed edit-requests => {
         root.begin-edit(Composer.requested-edit, Composer.requested-edit.original);
+    }
+
+    changed replied-to => {
+        if root.is-replying && !Composer.editing && root.carries-replies {
+            news.say(@tr("Replying to {}", Composer.reply-sender));
+        }
     }
 
     init => {
@@ -262,6 +269,7 @@ export component MessageInput inherits Rectangle {
         Composer.edited = target;
         field.replace-text(text);
         field.focus-input();
+        news.say(target.caption ? @tr("Editing the caption") : @tr("Editing the message"));
     }
 
     function finish-edit() {
@@ -474,6 +482,8 @@ export component MessageInput inherits Rectangle {
             field.place-emote(pack-id, shortcode, true);
         }
     }
+
+    news := Announcer { }
 
     Rectangle {
         x: field.x;

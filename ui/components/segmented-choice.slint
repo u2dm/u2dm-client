@@ -59,6 +59,11 @@ export component SegmentedChoice inherits Rectangle {
 
     height: Metrics.settings-segment;
     opacity: root.enabled ? 1 : Opacity.disabled;
+    accessible-role: radio-group;
+    accessible-label: root.label;
+    accessible-description: root.enabled ? root.description : root.reason;
+    accessible-item-count: root.options.length;
+    accessible-delegate-focus: keys.cursor < 0 ? root.selected : keys.cursor;
 
     keys := RovingKeys {
         count: root.options.length;
@@ -66,15 +71,6 @@ export component SegmentedChoice inherits Rectangle {
         start-at: root.selected;
         paused: !root.enabled;
         focus-on-tab-navigation: root.enabled;
-        accessible-role: radio-button;
-        accessible-label: @tr("{}: {}", root.label, root.options[self.cursor < 0 ? root.selected : self.cursor]);
-        accessible-checkable: true;
-        accessible-checked: self.cursor < 0 || self.cursor == root.selected;
-        accessible-enabled: root.enabled;
-        accessible-description: root.enabled ? root.description : root.reason;
-        accessible-action-default => {
-            root.choose(self.cursor < 0 ? root.selected : self.cursor);
-        }
         activated(index) => {
             root.choose(index);
         }
@@ -93,6 +89,8 @@ export component SegmentedChoice inherits Rectangle {
             text: option;
             selected: index == root.selected;
             enabled: root.enabled;
+            accessible-item-index: index;
+            accessible-description: index != root.selected ? "" : root.enabled ? root.description : root.reason;
             above-modal: root.above-modal;
             roving-focus: keys.has-focus && keys.cursor == index;
             clicked => {

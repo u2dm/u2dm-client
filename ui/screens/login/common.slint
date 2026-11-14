@@ -29,6 +29,9 @@ component MatrixBracket inherits Rectangle {
 }
 
 export component LoginPage inherits Rectangle {
+    in property <int> step: 0;
+    in property <int> steps: 2;
+
     width: 100%;
     height: 100%;
     background: AppStyle.canvas;
@@ -75,6 +78,8 @@ export component LoginPage inherits Rectangle {
             border-radius: Radius.xl;
             border-width: Stroke.hairline;
             border-color: AppStyle.elevated-edge;
+            accessible-role: groupbox;
+            accessible-label: root.step > 0 ? @tr("Sign in, step {} of {}", root.step, root.steps) : "";
 
             card-body := VerticalLayout {
                 padding: root.dense ? AppStyle.card-padding-dense : AppStyle.card-padding;

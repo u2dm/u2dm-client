@@ -5,7 +5,7 @@ import { ShadedClickArea } from "../../../../components/state-layer.slint";
 import { CallNotice, CallPhase, CallScreen } from "../../../../enums.slint";
 import { CallWords, UserMessages } from "../../../../messages.slint";
 import { Actions } from "../../../../actions.slint";
-import { CallMenuOpener, CallMode, CallPanel, Shell, TipScope } from "../../../../local.slint";
+import { CallMenuOpener, CallMode, CallPanel, FocusRegion, Shell, TipScope } from "../../../../local.slint";
 import { CallView, DirectoryView, SpaceIndexView, WindowView } from "../../../../views.slint";
 import { AppStyle, Fonts, IconSize, Metrics, Motion, Radius, Size, Space, Stroke, Weight } from "../../../../theme.slint";
 import { CallCameraButton, CallHandButton, CallKey, CallLeaveButton, CallMicButton, CallMoreButton, CallReactButton, CallShareButton } from "./call-controls.slint";
@@ -92,6 +92,10 @@ component CallLine inherits Rectangle {
         room.take-focus();
     }
 
+    public function focus-change() {
+        change.take-focus();
+    }
+
     public function focus-people() {
         people.take-focus();
     }
@@ -114,6 +118,8 @@ component CallLine inherits Rectangle {
     }
 
     room := LineTarget {
+        region: FocusRegion.dock;
+        place: "room";
         x: root.lead - Space.xs;
         width: root.room-width;
         height: root.height;
@@ -155,6 +161,8 @@ component CallLine inherits Rectangle {
     }
 
     people := LineTarget {
+        region: FocusRegion.dock;
+        place: "people";
         x: dot.x + dot.width + root.gap - Space.xs;
         width: self.text-width;
         height: root.height;
@@ -181,6 +189,8 @@ component CallLine inherits Rectangle {
     }
 
     change := LineTarget {
+        region: FocusRegion.dock;
+        place: "change";
         x: sharing.x + sharing.width + root.gap - Space.xs;
         width: root.shows-sharing ? self.text-width : 0;
         height: root.height;
@@ -372,6 +382,40 @@ export component CallDock inherits Rectangle {
             retry.take-focus();
         } else {
             dismiss.take-focus();
+        }
+    }
+
+    public function focus-place(place: string) {
+        if root.failed || place == "" {
+            root.focus-first();
+        } else if place == "room" {
+            line.focus-room();
+        } else if place == "people" {
+            line.focus-people();
+        } else if place == "change" && root.share-apart {
+            row-change.take-focus();
+        } else if place == "change" && root.sharing {
+            line.focus-change();
+        } else if place == "show-call" && root.shows-button {
+            show-call.take-focus();
+        } else if place == "camera" {
+            camera.take-focus();
+        } else if place == "share" {
+            share.take-focus();
+        } else if place == "react" && root.react-shown {
+            react.take-focus();
+        } else if place == "hand" && root.hand-shown {
+            hand.take-focus();
+        } else if place == "devices" && root.devices-shown {
+            devices.take-focus();
+        } else if place == "details" && status.offers-details {
+            status.focus-details();
+        } else if place == "leave" {
+            leave.take-focus();
+        } else if place == "more" || place == "react" || place == "hand" || place == "devices" {
+            more.take-focus();
+        } else {
+            mic.take-focus();
         }
     }
 
@@ -641,6 +685,8 @@ export component CallDock inherits Rectangle {
         }
 
         row-change := LineTarget {
+            region: FocusRegion.dock;
+            place: "change";
             width: self.text-width;
             above-modal: root.above-modal;
             text: @tr("Change…");
@@ -681,6 +727,8 @@ export component CallDock inherits Rectangle {
     }
 
     show-call := AppButton {
+        region: FocusRegion.dock;
+        place: "show-call";
         x: root.pad + root.label-span + root.gap;
         y: root.label-y + (root.label-height - self.height) / 2;
         width: self.preferred-width;
@@ -707,6 +755,8 @@ export component CallDock inherits Rectangle {
     }
 
     mic := CallMicButton {
+        region: FocusRegion.dock;
+        place: "mic";
         x: camera.x - root.gap - self.width;
         y: root.controls-y;
         visible: !root.failed;
@@ -714,6 +764,8 @@ export component CallDock inherits Rectangle {
     }
 
     camera := CallCameraButton {
+        region: FocusRegion.dock;
+        place: "camera";
         x: share.x - root.gap - self.width;
         y: root.controls-y;
         visible: !root.failed;
@@ -721,6 +773,8 @@ export component CallDock inherits Rectangle {
     }
 
     share := CallShareButton {
+        region: FocusRegion.dock;
+        place: "share";
         x: (root.react-shown ? react.x : more.x) - root.gap - self.width;
         y: root.controls-y;
         visible: !root.failed;
@@ -731,6 +785,8 @@ export component CallDock inherits Rectangle {
     }
 
     react := CallReactButton {
+        region: FocusRegion.dock;
+        place: "react";
         x: (root.hand-shown ? hand.x : more.x) - root.gap - self.width;
         y: root.controls-y;
         visible: root.react-shown;
@@ -738,6 +794,8 @@ export component CallDock inherits Rectangle {
     }
 
     hand := CallHandButton {
+        region: FocusRegion.dock;
+        place: "hand";
         x: (root.devices-shown ? devices.x : more.x) - root.gap - self.width;
         y: root.controls-y;
         visible: root.hand-shown;
@@ -745,6 +803,8 @@ export component CallDock inherits Rectangle {
     }
 
     devices := IconButton {
+        region: FocusRegion.dock;
+        place: "devices";
         x: more.x - root.gap - self.width;
         y: root.controls-y;
         size: Metrics.call-control;
@@ -762,6 +822,8 @@ export component CallDock inherits Rectangle {
     }
 
     more := CallMoreButton {
+        region: FocusRegion.dock;
+        place: "more";
         x: leave.x - root.gap - self.width;
         y: root.controls-y;
         visible: !root.failed;
@@ -769,6 +831,8 @@ export component CallDock inherits Rectangle {
     }
 
     leave := CallLeaveButton {
+        region: FocusRegion.dock;
+        place: "leave";
         x: root.width - root.pad - self.width;
         y: root.controls-y;
         width: self.preferred-width;
@@ -777,6 +841,8 @@ export component CallDock inherits Rectangle {
     }
 
     retry := AppButton {
+        region: FocusRegion.dock;
+        place: "retry";
         x: dismiss.x - root.gap - self.width;
         y: root.controls-y;
         width: self.preferred-width;
@@ -792,6 +858,8 @@ export component CallDock inherits Rectangle {
     }
 
     dismiss := IconButton {
+        region: FocusRegion.dock;
+        place: "dismiss";
         x: root.width - root.pad - self.width;
         y: root.controls-y;
         size: Metrics.call-control;

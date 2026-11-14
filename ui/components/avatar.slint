@@ -19,6 +19,7 @@ export component Avatar inherits Rectangle {
         height: 100%;
         source: root.image;
         image-fit: cover;
+        accessible-role: none;
     }
 
     if !root.has-image: Text {
@@ -32,5 +33,6 @@ export component Avatar inherits Rectangle {
         vertical-alignment: center;
         overflow: clip;
         color: root.initial-color;
+        accessible-role: none;
     }
 }

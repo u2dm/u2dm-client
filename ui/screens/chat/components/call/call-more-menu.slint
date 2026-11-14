@@ -37,6 +37,7 @@ export component CallMoreMenu inherits PickerCard {
         : [CallMoreChoice.call-and-chat, CallMoreChoice.call-only, CallMoreChoice.chat-only, CallMoreChoice.window];
     property <int> count: root.actions.length + root.modes.length + 1;
     property <int> cursor: -1;
+    out property <int> spoken-index: root.cursor < root.actions.length ? root.cursor : root.cursor + 1;
     property <bool> keys-focused: keys.has-focus;
     property <bool> hand-up: CallView.hand == CallHand.up || CallView.hand == CallHand.lowering
         || CallView.hand == CallHand.lower-failed;
@@ -54,10 +55,6 @@ export component CallMoreMenu inherits PickerCard {
             return root.modes[index - root.actions.length];
         }
         return CallMoreChoice.details;
-    }
-
-    pure function cursor-choice() -> CallMoreChoice {
-        return root.choice-at(max(root.cursor, 0));
     }
 
     pure function icon(choice: CallMoreChoice) -> Icon {
@@ -196,14 +193,6 @@ export component CallMoreMenu inherits PickerCard {
     keys := RovingKeys {
         count: root.count;
         cursor <=> root.cursor;
-        accessible-label: root.cursor >= 0 ? root.label(root.cursor-choice()) : @tr("More call options");
-        accessible-description: root.cursor >= 0 ? root.description(root.cursor-choice()) : "";
-        accessible-enabled: root.cursor < 0 || root.offered(root.cursor-choice());
-        accessible-checkable: root.cursor >= 0 && root.checkable(root.cursor-choice());
-        accessible-checked: root.cursor >= 0 && root.checked(root.cursor-choice());
-        accessible-action-default => {
-            root.choose(root.cursor-choice(), true);
-        }
         intercept(event) => {
             if event.text == Key.Tab || event.text == Key.Backtab {
                 return accept;
@@ -223,6 +212,7 @@ export component CallMoreMenu inherits PickerCard {
             height: Metrics.call-menu-row;
             icon: root.icon(choice);
             label: root.label(choice);
+            description: root.description(choice);
             enabled: root.offered(choice);
             busy: root.pending(choice);
             checkable: root.checkable(choice);

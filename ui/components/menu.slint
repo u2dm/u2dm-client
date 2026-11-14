@@ -82,12 +82,14 @@ export component MenuConfirmation inherits VerticalLayout {
         overflow: elide;
         vertical-alignment: center;
         horizontal-alignment: center;
+        accessible-role: none;
     }
 
     MenuRow {
         height: root.row-height;
         icon: root.confirm-icon;
         label: root.confirm-label;
+        description: root.prompt;
         destructive: true;
         above-modal: root.above-modal;
         focusable: false;
@@ -101,6 +103,7 @@ export component MenuConfirmation inherits VerticalLayout {
         height: root.row-height;
         icon: IconSet.X;
         label: @tr("Cancel");
+        description: root.prompt;
         above-modal: root.above-modal;
         focusable: false;
         roving-focus: root.rings && root.cursor == ConfirmChoice.cancel;

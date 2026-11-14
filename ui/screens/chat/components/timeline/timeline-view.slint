@@ -251,7 +251,7 @@ export component TimelineView inherits Rectangle {
             width: parent.width - parent.menu-slot - parent.pane-slot - parent.action-slot;
             height: parent.height;
             enabled: !root.room-info-pane-shown;
-            label: @tr("Room info");
+            label: @tr("{}, room info", RoomView.selected-room-name);
             clicked => {
                 Actions.open-room-info(DirectoryView.selected-room-id);
             }
@@ -706,6 +706,7 @@ export component TimelineView inherits Rectangle {
             height: root.height;
             dim: false;
             label: @tr("View");
+            accessible-delegate-focus: view-menu.spoken-index;
             dismissed => {
                 CallPanel.menu-open = false;
                 band.focus-menu();

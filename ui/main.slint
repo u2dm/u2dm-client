@@ -263,6 +263,7 @@ export component AppWindow inherits Window {
         height: root.height;
         dim: false;
         label: @tr("Devices");
+        accessible-delegate-focus: ring-devices.spoken-index;
         dismissed => {
             CallPanel.close-ring-devices();
         }

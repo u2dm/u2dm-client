@@ -46,6 +46,10 @@ component QuickReactionBar inherits PickerCard {
     width: root.count * root.cell + (root.count - 1) * root.gap + 2 * root.pad;
     height: root.cell + 2 * root.pad;
     border-radius: self.height / 2;
+    accessible-role: groupbox;
+    accessible-label: @tr("Quick reactions");
+    accessible-item-count: root.count;
+    accessible-delegate-focus: root.cursor;
 
     function run(index: int) {
         if index == root.more-index {
@@ -61,12 +65,6 @@ component QuickReactionBar inherits PickerCard {
         horizontal: true;
         ring-on-any-focus: true;
         enabled: root.visible;
-        accessible-label: root.cursor == root.more-index
-            ? @tr("More reactions")
-            : @tr("React with {}", QuickReactions.keys[max(root.cursor, 0)]);
-        accessible-action-default => {
-            root.run(max(root.cursor, 0));
-        }
         activated(index) => {
             root.run(index);
         }
@@ -83,6 +81,7 @@ component QuickReactionBar inherits PickerCard {
             height: root.cell;
             key: key;
             label: @tr("React with {}", key);
+            accessible-item-index: index;
             glyph: Glyph.lg;
             focusable: false;
             roving-focus: keys.has-focus && root.cursor == index;
@@ -97,6 +96,7 @@ component QuickReactionBar inherits PickerCard {
             border-radius: self.height / 2;
             ring-radius: self.height / 2;
             label: @tr("More reactions");
+            accessible-item-index: root.more-index;
             focusable: false;
             roving-focus: keys.has-focus && root.cursor == root.more-index;
             background: self.has-hover ? AppStyle.overlay-pressed : transparent;
@@ -133,6 +133,10 @@ component MessageMenuCard inherits MenuCard {
     property <int> cursor: -1;
     property <bool> asking: MessageMenu.asking-delete;
     property <ConfirmChoice> confirm-cursor: ConfirmChoice.cancel;
+    out property <int> spoken-count: root.row-count;
+    out property <int> spoken-index: root.asking
+        ? root.row-count + (root.confirm-cursor == ConfirmChoice.confirm ? 0 : 1)
+        : root.cursor;
 
     property <bool> has-remote-id: root.msg.event-id != "";
     property <bool> is-service: root.msg.message-type == MessageKind.service;
@@ -378,26 +382,6 @@ component MessageMenuCard inherits MenuCard {
         return root.msg.links[index - root.links-at];
     }
 
-    pure function spoken-label() -> string {
-        if root.asking {
-            return root.confirm-cursor == ConfirmChoice.confirm ? @tr("Delete for everyone") : @tr("Cancel");
-        }
-        if root.cursor < 0 || root.cursor >= root.row-count {
-            return @tr("Message actions");
-        }
-        if root.is-link(root.cursor) {
-            return root.link-label(root.link-at(root.cursor));
-        }
-        return root.label-of(root.action-at(root.cursor));
-    }
-
-    pure function spoken-detail() -> string {
-        if root.asking || !root.is-link(root.cursor) {
-            return "";
-        }
-        return root.link-detail(root.link-at(root.cursor));
-    }
-
     function answer(choice: ConfirmChoice) {
         if choice == ConfirmChoice.confirm {
             root.confirmed();
@@ -439,15 +423,6 @@ component MessageMenuCard inherits MenuCard {
         count: root.row-count;
         cursor <=> root.cursor;
         paused: root.asking;
-        accessible-label: root.spoken-label();
-        accessible-description: root.spoken-detail();
-        accessible-action-default => {
-            if root.asking {
-                root.answer(root.confirm-cursor);
-            } else {
-                root.choose-at(max(root.cursor, 0));
-            }
-        }
         intercept(event) => {
             if root.asking {
                 return root.confirm-key(event);
@@ -471,6 +446,7 @@ component MessageMenuCard inherits MenuCard {
                 height: root.row-height;
                 icon: root.icon-of(action);
                 label: root.label-of(action);
+                index: index;
                 destructive: root.destructive(action);
                 focusable: false;
                 roving-focus: keys.has-focus && root.cursor == index;
@@ -489,6 +465,7 @@ component MessageMenuCard inherits MenuCard {
                 icon: root.link-icon(link);
                 label: root.link-label(link);
                 detail: root.link-detail(link);
+                index: root.links-at + index;
                 focusable: false;
                 roving-focus: keys.has-focus && root.cursor == root.links-at + index;
                 changed roving-focus => {
@@ -505,6 +482,7 @@ component MessageMenuCard inherits MenuCard {
                 height: root.row-height;
                 icon: root.icon-of(action);
                 label: root.label-of(action);
+                index: root.tail-at + index;
                 destructive: root.destructive(action);
                 focusable: false;
                 roving-focus: keys.has-focus && root.cursor == root.tail-at + index;
@@ -665,6 +643,8 @@ export component MessageMenuOverlay inherits Rectangle {
         any-button-dismisses: true;
         keeps-tab: true;
         label: @tr("Message actions");
+        accessible-delegate-focus: card.spoken-index < 0 ? -1 : 1 + card.spoken-index;
+        accessible-item-count: card.spoken-count;
         opened => {
             RoomMenu.close();
             LocalState.close-popovers();

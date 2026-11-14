@@ -130,6 +130,7 @@ component CallContent inherits FocusScope {
         height: root.height;
         dim: false;
         label: @tr("View");
+        accessible-delegate-focus: view-menu.spoken-index;
         dismissed => {
             CallPanel.menu-open = false;
             band.focus-menu();

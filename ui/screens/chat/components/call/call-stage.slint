@@ -169,79 +169,82 @@ export component CallStage inherits Rectangle {
         fits-video: root.fits-videos;
     }
 
-    tile-keys := RovingKeys {
-        count: root.count;
-        horizontal: !root.rail;
-        enabled: films.visible && root.count > 0;
-        focus-on-tab-navigation: Shell.background-reachable;
-        cursor <=> root.cursor;
-        accessible-enabled: Shell.background-reachable;
-        accessible-label: root.cursor < 0 || root.cursor >= root.count ? @tr("People in the call")
-            : CallView.tiles[root.cursor].screen && CallView.tiles[root.cursor].own
-            ? CallWords.tile-title(CallView.tiles[root.cursor])
-            : CallWords.focus-on(CallWords.tile-title(CallView.tiles[root.cursor]));
-        accessible-description: root.cursor >= 0 && root.cursor < root.count
-            ? CallWords.tile(CallView.tiles[root.cursor].state)
-            : "";
-        intercept(event) => {
-            if root.focused || event.modifiers.control || event.modifiers.alt || event.modifiers.meta {
+    people := Rectangle {
+        accessible-role: groupbox;
+        accessible-label: @tr("People in the call");
+        accessible-item-count: root.count;
+        accessible-delegate-focus: root.cursor;
+
+        tile-keys := RovingKeys {
+            count: root.count;
+            horizontal: !root.rail;
+            enabled: films.visible && root.count > 0;
+            focus-on-tab-navigation: Shell.background-reachable;
+            cursor <=> root.cursor;
+            intercept(event) => {
+                if root.focused || event.modifiers.control || event.modifiers.alt || event.modifiers.meta {
+                    return reject;
+                }
+                if event.text == Key.UpArrow {
+                    root.step-rows(-1);
+                    return accept;
+                }
+                if event.text == Key.DownArrow {
+                    root.step-rows(1);
+                    return accept;
+                }
                 return reject;
             }
-            if event.text == Key.UpArrow {
-                root.step-rows(-1);
-                return accept;
+            moved(index) => {
+                root.show-tile(index);
             }
-            if event.text == Key.DownArrow {
-                root.step-rows(1);
-                return accept;
+            activated(index) => {
+                root.activate(index);
             }
-            return reject;
         }
-        moved(index) => {
-            root.show-tile(index);
-        }
-        activated(index) => {
-            root.activate(index);
-        }
-    }
 
-    films := Flickable {
-        x: (root.rail ? root.width - Metrics.call-rail : 0) - root.gutter;
-        y: (root.focused && !root.rail ? root.height - root.film-height : 0) - root.gutter;
-        width: (root.rail ? Metrics.call-rail : root.width) + 2 * root.gutter;
-        height: (!root.focused || root.rail ? root.height : root.film-height) + 2 * root.gutter;
-        visible: !root.focused || root.has-strip;
-        content-width: root.across ? max(self.width, root.film-length + 2 * root.gutter) : self.width;
-        content-height: !root.focused ? max(self.height, root.grid-height + 2 * root.gutter)
-            : root.rail ? max(self.height, root.film-length + 2 * root.gutter)
-            : self.height;
-        interactive: root.scroll-span > 0;
+        films := Flickable {
+            x: (root.rail ? root.width - Metrics.call-rail : 0) - root.gutter;
+            y: (root.focused && !root.rail ? root.height - root.film-height : 0) - root.gutter;
+            width: (root.rail ? Metrics.call-rail : root.width) + 2 * root.gutter;
+            height: (!root.focused || root.rail ? root.height : root.film-height) + 2 * root.gutter;
+            visible: !root.focused || root.has-strip;
+            content-width: root.across ? max(self.width, root.film-length + 2 * root.gutter) : self.width;
+            content-height: !root.focused ? max(self.height, root.grid-height + 2 * root.gutter)
+                : root.rail ? max(self.height, root.film-length + 2 * root.gutter)
+                : self.height;
+            interactive: root.scroll-span > 0;
 
-        for tile[i] in CallView.tiles: CallTileView {
-            x: root.gutter + (!root.focused
-                ? (root.width - root.row-width) / 2 + mod(i, root.columns) * (root.tile-width + root.gap)
-                    + (floor(i / root.columns) == root.rows - 1 ? root.last-row-indent : 0px)
-                : root.rail ? 0px : root.film-lead + i * root.film-pitch);
-            y: root.gutter + (!root.focused
-                ? root.grid-top + floor(i / root.columns) * (root.tile-height + root.gap)
-                : root.rail ? root.film-lead + i * root.film-pitch : 0px);
-            width: !root.focused ? root.tile-width : root.film-width;
-            height: !root.focused ? root.tile-height : root.film-tile-height;
-            tile: tile;
-            selectable: !(tile.screen && tile.own);
-            fits-video: root.fits-videos;
-            cursor-on: root.keys-focused && root.cursor == i;
-            keyed: root.cursor-key != "" && tile.key == root.cursor-key;
-            keyed-built => {
-                root.cursor = i;
-            }
-            shown: films.visible
-                && self.x + self.width > -films.content-x && self.x < films.width - films.content-x
-                && self.y + self.height > -films.content-y && self.y < films.height - films.content-y;
-            wants-focus => {
-                root.cursor = i;
-                tile-keys.focus();
-                root.show-tile(i);
+            for tile[i] in CallView.tiles: CallTileView {
+                x: root.gutter + (!root.focused
+                    ? (root.width - root.row-width) / 2 + mod(i, root.columns) * (root.tile-width + root.gap)
+                        + (floor(i / root.columns) == root.rows - 1 ? root.last-row-indent : 0px)
+                    : root.rail ? 0px : root.film-lead + i * root.film-pitch);
+                y: root.gutter + (!root.focused
+                    ? root.grid-top + floor(i / root.columns) * (root.tile-height + root.gap)
+                    : root.rail ? root.film-lead + i * root.film-pitch : 0px);
+                width: !root.focused ? root.tile-width : root.film-width;
+                height: !root.focused ? root.tile-height : root.film-tile-height;
+                tile: tile;
+                accessible-label: tile.screen && tile.own
+                    ? CallWords.tile-title(tile)
+                    : CallWords.focus-on(CallWords.tile-title(tile));
+                accessible-item-index: i;
+                selectable: !(tile.screen && tile.own);
+                fits-video: root.fits-videos;
+                cursor-on: root.keys-focused && root.cursor == i;
+                keyed: root.cursor-key != "" && tile.key == root.cursor-key;
+                keyed-built => {
+                    root.cursor = i;
+                }
+                shown: films.visible
+                    && self.x + self.width > -films.content-x && self.x < films.width - films.content-x
+                    && self.y + self.height > -films.content-y && self.y < films.height - films.content-y;
+                wants-focus => {
+                    root.cursor = i;
+                    tile-keys.focus();
+                    root.show-tile(i);
+                }
             }
         }
     }

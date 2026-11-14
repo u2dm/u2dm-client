@@ -22,6 +22,10 @@ export component MenuRow inherits Rectangle {
     in property <bool> checkable: false;
     in property <bool> checked: false;
     in property <Icon> trailing;
+    in property <int> index: -1;
+    in property <string> description;
+    in property <bool> expandable: false;
+    in property <bool> expanded: false;
     out property <bool> has-hover: touch.has-hover;
 
     callback clicked();
@@ -46,9 +50,12 @@ export component MenuRow inherits Rectangle {
         enabled: root.enabled;
         above-modal: root.above-modal;
         label: root.label;
-        accessible-description: root.detail;
+        accessible-description: root.description != "" ? root.description : root.detail;
         accessible-checkable: root.checkable;
         accessible-checked: root.checked;
+        accessible-item-index: root.index;
+        accessible-expandable: root.expandable;
+        accessible-expanded: root.expanded;
         ring-radius: Radius.sm;
         focusable: root.focusable;
         roving-focus: root.roving-focus;
@@ -85,6 +92,7 @@ export component MenuRow inherits Rectangle {
                 vertical-alignment: center;
                 color: root.text-color;
                 overflow: elide;
+                accessible-role: none;
             }
 
             if root.detail != "": Text {

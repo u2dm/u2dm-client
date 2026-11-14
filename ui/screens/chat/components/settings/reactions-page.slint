@@ -105,6 +105,12 @@ component QuickReactionsRow inherits Rectangle {
 
     height: layout.preferred-height;
     background: AppStyle.control;
+    accessible-role: groupbox;
+    accessible-label: SettingsWords.label(SettingKey.quick-reactions);
+    accessible-description: SettingsWords.detail(SettingKey.quick-reactions);
+    accessible-item-count: root.count;
+    accessible-delegate-focus: slots.has-focus ? (slots.cursor < 0 ? -1 : 1 + 2 * slots.cursor)
+        : 2 + 2 * root.star-cursor(stars.cursor);
 
     SoughtTint {
         key: SettingKey.quick-reactions;
@@ -168,6 +174,7 @@ component QuickReactionsRow inherits Rectangle {
                     key: QuickReactions.keys[index];
                     choosing: index == root.choosing;
                     label: root.slot-label(index);
+                    accessible-description: index == 0 ? SettingsWords.detail(SettingKey.quick-reactions) : "";
                     roving-focus: slots.has-focus && slots.cursor == index;
                     clicked => {
                         root.choose(index, false);
@@ -179,6 +186,7 @@ component QuickReactionsRow inherits Rectangle {
                     y: root.slot;
                     starred: index == QuickReactions.default-index;
                     label: root.star-label(index);
+                    accessible-item-index: index;
                     roving-focus: stars.has-focus && stars.cursor == index;
                     clicked => {
                         Actions.set-one-click-reaction({ slot: index });
@@ -199,11 +207,6 @@ component QuickReactionsRow inherits Rectangle {
     slots := RovingKeys {
         count: root.count;
         horizontal: true;
-        accessible-label: root.slot-label(max(self.cursor, 0));
-        accessible-description: SettingsWords.detail(SettingKey.quick-reactions);
-        accessible-action-default => {
-            root.choose(max(self.cursor, 0), true);
-        }
         activated(index) => {
             root.choose(index, true);
         }
@@ -218,13 +221,6 @@ component QuickReactionsRow inherits Rectangle {
         count: root.count;
         horizontal: true;
         start-at: QuickReactions.default-index;
-        accessible-role: radio-button;
-        accessible-label: root.star-label(root.star-cursor(self.cursor));
-        accessible-checkable: true;
-        accessible-checked: root.star-cursor(self.cursor) == QuickReactions.default-index;
-        accessible-action-default => {
-            Actions.set-one-click-reaction({ slot: root.star-cursor(self.cursor) });
-        }
         activated(index) => {
             Actions.set-one-click-reaction({ slot: index });
         }
@@ -246,6 +242,11 @@ component SkinToneRow inherits Rectangle {
 
     height: layout.preferred-height;
     background: AppStyle.control;
+    accessible-role: radio-group;
+    accessible-label: root.label;
+    accessible-description: SettingsWords.detail(SettingKey.skin-tone);
+    accessible-item-count: SkinTones.colors.length;
+    accessible-delegate-focus: root.tone-cursor(tones.cursor);
 
     SoughtTint {
         key: SettingKey.skin-tone;
@@ -261,14 +262,6 @@ component SkinToneRow inherits Rectangle {
         count: SkinTones.colors.length;
         horizontal: true;
         start-at: EmojiStore.tone;
-        accessible-role: radio-button;
-        accessible-label: @tr("{}: {}", root.label, SkinTones.label(root.tone-cursor(self.cursor)));
-        accessible-checkable: true;
-        accessible-checked: root.tone-cursor(self.cursor) == EmojiStore.tone;
-        accessible-description: SettingsWords.detail(SettingKey.skin-tone);
-        accessible-action-default => {
-            Actions.set-skin-tone({ tone: root.tone-cursor(self.cursor) });
-        }
         activated(index) => {
             Actions.set-skin-tone({ tone: index });
         }
@@ -303,6 +296,8 @@ component SkinToneRow inherits Rectangle {
                 swatch: swatch;
                 selected: index == EmojiStore.tone;
                 label: SkinTones.label(index);
+                index: index;
+                description: index == EmojiStore.tone ? SettingsWords.detail(SettingKey.skin-tone) : "";
                 above-modal: true;
                 focusable: false;
                 roving-focus: tones.has-focus && tones.cursor == index;

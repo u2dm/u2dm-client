@@ -314,6 +314,40 @@ export component Announcer inherits Text {
     accessible-live-region: root.urgent ? AccessibleLiveness.assertive : AccessibleLiveness.polite;
 }
 
+export component SettledAnnouncer {
+    in property <string> words;
+    property <string> last;
+
+    public function now() {
+        settle.running = false;
+        if root.words != "" && root.words != root.last {
+            root.last = root.words;
+            news.say(root.words);
+        }
+    }
+
+    width: 0;
+    height: 0;
+
+    changed words => {
+        if root.words == "" {
+            root.last = "";
+        }
+        settle.running = true;
+        settle.restart();
+    }
+
+    settle := Timer {
+        interval: Motion.announce-settle;
+        running: false;
+        triggered => {
+            root.now();
+        }
+    }
+
+    news := Announcer { }
+}
+
 export component RegionScope inherits FocusScope {
     in property <FocusRegion> region;
 
@@ -556,7 +590,6 @@ export component RovingKeys inherits FocusScope {
     width: 0;
     height: 0;
     focus-on-click: false;
-    accessible-role: button;
 
     focus-lost(reason) => {
         FocusTrail.leave();

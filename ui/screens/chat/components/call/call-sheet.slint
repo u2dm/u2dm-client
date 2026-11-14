@@ -891,6 +891,7 @@ export component CallSheet inherits ModalHost {
         height: root.height;
         dim: false;
         label: @tr("Devices");
+        accessible-delegate-focus: sheet-devices.spoken-index;
         dismissed => {
             root.close-devices();
         }

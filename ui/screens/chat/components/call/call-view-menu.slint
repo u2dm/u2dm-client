@@ -106,6 +106,9 @@ export component CallViewMenu inherits PickerCard {
         : [CallViewChoice.self-view, CallViewChoice.fit];
     property <int> cursor: -1;
     property <bool> keys-focused: keys.has-focus;
+    out property <int> spoken-index: root.cursor < 0 ? -1
+        : root.cursor + 1 + (root.cursor >= root.modes.length ? 1 : 0)
+            + (root.cursor >= root.modes.length + root.stages.length ? 1 : 0);
 
     public function open(by-keys: bool) {
         root.cursor = by-keys ? 0 : -1;
@@ -225,10 +228,6 @@ export component CallViewMenu inherits PickerCard {
         return root.views[index - root.modes.length - root.stages.length];
     }
 
-    pure function cursor-choice() -> CallViewChoice {
-        return root.choice-at(max(root.cursor, 0));
-    }
-
     function choose(choice: CallViewChoice) {
         if choice == CallViewChoice.call-and-chat {
             CallPanel.choose(CallMode.call-and-chat);
@@ -270,13 +269,6 @@ export component CallViewMenu inherits PickerCard {
     keys := RovingKeys {
         count: root.modes.length + root.stages.length + root.views.length;
         cursor <=> root.cursor;
-        accessible-label: root.cursor >= 0 ? root.label(root.cursor-choice()) : @tr("View");
-        accessible-description: root.cursor >= 0 ? root.detail(root.cursor-choice()) : "";
-        accessible-checkable: root.cursor >= 0 && root.checkable(root.cursor-choice());
-        accessible-checked: root.cursor >= 0 && root.checked(root.cursor-choice());
-        accessible-action-default => {
-            root.choose(root.cursor-choice());
-        }
         intercept(event) => {
             if event.text == Key.Tab || event.text == Key.Backtab {
                 return accept;

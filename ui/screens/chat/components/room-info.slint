@@ -193,6 +193,7 @@ component NotifyPickerHost inherits ModalHost {
     dim: false;
     label: @tr("Notifications");
     keeps-tab: true;
+    accessible-item-count: NotifyModes.all.length;
 
     PickerCard {
         x: Placement.fit(root.anchor-x - root.absolute-position.x, self.width, root.width, Space.md);

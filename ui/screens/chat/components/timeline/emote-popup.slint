@@ -1,14 +1,24 @@
 import { ScrollView } from "std-widgets.slint";
 
 import { Actions } from "../../../../actions.slint";
-import { Interaction, ListItemArea } from "../../../../components/a11y.slint";
+import { Interaction, ListItemArea, SettledAnnouncer } from "../../../../components/a11y.slint";
 import { PickerCard } from "../../../../components/overlay.slint";
 import { MediaState, PackSurface } from "../../../../enums.slint";
 import { AppStyle, Fonts, Metrics, Size, Space, Weight } from "../../../../theme.slint";
-import { MentionWord, PackCell } from "../../../../types.slint";
+import { MentionWord, PackCell, PackRow } from "../../../../types.slint";
 import { PackView } from "../../../../views.slint";
 import { PackCellArt } from "./pack-grid.slint";
 import { UnencryptedNotice } from "./picker-grid.slint";
+
+global EmoteWords {
+    public pure function pack(row: PackRow) -> string {
+        return row.untitled ? @tr("Your pack") : row.title;
+    }
+
+    public pure function suggestion(cell: PackCell, pack: string) -> string {
+        return @tr(":{}:, {}", cell.shortcode, pack);
+    }
+}
 
 component EmoteSuggestion inherits ListItemArea {
     in property <PackCell> entry;
@@ -22,7 +32,7 @@ component EmoteSuggestion inherits ListItemArea {
     selected: root.highlighted;
     roving-focus: root.highlighted;
     background: root.has-hover ? AppStyle.overlay-hover : transparent;
-    label: @tr(":{}:, {}", root.entry.shortcode, root.pack);
+    label: EmoteWords.suggestion(root.entry, root.pack);
 
     init => {
         if root.entry.media-state == MediaState.idle {
@@ -120,7 +130,7 @@ component EmoteSuggestionCard inherits PickerCard {
                 index: index;
                 above-modal: root.above-modal;
                 entry: row.cells[0];
-                pack: row.untitled ? @tr("Your pack") : row.title;
+                pack: EmoteWords.pack(row);
                 highlighted: root.highlight == index;
                 hovered => {
                     root.hovered(index);
@@ -156,6 +166,11 @@ export component EmotePopup {
         start: root.suggesting ? root.word.start : -1,
         query: root.word.query,
     };
+    property <string> spoken: root.shown && root.highlight < root.count
+        ? @tr("{}, {} of {}",
+            EmoteWords.suggestion(PackView.rows[root.highlight].cells[0], EmoteWords.pack(PackView.rows[root.highlight])),
+            root.highlight + 1, root.count)
+        : "";
 
     height: root.shown
         ? min(
@@ -184,10 +199,12 @@ export component EmotePopup {
         }
         if event.text == Key.DownArrow {
             root.highlight = Interaction.next(root.highlight, root.count);
+            news.now();
             return accept;
         }
         if event.text == Key.UpArrow {
             root.highlight = Interaction.previous(root.highlight, root.count);
+            news.now();
             return accept;
         }
         if event.text == Key.Return || event.text == Key.Tab {
@@ -208,6 +225,10 @@ export component EmotePopup {
     function pick(index: int) {
         root.dismiss();
         root.complete(PackView.rows[index].cells[0].pack-id, PackView.rows[index].cells[0].shortcode);
+    }
+
+    news := SettledAnnouncer {
+        words: root.spoken;
     }
 
     if root.shown: EmoteSuggestionCard {

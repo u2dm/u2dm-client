@@ -79,6 +79,7 @@ export component CallReactionsMenu inherits PickerCard {
     property <int> grid-rows: ceil(root.options / root.columns);
     property <length> grid-width: root.columns * Metrics.call-reaction-cell + (root.columns - 1) * Space.xs;
     property <int> cursor: -1;
+    out property <int> spoken-index: root.cursor;
     property <bool> keys-focused: keys.has-focus;
     property <bool> offers-hand: CallView.hand != CallHand.unavailable;
     property <bool> hand-up: CallView.hand == CallHand.up || CallView.hand == CallHand.lowering
@@ -135,16 +136,6 @@ export component CallReactionsMenu inherits PickerCard {
         }
     }
 
-    pure function spoken-label() -> string {
-        if root.cursor < 0 || root.cursor >= root.count {
-            return @tr("Reactions");
-        }
-        if root.cursor == 0 {
-            return CallWords.raise-your-hand();
-        }
-        return CallWords.reaction-name(CallReactions.options[root.cursor - 1].name, CallReactions.options[root.cursor - 1].emoji);
-    }
-
     width: Metrics.call-reactions-width;
     height: min(rows.preferred-height, root.room);
 
@@ -154,14 +145,6 @@ export component CallReactionsMenu inherits PickerCard {
         count: root.count;
         horizontal: true;
         cursor <=> root.cursor;
-        accessible-label: root.spoken-label();
-        accessible-description: root.cursor > 0 ? root.state-text : "";
-        accessible-enabled: root.cursor == 0 ? root.offers-hand : root.reacts;
-        accessible-checkable: root.cursor == 0;
-        accessible-checked: root.cursor == 0 && root.hand-up;
-        accessible-action-default => {
-            root.act(max(root.cursor, 0));
-        }
         intercept(event) => {
             if event.text == Key.Tab || event.text == Key.Backtab {
                 return accept;
@@ -214,6 +197,7 @@ export component CallReactionsMenu inherits PickerCard {
                 y: floor(index / root.columns) * (Metrics.call-reaction-cell + Space.xs);
                 option: option;
                 enabled: root.reacts;
+                accessible-description: root.state-text;
                 above-modal: root.above-modal;
                 roving-focus: root.keys-focused && root.cursor == index + 1;
                 clicked => {

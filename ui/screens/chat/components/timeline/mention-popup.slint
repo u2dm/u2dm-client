@@ -3,11 +3,21 @@ import { IconDisplay, IconSet } from "@lucide";
 
 import { Actions } from "../../../../actions.slint";
 import { Avatar } from "../../../../components/avatar.slint";
-import { Interaction, ListItemArea } from "../../../../components/a11y.slint";
+import { Interaction, ListItemArea, SettledAnnouncer } from "../../../../components/a11y.slint";
 import { PickerCard } from "../../../../components/overlay.slint";
 import { AppStyle, Fonts, IconSize, Metrics, Space, Weight } from "../../../../theme.slint";
 import { MemberEntry, MentionWord } from "../../../../types.slint";
 import { MentionsView } from "../../../../views.slint";
+
+global SuggestionWords {
+    public pure function member(entry: MemberEntry) -> string {
+        return entry.name == "" ? entry.user-id : @tr("{}, {}", entry.name, entry.user-id);
+    }
+
+    public pure function everyone() -> string {
+        return @tr("@room, notify everyone in this room");
+    }
+}
 
 component SuggestionRow inherits ListItemArea {
     in property <bool> highlighted;
@@ -30,7 +40,7 @@ component SuggestionRow inherits ListItemArea {
 component MemberSuggestion inherits SuggestionRow {
     in property <MemberEntry> entry;
 
-    label: root.entry.name == "" ? root.entry.user-id : @tr("{}, {}", root.entry.name, root.entry.user-id);
+    label: SuggestionWords.member(root.entry);
 
     HorizontalLayout {
         padding-left: Space.lg;
@@ -70,7 +80,7 @@ component MemberSuggestion inherits SuggestionRow {
 }
 
 component RoomSuggestion inherits SuggestionRow {
-    label: @tr("@room, notify everyone in this room");
+    label: SuggestionWords.everyone();
 
     HorizontalLayout {
         padding-left: Space.lg;
@@ -204,6 +214,16 @@ export component MentionPopup {
         start: root.suggesting ? root.word.start : -1,
         query: root.word.query,
     };
+    property <string> spoken: root.shown && root.highlight < root.count
+        ? @tr("{}, {} of {}", root.row-words(root.highlight), root.highlight + 1, root.count)
+        : "";
+
+    pure function row-words(index: int) -> string {
+        if root.room-row && index == 0 {
+            return SuggestionWords.everyone();
+        }
+        return SuggestionWords.member(MentionsView.rows[index - (root.room-row ? 1 : 0)]);
+    }
 
     height: root.shown
         ? min(
@@ -234,10 +254,12 @@ export component MentionPopup {
         }
         if event.text == Key.DownArrow {
             root.highlight = Interaction.next(root.highlight, root.count);
+            news.now();
             return accept;
         }
         if event.text == Key.UpArrow {
             root.highlight = Interaction.previous(root.highlight, root.count);
+            news.now();
             return accept;
         }
         if event.text == Key.Return || event.text == Key.Tab {
@@ -268,6 +290,10 @@ export component MentionPopup {
         } else {
             root.complete(MentionsView.rows[index - (root.room-row ? 1 : 0)].user-id);
         }
+    }
+
+    news := SettledAnnouncer {
+        words: root.spoken;
     }
 
     if root.shown: SuggestionCard {

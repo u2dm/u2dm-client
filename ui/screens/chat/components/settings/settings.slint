@@ -1,7 +1,7 @@
 import { Palette, ScrollView } from "std-widgets.slint";
 import { IconDisplay, IconSet, Icon } from "@lucide";
 
-import { ClickArea, FocusReveal, RovingKeys } from "../../../../components/a11y.slint";
+import { FocusReveal, ListItemArea, RovingKeys } from "../../../../components/a11y.slint";
 import { Hairline, MenuDivider } from "../../../../components/divider.slint";
 import { MenuScroll } from "../../../../components/menu.slint";
 import { SearchField } from "../../../../components/search-field.slint";
@@ -479,6 +479,7 @@ component SettingsNavRow inherits Rectangle {
     in property <bool> selected;
     in property <bool> roving-focus;
     in property <Icon> trailing;
+    in property <int> index: -1;
 
     callback clicked();
 
@@ -493,12 +494,14 @@ component SettingsNavRow inherits Rectangle {
         pressed: touch.pressed;
     }
 
-    touch := ClickArea {
+    touch := ListItemArea {
         above-modal: true;
         focusable: false;
         roving-focus: root.roving-focus;
         ring-radius: root.border-radius;
         label: root.label;
+        selected: root.selected;
+        index: root.index;
         accessible-description: root.description != "" ? root.description : root.detail;
         clicked => {
             root.clicked();
@@ -599,14 +602,6 @@ component SettingsNav inherits Rectangle {
         search.focus();
     }
 
-    pure function hit-label(position: int) -> string {
-        if position < 0 || position >= root.hits.length {
-            return "";
-        }
-        return @tr("{}, {}", SettingsIndex.entries[root.hits[position]].label,
-            SettingsIndex.entries[root.hits[position]].page-title);
-    }
-
     function open-hit(position: int, by-keys: bool) {
         if position < 0 || position >= root.hits.length {
             return;
@@ -617,16 +612,6 @@ component SettingsNav inherits Rectangle {
 
     function reveal-hit(position: int) {
         results.reveal(count.preferred-height + Space.xs + position * root.hit-pitch, root.hit-height);
-    }
-
-    pure function label-at(index: int) -> string {
-        if index == root.account {
-            return root.account-label;
-        }
-        if index == root.encryption {
-            return root.encryption-label;
-        }
-        return SettingsPages.title(root.page-at(index));
     }
 
     pure function page-at(index: int) -> SettingsPage {
@@ -685,142 +670,150 @@ component SettingsNav inherits Rectangle {
         }
     }
 
-    found-keys := RovingKeys {
-        count: root.hits.length;
-        focus-on-tab-navigation: root.searching;
-        accessible-label: root.hit-label(max(self.cursor, 0));
-        accessible-description: root.found-words;
-        accessible-action-default => {
-            root.open-hit(max(self.cursor, 0), true);
-        }
-        intercept(event) => {
-            if event.text == Key.UpArrow && self.cursor <= 0 {
-                root.focus-search();
-                return accept;
+    found := Rectangle {
+        accessible-role: list;
+        accessible-label: @tr("Search results");
+        accessible-item-count: root.hits.length;
+        accessible-delegate-focus: found-keys.cursor < 0 ? -1 : found-keys.cursor + 1;
+
+        found-keys := RovingKeys {
+            count: root.hits.length;
+            focus-on-tab-navigation: root.searching;
+            intercept(event) => {
+                if event.text == Key.UpArrow && self.cursor <= 0 {
+                    root.focus-search();
+                    return accept;
+                }
+                return reject;
             }
-            return reject;
-        }
-        moved(position) => {
-            root.reveal-hit(position);
-        }
-        activated(position) => {
-            root.open-hit(position, true);
-        }
-    }
-
-    keys := RovingKeys {
-        count: root.about + 1;
-        focus-on-tab-navigation: !root.searching;
-        start-at: root.selected;
-        accessible-role: tab;
-        accessible-label: root.label-at(max(self.cursor, 0));
-        accessible-item-selected: max(self.cursor, 0) == root.selected;
-        accessible-action-default => {
-            root.activate(max(self.cursor, 0), true);
-        }
-        intercept(event) => {
-            if self.cursor < 0 && (event.text == Key.DownArrow || event.text == Key.UpArrow) {
-                self.cursor = root.selected;
-                root.reveal(root.selected);
-                return accept;
+            moved(position) => {
+                root.reveal-hit(position);
             }
-            return reject;
-        }
-        moved(index) => {
-            root.reveal(index);
-        }
-        activated(index) => {
-            root.activate(index, true);
-        }
-    }
-
-    scroll := MenuScroll {
-        y: root.list-top;
-        height: root.height - root.list-top;
-        visible: !root.searching;
-
-        for page[index] in SettingsPages.all: SettingsNavRow {
-            height: root.row-height;
-            icon: SettingsPages.icon(page);
-            label: SettingsPages.title(page);
-            detail: root.listing ? SettingsPages.summary(page) : "";
-            selected: !root.listing && index == root.selected;
-            roving-focus: keys.has-focus && keys.cursor == index;
-            trailing: root.listing ? IconSet.ChevronRight : { };
-            clicked => {
-                root.picked(page, false);
+            activated(position) => {
+                root.open-hit(position, true);
             }
         }
 
-        MenuDivider {
-            height: root.gap;
-        }
+        results := MenuScroll {
+            y: root.list-top;
+            height: root.height - root.list-top;
+            visible: root.searching;
 
-        SettingsNavRow {
-            height: root.row-height;
-            icon: IconSet.UserRoundCog;
-            label: root.account-label;
-            description: @tr("Opens its own dialog");
-            roving-focus: keys.has-focus && keys.cursor == root.account;
-            trailing: IconSet.ArrowUpRight;
-            clicked => {
-                root.followed(true);
+            count := HorizontalLayout {
+                padding-left: Space.md;
+                padding-right: Space.md;
+
+                Text {
+                    text: root.found-words;
+                    font-size: Fonts.caption;
+                    color: AppStyle.foreground-muted;
+                    wrap: word-wrap;
+                    accessible-live-region: AccessibleLiveness.polite;
+                }
             }
-        }
 
-        SettingsNavRow {
-            height: root.row-height;
-            icon: EncryptionView.needs-you ? IconSet.ShieldAlert : IconSet.ShieldCheck;
-            icon-tint: EncryptionView.needs-you ? AppStyle.warning : AppStyle.foreground-muted;
-            label: root.encryption-label;
-            description: @tr("Opens its own dialog");
-            roving-focus: keys.has-focus && keys.cursor == root.encryption;
-            trailing: IconSet.ArrowUpRight;
-            clicked => {
-                root.followed(false);
-            }
-        }
-
-        SettingsNavRow {
-            height: root.row-height;
-            icon: SettingsPages.icon(SettingsPage.about);
-            label: SettingsPages.title(SettingsPage.about);
-            detail: root.listing ? SettingsPages.summary(SettingsPage.about) : "";
-            selected: !root.listing && root.selected == root.about;
-            roving-focus: keys.has-focus && keys.cursor == root.about;
-            trailing: root.listing ? IconSet.ChevronRight : { };
-            clicked => {
-                root.picked(SettingsPage.about, false);
+            for hit[position] in root.hits: SettingsNavRow {
+                height: root.hit-height;
+                icon: SettingsPages.icon(SettingsIndex.entries[hit].page);
+                label: SettingsIndex.entries[hit].label;
+                detail: SettingsIndex.entries[hit].page-title;
+                index: position;
+                roving-focus: found-keys.has-focus && found-keys.cursor == position;
+                clicked => {
+                    root.open-hit(position, false);
+                }
             }
         }
     }
 
-    results := MenuScroll {
-        y: root.list-top;
-        height: root.height - root.list-top;
-        visible: root.searching;
+    listed := Rectangle {
+        accessible-role: list;
+        accessible-label: @tr("Settings pages");
+        accessible-item-count: root.about + 1;
+        accessible-delegate-focus: keys.cursor;
 
-        count := HorizontalLayout {
-            padding-left: Space.md;
-            padding-right: Space.md;
-
-            Text {
-                text: root.found-words;
-                font-size: Fonts.caption;
-                color: AppStyle.foreground-muted;
-                wrap: word-wrap;
-                accessible-live-region: AccessibleLiveness.polite;
+        keys := RovingKeys {
+            count: root.about + 1;
+            focus-on-tab-navigation: !root.searching;
+            start-at: root.selected;
+            intercept(event) => {
+                if self.cursor < 0 && (event.text == Key.DownArrow || event.text == Key.UpArrow) {
+                    self.cursor = root.selected;
+                    root.reveal(root.selected);
+                    return accept;
+                }
+                return reject;
+            }
+            moved(index) => {
+                root.reveal(index);
+            }
+            activated(index) => {
+                root.activate(index, true);
             }
         }
 
-        for hit[position] in root.hits: SettingsNavRow {
-            height: root.hit-height;
-            icon: SettingsPages.icon(SettingsIndex.entries[hit].page);
-            label: SettingsIndex.entries[hit].label;
-            detail: SettingsIndex.entries[hit].page-title;
-            roving-focus: found-keys.has-focus && found-keys.cursor == position;
-            clicked => {
-                root.open-hit(position, false);
+        scroll := MenuScroll {
+            y: root.list-top;
+            height: root.height - root.list-top;
+            visible: !root.searching;
+
+            for page[index] in SettingsPages.all: SettingsNavRow {
+                height: root.row-height;
+                icon: SettingsPages.icon(page);
+                label: SettingsPages.title(page);
+                detail: root.listing ? SettingsPages.summary(page) : "";
+                index: index;
+                selected: !root.listing && index == root.selected;
+                roving-focus: keys.has-focus && keys.cursor == index;
+                trailing: root.listing ? IconSet.ChevronRight : { };
+                clicked => {
+                    root.picked(page, false);
+                }
+            }
+
+            MenuDivider {
+                height: root.gap;
+            }
+
+            SettingsNavRow {
+                height: root.row-height;
+                icon: IconSet.UserRoundCog;
+                label: root.account-label;
+                description: @tr("Opens its own dialog");
+                index: root.account;
+                roving-focus: keys.has-focus && keys.cursor == root.account;
+                trailing: IconSet.ArrowUpRight;
+                clicked => {
+                    root.followed(true);
+                }
+            }
+
+            SettingsNavRow {
+                height: root.row-height;
+                icon: EncryptionView.needs-you ? IconSet.ShieldAlert : IconSet.ShieldCheck;
+                icon-tint: EncryptionView.needs-you ? AppStyle.warning : AppStyle.foreground-muted;
+                label: root.encryption-label;
+                description: @tr("Opens its own dialog");
+                index: root.encryption;
+                roving-focus: keys.has-focus && keys.cursor == root.encryption;
+                trailing: IconSet.ArrowUpRight;
+                clicked => {
+                    root.followed(false);
+                }
+            }
+
+            SettingsNavRow {
+                height: root.row-height;
+                icon: SettingsPages.icon(SettingsPage.about);
+                label: SettingsPages.title(SettingsPage.about);
+                detail: root.listing ? SettingsPages.summary(SettingsPage.about) : "";
+                index: root.about;
+                selected: !root.listing && root.selected == root.about;
+                roving-focus: keys.has-focus && keys.cursor == root.about;
+                trailing: root.listing ? IconSet.ChevronRight : { };
+                clicked => {
+                    root.picked(SettingsPage.about, false);
+                }
             }
         }
     }

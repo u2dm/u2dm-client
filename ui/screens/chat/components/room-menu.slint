@@ -90,13 +90,6 @@ global RoomMenuActions {
         return @tr("Leave");
     }
 
-    public pure function spoken-label(action: RoomMenuAction) -> string {
-        if action == RoomMenuAction.notifications {
-            return @tr("Notifications: {}", NotifyModes.state(RoomMenuView.notify));
-        }
-        return root.label(action);
-    }
-
     public pure function icon(action: RoomMenuAction) -> Icon {
         if action == RoomMenuAction.info {
             return IconSet.Info;
@@ -164,6 +157,8 @@ component NotifyFlyout inherits MenuCard {
                 height: root.row-height;
                 icon: NotifyModes.icon(mode);
                 label: NotifyModes.choice(mode);
+                checkable: true;
+                checked: RoomMenuView.notify == mode;
                 trailing: RoomMenuView.notify == mode ? IconSet.Check : { };
                 above-modal: true;
                 focusable: false;
@@ -181,6 +176,12 @@ component RoomMenuCard inherits MenuCard {
     out property <bool> keys-focused: keys.has-focus;
     out property <bool> in-flyout: false;
     out property <int> flyout-cursor: -1;
+    out property <bool> flyout-held: root.in-flyout && RoomMenu.flyout-open;
+    out property <int> spoken-index: root.asking
+        ? root.offered.length + (root.confirm-cursor == ConfirmChoice.confirm ? 0 : 1)
+        : root.flyout-held ? root.offered.length + root.flyout-cursor
+        : root.cursor;
+    out property <int> spoken-count: root.offered.length;
 
     callback chose(RoomMenuAction);
     callback mode-chosen(NotifyMode);
@@ -284,22 +285,6 @@ component RoomMenuCard inherits MenuCard {
             root.intent = RoomMenuAction.notifications;
             hover-timer.running = false;
         }
-    }
-
-    pure function spoken-label() -> string {
-        if root.asking {
-            return root.confirm-cursor == ConfirmChoice.confirm ? @tr("Leave") : @tr("Cancel");
-        }
-        if root.in-flyout && root.flyout-cursor >= 0 && root.flyout-cursor < NotifyModes.all.length {
-            return NotifyModes.choice(NotifyModes.all[root.flyout-cursor]);
-        }
-        if root.cursor >= 0 && root.cursor < root.offered.length {
-            return RoomMenuActions.spoken-label(root.offered[root.cursor]);
-        }
-        if RoomMenuView.is-space {
-            return @tr("Space actions");
-        }
-        return @tr("Room actions");
     }
 
     function row-hovered(action: RoomMenuAction) {
@@ -428,21 +413,7 @@ component RoomMenuCard inherits MenuCard {
     keys := RovingKeys {
         count: root.offered.length;
         cursor <=> root.cursor;
-        paused: root.asking || (root.in-flyout && RoomMenu.flyout-open);
-        accessible-label: root.spoken-label();
-        accessible-checkable: root.in-flyout && !root.asking;
-        accessible-checked: root.in-flyout
-            && root.flyout-cursor >= 0
-            && root.flyout-cursor == NotifyModes.position(RoomMenuView.notify);
-        accessible-action-default => {
-            if root.asking {
-                root.answer(root.confirm-cursor);
-            } else if root.in-flyout {
-                root.pick-at(max(root.flyout-cursor, 0));
-            } else {
-                root.choose-at(max(root.cursor, 0));
-            }
-        }
+        paused: root.asking || root.flyout-held;
         intercept(event) => {
             return root.mode-key(event);
         }
@@ -464,6 +435,10 @@ component RoomMenuCard inherits MenuCard {
                 height: root.row-height;
                 icon: RoomMenuActions.icon(action);
                 label: RoomMenuActions.label(action);
+                description: action == RoomMenuAction.notifications ? NotifyModes.state(RoomMenuView.notify) : "";
+                index: index;
+                expandable: action == RoomMenuAction.notifications;
+                expanded: RoomMenu.flyout-open;
                 destructive: RoomMenuActions.destructive(action);
                 trailing: action == RoomMenuAction.notifications ? IconSet.ChevronRight : { };
                 busy: action == RoomMenuAction.notifications && RoomMenuView.notify-busy;
@@ -660,6 +635,8 @@ export component RoomMenuOverlay inherits Rectangle {
         label: RoomMenuView.is-space
             ? @tr("Actions for the space {}", RoomMenuView.name)
             : @tr("Actions for {}", RoomMenuView.name);
+        accessible-delegate-focus: card.spoken-index;
+        accessible-item-count: card.spoken-count;
         opened => {
             MessageMenu.close();
             LocalState.close-popovers();

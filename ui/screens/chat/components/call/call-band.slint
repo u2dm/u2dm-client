@@ -6,7 +6,7 @@ import { TipSource } from "../../../../components/tip.slint";
 import { Actions } from "../../../../actions.slint";
 import { CallStates } from "../../../../call-states.slint";
 import { CallWords } from "../../../../messages.slint";
-import { CallPanel, CallSize, TipScope } from "../../../../local.slint";
+import { CallPanel, CallSize, FocusRegion, TipScope } from "../../../../local.slint";
 import { CallTileEntry } from "../../../../types.slint";
 import { CallView, DirectoryView } from "../../../../views.slint";
 import { AppStyle, Fonts, Glyph, IconSize, Metrics, Size, Space, Stroke, Weight } from "../../../../theme.slint";
@@ -344,6 +344,7 @@ export component CallBand inherits Rectangle {
             }
 
             view-button := AppButton {
+                region: FocusRegion.band;
                 x: root.view-x;
                 y: (parent.height - self.height) / 2;
                 width: self.preferred-width;
@@ -360,6 +361,7 @@ export component CallBand inherits Rectangle {
             }
 
             view-icon := IconButton {
+                region: FocusRegion.band;
                 x: root.view-x;
                 y: (parent.height - self.height) / 2;
                 size: Size.md;

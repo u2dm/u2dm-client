@@ -42,6 +42,7 @@ export component CallDockMenus {
         height: root.height;
         dim: false;
         label: @tr("Devices");
+        accessible-delegate-focus: devices-menu.spoken-index;
         dismissed => {
             CallPanel.devices-open = false;
             root.devices-closed();
@@ -72,6 +73,7 @@ export component CallDockMenus {
         height: root.height;
         dim: false;
         label: @tr("Reactions");
+        accessible-delegate-focus: reactions-menu.spoken-index;
         dismissed => {
             CallPanel.reactions-open = false;
             root.reactions-closed();
@@ -102,6 +104,8 @@ export component CallDockMenus {
         height: root.height;
         dim: false;
         label: @tr("People in the call");
+        accessible-delegate-focus: people-menu.spoken-index;
+        accessible-item-count: people-menu.spoken-count;
         dismissed => {
             CallPanel.people-open = false;
             CallPanel.people-returns += 1;
@@ -131,6 +135,7 @@ export component CallDockMenus {
         height: root.height;
         dim: false;
         label: @tr("More call options");
+        accessible-delegate-focus: more-menu.spoken-index;
         dismissed => {
             CallPanel.more-open = false;
             root.more-closed();
