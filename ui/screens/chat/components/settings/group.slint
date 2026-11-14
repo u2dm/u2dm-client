@@ -34,6 +34,23 @@ export component GroupNote inherits Rectangle {
     }
 }
 
+enum Corner { top-left, top-right, bottom-right, bottom-left }
+
+component RoundedCorner inherits Path {
+    in property <Corner> corner;
+
+    width: Radius.md;
+    height: Radius.md;
+    viewbox-width: 1;
+    viewbox-height: 1;
+    fill: AppStyle.elevated;
+    commands: root.corner == Corner.top-left ? "M 0 0 L 1 0 A 1 1 0 0 0 0 1 Z"
+        : root.corner == Corner.top-right ? "M 1 0 L 1 1 A 1 1 0 0 0 0 0 Z"
+        : root.corner == Corner.bottom-right ? "M 1 1 L 0 1 A 1 1 0 0 0 1 0 Z"
+        : "M 0 1 L 0 0 A 1 1 0 0 0 1 1 Z";
+    accessible-role: none;
+}
+
 export component SettingsGroup inherits VerticalLayout {
     in property <string> label;
     in property <string> note;
@@ -49,8 +66,6 @@ export component SettingsGroup inherits VerticalLayout {
 
     Rectangle {
         height: rows.preferred-height;
-        border-radius: Radius.md;
-        clip: true;
 
         rows := VerticalLayout {
             spacing: Stroke.hairline;
@@ -63,6 +78,30 @@ export component SettingsGroup inherits VerticalLayout {
             arrived(keyed) => {
                 root.arrived(keyed);
             }
+        }
+
+        RoundedCorner {
+            x: 0;
+            y: 0;
+            corner: Corner.top-left;
+        }
+
+        RoundedCorner {
+            x: parent.width - self.width;
+            y: 0;
+            corner: Corner.top-right;
+        }
+
+        RoundedCorner {
+            x: parent.width - self.width;
+            y: parent.height - self.height;
+            corner: Corner.bottom-right;
+        }
+
+        RoundedCorner {
+            x: 0;
+            y: parent.height - self.height;
+            corner: Corner.bottom-left;
         }
     }
 

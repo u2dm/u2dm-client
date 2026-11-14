@@ -3,6 +3,7 @@ pub mod quick_reactions;
 use self::quick_reactions::{QuickReactionChange, QuickReactions};
 use crate::domain::call::devices::DeviceChoices;
 use crate::domain::message::ServiceEvent;
+use crate::domain::shortcut::{ShortcutChange, ShortcutRefusal, ShortcutTable};
 
 pub const SKIN_TONE_COUNT: u8 = 6;
 
@@ -217,6 +218,7 @@ pub struct Settings {
     pub calls: CallPreferences,
     pub remembered_devices: DeviceChoices,
     pub media: MediaPreferences,
+    pub shortcuts: ShortcutTable,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -253,6 +255,10 @@ impl Settings {
 
     pub fn change_quick_reactions(&mut self, change: QuickReactionChange) -> bool {
         self.reactions.quick.apply(change)
+    }
+
+    pub fn change_shortcut(&mut self, change: ShortcutChange) -> Result<bool, ShortcutRefusal> {
+        self.shortcuts.apply(change)
     }
 
     pub fn remember_devices(&mut self, devices: DeviceChoices) -> bool {

@@ -1,4 +1,4 @@
-import { AudioKind, CallDeviceKind, CallDeviceStatus, CallLayout, CallLinkState, CallTileState, ChildAccess, ClockChoice, DecryptionFailure, Delivery, DeviceTrust, EmojiArt, InviteKind, InviteeState, LinkKind, LogLevel, MediaFailure, MediaState, MemberRole, MemberRowKind, MessageKind, MotionChoice, PackOrigin, PollPhase, PreviewKind, ReactionSend, ReceiptVisibility, RemovalKind, RoomAccess, RoomCallMark, RoomClass, RoomDefault, RoomKind, RoomRowKind, SendKey, SendState, ServiceKind, SettingFlag, SettingKey, SettingsLayout, SettingsPage, Shield, ShieldReason, SpoilerState, ThemeChoice, UserMessageKind } from "./enums.slint";
+import { AudioKind, CallDeviceKind, CallDeviceStatus, CallLayout, CallLinkState, CallTileState, ChildAccess, ClockChoice, DecryptionFailure, Delivery, DeviceTrust, EmojiArt, InviteKind, InviteeState, LinkKind, LogLevel, MediaFailure, MediaState, MemberRole, MemberRowKind, MessageKind, MotionChoice, PackOrigin, PollPhase, PreviewKind, ReactionSend, ReceiptVisibility, RemovalKind, RoomAccess, RoomCallMark, RoomClass, RoomDefault, RoomKind, RoomRowKind, SendKey, SendState, ServiceKind, SettingFlag, SettingKey, SettingsLayout, SettingsPage, Shield, ShieldReason, Shortcut, ShortcutEdit, ShortcutRefusal, SpoilerState, ThemeChoice, UserMessageKind } from "./enums.slint";
 
 export struct RoomEntry {
     id: string,
@@ -662,4 +662,24 @@ export struct KeyChord {
     shift: bool,
     meta: bool,
     any-shift: bool,
+}
+
+export struct ShortcutBinding {
+    command: Shortcut,
+    keys: KeyChord,
+    on: bool,
+    custom: bool,
+    standard: KeyChord,
+}
+
+export struct ShortcutEditRequest {
+    command: Shortcut,
+    edit: ShortcutEdit,
+    keys: KeyChord,
+}
+
+export struct ShortcutVerdict {
+    refusal: ShortcutRefusal,
+    owner: Shortcut,
+    keys: KeyChord,
 }

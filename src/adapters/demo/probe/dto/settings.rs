@@ -11,6 +11,7 @@ use crate::domain::settings::{
     Alerts, Appearance, CallPreferences, MediaPreferences, Messaging, ReactionPreferences,
     RowFilter, Settings,
 };
+use crate::domain::shortcut::{ShortcutCommand, ShortcutTable};
 
 #[derive(Serialize)]
 pub(super) struct SettingsDto {
@@ -121,6 +122,27 @@ struct SettingsValuesDto {
     auto_load_media: bool,
     play_animations: bool,
     voice_in_a_row: bool,
+    shortcuts: Vec<ShortcutDto>,
+}
+
+#[derive(Serialize)]
+struct ShortcutDto {
+    command: &'static str,
+    keys: String,
+    on: bool,
+    custom: bool,
+}
+
+fn shortcut_rows(table: &ShortcutTable) -> Vec<ShortcutDto> {
+    ShortcutCommand::ALL
+        .into_iter()
+        .map(|command| ShortcutDto {
+            command: names::shortcut_command(command),
+            keys: table.binding(command).chord().to_string(),
+            on: table.chord(command).is_some(),
+            custom: table.is_custom(command),
+        })
+        .collect()
 }
 
 #[derive(Serialize)]
@@ -211,6 +233,7 @@ pub(super) fn settings(source: &SettingsView) -> SettingsDto {
                 play_animations,
                 voice_in_a_row,
             },
+        ref shortcuts,
     } = source.values;
     SettingsDto {
         unsaved: source.unsaved,
@@ -244,6 +267,7 @@ pub(super) fn settings(source: &SettingsView) -> SettingsDto {
             auto_load_media: auto_load,
             play_animations,
             voice_in_a_row,
+            shortcuts: shortcut_rows(shortcuts),
         },
         dialog: source.dialog.map(|dialog| SettingsDialogDto {
             page: names::settings_page(dialog.page),

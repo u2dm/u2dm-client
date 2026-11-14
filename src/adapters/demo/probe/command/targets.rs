@@ -10,6 +10,7 @@ use crate::domain::room::RoomId;
 use crate::domain::server_rules::Keyword;
 use crate::domain::settings::quick_reactions::{QuickReaction, QuickReactionChange, ReactionSlot};
 use crate::domain::settings::{SettingChange, SkinTone};
+use crate::domain::shortcut::{ShortcutChange, ShortcutCommand};
 use crate::domain::user_info::UserId;
 
 pub type Selection<'a> = Option<&'a (String, i32)>;
@@ -58,6 +59,17 @@ pub(super) fn quick_reaction(slot: i64, key: &str) -> Result<Driven, Rejected> {
 pub(super) fn one_click_reaction(slot: i64) -> Result<Driven, Rejected> {
     Ok(Driven::Command(
         SettingsCommand::QuickReactions(QuickReactionChange::OneClick(reaction_slot(slot)?)).into(),
+    ))
+}
+
+pub(super) fn shortcut_change(
+    command: &str,
+    change: impl FnOnce(ShortcutCommand) -> Result<ShortcutChange, Rejected>,
+) -> Result<Driven, Rejected> {
+    let command = names::shortcut_command_named(command)
+        .ok_or_else(|| Rejected(format!("{command} is not a shortcut")))?;
+    Ok(Driven::Command(
+        SettingsCommand::Shortcut(change(command)?).into(),
     ))
 }
 

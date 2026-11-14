@@ -46,6 +46,7 @@ pub enum SettingsPage {
     Privacy,
     Calls,
     Media,
+    Keyboard,
     About,
 }
 

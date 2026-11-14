@@ -3,6 +3,8 @@ import {
     SendMessageRequest,
     EditMessageRequest,
     DraftVerdict,
+    ShortcutEditRequest,
+    ShortcutVerdict,
     SendStickerRequest,
     CreateRoomRequest,
     SendAttachmentRequest,
@@ -92,6 +94,8 @@ export global Actions {
     callback set-quick-reaction(QuickReactionRequest);
     callback set-one-click-reaction(OneClickReactionRequest);
     callback reset-quick-reactions();
+    callback edit-shortcut(ShortcutEditRequest) -> ShortcutVerdict;
+    callback reset-shortcuts();
 
     callback open-account();
     callback close-account();

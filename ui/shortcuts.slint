@@ -1,21 +1,28 @@
-import { KeyChord } from "./types.slint";
+import { KeyChord, ShortcutBinding } from "./types.slint";
 
 export global Shortcuts {
-    in property <KeyChord> open-settings;
-    in property <KeyChord> find-room;
-    in property <KeyChord> next-region;
-    in property <KeyChord> previous-region;
-    in property <KeyChord> previous-room;
-    in property <KeyChord> next-room;
-    in property <KeyChord> previous-unread-room;
-    in property <KeyChord> next-unread-room;
-    in property <KeyChord> toggle-microphone;
-    in property <KeyChord> toggle-camera;
-    in property <KeyChord> reply;
-    in property <KeyChord> edit;
-    in property <KeyChord> first-unread;
+    in property <ShortcutBinding> open-settings;
+    in property <ShortcutBinding> find-room;
+    in property <ShortcutBinding> show-shortcuts;
+    in property <ShortcutBinding> next-region;
+    in property <ShortcutBinding> previous-region;
+    in property <ShortcutBinding> previous-room;
+    in property <ShortcutBinding> next-room;
+    in property <ShortcutBinding> previous-unread-room;
+    in property <ShortcutBinding> next-unread-room;
+    in property <ShortcutBinding> move-space-up;
+    in property <ShortcutBinding> move-space-down;
+    in property <ShortcutBinding> toggle-microphone;
+    in property <ShortcutBinding> toggle-camera;
+    in property <ShortcutBinding> reply;
+    in property <ShortcutBinding> edit;
+    in property <ShortcutBinding> first-unread;
 
-    public pure function matches(event: KeyEvent, chord: KeyChord) -> bool {
+    public pure function matches(event: KeyEvent, binding: ShortcutBinding) -> bool {
+        return binding.on && root.presses(event, binding.keys);
+    }
+
+    public pure function presses(event: KeyEvent, chord: KeyChord) -> bool {
         return chord.key != ""
             && event.text.to-lowercase() == chord.key
             && event.modifiers.control == chord.control
@@ -24,18 +31,38 @@ export global Shortcuts {
             && (chord.any-shift || event.modifiers.shift == chord.shift);
     }
 
-    public pure function label(chord: KeyChord) -> string {
+    public pure function label(binding: ShortcutBinding) -> string {
+        return binding.on ? root.keys-label(binding.keys) : "";
+    }
+
+    public pure function keys-label(chord: KeyChord) -> string {
         if chord.key == "" {
             return "";
         }
-        return (chord.meta ? @tr("Key" => "Super") + "+" : "")
-            + (chord.control ? @tr("Key" => "Ctrl") + "+" : "")
-            + (chord.alt ? @tr("Key" => "Alt") + "+" : "")
-            + (chord.shift ? @tr("Key" => "Shift") + "+" : "")
+        return (chord.meta ? root.meta-name() + "+" : "")
+            + (chord.control ? root.control-name() + "+" : "")
+            + (chord.alt ? root.alt-name() + "+" : "")
+            + (chord.shift ? root.shift-name() + "+" : "")
             + root.key-name(chord.key);
     }
 
-    pure function key-name(key: string) -> string {
+    public pure function meta-name() -> string {
+        return @tr("Key" => "Super");
+    }
+
+    public pure function control-name() -> string {
+        return @tr("Key" => "Ctrl");
+    }
+
+    public pure function alt-name() -> string {
+        return @tr("Key" => "Alt");
+    }
+
+    public pure function shift-name() -> string {
+        return @tr("Key" => "Shift");
+    }
+
+    public pure function key-name(key: string) -> string {
         if key == Key.UpArrow {
             return @tr("Key" => "Up");
         }
@@ -77,6 +104,12 @@ export global Shortcuts {
         }
         if key == Key.Delete {
             return @tr("Key" => "Delete");
+        }
+        if key == Key.Insert {
+            return @tr("Key" => "Insert");
+        }
+        if key == Key.Menu {
+            return @tr("Key" => "Menu");
         }
         if key == Key.F1 {
             return "F1";

@@ -678,6 +678,7 @@ export enum SettingsPage {
     privacy,
     calls,
     media,
+    keyboard,
     about,
 }
 
@@ -711,8 +712,59 @@ export enum SettingKey {
     play-animations,
     voice-in-a-row,
     downloaded-media,
+    shortcut-find-room,
+    shortcut-open-settings,
+    shortcut-show-shortcuts,
+    shortcut-next-region,
+    shortcut-previous-region,
+    shortcut-previous-room,
+    shortcut-next-room,
+    shortcut-previous-unread-room,
+    shortcut-next-unread-room,
+    shortcut-move-space-up,
+    shortcut-move-space-down,
+    shortcut-reply,
+    shortcut-edit,
+    shortcut-first-unread,
+    shortcut-toggle-microphone,
+    shortcut-toggle-camera,
+    fixed-keys,
     licence,
     version-info,
+}
+
+export enum Shortcut {
+    open-settings,
+    find-room,
+    show-shortcuts,
+    next-region,
+    previous-region,
+    previous-room,
+    next-room,
+    previous-unread-room,
+    next-unread-room,
+    move-space-up,
+    move-space-down,
+    toggle-microphone,
+    toggle-camera,
+    reply,
+    edit,
+    first-unread,
+}
+
+export enum ShortcutEdit {
+    bind,
+    turn-off,
+    turn-on,
+    reset,
+}
+
+export enum ShortcutRefusal {
+    none,
+    not-a-key,
+    reserved,
+    needs-modifier,
+    taken,
 }
 
 export enum SettingsLayout {

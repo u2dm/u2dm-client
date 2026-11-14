@@ -10,6 +10,7 @@ use crate::domain::room::RoomId;
 use crate::domain::server_rules::{Keyword, RoomClass, RoomDefault};
 use crate::domain::settings::SettingChange;
 use crate::domain::settings::quick_reactions::QuickReactionChange;
+use crate::domain::shortcut::ShortcutChange;
 use crate::domain::uia::AccountPassword;
 use crate::domain::user_info::UserId;
 
@@ -98,6 +99,8 @@ pub enum SettingsCommand {
     Change(SettingChange),
     #[strum(to_string = "ChangeQuickReactions")]
     QuickReactions(QuickReactionChange),
+    #[strum(to_string = "ChangeShortcut")]
+    Shortcut(ShortcutChange),
     ClearDownloadedMedia,
     #[strum(to_string = "ChangeNotificationRule")]
     Rule(RuleCommand),

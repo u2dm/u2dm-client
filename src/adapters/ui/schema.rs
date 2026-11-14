@@ -264,6 +264,7 @@ macro_rules! simple_callbacks {
             request(slot "slot" int) SettingsCommand::QuickReactions;
         on_reset_quick_reactions "reset-quick-reactions" reset_quick_reactions manual
             SettingsCommand::QuickReactions;
+        on_reset_shortcuts "reset-shortcuts" reset_shortcuts manual SettingsCommand::Shortcut;
         on_open_account "open-account" open_account plain AccountCommand::OpenAccount;
         on_close_account "close-account" close_account plain AccountCommand::CloseAccount;
         on_show_account_overview "show-account-overview" show_account_overview plain
@@ -719,6 +720,7 @@ macro_rules! int_props {
         EncryptionKeysCount EncryptionView "EncryptionView" "keys-count" set_keys_count get_keys_count;
         EncryptionKeysTotal EncryptionView "EncryptionView" "keys-total" set_keys_total get_keys_total;
         OneClickReaction SettingsView "SettingsView" "one-click-reaction" set_one_click_reaction get_one_click_reaction;
+        ShortcutsCustom SettingsView "SettingsView" "shortcuts-custom" set_shortcuts_custom get_shortcuts_custom;
         SkinTone EmojiStore "EmojiStore" "tone" set_tone get_tone;
     } };
 }
@@ -933,12 +935,15 @@ macro_rules! shortcut_props {
     ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
         OpenSettings       set_open_settings        get_open_settings        "open-settings";
         FindRoom           set_find_room            get_find_room            "find-room";
+        ShowShortcuts      set_show_shortcuts       get_show_shortcuts       "show-shortcuts";
         NextRegion         set_next_region          get_next_region          "next-region";
         PreviousRegion     set_previous_region      get_previous_region      "previous-region";
         PreviousRoom       set_previous_room        get_previous_room        "previous-room";
         NextRoom           set_next_room            get_next_room            "next-room";
         PreviousUnreadRoom set_previous_unread_room get_previous_unread_room "previous-unread-room";
         NextUnreadRoom     set_next_unread_room     get_next_unread_room     "next-unread-room";
+        MoveSpaceUp        set_move_space_up        get_move_space_up        "move-space-up";
+        MoveSpaceDown      set_move_space_down      get_move_space_down      "move-space-down";
         ToggleMicrophone   set_toggle_microphone    get_toggle_microphone    "toggle-microphone";
         ToggleCamera       set_toggle_camera        get_toggle_camera        "toggle-camera";
         Reply              set_reply                get_reply                "reply";
@@ -1120,6 +1125,9 @@ macro_rules! slint_enums {
             account_steps AccountStep AccountStep;
             account_activities AccountActivity AccountActivity;
             settings_pages SettingsPage SettingsPage;
+            shortcut_commands ShortcutCommand Shortcut;
+            shortcut_edits ShortcutEdit ShortcutEdit;
+            shortcut_refusals ShortcutRefusalMark ShortcutRefusal;
             settings_layouts SettingsLayout SettingsLayout;
             downloaded_media_states DownloadedMedia DownloadedMedia;
             account_rules AccountRule AccountRule;
@@ -1794,6 +1802,7 @@ macro_rules! settings_pages {
         Privacy    Privacy    "privacy";
         Calls      Calls      "calls";
         Media      Media      "media";
+        Keyboard   Keyboard   "keyboard";
         About      About      "about";
     } };
 }
@@ -1806,6 +1815,49 @@ macro_rules! settings_layouts {
     } };
 }
 pub(crate) use settings_layouts;
+
+macro_rules! shortcut_commands {
+    ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
+        OpenSettings       OpenSettings       "open-settings";
+        FindRoom           FindRoom           "find-room";
+        ShowShortcuts      ShowShortcuts      "show-shortcuts";
+        NextRegion         NextRegion         "next-region";
+        PreviousRegion     PreviousRegion     "previous-region";
+        PreviousRoom       PreviousRoom       "previous-room";
+        NextRoom           NextRoom           "next-room";
+        PreviousUnreadRoom PreviousUnreadRoom "previous-unread-room";
+        NextUnreadRoom     NextUnreadRoom     "next-unread-room";
+        MoveSpaceUp        MoveSpaceUp        "move-space-up";
+        MoveSpaceDown      MoveSpaceDown      "move-space-down";
+        ToggleMicrophone   ToggleMicrophone   "toggle-microphone";
+        ToggleCamera       ToggleCamera       "toggle-camera";
+        Reply              Reply              "reply";
+        Edit               Edit               "edit";
+        FirstUnread        FirstUnread        "first-unread";
+    } };
+}
+pub(crate) use shortcut_commands;
+
+macro_rules! shortcut_edits {
+    ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
+        Bind    Bind    "bind";
+        TurnOff TurnOff "turn-off";
+        TurnOn  TurnOn  "turn-on";
+        Reset   Reset   "reset";
+    } };
+}
+pub(crate) use shortcut_edits;
+
+macro_rules! shortcut_refusals {
+    ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
+        None          None          "none";
+        NotAKey       NotAKey       "not-a-key";
+        Reserved      Reserved      "reserved";
+        NeedsModifier NeedsModifier "needs-modifier";
+        Taken         Taken         "taken";
+    } };
+}
+pub(crate) use shortcut_refusals;
 
 macro_rules! downloaded_media_states {
     ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*

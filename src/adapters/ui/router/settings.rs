@@ -1,9 +1,11 @@
 use super::Tx;
 use crate::adapters::ui::props::send_command;
 use crate::adapters::ui::schema::{
-    call_layouts, clock_choices, motion_choices, receipt_visibilities, room_classes, room_defaults,
-    send_keys, setting_flags, settings_layouts, settings_pages, theme_choices, variant_named,
+    call_layouts, clock_choices, define_ui_enum, motion_choices, receipt_visibilities,
+    room_classes, room_defaults, send_keys, setting_flags, settings_layouts, settings_pages,
+    shortcut_commands, shortcut_edits, shortcut_refusals, theme_choices, variant_named,
 };
+use crate::adapters::ui::shortcuts::{binding_in_use, checked, pressed_chord};
 use crate::commands::ui::{RuleCommand, SettingsCommand};
 use crate::commands::view::{SettingsLayout, SettingsPage};
 use crate::domain::server_rules::{Keyword, RoomClass, RoomDefault};
@@ -11,6 +13,9 @@ use crate::domain::settings::quick_reactions::{QuickReaction, QuickReactionChang
 use crate::domain::settings::{
     CallLayout, ClockChoice, MotionChoice, ReceiptVisibility, SendKey, SettingChange, SettingFlag,
     SkinTone, ThemeChoice,
+};
+use crate::domain::shortcut::{
+    KeyChord, Modifiers, ShortcutChange, ShortcutCommand, ShortcutRefusal,
 };
 
 settings_pages!(variant_named settings_page_named SettingsPage;);
@@ -24,6 +29,26 @@ call_layouts!(variant_named call_layout_named CallLayout;);
 setting_flags!(variant_named setting_flag_named SettingFlag;);
 room_classes!(variant_named room_class_named RoomClass;);
 room_defaults!(variant_named room_default_named RoomDefault;);
+shortcut_commands!(variant_named shortcut_command_named ShortcutCommand;);
+shortcut_edits!(define_ui_enum ShortcutEdit;);
+shortcut_edits!(variant_named shortcut_edit_named ShortcutEdit;);
+shortcut_refusals!(define_ui_enum ShortcutRefusalMark;);
+
+pub struct ShortcutVerdict {
+    pub refusal: ShortcutRefusalMark,
+    pub owner: Option<ShortcutCommand>,
+    pub keys: Option<KeyChord>,
+}
+
+impl ShortcutVerdict {
+    const fn unusable() -> Self {
+        Self {
+            refusal: ShortcutRefusalMark::NotAKey,
+            owner: None,
+            keys: None,
+        }
+    }
+}
 
 pub fn open_settings(tx: &Tx) {
     send_command(tx, SettingsCommand::Open(None));
@@ -183,4 +208,69 @@ pub fn add_keyword(tx: &Tx, text: &str) -> bool {
     };
     send_command(tx, RuleCommand::AddKeyword(keyword));
     true
+}
+
+pub fn edit_shortcut(
+    tx: &Tx,
+    command: &str,
+    edit: &str,
+    keys: &str,
+    held: Modifiers,
+) -> ShortcutVerdict {
+    let (Some(command), Some(edit)) = (shortcut_command_named(command), shortcut_edit_named(edit))
+    else {
+        tracing::warn!(command, edit, "ignoring an unknown shortcut edit");
+        return ShortcutVerdict::unusable();
+    };
+    let change = match edit {
+        ShortcutEdit::Bind => match pressed_chord(keys, held) {
+            Some(chord) => ShortcutChange::Bind(command, chord),
+            None => return ShortcutVerdict::unusable(),
+        },
+        ShortcutEdit::TurnOff => ShortcutChange::TurnOff(command),
+        ShortcutEdit::TurnOn => ShortcutChange::TurnOn(command),
+        ShortcutEdit::Reset => ShortcutChange::Reset(command),
+    };
+    let keys = chord_after(change);
+    match checked(change) {
+        Ok(()) => {
+            send_command(tx, SettingsCommand::Shortcut(change));
+            ShortcutVerdict {
+                refusal: ShortcutRefusalMark::None,
+                owner: None,
+                keys,
+            }
+        }
+        Err(refusal) => ShortcutVerdict {
+            refusal: refusal_mark(refusal),
+            owner: match refusal {
+                ShortcutRefusal::Taken(owner) => Some(owner),
+                ShortcutRefusal::Reserved | ShortcutRefusal::NeedsModifier => None,
+            },
+            keys,
+        },
+    }
+}
+
+pub fn reset_shortcuts(tx: &Tx) {
+    send_command(tx, SettingsCommand::Shortcut(ShortcutChange::ResetAll));
+}
+
+fn chord_after(change: ShortcutChange) -> Option<KeyChord> {
+    match change {
+        ShortcutChange::Bind(_, chord) => Some(chord),
+        ShortcutChange::TurnOff(command) | ShortcutChange::TurnOn(command) => {
+            Some(binding_in_use(command).chord())
+        }
+        ShortcutChange::Reset(command) => Some(command.default_chord()),
+        ShortcutChange::ResetAll => None,
+    }
+}
+
+const fn refusal_mark(refusal: ShortcutRefusal) -> ShortcutRefusalMark {
+    match refusal {
+        ShortcutRefusal::Reserved => ShortcutRefusalMark::Reserved,
+        ShortcutRefusal::NeedsModifier => ShortcutRefusalMark::NeedsModifier,
+        ShortcutRefusal::Taken(_) => ShortcutRefusalMark::Taken,
+    }
 }

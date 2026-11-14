@@ -38,6 +38,7 @@ impl AppService {
                     play_animations: _,
                     voice_in_a_row,
                 },
+            shortcuts: _,
         } = *self.settings.values();
         self.active_timeline.set_receipts(receipts);
         self.room_info.set_receipts(receipts);
@@ -102,6 +103,7 @@ impl AppService {
             SettingsCommand::QuickReactions(change) => {
                 self.settings.change_quick_reactions(&change);
             }
+            SettingsCommand::Shortcut(change) => self.settings.change_shortcut(change),
             SettingsCommand::Change(change) => {
                 let loaded_automatically = self.settings.values().media.auto_load;
                 self.settings.change(change);

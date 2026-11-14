@@ -1,10 +1,11 @@
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::{array, fs, io, result};
 
 use async_trait::async_trait;
 use serde::de::{DeserializeOwned, Deserializer};
 use serde::{Deserialize, Serialize};
-use serde_json::{Value, json};
+use serde_json::{Map, Value, json};
 
 use super::private_fs;
 use crate::domain::call::devices::{ByKind, DeviceChoice, DeviceKey, MediaDevice};
@@ -16,6 +17,7 @@ use crate::domain::settings::{
     MotionChoice, ReactionPreferences, ReceiptVisibility, RowFilter, SendKey, Settings, SkinTone,
     ThemeChoice,
 };
+use crate::domain::shortcut::{Binding, KeyChord, ShortcutCommand, ShortcutTable};
 use crate::error::Result;
 use crate::ports::settings::SettingsPort;
 
@@ -185,6 +187,8 @@ struct StoredSettings {
     calls: Option<StoredCalls>,
     #[serde(default, deserialize_with = "lenient")]
     media: Option<StoredMedia>,
+    #[serde(default)]
+    shortcuts: Value,
 }
 
 fn lenient<'de, D, T>(deserializer: D) -> result::Result<Option<T>, D::Error>
@@ -288,6 +292,133 @@ fn read_skin_tone(value: Option<&Value>) -> SkinTone {
     tone.unwrap_or_default()
 }
 
+const fn stored_command_name(command: ShortcutCommand) -> &'static str {
+    match command {
+        ShortcutCommand::OpenSettings => "open-settings",
+        ShortcutCommand::FindRoom => "find-room",
+        ShortcutCommand::ShowShortcuts => "show-shortcuts",
+        ShortcutCommand::NextRegion => "next-region",
+        ShortcutCommand::PreviousRegion => "previous-region",
+        ShortcutCommand::PreviousRoom => "previous-room",
+        ShortcutCommand::NextRoom => "next-room",
+        ShortcutCommand::PreviousUnreadRoom => "previous-unread-room",
+        ShortcutCommand::NextUnreadRoom => "next-unread-room",
+        ShortcutCommand::MoveSpaceUp => "move-space-up",
+        ShortcutCommand::MoveSpaceDown => "move-space-down",
+        ShortcutCommand::ToggleMicrophone => "toggle-microphone",
+        ShortcutCommand::ToggleCamera => "toggle-camera",
+        ShortcutCommand::Reply => "reply",
+        ShortcutCommand::Edit => "edit",
+        ShortcutCommand::FirstUnread => "first-unread",
+    }
+}
+
+fn stored_command(name: &str) -> Option<ShortcutCommand> {
+    ShortcutCommand::ALL
+        .into_iter()
+        .find(|command| stored_command_name(*command) == name)
+}
+
+fn stored_shortcuts(table: &ShortcutTable) -> Value {
+    let keys: Map<String, Value> = ShortcutCommand::ALL
+        .into_iter()
+        .map(|command| {
+            (
+                stored_command_name(command).to_owned(),
+                Value::String(table.binding(command).chord().to_string()),
+            )
+        })
+        .collect();
+    let off: Vec<&str> = ShortcutCommand::ALL
+        .into_iter()
+        .filter(|command| table.chord(*command).is_none())
+        .map(stored_command_name)
+        .collect();
+    json!({ "keys": keys, "off": off })
+}
+
+fn read_shortcuts(stored: &Value) -> ShortcutTable {
+    if !stored.is_null() && !stored.is_object() {
+        tracing::warn!("the shortcuts are not a group of settings, so they keep their defaults");
+    }
+    let mut read = read_shortcut_keys(stored.get("keys"));
+    turn_off_read_shortcuts(stored.get("off"), &mut read);
+    let table = ShortcutTable::from_bindings(&read);
+    for (command, wanted) in &read {
+        warn_unless_kept(*command, *wanted, table.binding(*command));
+    }
+    table
+}
+
+fn warn_unless_kept(command: ShortcutCommand, wanted: Binding, kept: Binding) {
+    if wanted == kept {
+        return;
+    }
+    let shortcut = stored_command_name(command);
+    if kept.active().is_some() {
+        tracing::warn!(
+            shortcut,
+            "a shortcut repeats another or cannot be used, so it takes its default"
+        );
+    } else {
+        tracing::warn!(
+            shortcut,
+            "a shortcut repeats another or cannot be used, so it is turned off"
+        );
+    }
+}
+
+fn read_shortcut_keys(keys: Option<&Value>) -> HashMap<ShortcutCommand, Binding> {
+    let Some(keys) = keys else {
+        return HashMap::new();
+    };
+    let Some(keys) = keys.as_object() else {
+        tracing::warn!(
+            "the shortcut keys are not a group of settings, so they keep their defaults"
+        );
+        return HashMap::new();
+    };
+    let mut read = HashMap::new();
+    for (name, value) in keys {
+        let Some(command) = stored_command(name) else {
+            tracing::warn!(
+                shortcut = name.as_str(),
+                "a shortcut names no command, so it is dropped"
+            );
+            continue;
+        };
+        if let Some(chord) = value.as_str().and_then(KeyChord::parse) {
+            read.insert(command, Binding::On(chord));
+        } else {
+            tracing::warn!(
+                shortcut = name.as_str(),
+                "a shortcut's keys could not be read, so it keeps its default"
+            );
+        }
+    }
+    read
+}
+
+fn turn_off_read_shortcuts(off: Option<&Value>, read: &mut HashMap<ShortcutCommand, Binding>) {
+    let Some(off) = off else {
+        return;
+    };
+    let Some(names) = off.as_array() else {
+        tracing::warn!("the turned-off shortcuts are not a list, so every shortcut stays on");
+        return;
+    };
+    for name in names {
+        let Some(command) = name.as_str().and_then(stored_command) else {
+            tracing::warn!("a turned-off shortcut names no command, so it is dropped");
+            continue;
+        };
+        let chord = read
+            .get(&command)
+            .map_or(command.default_chord(), |held| held.chord());
+        read.insert(command, Binding::Off(chord));
+    }
+}
+
 fn stored_device(choice: &DeviceChoice) -> Option<StoredDevice> {
     match choice {
         DeviceChoice::Default => None,
@@ -350,6 +481,7 @@ impl From<&Settings> for StoredSettings {
                     play_animations,
                     voice_in_a_row,
                 },
+            ref shortcuts,
         } = *settings;
         Self {
             appearance: Some(StoredAppearance {
@@ -390,6 +522,7 @@ impl From<&Settings> for StoredSettings {
                 play_animations: Some(play_animations),
                 voice_in_a_row: Some(voice_in_a_row),
             }),
+            shortcuts: stored_shortcuts(shortcuts),
         }
     }
 }
@@ -481,6 +614,7 @@ impl From<StoredSettings> for Settings {
                     .voice_in_a_row
                     .unwrap_or(defaults.media.voice_in_a_row),
             },
+            shortcuts: read_shortcuts(&stored.shortcuts),
         }
     }
 }

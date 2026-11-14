@@ -10,7 +10,7 @@ import { CallKey, CallKeys } from "./components/call/call-controls.slint";
 import { CallDock } from "./components/call/call-dock.slint";
 import { CallDockMenus } from "./components/call/call-dock-menus.slint";
 import { ResizeEdge, ResizeHandle } from "../../components/resize-handle.slint";
-import { RoomInfoPlacement, RoomScope, UserMessageKind } from "../../enums.slint";
+import { RoomInfoPlacement, RoomScope, SettingsPage, UserMessageKind } from "../../enums.slint";
 import { UserMessages } from "../../messages.slint";
 import { AppStyle, IconSize, Metrics, Motion, Radius, Size, Space } from "../../theme.slint";
 import { IconButton } from "../../components/button.slint";
@@ -129,6 +129,15 @@ export component ChatScreen inherits FocusScope {
             root.close-popups();
             SettingsEntry.by-keys = true;
             Actions.open-settings();
+            return accept;
+        }
+        if Shortcuts.matches(event, Shortcuts.show-shortcuts) {
+            if Shell.modal-over-nav || event.repeat {
+                return reject;
+            }
+            root.close-popups();
+            SettingsEntry.by-keys = true;
+            Actions.open-settings-page({ page: SettingsPage.keyboard });
             return accept;
         }
         if Shortcuts.matches(event, Shortcuts.find-room) {

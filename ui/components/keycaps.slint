@@ -1,0 +1,53 @@
+import { Palette } from "std-widgets.slint";
+
+import { KeyChord } from "../types.slint";
+import { Shortcuts } from "../shortcuts.slint";
+import { AppStyle, Fonts, Radius, Size, Space, Stroke, Weight } from "../theme.slint";
+
+component Keycap inherits Rectangle {
+    in property <string> text;
+
+    height: Size.sm;
+    width: max(Size.sm, caption.preferred-width + 2 * Space.sm);
+    border-radius: Radius.xs;
+    border-width: Stroke.hairline;
+    border-color: AppStyle.foreground-faint;
+    background: AppStyle.well;
+
+    caption := Text {
+        text: root.text;
+        font-size: Fonts.caption;
+        font-weight: Weight.semibold;
+        color: Palette.foreground;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+        accessible-role: none;
+    }
+}
+
+export component Keycaps inherits HorizontalLayout {
+    in property <KeyChord> chord;
+
+    spacing: Space.xs;
+    alignment: end;
+
+    if root.chord.meta: Keycap {
+        text: Shortcuts.meta-name();
+    }
+
+    if root.chord.control: Keycap {
+        text: Shortcuts.control-name();
+    }
+
+    if root.chord.alt: Keycap {
+        text: Shortcuts.alt-name();
+    }
+
+    if root.chord.shift: Keycap {
+        text: Shortcuts.shift-name();
+    }
+
+    if root.chord.key != "": Keycap {
+        text: Shortcuts.key-name(root.chord.key);
+    }
+}

@@ -11,7 +11,7 @@ import { SettingKey, SettingsLayout, SettingsPage } from "../../../../enums.slin
 import { AboutView, AppearanceView, EncryptionView, SettingsView } from "../../../../views.slint";
 import { Actions } from "../../../../actions.slint";
 import { SettingsWords } from "../../../../messages.slint";
-import { MetaTip, Reactions, SettingsEntry, SettingsSearch } from "../../../../local.slint";
+import { KeyRecording, MetaTip, Reactions, SettingsEntry, SettingsSearch } from "../../../../local.slint";
 import { AppStyle, Fonts, IconSize, Metrics, Motion, Radius, Size, Space, Weight } from "../../../../theme.slint";
 import { AboutPage } from "./about-page.slint";
 import { AppearancePage } from "./appearance-page.slint";
@@ -19,6 +19,7 @@ import { MessagesPage } from "./messages-page.slint";
 import { NotificationsPage } from "./notifications-page.slint";
 import { CallsPage } from "./calls-page.slint";
 import { MediaPage } from "./media-page.slint";
+import { KeyboardPage } from "./keyboard-page.slint";
 import { PrivacyPage } from "./privacy-page.slint";
 import { ReactionsPage } from "./reactions-page.slint";
 import { QuickReactions } from "../timeline/quick-reactions.slint";
@@ -34,6 +35,7 @@ export global SettingsPages {
         SettingsPage.privacy,
         SettingsPage.calls,
         SettingsPage.media,
+        SettingsPage.keyboard,
     ];
     out property <int> link-count: 2;
 
@@ -45,6 +47,7 @@ export global SettingsPages {
             : page == SettingsPage.privacy ? 4
             : page == SettingsPage.calls ? 5
             : page == SettingsPage.media ? 6
+            : page == SettingsPage.keyboard ? 7
             : 0;
     }
 
@@ -66,6 +69,9 @@ export global SettingsPages {
         }
         if page == SettingsPage.media {
             return @tr("Media and storage");
+        }
+        if page == SettingsPage.keyboard {
+            return @tr("Keyboard");
         }
         if page == SettingsPage.about {
             return @tr("About");
@@ -92,6 +98,9 @@ export global SettingsPages {
         if page == SettingsPage.media {
             return IconSet.Image;
         }
+        if page == SettingsPage.keyboard {
+            return IconSet.Keyboard;
+        }
         if page == SettingsPage.about {
             return IconSet.Info;
         }
@@ -116,6 +125,9 @@ export global SettingsPages {
         }
         if page == SettingsPage.media {
             return SettingsWords.media-summary(SettingsView.auto-load-media);
+        }
+        if page == SettingsPage.keyboard {
+            return SettingsWords.keyboard-summary(SettingsView.shortcuts-custom);
         }
         if page == SettingsPage.about {
             return SettingsWords.about-summary(AboutView.version);
@@ -321,6 +333,125 @@ export global SettingsIndex {
             label: SettingsWords.label(SettingKey.downloaded-media),
             page-title: SettingsPages.title(SettingsPage.media),
             terms: @tr("settings search" => "cache storage disk space clear"),
+        },
+        {
+            key: SettingKey.shortcut-find-room,
+            page: SettingsPage.keyboard,
+            label: SettingsWords.label(SettingKey.shortcut-find-room),
+            page-title: SettingsPages.title(SettingsPage.keyboard),
+            terms: @tr("settings search" => "keyboard shortcut search jump go to room hotkey"),
+        },
+        {
+            key: SettingKey.shortcut-open-settings,
+            page: SettingsPage.keyboard,
+            label: SettingsWords.label(SettingKey.shortcut-open-settings),
+            page-title: SettingsPages.title(SettingsPage.keyboard),
+            terms: @tr("settings search" => "keyboard shortcut preferences options hotkey"),
+        },
+        {
+            key: SettingKey.shortcut-show-shortcuts,
+            page: SettingsPage.keyboard,
+            label: SettingsWords.label(SettingKey.shortcut-show-shortcuts),
+            page-title: SettingsPages.title(SettingsPage.keyboard),
+            terms: @tr("settings search" => "keyboard shortcut keys list help hotkey"),
+        },
+        {
+            key: SettingKey.shortcut-next-region,
+            page: SettingsPage.keyboard,
+            label: SettingsWords.label(SettingKey.shortcut-next-region),
+            page-title: SettingsPages.title(SettingsPage.keyboard),
+            terms: @tr("settings search" => "keyboard shortcut f6 pane focus landmark area hotkey"),
+        },
+        {
+            key: SettingKey.shortcut-previous-region,
+            page: SettingsPage.keyboard,
+            label: SettingsWords.label(SettingKey.shortcut-previous-region),
+            page-title: SettingsPages.title(SettingsPage.keyboard),
+            terms: @tr("settings search" => "keyboard shortcut shift f6 pane focus landmark area hotkey"),
+        },
+        {
+            key: SettingKey.shortcut-previous-room,
+            page: SettingsPage.keyboard,
+            label: SettingsWords.label(SettingKey.shortcut-previous-room),
+            page-title: SettingsPages.title(SettingsPage.keyboard),
+            terms: @tr("settings search" => "keyboard shortcut alt up switch room hotkey"),
+        },
+        {
+            key: SettingKey.shortcut-next-room,
+            page: SettingsPage.keyboard,
+            label: SettingsWords.label(SettingKey.shortcut-next-room),
+            page-title: SettingsPages.title(SettingsPage.keyboard),
+            terms: @tr("settings search" => "keyboard shortcut alt down switch room hotkey"),
+        },
+        {
+            key: SettingKey.shortcut-previous-unread-room,
+            page: SettingsPage.keyboard,
+            label: SettingsWords.label(SettingKey.shortcut-previous-unread-room),
+            page-title: SettingsPages.title(SettingsPage.keyboard),
+            terms: @tr("settings search" => "keyboard shortcut alt shift up switch room new hotkey"),
+        },
+        {
+            key: SettingKey.shortcut-next-unread-room,
+            page: SettingsPage.keyboard,
+            label: SettingsWords.label(SettingKey.shortcut-next-unread-room),
+            page-title: SettingsPages.title(SettingsPage.keyboard),
+            terms: @tr("settings search" => "keyboard shortcut alt shift down switch room new hotkey"),
+        },
+        {
+            key: SettingKey.shortcut-move-space-up,
+            page: SettingsPage.keyboard,
+            label: SettingsWords.label(SettingKey.shortcut-move-space-up),
+            page-title: SettingsPages.title(SettingsPage.keyboard),
+            terms: @tr("settings search" => "keyboard shortcut reorder rail order hotkey"),
+        },
+        {
+            key: SettingKey.shortcut-move-space-down,
+            page: SettingsPage.keyboard,
+            label: SettingsWords.label(SettingKey.shortcut-move-space-down),
+            page-title: SettingsPages.title(SettingsPage.keyboard),
+            terms: @tr("settings search" => "keyboard shortcut reorder rail order hotkey"),
+        },
+        {
+            key: SettingKey.shortcut-reply,
+            page: SettingsPage.keyboard,
+            label: SettingsWords.label(SettingKey.shortcut-reply),
+            page-title: SettingsPages.title(SettingsPage.keyboard),
+            terms: @tr("settings search" => "keyboard shortcut r answer message hotkey"),
+        },
+        {
+            key: SettingKey.shortcut-edit,
+            page: SettingsPage.keyboard,
+            label: SettingsWords.label(SettingKey.shortcut-edit),
+            page-title: SettingsPages.title(SettingsPage.keyboard),
+            terms: @tr("settings search" => "keyboard shortcut e change message hotkey"),
+        },
+        {
+            key: SettingKey.shortcut-first-unread,
+            page: SettingsPage.keyboard,
+            label: SettingsWords.label(SettingKey.shortcut-first-unread),
+            page-title: SettingsPages.title(SettingsPage.keyboard),
+            terms: @tr("settings search" => "keyboard shortcut shift page up new messages jump hotkey"),
+        },
+        {
+            key: SettingKey.shortcut-toggle-microphone,
+            page: SettingsPage.keyboard,
+            label: SettingsWords.label(SettingKey.shortcut-toggle-microphone),
+            page-title: SettingsPages.title(SettingsPage.keyboard),
+            terms: @tr("settings search" => "keyboard shortcut mute unmute call ctrl d hotkey"),
+        },
+        {
+            key: SettingKey.shortcut-toggle-camera,
+            page: SettingsPage.keyboard,
+            label: SettingsWords.label(SettingKey.shortcut-toggle-camera),
+            page-title: SettingsPages.title(SettingsPage.keyboard),
+            terms: @tr("settings search" => "keyboard shortcut video webcam call ctrl e hotkey"),
+        },
+        {
+            key: SettingKey.fixed-keys,
+            page: SettingsPage.keyboard,
+            label: SettingsWords.label(SettingKey.fixed-keys),
+            page-title: SettingsPages.title(SettingsPage.keyboard),
+            terms: @tr("settings search" => "keyboard shortcut tab arrows home end page enter space escape menu navigation"),
         },
         {
             key: SettingKey.licence,
@@ -795,6 +926,7 @@ export component SettingsDialog inherits ModalHost {
 
     changed page => {
         pane.content-y = 0;
+        KeyRecording.finish();
     }
 
     changed picking-slot => {
@@ -816,6 +948,10 @@ export component SettingsDialog inherits ModalHost {
     dim-opacity: AppStyle.dialog-scrim;
     label: @tr("Settings");
     dismissed => {
+        if KeyRecording.active && !root.dismissing-by-pointer {
+            KeyRecording.finish();
+            return;
+        }
         if root.asking-clear && !root.dismissing-by-pointer {
             root.asking-clear = false;
             return;
@@ -840,6 +976,7 @@ export component SettingsDialog inherits ModalHost {
     opened => {
         Reactions.close();
         MetaTip.clear();
+        KeyRecording.finish();
         SettingsSearch.sought = SettingKey.none;
         root.keyed = SettingsEntry.by-keys;
         SettingsEntry.by-keys = false;
@@ -987,6 +1124,8 @@ export component SettingsDialog inherits ModalHost {
                                 root.park-focus();
                             }
                         }
+
+                        if !root.listing && root.page == SettingsPage.keyboard: KeyboardPage { }
 
                         if !root.listing && root.page == SettingsPage.about: AboutPage { }
 

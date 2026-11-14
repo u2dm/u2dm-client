@@ -92,7 +92,7 @@ component SidebarSearch inherits FocusScope {
         label: DirectoryView.room-scope == RoomScope.direct
             ? @tr("Search direct messages")
             : @tr("Search rooms and spaces");
-        description: Shortcuts.find-room.key == "" ? "" : @tr("Shortcut: {}", Shortcuts.label(Shortcuts.find-room));
+        description: !Shortcuts.find-room.on ? "" : @tr("Shortcut: {}", Shortcuts.label(Shortcuts.find-room));
         query <=> RoomSearch.query;
         above-modal: root.above-modal;
         enabled: Interaction.actionable(true, root.above-modal);

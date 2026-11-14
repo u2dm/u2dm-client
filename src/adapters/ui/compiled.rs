@@ -18,9 +18,10 @@ use u2dm_ui::{
     MentionsView, MessageEntry, MessageLink, Motion, NotificationText, PackCell, PackRow,
     PackTabEntry, PackView, PollAnswerEntry, PresenceView, ReactionEntry, ReactorAvatar,
     ReadersView, RemovalView, ReplySwipe, RoomEntry, RoomInfoView, RoomLogView, RoomMenuView,
-    RoomPreviewView, RoomView, SessionView, SettingsView, Shortcuts, SourceView, SpaceChildEntry,
-    SpaceEntry, SpaceIndexView, SpoilerCover, TextSplice, TouchpadView, TypingView, UnsentView,
-    UpgradeView, UserDeviceEntry, UserInfoView, UserMessage as UiUserMessage, VerificationEmoji,
+    RoomPreviewView, RoomView, SessionView, SettingsView, ShortcutBinding,
+    ShortcutVerdict as UiShortcutVerdict, Shortcuts, SourceView, SpaceChildEntry, SpaceEntry,
+    SpaceIndexView, SpoilerCover, TextSplice, TouchpadView, TypingView, UnsentView, UpgradeView,
+    UserDeviceEntry, UserInfoView, UserMessage as UiUserMessage, VerificationEmoji,
     VerificationView, VideoView, WindowView,
 };
 #[cfg(feature = "demo")]
@@ -61,7 +62,9 @@ use super::present::{
 #[cfg(feature = "demo")]
 use super::props::EnumProp;
 use super::props::{BoolProp, ImageProp, IntProp, StringProp, UiProps};
-use super::router::{DraftVerdict, EditedRow, EditedText};
+use super::router::{
+    DraftVerdict, EditedRow, EditedText, ShortcutEdit, ShortcutRefusalMark, ShortcutVerdict,
+};
 use super::schema::{
     body_line_fields, body_piece_fields, bool_props, call_connection_fields, call_device_fields,
     call_person_fields, call_tile_fields, enum_props, ignored_person_fields, image_props,
@@ -112,7 +115,7 @@ use crate::domain::settings::{
     CallLayout, ClockChoice, MotionChoice, ReceiptVisibility, SendKey, SettingFlag, Settings,
     ThemeChoice,
 };
-use crate::domain::shortcut::{KeyChord as Chord, ShortcutCommand, ShortcutTable};
+use crate::domain::shortcut::{KeyChord as Chord, Modifiers, ShortcutCommand, ShortcutTable};
 use crate::domain::sync::ConnectionStatus;
 use crate::domain::timeline::{SourceEncryption, TimelineStatus};
 use crate::domain::user_info::{DeviceTrust, IdentityTrust, RoomMembership};
@@ -327,12 +330,11 @@ fn bind_hooks(actions: &Actions<'_>, hooks: WindowHooks) {
 }
 
 macro_rules! write_shortcuts {
-    ($window:ident $table:ident; $($command:ident $set:ident $get:ident $lit:literal;)*) => {
-        let shortcuts = $window.global::<Shortcuts>();
+    ($shortcuts:ident $table:ident; $($command:ident $set:ident $get:ident $lit:literal;)*) => {
         for command in ShortcutCommand::ALL {
-            let chord = slint_chord($table.chord(command));
+            let binding = slint_binding($table, command);
             match command {
-                $( ShortcutCommand::$command => shortcuts.$set(chord), )*
+                $( ShortcutCommand::$command => $shortcuts.$set(binding), )*
             }
         }
     };
@@ -345,15 +347,38 @@ macro_rules! copy_shortcuts {
     };
 }
 
-fn slint_chord(chord: Option<Chord>) -> KeyChord {
-    let held = shortcuts::held_with(chord);
+fn write_shortcut_bindings(shortcuts: &Shortcuts<'_>, table: &ShortcutTable) {
+    shortcut_props!(write_shortcuts shortcuts table;);
+}
+
+fn slint_chord(chord: Chord) -> KeyChord {
+    let held = chord.modifiers;
     KeyChord {
         key: shortcuts::key_text(chord),
         control: held.control,
         alt: held.alt,
         shift: held.shift,
         meta: held.meta,
-        any_shift: shortcuts::ignores_shift(chord),
+        any_shift: chord.ignores_shift(),
+    }
+}
+
+fn slint_binding(table: &ShortcutTable, command: ShortcutCommand) -> ShortcutBinding {
+    let shown = shortcuts::shown_binding(table, command);
+    ShortcutBinding {
+        command: command.slint(),
+        keys: slint_chord(shown.keys),
+        on: shown.on,
+        custom: shown.custom,
+        standard: slint_chord(shown.standard),
+    }
+}
+
+fn shortcut_verdict(verdict: &ShortcutVerdict, asked: u2dm_ui::Shortcut) -> UiShortcutVerdict {
+    UiShortcutVerdict {
+        refusal: verdict.refusal.slint(),
+        owner: verdict.owner.map_or(asked, |owner| owner.slint()),
+        keys: verdict.keys.map(slint_chord).unwrap_or_default(),
     }
 }
 
@@ -410,7 +435,10 @@ impl UiProps for AppWindow {
     }
 
     fn apply_shortcuts(&self, table: &ShortcutTable) {
-        shortcut_props!(write_shortcuts self table;);
+        call_window::mirror(table, |window, table| {
+            write_shortcut_bindings(&window.global::<Shortcuts>(), &table);
+        });
+        write_shortcut_bindings(&self.global::<Shortcuts>(), table);
     }
 
     fn apply_emoji_model(&self, emojis: &[DomainVerificationEmoji]) {
@@ -754,6 +782,24 @@ impl SlintUiAdapter {
 
         let tx = cmd_tx.clone();
         actions(win).on_add_keyword(move |text| router::add_keyword(&tx, &text));
+
+        let tx = cmd_tx.clone();
+        actions(win).on_edit_shortcut(move |request| {
+            let held = Modifiers {
+                control: request.keys.control,
+                alt: request.keys.alt,
+                shift: request.keys.shift,
+                meta: request.keys.meta,
+            };
+            let verdict = router::edit_shortcut(
+                &tx,
+                request.command.slint_name(),
+                request.edit.slint_name(),
+                &request.keys.key,
+                held,
+            );
+            shortcut_verdict(&verdict, request.command)
+        });
 
         actions(win).on_room_log_text(|| SharedString::from(shown_room_log_text()));
 

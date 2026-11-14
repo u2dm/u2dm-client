@@ -24,6 +24,7 @@ use crate::domain::member_name::MemberName;
 use crate::domain::server_rules::ServerRules;
 use crate::domain::settings::quick_reactions::QuickReactionChange;
 use crate::domain::settings::{SettingChange, Settings};
+use crate::domain::shortcut::ShortcutChange;
 use crate::domain::user_info::UserId;
 use crate::ports::matrix::{MediaPort, ServerRulesPort, UserInfoPort};
 use crate::ports::output::AppOutputPort;
@@ -363,6 +364,17 @@ impl SettingsController {
         }
         tracing::info!(?change, "the quick reactions changed");
         self.save_and_publish();
+    }
+
+    pub(super) fn change_shortcut(&mut self, change: ShortcutChange) {
+        match self.values.change_shortcut(change) {
+            Ok(false) => {}
+            Ok(true) => {
+                tracing::info!(?change, "a shortcut changed");
+                self.save_and_publish();
+            }
+            Err(refusal) => tracing::warn!(?change, ?refusal, "not changing a shortcut"),
+        }
     }
 
     pub(super) fn remember_devices(&mut self, devices: DeviceChoices) {

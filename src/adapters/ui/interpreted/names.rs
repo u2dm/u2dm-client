@@ -14,6 +14,7 @@ pub mod callback {
     pub const SET_ROOM_NOTIFY: &str = "set-room-notify";
     pub const PASTE_ATTACHMENT: &str = "paste-attachment";
     pub const ADD_KEYWORD: &str = "add-keyword";
+    pub const EDIT_SHORTCUT: &str = "edit-shortcut";
     pub const TOGGLE_REACTION: &str = "toggle-reaction";
     pub const REACT_WITH_EMOTE: &str = "react-with-emote";
     pub const SET_PACK_GLOBAL: &str = "set-pack-global";
@@ -133,6 +134,26 @@ pub mod key_chord {
     pub const SHIFT: &str = "shift";
     pub const META: &str = "meta";
     pub const ANY_SHIFT: &str = "any-shift";
+}
+
+pub mod shortcut_binding {
+    pub const COMMAND: &str = "command";
+    pub const KEYS: &str = "keys";
+    pub const ON: &str = "on";
+    pub const CUSTOM: &str = "custom";
+    pub const STANDARD: &str = "standard";
+}
+
+pub mod shortcut_edit_request {
+    pub const COMMAND: &str = "command";
+    pub const EDIT: &str = "edit";
+    pub const KEYS: &str = "keys";
+}
+
+pub mod shortcut_verdict {
+    pub const REFUSAL: &str = "refusal";
+    pub const OWNER: &str = "owner";
+    pub const KEYS: &str = "keys";
 }
 
 pub mod login_view {

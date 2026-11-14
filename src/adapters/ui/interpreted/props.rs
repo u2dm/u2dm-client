@@ -4,8 +4,8 @@ use slint::{Rgb8Pixel, SharedPixelBuffer};
 use slint_interpreter::{ComponentInstance, SharedString, Value};
 
 use super::names::{
-    key_chord, login_view, room_info_view, settings_view, shortcuts, user_message,
-    verification_emoji, verification_view, video_view, window_props,
+    key_chord, login_view, room_info_view, settings_view, shortcut_binding, shortcuts,
+    user_message, verification_emoji, verification_view, video_view, window_props,
 };
 #[cfg(feature = "demo")]
 use super::values::variant_of;
@@ -22,7 +22,7 @@ use crate::adapters::ui::props::{BoolProp, ImageProp, IntProp, StringProp, UiPro
 use crate::adapters::ui::schema::{
     bool_props, enum_props, image_props, int_props, shortcut_props, string_props,
 };
-use crate::adapters::ui::shortcuts::{held_with, ignores_shift, key_text};
+use crate::adapters::ui::shortcuts::{key_text, shown_binding};
 use crate::commands::effects::VerificationActivity;
 use crate::commands::messages::{UserMessage, UserMessageKind};
 use crate::commands::view::{
@@ -232,12 +232,11 @@ impl UiProps for ComponentInstance {
 
     fn apply_shortcuts(&self, table: &ShortcutTable) {
         for command in ShortcutCommand::ALL {
-            set_global(
-                self,
-                shortcuts::NAME,
-                shortcut_name(command),
-                chord_value(table.chord(command)),
-            );
+            let binding = binding_value(table, command);
+            call_window::mirror(&binding, |window, binding| {
+                set_global(window, shortcuts::NAME, shortcut_name(command), binding);
+            });
+            set_global(self, shortcuts::NAME, shortcut_name(command), binding);
         }
     }
 
@@ -291,14 +290,25 @@ pub(super) fn shortcut_names() -> impl Iterator<Item = &'static str> {
     ShortcutCommand::ALL.into_iter().map(shortcut_name)
 }
 
-fn chord_value(chord: Option<KeyChord>) -> Value {
-    let held = held_with(chord);
+pub(super) fn chord_value(chord: KeyChord) -> Value {
+    let held = chord.modifiers;
     struct_value([
         (key_chord::KEY, text_value(key_text(chord))),
         (key_chord::CONTROL, Value::Bool(held.control)),
         (key_chord::ALT, Value::Bool(held.alt)),
         (key_chord::SHIFT, Value::Bool(held.shift)),
         (key_chord::META, Value::Bool(held.meta)),
-        (key_chord::ANY_SHIFT, Value::Bool(ignores_shift(chord))),
+        (key_chord::ANY_SHIFT, Value::Bool(chord.ignores_shift())),
+    ])
+}
+
+fn binding_value(table: &ShortcutTable, command: ShortcutCommand) -> Value {
+    let shown = shown_binding(table, command);
+    struct_value([
+        (shortcut_binding::COMMAND, enum_value(&command)),
+        (shortcut_binding::KEYS, chord_value(shown.keys)),
+        (shortcut_binding::ON, Value::Bool(shown.on)),
+        (shortcut_binding::CUSTOM, Value::Bool(shown.custom)),
+        (shortcut_binding::STANDARD, chord_value(shown.standard)),
     ])
 }

@@ -1,6 +1,16 @@
 use slint_interpreter::{Struct, Value};
 
-use super::values::{flag_of, int_of, strings_of, text_of};
+use super::names::{key_chord, shortcut_edit_request};
+use super::values::{flag_of, int_of, strings_of, text_of, variant_of};
+use crate::domain::shortcut::Modifiers;
+
+pub(super) struct ShortcutEditArgs {
+    pub(super) command: String,
+    pub(super) edit: String,
+    pub(super) key: String,
+    pub(super) held: Modifiers,
+    pub(super) asked: Value,
+}
 
 pub(super) fn string_arg(args: &[Value], index: usize) -> String {
     text_of(args.get(index)).to_owned()
@@ -68,4 +78,27 @@ pub(super) fn seen_args(args: &[Value]) -> (String, i32, i32, bool) {
         int_arg(args, 2).unwrap_or_default(),
         bool_arg(args, 3),
     )
+}
+
+pub(super) fn shortcut_edit_args(args: &[Value]) -> ShortcutEditArgs {
+    let request = struct_arg(args, 0);
+    let asked = request.and_then(|request| request.get_field(shortcut_edit_request::COMMAND));
+    let edit = request.and_then(|request| request.get_field(shortcut_edit_request::EDIT));
+    let keys = match request.and_then(|request| request.get_field(shortcut_edit_request::KEYS)) {
+        Some(Value::Struct(keys)) => Some(keys),
+        _ => None,
+    };
+    let held = |name: &str| flag_of(keys.and_then(|keys| keys.get_field(name)));
+    ShortcutEditArgs {
+        command: variant_of(asked).to_owned(),
+        edit: variant_of(edit).to_owned(),
+        key: text_of(keys.and_then(|keys| keys.get_field(key_chord::KEY))).to_owned(),
+        held: Modifiers {
+            control: held(key_chord::CONTROL),
+            alt: held(key_chord::ALT),
+            shift: held(key_chord::SHIFT),
+            meta: held(key_chord::META),
+        },
+        asked: asked.cloned().unwrap_or_default(),
+    }
 }

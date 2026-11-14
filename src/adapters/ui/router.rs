@@ -12,10 +12,10 @@ pub(super) use self::drafts::{
     send_poll,
 };
 pub(super) use self::settings::{
-    add_keyword, open_settings, open_settings_page, reset_quick_reactions, set_call_layout,
-    set_clock, set_motion, set_one_click_reaction, set_quick_reaction, set_receipts,
-    set_room_default, set_send_key, set_setting_flag, set_skin_tone, set_theme, settings_layout,
-    show_settings_page,
+    ShortcutEdit, ShortcutRefusalMark, ShortcutVerdict, add_keyword, edit_shortcut, open_settings,
+    open_settings_page, reset_quick_reactions, reset_shortcuts, set_call_layout, set_clock,
+    set_motion, set_one_click_reaction, set_quick_reaction, set_receipts, set_room_default,
+    set_send_key, set_setting_flag, set_skin_tone, set_theme, settings_layout, show_settings_page,
 };
 pub(super) use self::watches::{
     composer_changed, scroll_position, timeline_visibility, user_activity, window_focus,

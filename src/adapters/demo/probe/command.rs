@@ -384,6 +384,18 @@ pub enum ProbeCommand {
         slot: i64,
     },
     ResetQuickReactions,
+    SetShortcut {
+        command: String,
+        keys: String,
+    },
+    TurnShortcut {
+        command: String,
+        on: bool,
+    },
+    ResetShortcut {
+        command: String,
+    },
+    ResetShortcuts,
     OpenAccount,
     CloseAccount,
     ShowAccountOverview,

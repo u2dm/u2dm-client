@@ -1,4 +1,4 @@
-import { CallLayout, Delivery, LoginPhase, MessageKind, PollPhase, ReactionSend, RoomInfoPlacement, SettingKey, Shield } from "./enums.slint";
+import { CallLayout, Delivery, LoginPhase, MessageKind, PollPhase, ReactionSend, RoomInfoPlacement, SettingKey, Shield, Shortcut } from "./enums.slint";
 import { AccountView, AttachmentView, CallView, CreateRoomView, DirectoryView, EncryptionView, InvitePeopleView, InviteView, LeaveSpaceView, LoginView, LogoutView, ReadersView, RemovalView, RoomInfoView, RoomLogView, RoomMenuView, RoomPreviewView, RoomView, SettingsView, SourceView, UserInfoView, VerificationView, VideoView, WindowView } from "./views.slint";
 import { Actions } from "./actions.slint";
 import { EditedMessage, MessageEntry, ReactionEntry, ReplyDraft } from "./types.slint";
@@ -352,6 +352,24 @@ export global SettingsSearch {
     in-out property <SettingKey> sought: SettingKey.none;
     in-out property <bool> keyed;
     in-out property <int> serial;
+}
+
+export global KeyRecording {
+    out property <bool> active;
+    out property <Shortcut> command;
+
+    public function start(command: Shortcut) {
+        root.command = command;
+        root.active = true;
+    }
+
+    public function finish() {
+        root.active = false;
+    }
+
+    public pure function records(command: Shortcut) -> bool {
+        return root.active && root.command == command;
+    }
 }
 
 export global Shell {
@@ -1085,6 +1103,7 @@ export global LocalState {
         MetaTip.clear();
         Tips.clear();
         Polls.clear();
+        KeyRecording.finish();
     }
 
     public function forget-room() {

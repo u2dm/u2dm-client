@@ -10,8 +10,9 @@ use crate::adapters::ui::schema::{
     preview_kinds, readers_statuses, receipt_visibilities, recovery_statuses, removal_kinds,
     room_accesses, room_classes, room_defaults, room_info_placements, room_kinds, room_memberships,
     room_preview_statuses, room_scopes, roster_statuses, send_keys, setting_flags,
-    settings_layouts, settings_pages, source_encryptions, source_statuses, space_index_statuses,
-    theme_choices, upgrade_links, user_message_kinds, variant_named, verify_offers,
+    settings_layouts, settings_pages, shortcut_commands, source_encryptions, source_statuses,
+    space_index_statuses, theme_choices, upgrade_links, user_message_kinds, variant_named,
+    verify_offers,
 };
 use crate::commands::messages::UserMessageKind;
 use crate::commands::view::{
@@ -38,6 +39,7 @@ use crate::domain::server_rules::{RoomClass, RoomDefault};
 use crate::domain::settings::{
     CallLayout, ClockChoice, MotionChoice, ReceiptVisibility, SendKey, SettingFlag, ThemeChoice,
 };
+use crate::domain::shortcut::ShortcutCommand;
 use crate::domain::sync::ConnectionStatus;
 use crate::domain::timeline::SourceEncryption;
 use crate::domain::user_info::{DeviceTrust, IdentityTrust, RoomMembership};
@@ -84,6 +86,8 @@ account_steps!(enum_names ref account_step AccountStep;);
 account_activities!(enum_names val account_activity AccountActivity;);
 settings_pages!(enum_names val settings_page SettingsPage;);
 settings_pages!(variant_named settings_page_named SettingsPage;);
+shortcut_commands!(enum_names val shortcut_command ShortcutCommand;);
+shortcut_commands!(variant_named shortcut_command_named ShortcutCommand;);
 settings_layouts!(enum_names val settings_layout SettingsLayout;);
 downloaded_media_states!(enum_names val downloaded_media_state DownloadedMedia;);
 account_rules!(enum_names val account_rule AccountRule;);

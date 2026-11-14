@@ -76,6 +76,8 @@ const TOP_LAYER: (&str, &str) = ("out property <int> top:", ";");
 const ENUM_COVERAGE: &[EnumCoverage] = &[
     covers("SettingsPage", SETTINGS_SLINT, &[]),
     covers("SettingKey", MESSAGES_SLINT, &["none", "downloaded-media"]),
+    covers("Shortcut", MESSAGES_SLINT, &["find-room"]),
+    covers("ShortcutRefusal", MESSAGES_SLINT, &["none"]),
     covers("DownloadedMedia", MESSAGES_SLINT, &["measured", "clearing"]),
     covers("ThemeChoice", MESSAGES_SLINT, &["system"]),
     covers("MotionChoice", MESSAGES_SLINT, &["system"]),
@@ -176,6 +178,9 @@ const ENUM_TABLES: &[(&str, &str)] = &[
     ("AccountActivity", "account_activities"),
     ("SettingsPage", "settings_pages"),
     ("SettingsLayout", "settings_layouts"),
+    ("Shortcut", "shortcut_commands"),
+    ("ShortcutEdit", "shortcut_edits"),
+    ("ShortcutRefusal", "shortcut_refusals"),
     ("DownloadedMedia", "downloaded_media_states"),
     ("AccountRule", "account_rules"),
     ("RoomDefault", "room_defaults"),
@@ -474,7 +479,7 @@ fn check_shortcut_props_name_the_global() {
         .lines()
         .filter_map(|line| {
             line.trim()
-                .strip_prefix("in property <KeyChord> ")?
+                .strip_prefix("in property <ShortcutBinding> ")?
                 .strip_suffix(';')
         })
         .collect();

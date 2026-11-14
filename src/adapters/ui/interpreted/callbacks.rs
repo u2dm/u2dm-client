@@ -3,13 +3,14 @@ use slint_interpreter::{ComponentHandle, ComponentInstance, SharedString, Value}
 use tokio::sync::watch;
 
 use super::args::{
-    bool_arg, field, flag, int_arg, number, seen_args, string_arg, strings, struct_arg, usize_arg,
+    bool_arg, field, flag, int_arg, number, seen_args, shortcut_edit_args, string_arg, strings,
+    struct_arg, usize_arg,
 };
 use super::emoji_rows::setup_emoji_store;
 use super::names::{callback, composer_draft};
 use super::values::{
     draft_verdict_value, enum_value, mention_word_value, model_of, model_value, no_draft_value,
-    num, text_splice_value, text_value, variant_of, word_value,
+    num, shortcut_verdict_value, text_splice_value, text_value, variant_of, word_value,
 };
 use super::{InterpretedBackend, SlintUiAdapter};
 use crate::adapters::ui::backend::{
@@ -426,6 +427,19 @@ impl SlintUiAdapter {
         let tx = cmd_tx.clone();
         bind_action(&self.instance, callback::ADD_KEYWORD, move |args| {
             Value::Bool(router::add_keyword(&tx, &string_arg(args, 0)))
+        })?;
+
+        let tx = cmd_tx.clone();
+        bind_action(&self.instance, callback::EDIT_SHORTCUT, move |args| {
+            let request = shortcut_edit_args(args);
+            let verdict = router::edit_shortcut(
+                &tx,
+                &request.command,
+                &request.edit,
+                &request.key,
+                request.held,
+            );
+            shortcut_verdict_value(&verdict, request.asked)
         })?;
 
         bind_action(&self.instance, callback::ROOM_LOG_TEXT, |_| {

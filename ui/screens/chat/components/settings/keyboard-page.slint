@@ -1,0 +1,561 @@
+import { Palette } from "std-widgets.slint";
+
+import { Announcer, FocusReveal, Interaction } from "../../../../components/a11y.slint";
+import { LinkButton } from "../../../../components/button.slint";
+import { Keycaps } from "../../../../components/keycaps.slint";
+import { SoughtTint } from "../../../../components/sought-tint.slint";
+import { SendKey, SettingKey, ShortcutEdit, ShortcutRefusal } from "../../../../enums.slint";
+import { KeyChord, ShortcutBinding, ShortcutVerdict } from "../../../../types.slint";
+import { SettingsView } from "../../../../views.slint";
+import { Actions } from "../../../../actions.slint";
+import { SettingsWords, ShortcutWords } from "../../../../messages.slint";
+import { KeyRecording } from "../../../../local.slint";
+import { Shortcuts } from "../../../../shortcuts.slint";
+import { AppStyle, Fonts, Metrics, Radius, Size, Space, Stroke, Weight } from "../../../../theme.slint";
+import { SettingsGroup } from "./group.slint";
+
+component ShortcutRow inherits Rectangle {
+    in property <SettingKey> key;
+    in property <ShortcutBinding> binding;
+
+    property <string> name: ShortcutWords.label(root.binding.command);
+    property <bool> recording: KeyRecording.records(root.binding.command);
+    property <string> refused;
+    property <bool> settled;
+    property <KeyChord> no-keys;
+    property <length> pad: Space.md;
+    property <string> status: root.recording
+        ? (root.refused != "" ? ShortcutWords.retry(root.refused) : @tr("Press the new keys, or Esc to cancel."))
+        : root.refused;
+
+    public function focus-change() {
+        change.take-focus();
+    }
+
+    pure function holds-only(text: string) -> bool {
+        return text == Key.Shift || text == Key.ShiftR || text == Key.Control || text == Key.ControlR
+            || text == Key.Alt || text == Key.AltGr || text == Key.Meta || text == Key.MetaR
+            || text == Key.CapsLock;
+    }
+
+    function edit(edit: ShortcutEdit, keys: KeyChord) -> ShortcutVerdict {
+        return Actions.edit-shortcut({ command: root.binding.command, edit: edit, keys: keys });
+    }
+
+    function settle() {
+        root.settled = root.recording;
+        KeyRecording.finish();
+    }
+
+    function begin() {
+        root.refused = "";
+        change.take-focus();
+        KeyRecording.start(root.binding.command);
+        news.say(ShortcutWords.asking(root.binding));
+    }
+
+    function record(event: KeyEvent) {
+        let verdict = root.edit(ShortcutEdit.bind, {
+            key: event.text,
+            control: event.modifiers.control,
+            alt: event.modifiers.alt,
+            shift: event.modifiers.shift,
+            meta: event.modifiers.meta,
+        });
+        if verdict.refusal != ShortcutRefusal.none {
+            root.refused = ShortcutWords.refusal(root.binding.command, verdict);
+            news.say(ShortcutWords.retry(root.refused));
+            return;
+        }
+        root.settle();
+        news.say(ShortcutWords.bound(root.binding.command, verdict.keys));
+    }
+
+    function toggle() {
+        root.settle();
+        if root.binding.on {
+            root.edit(ShortcutEdit.turn-off, root.no-keys);
+            root.refused = "";
+            news.say(ShortcutWords.turned-off(root.binding.command));
+            return;
+        }
+        let verdict = root.edit(ShortcutEdit.turn-on, root.no-keys);
+        root.refused = verdict.refusal == ShortcutRefusal.none ? "" : ShortcutWords.refusal(root.binding.command, verdict);
+        news.say(root.refused != "" ? root.refused : ShortcutWords.turned-on(root.binding.command, verdict.keys));
+    }
+
+    function reset() {
+        root.settle();
+        if reset-button.has-focus {
+            change.take-focus();
+        }
+        let verdict = root.edit(ShortcutEdit.reset, root.no-keys);
+        root.refused = verdict.refusal == ShortcutRefusal.none ? "" : ShortcutWords.refusal(root.binding.command, verdict);
+        news.say(root.refused != "" ? root.refused : ShortcutWords.reset(root.binding.command, verdict.keys));
+    }
+
+    changed status => {
+        if root.status != "" {
+            FocusReveal.ask(self.absolute-position.x, self.absolute-position.y, self.width, self.height);
+        }
+    }
+
+    changed recording => {
+        if !self.recording && !root.settled && !KeyRecording.active {
+            root.refused = "";
+            news.say(ShortcutWords.unchanged(root.binding));
+        }
+        root.settled = false;
+    }
+
+    height: layout.preferred-height;
+    background: AppStyle.control;
+
+    SoughtTint {
+        key: root.key;
+        arrived(keyed) => {
+            if keyed {
+                change.take-focus();
+            }
+        }
+    }
+
+    news := Announcer { }
+
+    keys := FocusScope {
+        focus-on-click: false;
+        focus-on-tab-navigation: false;
+        capture-key-pressed(event) => {
+            if !root.recording || !change.has-focus {
+                return reject;
+            }
+            if event.text == Key.Tab || event.text == Key.Backtab {
+                return reject;
+            }
+            if Interaction.activates(event.text) && Interaction.unmodified(event) {
+                return reject;
+            }
+            if !event.repeat && !root.holds-only(event.text) {
+                root.record(event);
+            }
+            return accept;
+        }
+
+        layout := VerticalLayout {
+            padding-left: Space.lg - root.pad / 2;
+            padding-right: Space.lg;
+            padding-top: Space.md;
+            padding-bottom: Space.sm;
+            spacing: Space.xs;
+
+            HorizontalLayout {
+                min-height: Size.sm;
+                padding-left: root.pad / 2;
+                spacing: Space.md;
+
+                Text {
+                    horizontal-stretch: 1;
+                    text: root.name;
+                    font-size: Fonts.label;
+                    font-weight: Weight.semibold;
+                    vertical-alignment: center;
+                    wrap: word-wrap;
+                }
+
+                if root.recording: Rectangle {
+                    horizontal-stretch: 0;
+                    cross-axis-self-alignment: center;
+                    width: prompt.preferred-width + 2 * Space.md;
+                    height: Size.sm;
+                    border-radius: Radius.xs;
+                    border-width: Stroke.emphasis;
+                    border-color: Palette.accent-background;
+                    background: AppStyle.accent-background-soft;
+
+                    prompt := Text {
+                        text: @tr("Press keys");
+                        font-size: Fonts.caption;
+                        font-weight: Weight.semibold;
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
+                        accessible-role: none;
+                    }
+                }
+
+                if !root.recording && root.binding.on: Keycaps {
+                    horizontal-stretch: 0;
+                    cross-axis-self-alignment: center;
+                    chord: root.binding.keys;
+                }
+
+                if !root.recording && !root.binding.on: Text {
+                    horizontal-stretch: 0;
+                    text: @tr("Off");
+                    font-size: Fonts.label;
+                    color: AppStyle.overlay-foreground-muted;
+                    vertical-alignment: center;
+                    accessible-role: none;
+                }
+            }
+
+            HorizontalLayout {
+                alignment: start;
+                spacing: Space.xs;
+
+                change := LinkButton {
+                    height: Size.sm;
+                    pad: root.pad;
+                    above-modal: true;
+                    text: root.recording ? @tr("Cancel") : @tr("Change");
+                    label: root.recording
+                        ? @tr("Cancel changing the keys for {}", root.name)
+                        : @tr("Change the keys for {}", root.name);
+                    accessible-description: root.recording
+                        ? @tr("Press the new keys")
+                        : root.binding.on ? Shortcuts.label(root.binding) : @tr("Turned off");
+                    clicked => {
+                        if root.recording {
+                            KeyRecording.finish();
+                        } else {
+                            root.begin();
+                        }
+                    }
+                    changed has-focus => {
+                        if !self.has-focus && root.recording {
+                            KeyRecording.finish();
+                        }
+                    }
+                }
+
+                LinkButton {
+                    height: Size.sm;
+                    pad: root.pad;
+                    above-modal: true;
+                    text: root.binding.on ? @tr("Turn off") : @tr("Turn on");
+                    label: root.binding.on ? @tr("Turn off {}", root.name) : @tr("Turn on {}", root.name);
+                    accessible-description: root.binding.on
+                        ? ""
+                        : @tr("Brings back {}", Shortcuts.keys-label(root.binding.keys));
+                    clicked => {
+                        root.toggle();
+                    }
+                }
+
+                reset-button := LinkButton {
+                    height: Size.sm;
+                    pad: root.pad;
+                    above-modal: true;
+                    visible: root.binding.custom;
+                    enabled: root.binding.custom;
+                    text: @tr("Reset");
+                    label: @tr("Reset {}", root.name);
+                    accessible-description: @tr("Back to {}", Shortcuts.keys-label(root.binding.standard));
+                    clicked => {
+                        root.reset();
+                    }
+                }
+            }
+
+            if root.status != "": Rectangle {
+                height: status-line.preferred-height;
+
+                status-line := HorizontalLayout {
+                    padding-left: root.pad / 2;
+                    padding-bottom: Space.xs;
+
+                    Text {
+                        text: root.status;
+                        font-size: Fonts.body-small;
+                        color: root.refused != "" ? AppStyle.danger : AppStyle.overlay-foreground-muted;
+                        wrap: word-wrap;
+                        accessible-role: none;
+                    }
+                }
+            }
+        }
+    }
+}
+
+component FixedKeysRow inherits Rectangle {
+    in property <string> text;
+    in property <string> detail;
+    in property <KeyChord> first;
+    in property <KeyChord> second;
+    in property <KeyChord> third;
+    in property <KeyChord> fourth;
+
+    pure function spoken() -> string {
+        let one = Shortcuts.keys-label(root.first);
+        let two = Shortcuts.keys-label(root.second);
+        let three = Shortcuts.keys-label(root.third);
+        if root.fourth.key != "" {
+            return @tr("{}, {}, {} or {}", one, two, three, Shortcuts.keys-label(root.fourth));
+        }
+        if root.third.key != "" {
+            return @tr("{}, {} or {}", one, two, three);
+        }
+        if root.second.key != "" {
+            return @tr("{} or {}", one, two);
+        }
+        return one;
+    }
+
+    height: max(Metrics.settings-row, line.preferred-height + Space.md);
+    background: AppStyle.control;
+    accessible-role: AccessibleRole.text;
+    accessible-label: @tr("{}: {}", root.text, root.spoken());
+    accessible-description: root.detail;
+
+    line := HorizontalLayout {
+        padding-left: Space.lg;
+        padding-right: Space.lg;
+        spacing: Space.lg;
+
+        VerticalLayout {
+            horizontal-stretch: 1;
+            alignment: center;
+            spacing: Space.xs;
+
+            Text {
+                text: root.text;
+                font-size: Fonts.label;
+                wrap: word-wrap;
+                accessible-role: none;
+            }
+
+            if root.detail != "": Text {
+                text: root.detail;
+                font-size: Fonts.body-small;
+                color: AppStyle.overlay-foreground-muted;
+                wrap: word-wrap;
+                accessible-role: none;
+            }
+        }
+
+        HorizontalLayout {
+            horizontal-stretch: 0;
+            alignment: end;
+            spacing: Space.md;
+
+            Keycaps {
+                cross-axis-self-alignment: center;
+                chord: root.first;
+            }
+
+            if root.second.key != "": Keycaps {
+                cross-axis-self-alignment: center;
+                chord: root.second;
+            }
+
+            if root.third.key != "": Keycaps {
+                cross-axis-self-alignment: center;
+                chord: root.third;
+            }
+
+            if root.fourth.key != "": Keycaps {
+                cross-axis-self-alignment: center;
+                chord: root.fourth;
+            }
+        }
+    }
+}
+
+export component KeyboardPage inherits VerticalLayout {
+    spacing: Space.xl;
+
+    Rectangle {
+        height: intro.preferred-height;
+
+        intro := HorizontalLayout {
+            padding-left: Space.lg;
+            spacing: Space.md;
+
+            Text {
+                horizontal-stretch: 1;
+                text: @tr("Shortcuts that work anywhere in the chat need Ctrl, Alt or Super, or a function key. Single letters work on a message you moved to with the arrow keys.");
+                font-size: Fonts.body-small;
+                color: AppStyle.foreground-muted;
+                wrap: word-wrap;
+            }
+
+            LinkButton {
+                horizontal-stretch: 0;
+                height: Size.sm;
+                pad: Space.md;
+                above-modal: true;
+                text: @tr("Reset all");
+                label: @tr("Reset all shortcuts");
+                accessible-description: @tr("Puts back the keys every shortcut came with and turns them all on");
+                enabled: SettingsView.shortcuts-custom > 0;
+                clicked => {
+                    if self.has-focus {
+                        first-row.focus-change();
+                    }
+                    KeyRecording.finish();
+                    Actions.reset-shortcuts();
+                    all-news.say(ShortcutWords.all-reset());
+                }
+            }
+        }
+
+        all-news := Announcer { }
+    }
+
+    SettingsGroup {
+        label: @tr("GENERAL");
+
+        first-row := ShortcutRow {
+            key: SettingKey.shortcut-find-room;
+            binding: Shortcuts.find-room;
+        }
+
+        ShortcutRow {
+            key: SettingKey.shortcut-open-settings;
+            binding: Shortcuts.open-settings;
+        }
+
+        ShortcutRow {
+            key: SettingKey.shortcut-show-shortcuts;
+            binding: Shortcuts.show-shortcuts;
+        }
+
+        ShortcutRow {
+            key: SettingKey.shortcut-next-region;
+            binding: Shortcuts.next-region;
+        }
+
+        ShortcutRow {
+            key: SettingKey.shortcut-previous-region;
+            binding: Shortcuts.previous-region;
+        }
+    }
+
+    SettingsGroup {
+        label: @tr("ROOMS AND SPACES");
+        note: @tr("Moving a space works on a space you reached with the arrow keys in the list of spaces.");
+
+        ShortcutRow {
+            key: SettingKey.shortcut-previous-room;
+            binding: Shortcuts.previous-room;
+        }
+
+        ShortcutRow {
+            key: SettingKey.shortcut-next-room;
+            binding: Shortcuts.next-room;
+        }
+
+        ShortcutRow {
+            key: SettingKey.shortcut-previous-unread-room;
+            binding: Shortcuts.previous-unread-room;
+        }
+
+        ShortcutRow {
+            key: SettingKey.shortcut-next-unread-room;
+            binding: Shortcuts.next-unread-room;
+        }
+
+        ShortcutRow {
+            key: SettingKey.shortcut-move-space-up;
+            binding: Shortcuts.move-space-up;
+        }
+
+        ShortcutRow {
+            key: SettingKey.shortcut-move-space-down;
+            binding: Shortcuts.move-space-down;
+        }
+    }
+
+    SettingsGroup {
+        label: @tr("MESSAGES");
+        note: @tr("These work on a message you moved to with the arrow keys.");
+
+        ShortcutRow {
+            key: SettingKey.shortcut-reply;
+            binding: Shortcuts.reply;
+        }
+
+        ShortcutRow {
+            key: SettingKey.shortcut-edit;
+            binding: Shortcuts.edit;
+        }
+
+        ShortcutRow {
+            key: SettingKey.shortcut-first-unread;
+            binding: Shortcuts.first-unread;
+        }
+    }
+
+    SettingsGroup {
+        label: @tr("CALLS");
+        note: @tr("These work while you are in a call, here and in the call's own window.");
+
+        ShortcutRow {
+            key: SettingKey.shortcut-toggle-microphone;
+            binding: Shortcuts.toggle-microphone;
+        }
+
+        ShortcutRow {
+            key: SettingKey.shortcut-toggle-camera;
+            binding: Shortcuts.toggle-camera;
+        }
+    }
+
+    SettingsGroup {
+        key: SettingKey.fixed-keys;
+        label: @tr("KEYS THAT DON'T CHANGE");
+
+        FixedKeysRow {
+            text: @tr("Next or previous control");
+            first: { key: Key.Tab };
+            second: { key: Key.Tab, shift: true };
+        }
+
+        FixedKeysRow {
+            text: @tr("Move in a list or a menu");
+            first: { key: Key.UpArrow };
+            second: { key: Key.DownArrow };
+            third: { key: Key.LeftArrow };
+            fourth: { key: Key.RightArrow };
+        }
+
+        FixedKeysRow {
+            text: @tr("First or last item");
+            first: { key: Key.Home };
+            second: { key: Key.End };
+        }
+
+        FixedKeysRow {
+            text: @tr("A page at a time");
+            first: { key: Key.PageUp };
+            second: { key: Key.PageDown };
+        }
+
+        FixedKeysRow {
+            text: @tr("Open or choose");
+            first: { key: Key.Return };
+            second: { key: Key.Space };
+        }
+
+        FixedKeysRow {
+            text: @tr("Close, cancel or go back");
+            first: { key: Key.Escape };
+        }
+
+        FixedKeysRow {
+            text: @tr("Open the menu of what has focus");
+            first: { key: Key.Menu };
+            second: { key: Key.F10, shift: true };
+        }
+
+        FixedKeysRow {
+            text: SettingsWords.label(SettingKey.send-key);
+            detail: @tr("Choose it on the Messages page");
+            first: { key: Key.Return, control: SettingsView.send-key == SendKey.ctrl-enter };
+        }
+
+        FixedKeysRow {
+            text: @tr("New line in a message");
+            first: { key: Key.Return, shift: SettingsView.send-key == SendKey.enter };
+        }
+    }
+}

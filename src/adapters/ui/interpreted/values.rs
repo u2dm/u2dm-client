@@ -2,7 +2,8 @@ use slint::{Image, Model, ModelRc, StyledText, VecModel};
 use slint_interpreter::{SharedString, Struct, Value};
 
 use super::InterpretedBackend;
-use super::names::{composer_draft, draft_verdict, mention_word, text_splice};
+use super::names::{composer_draft, draft_verdict, mention_word, shortcut_verdict, text_splice};
+use super::props::chord_value;
 use crate::adapters::ui::dto::{
     BodyLineDto, BodyPieceDto, CallConnectionDto, CallDeviceDto, CallNoticeMark, CallOfferMark,
     CallPersonDto, CallScreenMark, CallTileDto, CallTileMark, EmojiArt, IgnoredPersonDto,
@@ -22,7 +23,9 @@ use crate::adapters::ui::mention;
 use crate::adapters::ui::present::{
     Delivery, IdentityAlertKind, MessageKind, PollPhase, ServiceKind, ShieldReason, VerifyStep,
 };
-use crate::adapters::ui::router::DraftVerdict;
+use crate::adapters::ui::router::{
+    DraftVerdict, ShortcutEdit, ShortcutRefusalMark, ShortcutVerdict,
+};
 use crate::adapters::ui::schema::{
     body_line_fields, body_piece_fields, call_connection_fields, call_device_fields,
     call_person_fields, call_tile_fields, ignored_person_fields, invitee_fields, keyword_fields,
@@ -61,6 +64,7 @@ use crate::domain::server_rules::{RoomClass, RoomDefault};
 use crate::domain::settings::{
     CallLayout, ClockChoice, MotionChoice, ReceiptVisibility, SendKey, SettingFlag, ThemeChoice,
 };
+use crate::domain::shortcut::ShortcutCommand;
 use crate::domain::sync::ConnectionStatus;
 use crate::domain::timeline::{SourceEncryption, TimelineStatus};
 use crate::domain::user_info::{DeviceTrust, IdentityTrust, RoomMembership};
@@ -97,6 +101,20 @@ pub(super) fn draft_verdict_value(verdict: &DraftVerdict) -> Value {
     struct_value([
         (draft_verdict::ACCEPTED, Value::Bool(verdict.accepted())),
         (draft_verdict::SHORTEN_BY, num(verdict.shorten_by())),
+    ])
+}
+
+pub(super) fn shortcut_verdict_value(verdict: &ShortcutVerdict, asked: Value) -> Value {
+    struct_value([
+        (shortcut_verdict::REFUSAL, enum_value(&verdict.refusal)),
+        (
+            shortcut_verdict::OWNER,
+            verdict.owner.as_ref().map_or(asked, enum_value),
+        ),
+        (
+            shortcut_verdict::KEYS,
+            verdict.keys.map_or_else(|| struct_value([]), chord_value),
+        ),
     ])
 }
 

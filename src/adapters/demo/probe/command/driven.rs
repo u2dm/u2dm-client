@@ -5,7 +5,7 @@ use super::drafts::{CreateRoomOp, EmoteDto, message_edit, poll_draft, room_draft
 use super::targets::{
     Selection, ban, in_room, in_space, keyword_rule, kick, leave_space, moderation,
     one_click_reaction, open_settings, person, quick_reaction, room, room_default, room_notify,
-    setting_change, settings_page, target,
+    setting_change, settings_page, shortcut_change, target,
 };
 use super::{ProbeCommand, Rejected};
 use crate::adapters::demo::attachments;
@@ -26,6 +26,7 @@ use crate::domain::media::AttachmentPick;
 use crate::domain::message::EditTarget;
 use crate::domain::room::RoomId;
 use crate::domain::settings::quick_reactions::QuickReactionChange;
+use crate::domain::shortcut::{KeyChord, ShortcutChange};
 use crate::domain::sync::{ReauthReason, SessionLoss};
 use crate::domain::uia::AccountPassword;
 use crate::domain::user_info::UserId;
@@ -341,6 +342,26 @@ pub fn to_driven(command: ProbeCommand, selected: Selection<'_>) -> Result<Drive
         ProbeCommand::ResetQuickReactions => {
             SettingsCommand::QuickReactions(QuickReactionChange::Reset).into()
         }
+        ProbeCommand::SetShortcut { command, keys } => {
+            return shortcut_change(&command, |command| {
+                KeyChord::parse(&keys)
+                    .map(|chord| ShortcutChange::Bind(command, chord))
+                    .ok_or_else(|| Rejected(format!("{keys} is not a key chord")))
+            });
+        }
+        ProbeCommand::TurnShortcut { command, on } => {
+            return shortcut_change(&command, |command| {
+                Ok(if on {
+                    ShortcutChange::TurnOn(command)
+                } else {
+                    ShortcutChange::TurnOff(command)
+                })
+            });
+        }
+        ProbeCommand::ResetShortcut { command } => {
+            return shortcut_change(&command, |command| Ok(ShortcutChange::Reset(command)));
+        }
+        ProbeCommand::ResetShortcuts => SettingsCommand::Shortcut(ShortcutChange::ResetAll).into(),
         ProbeCommand::OpenAccount => AccountCommand::OpenAccount.into(),
         ProbeCommand::CloseAccount => AccountCommand::CloseAccount.into(),
         ProbeCommand::ShowAccountOverview => AccountCommand::ShowAccountOverview.into(),

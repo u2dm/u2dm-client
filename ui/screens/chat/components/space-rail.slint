@@ -10,6 +10,7 @@ import { DirectoryView } from "../../../views.slint";
 import { RoomScope } from "../../../enums.slint";
 import { Actions } from "../../../actions.slint";
 import { FocusHome, FocusRegion, RoomMenu, RoomMenuOrigin, Shell, SpaceOrder } from "../../../local.slint";
+import { Shortcuts } from "../../../shortcuts.slint";
 import { AppStyle, Glyph, IconSize, Metrics, Motion, Radius, Size, Space, Stroke } from "../../../theme.slint";
 
 enum SpaceDrag {
@@ -188,13 +189,13 @@ export component SpaceRail inherits Rectangle {
     }
 
     function move-key(event: KeyEvent) -> EventResult {
-        if !event.modifiers.control || !event.modifiers.shift || event.modifiers.alt || event.modifiers.meta
-            || (event.text != Key.UpArrow && event.text != Key.DownArrow) {
+        let up = Shortcuts.matches(event, Shortcuts.move-space-up);
+        if !up && !Shortcuts.matches(event, Shortcuts.move-space-down) {
             return EventResult.reject;
         }
         let from = rail-keys.cursor - root.fixed-tiles;
         if from >= 0 && from < DirectoryView.spaces.length {
-            SpaceOrder.move(from, event.text == Key.UpArrow ? from - 1 : from + 1, DirectoryView.spaces[from].id, true);
+            SpaceOrder.move(from, up ? from - 1 : from + 1, DirectoryView.spaces[from].id, true);
         }
         return EventResult.accept;
     }

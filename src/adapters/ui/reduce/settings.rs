@@ -10,6 +10,7 @@ use crate::adapters::ui::fields::MessageFields;
 use crate::adapters::ui::present::{message_sent_at_label, message_timestamp_label, use_clock};
 use crate::adapters::ui::props::{BoolProp, IntProp, StringProp, UiProps};
 use crate::adapters::ui::reconcile::{RowTime, restamp_rows};
+use crate::adapters::ui::shortcuts::use_shortcuts;
 use crate::commands::view::{
     AppViewState, DownloadedMedia, IgnoredUsersView, NotificationRulesView, SettingsPage,
     SettingsView,
@@ -25,7 +26,12 @@ pub(in crate::adapters::ui) fn seed_settings<W: UiProps>(w: &W, values: &Setting
     use_clock(values.appearance.clock);
     apply_values(w, values);
     w.apply_quick_reactions(&values.reactions.quick);
-    w.apply_shortcuts(&ShortcutTable::default());
+    apply_shortcuts(w, &values.shortcuts);
+}
+
+fn apply_shortcuts<W: UiProps>(w: &W, table: &ShortcutTable) {
+    use_shortcuts(table);
+    w.apply_shortcuts(table);
 }
 
 pub(super) fn apply_settings<W: UiProps + ComponentHandle>(
@@ -62,6 +68,9 @@ pub(super) fn apply_settings<W: UiProps + ComponentHandle>(
     apply_values(w, values);
     if last.is_none_or(|last| last.values.reactions.quick.keys() != values.reactions.quick.keys()) {
         w.apply_quick_reactions(&values.reactions.quick);
+    }
+    if last.is_none_or(|last| last.values.shortcuts != values.shortcuts) {
+        apply_shortcuts(w, &values.shortcuts);
     }
     if last.is_some_and(|last| last.media_cleared != *media_cleared) {
         forget_failed_decodes();
@@ -218,6 +227,7 @@ fn apply_values<W: UiProps>(w: &W, values: &Settings) {
                 play_animations,
                 voice_in_a_row,
             },
+        ref shortcuts,
     } = *values;
     w.set_appearance_theme(theme);
     w.set_motion_choice(motion);
@@ -248,5 +258,9 @@ fn apply_values<W: UiProps>(w: &W, values: &Settings) {
     w.set_bool(BoolProp::SettingsAutoLoadMedia, auto_load);
     w.set_bool(BoolProp::SettingsPlayAnimations, play_animations);
     w.set_bool(BoolProp::SettingsVoiceInARow, voice_in_a_row);
+    w.set_int(
+        IntProp::ShortcutsCustom,
+        saturating_i32(shortcuts.custom_count()),
+    );
     set_animations_paused(!play_animations);
 }

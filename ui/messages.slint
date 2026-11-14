@@ -1,6 +1,7 @@
-import { CallCamera, CallDeviceKind, CallDeviceStatus, CallDeviceTrouble, CallHand, CallLayout, CallLinkState, CallMic, CallNotice, CallPhase, CallPreviewTrouble, CallReaction, CallRefusal, CallScreen, CallScreenRefusal, CallSheetPreview, CallTestPhase, CallTileState, ClockChoice, Delivery, DownloadedMedia, EmojiArt, MediaFailure, MotionChoice, PresenceLine, PreviewKind, ReceiptVisibility, RoomCallMark, RoomDefault, SendKey, ServiceKind, SettingKey, ShieldReason, ThemeChoice, UpgradeLink, UserMessageKind } from "./enums.slint";
+import { CallCamera, CallDeviceKind, CallDeviceStatus, CallDeviceTrouble, CallHand, CallLayout, CallLinkState, CallMic, CallNotice, CallPhase, CallPreviewTrouble, CallReaction, CallRefusal, CallScreen, CallScreenRefusal, CallSheetPreview, CallTestPhase, CallTileState, ClockChoice, Delivery, DownloadedMedia, EmojiArt, MediaFailure, MotionChoice, PresenceLine, PreviewKind, ReceiptVisibility, RoomCallMark, RoomDefault, SendKey, ServiceKind, SettingKey, ShieldReason, Shortcut, ShortcutRefusal, ThemeChoice, UpgradeLink, UserMessageKind } from "./enums.slint";
 import { CallStates } from "./call-states.slint";
-import { CallPersonEntry, CallTileEntry } from "./types.slint";
+import { CallPersonEntry, CallTileEntry, KeyChord, ShortcutBinding, ShortcutVerdict } from "./types.slint";
+import { Shortcuts } from "./shortcuts.slint";
 
 export global UserMessages {
     public pure function text(kind: UserMessageKind, detail: string) -> string {
@@ -1961,6 +1962,57 @@ export global SettingsWords {
         if key == SettingKey.voice-in-a-row {
             return @tr("Play voice messages one after another");
         }
+        if key == SettingKey.shortcut-find-room {
+            return ShortcutWords.label(Shortcut.find-room);
+        }
+        if key == SettingKey.shortcut-open-settings {
+            return ShortcutWords.label(Shortcut.open-settings);
+        }
+        if key == SettingKey.shortcut-show-shortcuts {
+            return ShortcutWords.label(Shortcut.show-shortcuts);
+        }
+        if key == SettingKey.shortcut-next-region {
+            return ShortcutWords.label(Shortcut.next-region);
+        }
+        if key == SettingKey.shortcut-previous-region {
+            return ShortcutWords.label(Shortcut.previous-region);
+        }
+        if key == SettingKey.shortcut-previous-room {
+            return ShortcutWords.label(Shortcut.previous-room);
+        }
+        if key == SettingKey.shortcut-next-room {
+            return ShortcutWords.label(Shortcut.next-room);
+        }
+        if key == SettingKey.shortcut-previous-unread-room {
+            return ShortcutWords.label(Shortcut.previous-unread-room);
+        }
+        if key == SettingKey.shortcut-next-unread-room {
+            return ShortcutWords.label(Shortcut.next-unread-room);
+        }
+        if key == SettingKey.shortcut-move-space-up {
+            return ShortcutWords.label(Shortcut.move-space-up);
+        }
+        if key == SettingKey.shortcut-move-space-down {
+            return ShortcutWords.label(Shortcut.move-space-down);
+        }
+        if key == SettingKey.shortcut-reply {
+            return ShortcutWords.label(Shortcut.reply);
+        }
+        if key == SettingKey.shortcut-edit {
+            return ShortcutWords.label(Shortcut.edit);
+        }
+        if key == SettingKey.shortcut-first-unread {
+            return ShortcutWords.label(Shortcut.first-unread);
+        }
+        if key == SettingKey.shortcut-toggle-microphone {
+            return ShortcutWords.label(Shortcut.toggle-microphone);
+        }
+        if key == SettingKey.shortcut-toggle-camera {
+            return ShortcutWords.label(Shortcut.toggle-camera);
+        }
+        if key == SettingKey.fixed-keys {
+            return @tr("Keys that don't change");
+        }
         if key == SettingKey.licence {
             return @tr("Licence");
         }
@@ -2121,6 +2173,12 @@ export global SettingsWords {
         return sends;
     }
 
+    public pure function keyboard-summary(changed: int) -> string {
+        return changed == 0
+            ? @tr("Every shortcut as it comes")
+            : @tr("{n} shortcut changed" | "{n} shortcuts changed" % changed);
+    }
+
     public pure function about-summary(version: string) -> string {
         return @tr("Version {}", version);
     }
@@ -2265,5 +2323,106 @@ export global UpgradeLinks {
             return @tr("Joining the old room…");
         }
         return "";
+    }
+}
+
+export global ShortcutWords {
+    public pure function label(command: Shortcut) -> string {
+        if command == Shortcut.open-settings {
+            return @tr("Open Settings");
+        }
+        if command == Shortcut.show-shortcuts {
+            return @tr("Show keyboard shortcuts");
+        }
+        if command == Shortcut.next-region {
+            return @tr("Next section");
+        }
+        if command == Shortcut.previous-region {
+            return @tr("Previous section");
+        }
+        if command == Shortcut.previous-room {
+            return @tr("Previous room");
+        }
+        if command == Shortcut.next-room {
+            return @tr("Next room");
+        }
+        if command == Shortcut.previous-unread-room {
+            return @tr("Previous unread room");
+        }
+        if command == Shortcut.next-unread-room {
+            return @tr("Next unread room");
+        }
+        if command == Shortcut.move-space-up {
+            return @tr("Move a space up");
+        }
+        if command == Shortcut.move-space-down {
+            return @tr("Move a space down");
+        }
+        if command == Shortcut.toggle-microphone {
+            return @tr("Microphone on or off");
+        }
+        if command == Shortcut.toggle-camera {
+            return @tr("Camera on or off");
+        }
+        if command == Shortcut.reply {
+            return @tr("Reply to a message");
+        }
+        if command == Shortcut.edit {
+            return @tr("Edit your message");
+        }
+        if command == Shortcut.first-unread {
+            return @tr("First unread message");
+        }
+        return @tr("Find a room");
+    }
+
+    public pure function refusal(asked: Shortcut, verdict: ShortcutVerdict) -> string {
+        if verdict.refusal == ShortcutRefusal.reserved {
+            return @tr("{} is kept for moving around and editing text.", Shortcuts.keys-label(verdict.keys));
+        }
+        if verdict.refusal == ShortcutRefusal.needs-modifier {
+            return @tr("{} needs Ctrl, Alt or Super, or a function key.", root.label(asked));
+        }
+        if verdict.refusal == ShortcutRefusal.taken {
+            return @tr("{} is already used for {}.", Shortcuts.keys-label(verdict.keys), root.label(verdict.owner));
+        }
+        if verdict.refusal == ShortcutRefusal.not-a-key {
+            return @tr("That key can't be a shortcut.");
+        }
+        return "";
+    }
+
+    public pure function asking(binding: ShortcutBinding) -> string {
+        return @tr("Press the new keys for {}, or Esc to cancel.", root.label(binding.command));
+    }
+
+    public pure function retry(refused: string) -> string {
+        return @tr("{} Press other keys, or Esc to cancel.", refused);
+    }
+
+    public pure function bound(command: Shortcut, keys: KeyChord) -> string {
+        return @tr("{} is now {}.", root.label(command), Shortcuts.keys-label(keys));
+    }
+
+    public pure function turned-off(command: Shortcut) -> string {
+        return @tr("{} is turned off.", root.label(command));
+    }
+
+    public pure function turned-on(command: Shortcut, keys: KeyChord) -> string {
+        return @tr("{} is on again: {}.", root.label(command), Shortcuts.keys-label(keys));
+    }
+
+    public pure function reset(command: Shortcut, keys: KeyChord) -> string {
+        return @tr("{} is back to {}.", root.label(command), Shortcuts.keys-label(keys));
+    }
+
+    public pure function unchanged(binding: ShortcutBinding) -> string {
+        return binding.on
+            ? @tr("{} is still {}.", root.label(binding.command), Shortcuts.keys-label(binding.keys))
+            : @tr("{} stays off.", root.label(binding.command));
+    }
+
+    public pure function all-reset() -> string {
+        return @tr("Every shortcut is back to how it came.");
     }
 }
