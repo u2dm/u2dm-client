@@ -26,7 +26,7 @@ matrix = [
 ]
 demo = ["dep:axum"]
 video = ["dep:alsa", "dep:cpal", "dep:ffmpeg-next"]
-calls = ["video", "dep:glib", "dep:livekit", "dep:rustls"]
+calls = ["video", "dep:glib", "dep:livekit", "dep:rustls", "dep:webrtc-sys"]
 
 [dependencies]
 arboard = { version = "3.7.0", default-features = false, features = [
@@ -62,7 +62,7 @@ image = { version = "0.25.10", default-features = false, features = [
 ] }
 infer = "0.22.0"
 keyring-core = "1.0.1"
-livekit = { version = "=0.9.6", optional = true, default-features = false, features = [
+livekit = { version = "=0.10.1", optional = true, default-features = false, features = [
     "native",
     "rustls-tls-native-roots",
 ] }
@@ -134,6 +134,7 @@ u2dm-ui = { path = "crates/ui", default-features = false }
 unicode-normalization = "0.1.26"
 unicode-segmentation = "1.13.3"
 url = "2.5.8"
+webrtc-sys = { version = "=0.3.53", optional = true }
 
 [target.'cfg(target_os = "linux")'.dependencies]
 alsa = { version = "0.11.0", optional = true }
