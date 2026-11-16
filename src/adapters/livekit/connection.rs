@@ -17,7 +17,7 @@ use super::feeds::Feeds;
 use super::quality::Qualities;
 use super::reception::{Flow, Reception};
 use crate::domain::call::identity::MediaIdentity;
-use crate::domain::call::keys::KeyIndex;
+use crate::domain::call::keys::{KeyIndex, MediaKey};
 use crate::domain::call::media::MediaEvent;
 use crate::domain::call::sfu::{SfuGrant, SfuId, SfuRole, host_of};
 
@@ -32,12 +32,14 @@ pub(super) type Unheard = Arc<Mutex<HashSet<MediaIdentity>>>;
 pub(super) struct Connection {
     pub(super) room: Arc<Room>,
     pub(super) role: SfuRole,
+    keys: Option<KeyProvider>,
     pump: JoinHandle<()>,
 }
 
 pub(super) struct Dialled {
     room: Room,
     events: mpsc::UnboundedReceiver<RoomEvent>,
+    keys: Option<KeyProvider>,
 }
 
 pub(super) struct Wiring<'a> {
@@ -47,19 +49,15 @@ pub(super) struct Wiring<'a> {
     pub(super) unheard: &'a Unheard,
     pub(super) feeds: &'a Arc<Feeds>,
     pub(super) events_tx: &'a mpsc::UnboundedSender<MediaEvent>,
-    pub(super) encrypted: bool,
 }
 
-pub(super) async fn dial(
-    grant: SfuGrant,
-    encryption: Option<KeyProvider>,
-) -> Result<Dialled, String> {
+pub(super) async fn dial(grant: SfuGrant, keys: Option<KeyProvider>) -> Result<Dialled, String> {
     let mut options = RoomOptions::default();
     options.auto_subscribe = true;
     options.dynacast = true;
-    options.encryption = encryption.as_ref().map(e2ee::options);
+    options.encryption = keys.as_ref().map(e2ee::options);
     let host = host_of(&grant.url).to_owned();
-    tracing::info!(sfu = %grant.sfu, host, role = ?grant.role, encrypted = encryption.is_some(), "connecting to a call media server");
+    tracing::info!(sfu = %grant.sfu, host, role = ?grant.role, encrypted = keys.is_some(), "connecting to a call media server");
     let connected = timeout(
         CONNECT_WAIT,
         Room::connect(&grant.url, grant.token.expose(), options),
@@ -71,7 +69,7 @@ pub(super) async fn dial(
         Err(_) => return Err("the media server did not answer in time".into()),
     };
     tracing::info!(sfu = %grant.sfu, identity = %room.local_participant().identity(), "connected to a call media server");
-    Ok(Dialled { room, events })
+    Ok(Dialled { room, events, keys })
 }
 
 impl Dialled {
@@ -86,7 +84,7 @@ impl Dialled {
                 own_index: Arc::clone(wiring.own_index),
                 unheard: Arc::clone(wiring.unheard),
                 feeds: Arc::clone(wiring.feeds),
-                encrypted: wiring.encrypted,
+                encrypted: self.keys.is_some(),
                 reception: Reception::default(),
                 flow: Flow::default(),
                 qualities: Qualities::default(),
@@ -96,6 +94,7 @@ impl Dialled {
         Connection {
             room,
             role: wiring.role,
+            keys: self.keys,
             pump,
         }
     }
@@ -106,6 +105,17 @@ impl Dialled {
 }
 
 impl Connection {
+    pub(super) fn keys(&self) -> Option<&KeyProvider> {
+        self.keys.as_ref()
+    }
+
+    pub(super) fn install_own_key(&self, index: KeyIndex, key: &MediaKey) {
+        if let Some(keys) = &self.keys {
+            let local = self.room.local_participant().identity();
+            e2ee::install(keys, &local, index, key);
+        }
+    }
+
     pub(super) async fn close(self, sfu: &SfuId) {
         close_room(&self.room, sfu).await;
         self.pump.abort();

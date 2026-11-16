@@ -23,6 +23,7 @@ use crate::adapters::video::camera::CameraDevice;
 use crate::domain::call::devices::{
     ByKind, DeviceChoice, DeviceChoices, DeviceKey, DeviceKind, DeviceLists, MediaDevice,
 };
+use crate::domain::call::identity::MediaIdentity;
 use crate::domain::call::keys::{KeyIndex, MediaKey};
 use crate::domain::call::media::{MediaEvent, Microphone, SfuState};
 use crate::domain::call::sfu::{SfuId, SfuRole};
@@ -33,6 +34,7 @@ const MICROPHONE_TRACK: &str = "microphone";
 
 struct Dialling {
     role: SfuRole,
+    keys: Option<KeyProvider>,
     handle: AbortOnDropHandle<Result<Dialled, String>>,
 }
 
@@ -44,8 +46,9 @@ struct Finished {
 
 pub(super) struct LiveKitSession {
     audio: PlatformAudio,
-    keys: Option<KeyProvider>,
+    encrypted: bool,
     own_keys: Vec<(KeyIndex, MediaKey)>,
+    member_keys: HashMap<(MediaIdentity, KeyIndex), MediaKey>,
     own_index: OwnIndex,
     unheard: Unheard,
     dialling: HashMap<SfuId, Dialling>,
@@ -74,8 +77,9 @@ impl LiveKitSession {
     ) -> Self {
         Self {
             audio,
-            keys: encrypted.then(e2ee::key_provider),
+            encrypted,
             own_keys: Vec::new(),
+            member_keys: HashMap::new(),
             own_index: OwnIndex::default(),
             unheard: Unheard::default(),
             dialling: HashMap::new(),
@@ -137,7 +141,6 @@ impl LiveKitSession {
             unheard: &self.unheard,
             feeds: &self.feeds,
             events_tx: &self.events_tx,
-            encrypted: self.keys.is_some(),
         });
         self.install_own_keys(&connection);
         self.connections.insert(sfu.clone(), connection);
@@ -153,13 +156,29 @@ impl LiveKitSession {
     }
 
     fn install_own_keys(&self, connection: &Connection) {
-        let Some(provider) = &self.keys else {
-            return;
-        };
-        let local = connection.room.local_participant().identity();
         for (index, key) in &self.own_keys {
-            e2ee::install(provider, &local, *index, key);
+            connection.install_own_key(*index, key);
         }
+    }
+
+    fn keys_for_new_connection(&self) -> Option<KeyProvider> {
+        if !self.encrypted {
+            return None;
+        }
+        let provider = e2ee::key_provider();
+        for ((member, index), key) in &self.member_keys {
+            e2ee::install_member_key(&provider, member, *index, key);
+        }
+        Some(provider)
+    }
+
+    fn key_providers(&self) -> impl Iterator<Item = &KeyProvider> {
+        let connected = self.connections.values().filter_map(Connection::keys);
+        let dialling = self
+            .dialling
+            .values()
+            .filter_map(|dialling| dialling.keys.as_ref());
+        connected.chain(dialling)
     }
 
     async fn publish_microphone(&mut self) {

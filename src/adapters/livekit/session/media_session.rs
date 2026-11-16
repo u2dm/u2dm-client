@@ -1,7 +1,6 @@
 use std::future::poll_fn;
 
 use async_trait::async_trait;
-use livekit::id::ParticipantIdentity;
 use livekit::webrtc::stats::RtcStats;
 use tokio_util::task::AbortOnDropHandle;
 use tracing::Instrument;
@@ -30,11 +29,13 @@ impl MediaSession for LiveKitSession {
             state: SfuState::Connecting,
         });
         let role = grant.role;
-        let handle = tokio::spawn(connection::dial(grant, self.keys.clone()).in_current_span());
+        let keys = self.keys_for_new_connection();
+        let handle = tokio::spawn(connection::dial(grant, keys.clone()).in_current_span());
         self.dialling.insert(
             sfu,
             Dialling {
                 role,
+                keys,
                 handle: AbortOnDropHandle::new(handle),
             },
         );
@@ -108,12 +109,11 @@ impl MediaSession for LiveKitSession {
     async fn set_own_key(&mut self, index: KeyIndex, key: &MediaKey) {
         self.own_keys.retain(|(known, _)| *known != index);
         self.own_keys.push((index, key.clone()));
-        let Some(provider) = &self.keys else {
+        if !self.encrypted {
             return;
-        };
+        }
         for connection in self.connections.values() {
-            let local = connection.room.local_participant().identity();
-            e2ee::install(provider, &local, index, key);
+            connection.install_own_key(index, key);
         }
         tracing::debug!(%index, "installed your call key");
     }
@@ -129,12 +129,17 @@ impl MediaSession for LiveKitSession {
     }
 
     async fn set_key(&mut self, identities: &[MediaIdentity], index: KeyIndex, key: &MediaKey) {
-        let Some(provider) = &self.keys else {
+        if !self.encrypted {
             return;
-        };
-        for identity in identities {
-            let identity = ParticipantIdentity(identity.as_ref().to_owned());
-            e2ee::install(provider, &identity, index, key);
+        }
+        for member in identities {
+            self.member_keys
+                .insert((member.clone(), index), key.clone());
+        }
+        for provider in self.key_providers() {
+            for member in identities {
+                e2ee::install_member_key(provider, member, index, key);
+            }
         }
     }
 

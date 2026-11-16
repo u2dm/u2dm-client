@@ -2,6 +2,7 @@ use livekit::e2ee::key_provider::{KeyDerivationAlgorithm, KeyProvider, KeyProvid
 use livekit::e2ee::{E2eeOptions, EncryptionType};
 use livekit::id::ParticipantIdentity;
 
+use crate::domain::call::identity::MediaIdentity;
 use crate::domain::call::keys::{KeyIndex, MediaKey};
 
 const RATCHET_SALT: &[u8] = b"LKFrameEncryptionKey";
@@ -33,4 +34,14 @@ pub(super) fn install(
     key: &MediaKey,
 ) {
     provider.set_key(identity, i32::from(index.get()), key.bytes().to_vec());
+}
+
+pub(super) fn install_member_key(
+    provider: &KeyProvider,
+    member: &MediaIdentity,
+    index: KeyIndex,
+    key: &MediaKey,
+) {
+    let identity = ParticipantIdentity(member.as_ref().to_owned());
+    install(provider, &identity, index, key);
 }
