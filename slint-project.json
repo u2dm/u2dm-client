@@ -1,0 +1,7 @@
+{
+  "edition": "1.19",
+  "main": "ui/main.slint",
+  "library-paths": {
+    "lucide": ".lucide/lib.slint"
+  }
+}

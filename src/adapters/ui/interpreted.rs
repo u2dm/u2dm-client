@@ -46,7 +46,7 @@ use crate::ports::handoff::HandoffPort;
 use crate::ports::media::MediaCache;
 use crate::ports::notifier::NotifierPort;
 
-const SLINT_EDITION: (u32, u32) = (1, 18);
+const UI_PROJECT: &str = "slint-project.json";
 
 fn log_diagnostic(diag: &Diagnostic) {
     match diag.level() {
@@ -300,14 +300,13 @@ impl SlintUiAdapter {
                 "lucide".to_string(),
                 PathBuf::from(lucide_slint::lib()),
             )]));
-            compiler.set_edition(SLINT_EDITION);
-            let result = compiler.build_from_path("ui/main.slint").await;
+            let result = compiler.build_from_path(UI_PROJECT).await;
             for diag in result.diagnostics() {
                 log_diagnostic(&diag);
             }
             let def = result
                 .component("AppWindow")
-                .ok_or_else(|| AppError::Ui("failed to load ui/main.slint".into()))?;
+                .ok_or_else(|| AppError::Ui(format!("failed to load {UI_PROJECT}")))?;
             let inst = def.create().map_err(|e| AppError::Ui(e.to_string()))?;
             CALL_WINDOW.set(result.component("CallWindow"));
             Ok::<_, AppError>(inst)
