@@ -1,4 +1,4 @@
-use std::io::{Cursor, ErrorKind};
+use std::io::{Cursor, ErrorKind, Read};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime};
 use std::{env, fs, process};
@@ -32,10 +32,11 @@ const PASTED_IMAGE_FILENAME: &str = "image.png";
 const PASTED_IMAGE_COMPRESSION: CompressionType = CompressionType::Level(3);
 const UNNAMED_SAVE: &str = "attachment";
 const NAME_MAX_BYTES: usize = 255;
+const SNIFFED_HEAD_BYTES: u64 = 8192;
 
 const PICKABLE_MEDIA_EXTENSIONS: &[&str] = &[
     "png", "jpg", "jpeg", "gif", "webp", "bmp", "ico", "tif", "tiff", "avif", "heic", "heif",
-    "mp4", "m4v", "mov", "webm", "mkv", "avi",
+    "mp4", "m4v", "mov", "3gp", "3g2", "webm", "mkv", "avi",
 ];
 
 const LAUNCHER_SAFE_IMAGE_FORMATS: &[(ImageFormat, &str)] = &[
@@ -337,10 +338,13 @@ async fn sniff_mimetype(path: &Path) -> String {
 
 async fn sniff_magic(path: PathBuf) -> Option<String> {
     spawn_blocking(move || {
-        infer::get_from_path(&path)
-            .ok()
-            .flatten()
-            .map(|kind| kind.mime_type().to_owned())
+        let mut head = Vec::new();
+        fs::File::open(&path)
+            .ok()?
+            .take(SNIFFED_HEAD_BYTES)
+            .read_to_end(&mut head)
+            .ok()?;
+        container::sniffed_mime(&head).map(str::to_owned)
     })
     .await
     .ok()

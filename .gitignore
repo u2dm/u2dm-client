@@ -15,3 +15,8 @@
 /assets/demo/*.ogg
 /assets/demo/*.m4a
 /assets/demo/*.mp3
+/assets/demo/*.webm
+/assets/demo/*.3gp
+/assets/demo/*.3g2
+/assets/demo/*.m4v
+/assets/demo/*.m4b

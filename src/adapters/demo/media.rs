@@ -12,7 +12,8 @@ use crate::domain::user_info::localpart;
 use crate::ports::media::MediaCache;
 
 const DATA_ENV: &str = "U2DM_DEMO_DATA";
-const AUDIO_ASSET_EXTENSIONS: &[&str] = &["ogg", "m4a", "mp3"];
+const AUDIO_ASSET_EXTENSIONS: &[&str] = &["ogg", "m4a", "mp3", "m4b", "3gp"];
+const VIDEO_ASSET_EXTENSIONS: &[&str] = &["mp4", "webm", "3gp", "3g2", "m4v"];
 const IMAGE_ASSET_EXTENSIONS: &[&str] = &["gif", "webp", "png", "jpg", "heif"];
 const MXC_SCHEME: &str = "mxc://";
 const MEBIBYTE: u64 = 1024 * 1024;
@@ -312,7 +313,9 @@ fn probe(prefix: &str, name: &str) -> Option<PathBuf> {
 }
 
 pub(super) fn video_asset_path(event_id: &str) -> Option<PathBuf> {
-    asset(&format!("video-{event_id}.mp4")).or_else(|| asset(&format!("video-{event_id}.webm")))
+    VIDEO_ASSET_EXTENSIONS
+        .iter()
+        .find_map(|extension| asset(&format!("video-{event_id}.{extension}")))
 }
 
 pub(super) fn full_file_path(event_id: &str) -> Option<PathBuf> {

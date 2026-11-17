@@ -8,7 +8,7 @@ use tokio::time::{sleep, timeout};
 
 use super::{DownloadLimits, Fetch, Materialized, MediaService, Playable};
 use crate::adapters::matrix::media::{MediaLane, bounded, file_content, source};
-use crate::adapters::private_fs;
+use crate::adapters::{container, private_fs};
 use crate::domain::media::{MediaFailure, MediaRendition, MediaResult};
 use crate::error::{AppError, Result};
 
@@ -215,5 +215,7 @@ async fn attempt_download(
 }
 
 pub(super) fn ext_from_magic(data: &[u8]) -> &'static str {
-    infer::get(data).map_or("png", |t| t.extension())
+    container::branded_extension(data)
+        .or_else(|| infer::get(data).map(|kind| kind.extension()))
+        .unwrap_or("png")
 }
