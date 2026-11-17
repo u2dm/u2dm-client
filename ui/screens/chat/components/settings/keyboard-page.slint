@@ -256,20 +256,16 @@ component ShortcutRow inherits Rectangle {
                 }
             }
 
-            if root.status != "": Rectangle {
-                height: status-line.preferred-height;
+            if root.status != "": HorizontalLayout {
+                padding-left: root.pad / 2;
+                padding-bottom: Space.xs;
 
-                status-line := HorizontalLayout {
-                    padding-left: root.pad / 2;
-                    padding-bottom: Space.xs;
-
-                    Text {
-                        text: root.status;
-                        font-size: Fonts.body-small;
-                        color: root.refused != "" ? AppStyle.danger : AppStyle.overlay-foreground-muted;
-                        wrap: word-wrap;
-                        accessible-role: none;
-                    }
+                Text {
+                    text: root.status;
+                    font-size: Fonts.body-small;
+                    color: root.refused != "" ? AppStyle.danger : AppStyle.overlay-foreground-muted;
+                    wrap: word-wrap;
+                    accessible-role: none;
                 }
             }
         }

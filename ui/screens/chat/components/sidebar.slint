@@ -1023,11 +1023,11 @@ export component Sidebar inherits Rectangle {
         if RoomSearch.query == "" || DirectoryView.rooms.length == 0 {
             return;
         }
-        let first = RowHeadings.is-heading(DirectoryView.rooms[0].kind) ? 1 : 0;
-        if DirectoryView.rooms[first].kind == RoomRowKind.room {
-            RoomSearch.opened-room = DirectoryView.rooms[first].id;
+        let first = DirectoryView.rooms[RowHeadings.is-heading(DirectoryView.rooms[0].kind) ? 1 : 0];
+        if first.kind == RoomRowKind.room {
+            RoomSearch.opened-room = first.id;
         }
-        root.open-row(DirectoryView.rooms[first]);
+        root.open-row(first);
     }
 
     HorizontalLayout {

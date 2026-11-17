@@ -10,7 +10,7 @@ use std::mem;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use slint::{ComponentHandle, SharedString};
+use slint::SharedString;
 
 use self::composer::{apply_attachment, apply_composer_banners, apply_mentions, apply_unsent};
 use self::directory::{apply_directory, apply_room_menu, apply_space_index};
@@ -385,10 +385,6 @@ fn apply_notices<B: UiBackend>(
 ) {
     apply_notifications::<B>(w, last, notifications, ctx.notifier);
     apply_call::<B>(w, last, call, ctx);
-}
-
-fn run_change_handlers_next_frame(w: &impl ComponentHandle) {
-    w.window().request_redraw();
 }
 
 fn apply_toast(w: &impl UiProps, last: Option<&Toast>, toast: &Toast) {

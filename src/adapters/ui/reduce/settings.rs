@@ -1,6 +1,5 @@
-use slint::{ComponentHandle, SharedString};
+use slint::SharedString;
 
-use super::run_change_handlers_next_frame;
 use super::sheets::apply_joined_on;
 use crate::adapters::ui::backend::{UiBackend, UiEventContext};
 use crate::adapters::ui::clock::refresh_room_labels;
@@ -35,11 +34,7 @@ fn apply_shortcuts<W: UiProps>(w: &W, table: &ShortcutTable) {
     w.apply_shortcuts(table);
 }
 
-pub(super) fn apply_settings<W: UiProps + ComponentHandle>(
-    w: &W,
-    last: Option<&SettingsView>,
-    view: &SettingsView,
-) {
+pub(super) fn apply_settings<W: UiProps>(w: &W, last: Option<&SettingsView>, view: &SettingsView) {
     if last == Some(view) {
         return;
     }
@@ -75,12 +70,6 @@ pub(super) fn apply_settings<W: UiProps + ComponentHandle>(
     }
     if last.is_some_and(|last| last.media_cleared != *media_cleared) {
         forget_failed_decodes();
-    }
-    if last.is_none_or(|last| {
-        last.values.appearance.theme != values.appearance.theme
-            || last.values.media.play_animations != values.media.play_animations
-    }) {
-        run_change_handlers_next_frame(w);
     }
 }
 

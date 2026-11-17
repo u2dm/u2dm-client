@@ -181,7 +181,7 @@ export component FocusRing inherits Rectangle {
             y: root.thickness;
             width: parent.width - 2 * root.thickness;
             height: parent.height - 2 * root.thickness;
-            border-radius: max(0px, root.corner - root.thickness);
+            border-radius: root.corner - root.thickness;
             border-width: Stroke.hairline;
             border-color: AppStyle.ring-halo;
         }

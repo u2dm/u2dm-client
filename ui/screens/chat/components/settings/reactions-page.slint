@@ -370,59 +370,55 @@ export component ReactionsPage inherits VerticalLayout {
         }
     }
 
-    if root.picking >= 0: Rectangle {
-        height: chooser.preferred-height;
+    if root.picking >= 0: chooser := VerticalLayout {
+        spacing: Space.md;
 
-        chooser := VerticalLayout {
+        question := HorizontalLayout {
             spacing: Space.md;
 
-            question := HorizontalLayout {
-                spacing: Space.md;
-
-                Text {
-                    horizontal-stretch: 1;
-                    text: @tr("Choose quick reaction {} of {}", root.picking + 1, QuickReactions.count);
-                    font-size: Fonts.label;
-                    vertical-alignment: center;
-                    wrap: word-wrap;
-                }
-
-                LinkButton {
-                    horizontal-stretch: 0;
-                    height: Size.sm;
-                    pad: Space.md;
-                    above-modal: true;
-                    text: @tr("Cancel");
-                    label: self.text;
-                    accessible-description: @tr("Keeps quick reaction {} as it is", root.picking + 1);
-                    clicked => {
-                        root.return-focus();
-                        root.picking = -1;
-                    }
-                }
+            Text {
+                horizontal-stretch: 1;
+                text: @tr("Choose quick reaction {} of {}", root.picking + 1, QuickReactions.count);
+                font-size: Fonts.label;
+                vertical-alignment: center;
+                wrap: word-wrap;
             }
 
-            Rectangle {
-                height: max(Metrics.settings-picker-min,
-                    root.room - slots-group.preferred-height - root.spacing - question.preferred-height - chooser.spacing);
-                border-radius: Radius.md;
-                background: AppStyle.control;
-                clip: true;
+            LinkButton {
+                horizontal-stretch: 0;
+                height: Size.sm;
+                pad: Space.md;
+                above-modal: true;
+                text: @tr("Cancel");
+                label: self.text;
+                accessible-description: @tr("Keeps quick reaction {} as it is", root.picking + 1);
+                clicked => {
+                    root.return-focus();
+                    root.picking = -1;
+                }
+            }
+        }
 
-                EmojiPicker {
-                    width: 100%;
-                    height: 100%;
-                    shows-packs: false;
-                    notice: false;
-                    above-modal: true;
-                    init => {
-                        if root.keyed {
-                            self.focus-search();
-                        }
+        Rectangle {
+            height: max(Metrics.settings-picker-min,
+                root.room - slots-group.preferred-height - root.spacing - question.preferred-height - chooser.spacing);
+            border-radius: Radius.md;
+            background: AppStyle.control;
+            clip: true;
+
+            EmojiPicker {
+                width: 100%;
+                height: 100%;
+                shows-packs: false;
+                notice: false;
+                above-modal: true;
+                init => {
+                    if root.keyed {
+                        self.focus-search();
                     }
-                    picked(glyph) => {
-                        root.pick(glyph);
-                    }
+                }
+                picked(glyph) => {
+                    root.pick(glyph);
                 }
             }
         }

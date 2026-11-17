@@ -196,69 +196,65 @@ export component NotificationsPage inherits VerticalLayout {
         text: @tr("Reading your rules…");
     }
 
-    if SettingsView.rules-known: Rectangle {
-        height: rules.preferred-height;
+    if SettingsView.rules-known: VerticalLayout {
+        spacing: Space.xl;
 
-        rules := VerticalLayout {
-            spacing: Space.xl;
-
-            if SettingsView.rules-failed: ErrorBanner {
-                messages: [{ kind: UserMessageKind.notification-rules-not-changed, detail: "" }];
-            }
-
-            SettingsGroup {
-                label: @tr("YOUR ACCOUNT · ALL SESSIONS");
-                note: root.muted
-                    ? @tr("Notifications are off for this account, so these defaults wait until you turn them back on.")
-                    : @tr("Kept on your homeserver and used by all your sessions. A room with its own setting keeps it.");
-
-                SwitchRow {
-                    key: SettingKey.account-notifications;
-                    text: SettingsWords.label(SettingKey.account-notifications);
-                    detail: SettingsView.account-rule == AccountRule.missing
-                        ? @tr("Your homeserver does not offer this switch")
-                        : SettingsWords.detail(SettingKey.account-notifications);
-                    enabled: SettingsView.account-rule != AccountRule.missing;
-                    on: SettingsView.account-rule == AccountRule.on;
-                    toggled(on) => {
-                        Actions.set-account-notifications({ on: on });
-                    }
-                }
-
-                SegmentedRow {
-                    key: SettingKey.direct-default;
-                    text: SettingsWords.label(SettingKey.direct-default);
-                    options: [
-                        SettingsWords.room-default(RoomDefault.all-messages),
-                        SettingsWords.room-default(RoomDefault.mentions-and-keywords),
-                    ];
-                    selected: root.default-index(SettingsView.direct-default);
-                    detail: SettingsWords.room-default-detail(SettingsView.direct-default);
-                    enabled: !root.muted;
-                    reason: root.needs-account;
-                    chose(index) => {
-                        Actions.set-room-default({ rooms: RoomClass.direct, mode: root.default-at(index) });
-                    }
-                }
-
-                SegmentedRow {
-                    key: SettingKey.group-default;
-                    text: SettingsWords.label(SettingKey.group-default);
-                    options: [
-                        SettingsWords.room-default(RoomDefault.all-messages),
-                        SettingsWords.room-default(RoomDefault.mentions-and-keywords),
-                    ];
-                    selected: root.default-index(SettingsView.group-default);
-                    detail: SettingsWords.room-default-detail(SettingsView.group-default);
-                    enabled: !root.muted;
-                    reason: root.needs-account;
-                    chose(index) => {
-                        Actions.set-room-default({ rooms: RoomClass.group, mode: root.default-at(index) });
-                    }
-                }
-            }
-
-            KeywordsSection { }
+        if SettingsView.rules-failed: ErrorBanner {
+            messages: [{ kind: UserMessageKind.notification-rules-not-changed, detail: "" }];
         }
+
+        SettingsGroup {
+            label: @tr("YOUR ACCOUNT · ALL SESSIONS");
+            note: root.muted
+                ? @tr("Notifications are off for this account, so these defaults wait until you turn them back on.")
+                : @tr("Kept on your homeserver and used by all your sessions. A room with its own setting keeps it.");
+
+            SwitchRow {
+                key: SettingKey.account-notifications;
+                text: SettingsWords.label(SettingKey.account-notifications);
+                detail: SettingsView.account-rule == AccountRule.missing
+                    ? @tr("Your homeserver does not offer this switch")
+                    : SettingsWords.detail(SettingKey.account-notifications);
+                enabled: SettingsView.account-rule != AccountRule.missing;
+                on: SettingsView.account-rule == AccountRule.on;
+                toggled(on) => {
+                    Actions.set-account-notifications({ on: on });
+                }
+            }
+
+            SegmentedRow {
+                key: SettingKey.direct-default;
+                text: SettingsWords.label(SettingKey.direct-default);
+                options: [
+                    SettingsWords.room-default(RoomDefault.all-messages),
+                    SettingsWords.room-default(RoomDefault.mentions-and-keywords),
+                ];
+                selected: root.default-index(SettingsView.direct-default);
+                detail: SettingsWords.room-default-detail(SettingsView.direct-default);
+                enabled: !root.muted;
+                reason: root.needs-account;
+                chose(index) => {
+                    Actions.set-room-default({ rooms: RoomClass.direct, mode: root.default-at(index) });
+                }
+            }
+
+            SegmentedRow {
+                key: SettingKey.group-default;
+                text: SettingsWords.label(SettingKey.group-default);
+                options: [
+                    SettingsWords.room-default(RoomDefault.all-messages),
+                    SettingsWords.room-default(RoomDefault.mentions-and-keywords),
+                ];
+                selected: root.default-index(SettingsView.group-default);
+                detail: SettingsWords.room-default-detail(SettingsView.group-default);
+                enabled: !root.muted;
+                reason: root.needs-account;
+                chose(index) => {
+                    Actions.set-room-default({ rooms: RoomClass.group, mode: root.default-at(index) });
+                }
+            }
+        }
+
+        KeywordsSection { }
     }
 }

@@ -64,46 +64,42 @@ component StorageSection inherits VerticalLayout {
         }
     }
 
-    if root.asking: Rectangle {
-        height: question.preferred-height;
+    if root.asking: VerticalLayout {
+        spacing: Space.md;
 
-        question := VerticalLayout {
+        Text {
+            text: root.question;
+            font-size: Fonts.label;
+            wrap: word-wrap;
+        }
+
+        HorizontalLayout {
+            alignment: end;
             spacing: Space.md;
 
-            Text {
-                text: root.question;
-                font-size: Fonts.label;
-                wrap: word-wrap;
+            AppButton {
+                above-modal: true;
+                text: @tr("Cancel");
+                description: root.question;
+                filled: false;
+                init => {
+                    self.take-focus();
+                }
+                clicked => {
+                    root.asking = false;
+                }
             }
 
-            HorizontalLayout {
-                alignment: end;
-                spacing: Space.md;
-
-                AppButton {
-                    above-modal: true;
-                    text: @tr("Cancel");
-                    description: root.question;
-                    filled: false;
-                    init => {
-                        self.take-focus();
-                    }
-                    clicked => {
-                        root.asking = false;
-                    }
-                }
-
-                AppButton {
-                    above-modal: true;
-                    text: @tr("Clear");
-                    description: root.question;
-                    tint: AppStyle.danger-muted;
-                    clicked => {
-                        root.refocus-button = false;
-                        root.confirmed();
-                        root.asking = false;
-                        Actions.clear-downloaded-media();
-                    }
+            AppButton {
+                above-modal: true;
+                text: @tr("Clear");
+                description: root.question;
+                tint: AppStyle.danger-muted;
+                clicked => {
+                    root.refocus-button = false;
+                    root.confirmed();
+                    root.asking = false;
+                    Actions.clear-downloaded-media();
                 }
             }
         }

@@ -1,12 +1,9 @@
 use std::collections::{BTreeSet, HashSet};
 use std::sync::Arc;
 
-use slint::{ComponentHandle, Model};
+use slint::Model;
 
-use super::{
-    is_new_generation, next_prepend_token, readopt_timeline, run_change_handlers_next_frame,
-    set_focus,
-};
+use super::{is_new_generation, next_prepend_token, readopt_timeline, set_focus};
 use crate::adapters::ui::backend::{
     UiBackend, UiEventContext, enrich_message, keep_shown_enrichment,
 };
@@ -179,7 +176,6 @@ pub(super) fn apply_readers<B: UiBackend>(
     }
     if last.is_none_or(|l| l.pages_landed != *pages_landed) {
         w.set_int(IntProp::ReadersPagesLanded, *pages_landed);
-        run_change_handlers_next_frame(w);
     }
     let shown = last.map(|l| (&l.rows, l.avatars_ready));
     if let Some(previous) = rows_to_redo(shown, rows, *avatars_ready) {
@@ -215,7 +211,7 @@ fn apply_quoted_message(w: &impl UiProps, quoted: QuotedMessage) {
 }
 
 pub(super) fn apply_copied_links(
-    w: &(impl UiProps + ComponentHandle),
+    w: &impl UiProps,
     last: Option<&AppViewState>,
     message_link: &CopiedLink,
     room_link: &CopiedLink,
@@ -233,21 +229,12 @@ pub(super) fn apply_copied_links(
     }
 }
 
-fn apply_copied_link(
-    w: &(impl UiProps + ComponentHandle),
-    link: &CopiedLink,
-    url: StringProp,
-    serial: IntProp,
-) {
+fn apply_copied_link(w: &impl UiProps, link: &CopiedLink, url: StringProp, serial: IntProp) {
     w.set_text(url, link.url.as_str());
     w.set_int(serial, link.serial);
-    run_change_handlers_next_frame(w);
 }
 
-pub(super) fn sync_timeline_chrome(
-    w: &(impl UiProps + ComponentHandle),
-    pagination: &PaginationView,
-) {
+pub(super) fn sync_timeline_chrome(w: &impl UiProps, pagination: &PaginationView) {
     let (older_history, forwards, badge) = if pagination.generation == active_generation() {
         (
             pagination.older_history,
@@ -267,7 +254,6 @@ pub(super) fn sync_timeline_chrome(
     );
     w.set_bool(BoolProp::ForwardsLoading, forwards);
     w.set_int(IntProp::NewMessagesCount, saturating_i32(badge));
-    run_change_handlers_next_frame(w);
 }
 
 pub(super) fn apply_pinned(w: &impl UiProps, pinned: &PinnedView) {

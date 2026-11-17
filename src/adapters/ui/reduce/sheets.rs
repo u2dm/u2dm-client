@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use slint::{Model, SharedString, StyledText};
 
-use super::{SheetAvatar, run_change_handlers_next_frame};
+use super::SheetAvatar;
 use crate::adapters::ui::backend::{UiBackend, UiEventContext};
 use crate::adapters::ui::decode::{AvatarSlot, load_avatar_async};
 use crate::adapters::ui::dto::{
@@ -63,7 +63,6 @@ pub(super) fn apply_room_log<B: UiBackend>(
     w.set_int(IntProp::RoomLogDropped, saturating_i32(next.log.dropped));
     w.set_int(IntProp::RoomLogLinesLanded, next.lines_landed);
     w.set_bool(BoolProp::RoomLogVisible, true);
-    run_change_handlers_next_frame(w);
 }
 
 fn follow_room_log<B: UiBackend>(lines: &SpliceModel<B::LogLine>, shown: &RoomLog, next: &RoomLog) {
@@ -492,7 +491,6 @@ pub(super) fn apply_room_info<B: UiBackend>(
     }
     if last.is_none_or(|l| l.pages_landed != *pages_landed) {
         w.set_int(IntProp::RoomInfoPagesLanded, *pages_landed);
-        run_change_handlers_next_frame(w);
     }
     let shown = last.map(|l| (&l.rows, l.avatars_ready));
     if let Some(previous) = rows_to_redo(shown, rows, *avatars_ready) {

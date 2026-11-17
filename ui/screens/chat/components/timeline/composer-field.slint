@@ -105,7 +105,6 @@ export component ComposerField inherits Rectangle {
 
     property <bool> has-text: root.text != "";
     property <bool> can-send: root.writable && !root.busy && (root.has-text || root.text-optional);
-    property <TextSplice> pending-insert;
 
     property <length> text-inset: Space.md;
     property <length> line-height: line-probe.preferred-height;
@@ -168,25 +167,22 @@ export component ComposerField inherits Rectangle {
     }
 
     public function insert-at-caret(glyph: string) {
-        root.pending-insert = EmojiStore.insert(root.text, root.caret, glyph);
-        root.apply-pending-insert();
+        root.apply-splice(EmojiStore.insert(root.text, root.caret, glyph));
     }
 
     public function complete-mention(insert: string) {
-        root.pending-insert = Actions.complete-mention(root.text, root.caret, insert);
-        root.apply-pending-insert();
+        root.apply-splice(Actions.complete-mention(root.text, root.caret, insert));
     }
 
     public function place-emote(pack-id: string, shortcode: string, replaces-word: bool) {
-        root.pending-insert = Actions.place-emote(root.text, root.caret, pack-id, shortcode, replaces-word);
-        root.apply-pending-insert();
+        root.apply-splice(Actions.place-emote(root.text, root.caret, pack-id, shortcode, replaces-word));
     }
 
-    function apply-pending-insert() {
+    function apply-splice(splice: TextSplice) {
         root.edits += 1;
-        root.text = root.pending-insert.text;
-        root.caret = root.pending-insert.caret;
-        text-input.set-selection-offsets(root.pending-insert.caret, root.pending-insert.caret);
+        root.text = splice.text;
+        root.caret = splice.caret;
+        text-input.set-selection-offsets(splice.caret, splice.caret);
     }
 
     function send() {

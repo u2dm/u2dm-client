@@ -1,10 +1,8 @@
 use std::sync::Arc;
 
-use slint::{ComponentHandle, SharedString};
+use slint::SharedString;
 
-use super::{
-    publish_selected_room_row, refresh_selected_room_avatar, run_change_handlers_next_frame,
-};
+use super::{publish_selected_room_row, refresh_selected_room_avatar};
 use crate::adapters::ui::backend::{UiBackend, UiEventContext};
 use crate::adapters::ui::dto::{space_child_to_dto, space_to_dto};
 use crate::adapters::ui::fields::{SpaceChildFields, SpaceFields};
@@ -14,10 +12,9 @@ use crate::adapters::ui::rows::row_index;
 use crate::commands::view::{DirectoryView, RoomMenuTarget, SpaceHeading, SpaceIndexView};
 use crate::util::saturating_i32;
 
-pub(super) fn apply_room_menu(w: &(impl UiProps + ComponentHandle), menu: Option<&RoomMenuTarget>) {
+pub(super) fn apply_room_menu(w: &impl UiProps, menu: Option<&RoomMenuTarget>) {
     let Some(menu) = menu else {
         w.set_string(StringProp::RoomMenuRoomId, SharedString::default());
-        run_change_handlers_next_frame(w);
         return;
     };
     w.set_text(StringProp::RoomMenuName, &menu.name);
@@ -30,7 +27,6 @@ pub(super) fn apply_room_menu(w: &(impl UiProps + ComponentHandle), menu: Option
     w.set_bool(BoolProp::RoomMenuMayAddChildren, menu.may_add_children);
     w.set_bool(BoolProp::RoomMenuHasCall, menu.has_call);
     w.set_text(StringProp::RoomMenuRoomId, menu.room_id.as_ref());
-    run_change_handlers_next_frame(w);
 }
 
 fn publish_heading_rows(w: &impl UiProps, listing: RoomListing<'_>) {
@@ -159,7 +155,6 @@ pub(super) fn apply_space_index<B: UiBackend>(
     }
     if last.is_none_or(|l| l.pages_landed != *pages_landed) {
         w.set_int(IntProp::SpaceIndexPagesLanded, *pages_landed);
-        run_change_handlers_next_frame(w);
     }
     let shown = last.map(|l| (&l.rows, l.avatars_ready));
     if let Some(previous) = rows_to_redo(shown, rows, *avatars_ready) {
