@@ -40,6 +40,7 @@ pub(super) const AVATAR_KEY_PREFIX: &str = "mxc-avatar:";
 pub(super) const STICKER_KEY_PREFIX: &str = "sticker:";
 const MAX_INFLIGHT_AVATARS: usize = 8;
 const THUMBNAIL_EXTENT: u32 = 400;
+const ANIMATED_MIMETYPES: &[&str] = &["image/gif", "image/webp", "image/apng"];
 
 pub(super) fn thumb_key(content: &ContentKey) -> String {
     format!("thumb:{}", content.as_str())
@@ -190,7 +191,9 @@ impl MediaCache for MaterializedMedia {
 
 pub(super) fn is_animated_mime(mimetype: Option<&str>) -> bool {
     mimetype.is_some_and(|mime| {
-        mime.eq_ignore_ascii_case("image/gif") || mime.eq_ignore_ascii_case("image/webp")
+        ANIMATED_MIMETYPES
+            .iter()
+            .any(|animated| animated.eq_ignore_ascii_case(mime))
     })
 }
 

@@ -8714,6 +8714,7 @@ dependencies = [
  "emojis",
  "ffmpeg-next",
  "futures-util",
+ "gif",
  "glib",
  "i-slint-core",
  "image",

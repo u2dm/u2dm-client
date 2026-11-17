@@ -3,12 +3,16 @@ use std::collections::{HashMap, HashSet};
 use std::fs::File;
 use std::io::BufReader;
 use std::mem;
+use std::num::NonZeroU32;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use std::time::{Duration, Instant};
 
+use gif::{DecodeOptions, Repeat};
 use image::codecs::gif::GifDecoder;
+use image::codecs::png::PngDecoder;
 use image::codecs::webp::WebPDecoder;
+use image::metadata::LoopCount;
 use image::{AnimationDecoder, DynamicImage, Frames, ImageDecoder, RgbaImage};
 use slint::{Image, Timer, TimerMode};
 
@@ -48,6 +52,13 @@ thread_local! {
 pub(super) struct AnimationState {
     clips: HashMap<PathBuf, Clip>,
     playbacks: HashMap<MediaSlot, Playback>,
+    pngs: HashMap<PathBuf, PngKind>,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum PngKind {
+    Still,
+    Animated,
 }
 
 #[derive(Clone)]
@@ -105,16 +116,17 @@ impl AnimationState {
         if self.playing(slot, path).is_some() {
             return PlaybackStart::AlreadyRunning;
         }
-        let others_expected = self
+        let others_playing = self
             .playbacks
             .iter()
             .filter(|&(other, playback)| {
                 other != slot
                     && other.surface() == slot.surface()
+                    && playback.plays_on()
                     && needs.expects_media(other, &playback.path)
             })
             .count();
-        if others_expected >= MAX_ACTIVE_ANIMATIONS {
+        if others_playing >= MAX_ACTIVE_ANIMATIONS {
             return PlaybackStart::AtCapacity;
         }
         self.playbacks.insert(
@@ -122,7 +134,8 @@ impl AnimationState {
             Playback {
                 path: path.to_path_buf(),
                 frame: 0,
-                next_at: Instant::now() + animation.delay(0),
+                completed_plays: 0,
+                next: NextFrame::At(Instant::now() + animation.delay(0)),
                 row_hint: 0,
             },
         );
@@ -145,8 +158,40 @@ enum PlaybackStart {
 struct Animation {
     frames: Vec<Image>,
     delays: Vec<Duration>,
+    plays: Plays,
     bytes: usize,
     surface: Surface,
+}
+
+#[derive(Clone, Copy)]
+enum Plays {
+    Forever,
+    Times(NonZeroU32),
+}
+
+impl Plays {
+    fn of_gif(repeat: Repeat) -> Self {
+        match repeat {
+            Repeat::Infinite => Self::Forever,
+            Repeat::Finite(repeats) => {
+                Self::Times(NonZeroU32::MIN.saturating_add(u32::from(repeats)))
+            }
+        }
+    }
+
+    fn of_loop_count(count: LoopCount) -> Self {
+        match count {
+            LoopCount::Infinite => Self::Forever,
+            LoopCount::Finite(times) => Self::Times(times),
+        }
+    }
+
+    fn ends_after(self, completed: u32) -> bool {
+        match self {
+            Self::Forever => false,
+            Self::Times(times) => completed >= times.get(),
+        }
+    }
 }
 
 impl Animation {
@@ -196,6 +241,7 @@ impl RawFrame {
 pub(super) struct RawAnimation {
     frames: Vec<RawFrame>,
     delays: Vec<Duration>,
+    plays: Plays,
     bytes: usize,
 }
 
@@ -204,6 +250,7 @@ impl RawAnimation {
         let Self {
             frames: raw,
             delays,
+            plays,
             bytes,
         } = self;
         let mut frames = Vec::with_capacity(raw.len());
@@ -213,6 +260,7 @@ impl RawAnimation {
         Animation {
             frames,
             delays,
+            plays,
             bytes,
             surface,
         }
@@ -222,8 +270,53 @@ impl RawAnimation {
 struct Playback {
     path: PathBuf,
     frame: usize,
-    next_at: Instant,
+    completed_plays: u32,
+    next: NextFrame,
     row_hint: usize,
+}
+
+#[derive(Clone, Copy)]
+enum NextFrame {
+    At(Instant),
+    Ended,
+}
+
+enum Step {
+    Frame,
+    LastPlayEnded,
+}
+
+impl Playback {
+    fn due_at(&self) -> Option<Instant> {
+        match self.next {
+            NextFrame::At(at) => Some(at),
+            NextFrame::Ended => None,
+        }
+    }
+
+    fn plays_on(&self) -> bool {
+        self.due_at().is_some()
+    }
+
+    fn is_due(&self, now: Instant) -> bool {
+        self.due_at().is_some_and(|at| at <= now)
+    }
+
+    fn step(&mut self, animation: &Animation, now: Instant) -> Step {
+        let next = self.frame + 1;
+        if next < animation.frames.len() {
+            self.frame = next;
+        } else {
+            self.completed_plays = self.completed_plays.saturating_add(1);
+            if animation.plays.ends_after(self.completed_plays) {
+                self.next = NextFrame::Ended;
+                return Step::LastPlayEnded;
+            }
+            self.frame = 0;
+        }
+        self.next = NextFrame::At(now + animation.delay(self.frame));
+        Step::Frame
+    }
 }
 
 struct DueFrame {
@@ -246,21 +339,48 @@ fn frame_delay(declared: Duration) -> Duration {
     }
 }
 
-enum AnimatedFormat {
+#[derive(Clone, Copy)]
+enum AnimatableFormat {
     Gif,
     WebP,
+    Png,
 }
 
-fn animated_format(path: &Path) -> Option<AnimatedFormat> {
+fn animatable_format(path: &Path) -> Option<AnimatableFormat> {
     match path.extension()?.to_str()?.to_ascii_lowercase().as_str() {
-        "gif" => Some(AnimatedFormat::Gif),
-        "webp" => Some(AnimatedFormat::WebP),
+        "gif" => Some(AnimatableFormat::Gif),
+        "webp" => Some(AnimatableFormat::WebP),
+        "png" | "apng" => Some(AnimatableFormat::Png),
         _ => None,
     }
 }
 
 pub fn is_animatable(path: &Path) -> bool {
-    animated_format(path).is_some()
+    match animatable_format(path) {
+        Some(AnimatableFormat::Gif | AnimatableFormat::WebP) => true,
+        Some(AnimatableFormat::Png) => png_kind(path) == PngKind::Animated,
+        None => false,
+    }
+}
+
+fn png_kind(path: &Path) -> PngKind {
+    if let Some(known) = with_animations(|state| state.pngs.get(path).copied()) {
+        return known;
+    }
+    let Some(found) = read_png_kind(path) else {
+        return PngKind::Still;
+    };
+    with_animations(|state| state.pngs.insert(path.to_path_buf(), found));
+    found
+}
+
+fn read_png_kind(path: &Path) -> Option<PngKind> {
+    let decoder = PngDecoder::new(BufReader::new(File::open(path).ok()?)).ok()?;
+    if decoder.is_apng().ok()? {
+        Some(PngKind::Animated)
+    } else {
+        Some(PngKind::Still)
+    }
 }
 
 fn plays(path: &Path) -> bool {
@@ -282,24 +402,44 @@ fn animation_limits() -> image::Limits {
     limits
 }
 
-fn bounded_frames<'a, D>(mut decoder: D) -> Option<Frames<'a>>
-where
-    D: ImageDecoder + AnimationDecoder<'a>,
-{
+fn bounded<D: ImageDecoder>(mut decoder: D) -> Option<D> {
     let (width, height) = decoder.dimensions();
     if width > ANIM_MAX_DIMENSION || height > ANIM_MAX_DIMENSION {
         return None;
     }
     decoder.set_limits(animation_limits()).ok()?;
-    Some(decoder.into_frames())
+    Some(decoder)
 }
 
-fn frames_of(path: &Path) -> Option<Frames<'static>> {
+fn frames_and_plays(path: &Path) -> Option<(Frames<'static>, Plays)> {
     let reader = BufReader::new(File::open(path).ok()?);
-    match animated_format(path)? {
-        AnimatedFormat::Gif => bounded_frames(GifDecoder::new(reader).ok()?),
-        AnimatedFormat::WebP => bounded_frames(WebPDecoder::new(reader).ok()?),
+    match animatable_format(path)? {
+        AnimatableFormat::Gif => {
+            let plays = gif_plays(path)?;
+            let decoder = bounded(GifDecoder::new(reader).ok()?)?;
+            Some((decoder.into_frames(), plays))
+        }
+        AnimatableFormat::WebP => {
+            let decoder = bounded(WebPDecoder::new(reader).ok()?)?;
+            let plays = Plays::of_loop_count(decoder.loop_count());
+            Some((decoder.into_frames(), plays))
+        }
+        AnimatableFormat::Png => {
+            let decoder = bounded(PngDecoder::new(reader).ok()?)?;
+            if !decoder.is_apng().ok()? {
+                return None;
+            }
+            let decoder = decoder.apng().ok()?;
+            let plays = Plays::of_loop_count(decoder.loop_count());
+            Some((decoder.into_frames(), plays))
+        }
     }
+}
+
+fn gif_plays(path: &Path) -> Option<Plays> {
+    let reader = BufReader::new(File::open(path).ok()?);
+    let header = DecodeOptions::new().read_info(reader).ok()?;
+    Some(Plays::of_gif(header.repeat()))
 }
 
 struct Reel {
@@ -392,19 +532,21 @@ impl Reel {
         self.stride *= 2;
     }
 
-    fn into_raw(self) -> Option<RawAnimation> {
+    fn into_raw(self, plays: Plays) -> Option<RawAnimation> {
         let bytes = self.bytes();
         (self.frames.len() > 1).then_some(RawAnimation {
             frames: self.frames,
             delays: self.delays,
+            plays,
             bytes,
         })
     }
 }
 
 pub(super) fn decode_raw(path: &Path) -> Option<RawAnimation> {
+    let (frames, plays) = frames_and_plays(path)?;
     let mut reel = Reel::new();
-    for (index, frame) in frames_of(path)?.enumerate().take(ANIM_MAX_SOURCE_FRAMES) {
+    for (index, frame) in frames.enumerate().take(ANIM_MAX_SOURCE_FRAMES) {
         let Ok(frame) = frame else { break };
         let delay = frame_delay(Duration::from(frame.delay()));
         if reel.take(index, frame.into_buffer(), delay).is_none() {
@@ -423,7 +565,7 @@ pub(super) fn decode_raw(path: &Path) -> Option<RawAnimation> {
             path.display()
         );
     }
-    reel.into_raw()
+    reel.into_raw(plays)
 }
 
 fn surface_paying_for(slots: &[MediaSlot]) -> Surface {
@@ -532,7 +674,9 @@ pub fn load_thumbnail(path: &Path, slot: &MediaSlot) -> Decoded {
 
 fn due_frames(now: Instant) -> Tick {
     with_animations_and_needs(|state, needs| {
-        let AnimationState { clips, playbacks } = state;
+        let AnimationState {
+            clips, playbacks, ..
+        } = state;
         let paused = ANIMATIONS_PAUSED.get();
         let mut tick = Tick::default();
         for (slot, playback) in playbacks.iter_mut() {
@@ -540,7 +684,7 @@ fn due_frames(now: Instant) -> Tick {
                 tick.unexpected.push(slot.clone());
                 continue;
             }
-            if playback.next_at > now && !paused {
+            if !paused && !playback.is_due(now) {
                 continue;
             }
             let Some(animation) = clips.get(&playback.path).and_then(Clip::animation) else {
@@ -548,13 +692,10 @@ fn due_frames(now: Instant) -> Tick {
             };
             if paused {
                 tick.unexpected.push(slot.clone());
+                playback.frame = 0;
+            } else if let Step::LastPlayEnded = playback.step(animation, now) {
+                continue;
             }
-            playback.frame = if paused {
-                0
-            } else {
-                (playback.frame + 1) % animation.frames.len()
-            };
-            playback.next_at = now + animation.delay(playback.frame);
             if let Some(frame) = animation.frame(playback.frame) {
                 tick.due.push(DueFrame {
                     slot: slot.clone(),
@@ -572,7 +713,9 @@ fn forget_playbacks(gone: &[MediaSlot]) {
         return;
     }
     with_animations(|state| {
-        let AnimationState { clips, playbacks } = state;
+        let AnimationState {
+            clips, playbacks, ..
+        } = state;
         for slot in gone {
             playbacks.remove(slot);
         }
@@ -619,7 +762,7 @@ pub fn advance_animations(place_frame: &mut dyn FnMut(&MediaSlot, usize, Image) 
 }
 
 fn next_deadline() -> Option<Instant> {
-    with_animations(|state| state.playbacks.values().map(|p| p.next_at).min())
+    with_animations(|state| state.playbacks.values().filter_map(Playback::due_at).min())
 }
 
 fn reschedule() {
