@@ -674,7 +674,7 @@ component SettingsNav inherits Rectangle {
         accessible-role: list;
         accessible-label: @tr("Search results");
         accessible-item-count: root.hits.length;
-        accessible-delegate-focus: found-keys.cursor < 0 ? -1 : found-keys.cursor + 1;
+        accessible-delegate-focus: found-keys.cursor;
 
         found-keys := RovingKeys {
             count: root.hits.length;

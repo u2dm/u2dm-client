@@ -3,8 +3,11 @@ use std::mem;
 use std::rc::Rc;
 use std::time::Duration;
 
+use i_slint_core::api::LogicalPosition;
+use i_slint_core::item_tree::{ItemRc, ParentItemTraversalMode};
+use i_slint_core::items::Flickable;
 use slint::platform::WindowEvent as SlintEvent;
-use slint::private_unstable_api::re_exports::WindowInner;
+use slint::private_unstable_api::re_exports::{ItemWeak, ScrollBehavior, WindowInner};
 use slint::winit_030::EventResult;
 use slint::winit_030::winit::event::{ElementState, WindowEvent};
 use slint::{ComponentHandle, RenderingState, SharedString, Timer, TimerMode, Window};
@@ -33,6 +36,7 @@ pub struct FocusKeeper<C: ComponentHandle + 'static> {
     ticks: Cell<u32>,
     retry: Timer,
     episode: Cell<Episode>,
+    shown_focus: RefCell<ItemWeak>,
 }
 
 pub fn step_focus(window: &Window, forward: bool) {
@@ -50,6 +54,19 @@ fn holds_nothing(window: &Window) -> bool {
         .borrow()
         .upgrade()
         .is_none()
+}
+
+fn stop_scrolling_above(item: &ItemRc) {
+    let mut current = item.clone();
+    while let Some(parent) = current.parent_item(ParentItemTraversalMode::StopAtPopups) {
+        if let Some(flickable) = parent.downcast::<Flickable>() {
+            let flickable = flickable.as_pin_ref();
+            let here =
+                LogicalPosition::new(-flickable.content_x().get(), -flickable.content_y().get());
+            flickable.scroll_to(&parent, here, ScrollBehavior::Instant);
+        }
+        current = parent;
+    }
 }
 
 fn holds_nothing_in_sight(window: &Window) -> bool {
@@ -70,13 +87,17 @@ impl<C: ComponentHandle + 'static> FocusKeeper<C> {
             ticks: Cell::new(0),
             retry: Timer::default(),
             episode: Cell::new(Episode::Settled),
+            shown_focus: RefCell::new(ItemWeak::default()),
         });
-        let after_frames = Rc::downgrade(&keeper);
+        let frames = Rc::downgrade(&keeper);
         let notified = component.window().set_rendering_notifier(move |state, _| {
-            if matches!(state, RenderingState::AfterRendering)
-                && let Some(keeper) = after_frames.upgrade()
-            {
-                keeper.after_frame();
+            let Some(keeper) = frames.upgrade() else {
+                return;
+            };
+            match state {
+                RenderingState::BeforeRendering => keeper.show_new_focus_at_once(),
+                RenderingState::AfterRendering => keeper.after_frame(),
+                _ => {}
             }
         });
         if let Err(e) = notified {
@@ -110,6 +131,24 @@ impl<C: ComponentHandle + 'static> FocusKeeper<C> {
         self.held.borrow_mut().push(text);
         self.begin(false);
         EventResult::PreventDefault
+    }
+
+    fn show_new_focus_at_once(&self) {
+        let Some(component) = self.component.upgrade() else {
+            return;
+        };
+        let focus = WindowInner::from_pub(component.window())
+            .focus_item
+            .borrow()
+            .clone();
+        if focus == *self.shown_focus.borrow() {
+            return;
+        }
+        if let Some(item) = focus.upgrade() {
+            stop_scrolling_above(&item);
+            item.try_scroll_into_visible(ScrollBehavior::Instant);
+        }
+        *self.shown_focus.borrow_mut() = focus;
     }
 
     fn after_frame(self: &Rc<Self>) {

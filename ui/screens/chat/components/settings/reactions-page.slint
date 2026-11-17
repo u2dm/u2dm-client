@@ -110,7 +110,7 @@ component QuickReactionsRow inherits Rectangle {
     accessible-description: SettingsWords.detail(SettingKey.quick-reactions);
     accessible-item-count: root.count;
     accessible-delegate-focus: slots.has-focus ? (slots.cursor < 0 ? -1 : 1 + 2 * slots.cursor)
-        : 2 + 2 * root.star-cursor(stars.cursor);
+        : root.star-cursor(stars.cursor);
 
     SoughtTint {
         key: SettingKey.quick-reactions;
@@ -186,7 +186,7 @@ component QuickReactionsRow inherits Rectangle {
                     y: root.slot;
                     starred: index == QuickReactions.default-index;
                     label: root.star-label(index);
-                    accessible-item-index: index;
+                    accessible-item-index: slots.has-focus ? -1 : index;
                     roving-focus: stars.has-focus && stars.cursor == index;
                     clicked => {
                         Actions.set-one-click-reaction({ slot: index });

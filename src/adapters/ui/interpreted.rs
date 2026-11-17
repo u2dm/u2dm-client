@@ -14,7 +14,8 @@ use std::sync::Arc;
 use names::{callback, focus_keeper, notification_text, shortcuts, window_props};
 use slint::ModelRc;
 use slint_interpreter::{
-    Compiler, ComponentDefinition, ComponentHandle, ComponentInstance, SharedString, Value,
+    Compiler, ComponentDefinition, ComponentHandle, ComponentInstance, Diagnostic, DiagnosticLevel,
+    SharedString, Value,
 };
 use tokio::runtime::Runtime;
 use tokio::sync::{mpsc, watch};
@@ -44,6 +45,16 @@ use crate::ports::call::CallVideoPort;
 use crate::ports::handoff::HandoffPort;
 use crate::ports::media::MediaCache;
 use crate::ports::notifier::NotifierPort;
+
+const SLINT_EDITION: (u32, u32) = (1, 18);
+
+fn log_diagnostic(diag: &Diagnostic) {
+    match diag.level() {
+        DiagnosticLevel::Error => tracing::error!("slint: {diag}"),
+        DiagnosticLevel::Warning => tracing::warn!("slint: {diag}"),
+        _ => tracing::debug!("slint: {diag}"),
+    }
+}
 
 fn set_prop(inst: &ComponentInstance, name: &str, value: Value) {
     if let Err(e) = inst.set_property(name, value) {
@@ -289,9 +300,10 @@ impl SlintUiAdapter {
                 "lucide".to_string(),
                 PathBuf::from(lucide_slint::lib()),
             )]));
+            compiler.set_edition(SLINT_EDITION);
             let result = compiler.build_from_path("ui/main.slint").await;
             for diag in result.diagnostics() {
-                tracing::error!("slint: {diag}");
+                log_diagnostic(&diag);
             }
             let def = result
                 .component("AppWindow")

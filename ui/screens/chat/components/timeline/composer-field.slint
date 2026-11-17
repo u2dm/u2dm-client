@@ -203,7 +203,7 @@ export component ComposerField inherits Rectangle {
     }
 
     pure function is-paste(event: KeyEvent) -> bool {
-        event.modifiers.control && !event.modifiers.shift && event.text == "v"
+        event.modifiers.control && !event.modifiers.shift && event.text.to-lowercase() == "v"
     }
 
     pure function scroll-in-range(content-y: length) -> length {

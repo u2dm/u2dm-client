@@ -7,6 +7,7 @@ use crate::adapters::ui::clock::refresh_room_labels;
 use crate::adapters::ui::decode::{forget_failed_decodes, set_animations_paused};
 use crate::adapters::ui::dto::{ignored_person_to_dto, keyword_to_dto};
 use crate::adapters::ui::fields::MessageFields;
+use crate::adapters::ui::motion::follow_choice;
 use crate::adapters::ui::present::{message_sent_at_label, message_timestamp_label, use_clock};
 use crate::adapters::ui::props::{BoolProp, IntProp, StringProp, UiProps};
 use crate::adapters::ui::reconcile::{RowTime, restamp_rows};
@@ -231,6 +232,7 @@ fn apply_values<W: UiProps>(w: &W, values: &Settings) {
     } = *values;
     w.set_appearance_theme(theme);
     w.set_motion_choice(motion);
+    follow_choice(motion);
     w.set_clock_choice(clock);
     w.set_send_key(send_key);
     w.set_receipt_visibility(receipts);

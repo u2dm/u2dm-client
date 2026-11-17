@@ -219,7 +219,8 @@ export component CallPeopleMenu inherits PickerCard {
     property <bool> you-first: root.count > 0 && CallView.people[0].you;
     out property <int> spoken-count: root.count;
     out property <int> spoken-index: root.cursor < 0 || root.cursor >= root.count ? -1
-        : root.node-of(root.cursor) + (root.acts ? 1 : 0);
+        : root.acts ? root.node-of(root.cursor) + 1
+        : root.cursor;
 
     public function open(by-keys: bool) {
         root.cursor = by-keys && root.count > 0 ? 0 : -1;
@@ -300,7 +301,7 @@ export component CallPeopleMenu inherits PickerCard {
 
         for person[index] in CallView.people: PersonRow {
             person: person;
-            index: index;
+            index: root.acts ? -1 : index;
             detail: root.detail-of(person);
             label: root.label-of(person);
             above-modal: root.above-modal;

@@ -135,7 +135,7 @@ component MessageMenuCard inherits MenuCard {
     property <ConfirmChoice> confirm-cursor: ConfirmChoice.cancel;
     out property <int> spoken-count: root.row-count;
     out property <int> spoken-index: root.asking
-        ? root.row-count + (root.confirm-cursor == ConfirmChoice.confirm ? 0 : 1)
+        ? 1 + root.row-count + (root.confirm-cursor == ConfirmChoice.confirm ? 0 : 1)
         : root.cursor;
 
     property <bool> has-remote-id: root.msg.event-id != "";
@@ -446,7 +446,7 @@ component MessageMenuCard inherits MenuCard {
                 height: root.row-height;
                 icon: root.icon-of(action);
                 label: root.label-of(action);
-                index: index;
+                index: root.asking ? -1 : index;
                 destructive: root.destructive(action);
                 focusable: false;
                 roving-focus: keys.has-focus && root.cursor == index;
@@ -465,7 +465,7 @@ component MessageMenuCard inherits MenuCard {
                 icon: root.link-icon(link);
                 label: root.link-label(link);
                 detail: root.link-detail(link);
-                index: root.links-at + index;
+                index: root.asking ? -1 : root.links-at + index;
                 focusable: false;
                 roving-focus: keys.has-focus && root.cursor == root.links-at + index;
                 changed roving-focus => {
@@ -482,7 +482,7 @@ component MessageMenuCard inherits MenuCard {
                 height: root.row-height;
                 icon: root.icon-of(action);
                 label: root.label-of(action);
-                index: root.tail-at + index;
+                index: root.asking ? -1 : root.tail-at + index;
                 destructive: root.destructive(action);
                 focusable: false;
                 roving-focus: keys.has-focus && root.cursor == root.tail-at + index;
@@ -643,7 +643,7 @@ export component MessageMenuOverlay inherits Rectangle {
         any-button-dismisses: true;
         keeps-tab: true;
         label: @tr("Message actions");
-        accessible-delegate-focus: card.spoken-index < 0 ? -1 : 1 + card.spoken-index;
+        accessible-delegate-focus: card.spoken-index;
         accessible-item-count: card.spoken-count;
         opened => {
             RoomMenu.close();

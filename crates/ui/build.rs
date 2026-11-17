@@ -16,6 +16,8 @@ const FONT_REPO: &str = "u2dm/twemoji";
 #[cfg(feature = "codegen")]
 const UI_MAIN: &str = "../../ui/main.slint";
 #[cfg(feature = "codegen")]
+const SLINT_EDITION: (u32, u32) = (1, 18);
+#[cfg(feature = "codegen")]
 const APP_TRANSLATION_DOMAIN: &str = "u2dm";
 #[cfg(feature = "codegen")]
 const TRANSLATION_DOMAIN_SOURCE: &str = "CARGO_PKG_NAME";
@@ -32,7 +34,9 @@ fn compile_ui() {
     bind_generated_ui_to_app_translation_domain();
 
     let library = HashMap::from([("lucide".to_string(), PathBuf::from(lucide_slint::lib()))]);
-    let config = slint_build::CompilerConfiguration::new().with_library_paths(library);
+    let config = slint_build::CompilerConfiguration::new()
+        .with_library_paths(library)
+        .with_edition(SLINT_EDITION);
     if let Err(e) = slint_build::compile_with_config(UI_MAIN, config) {
         panic!("Failed to compile Slint UI: {e}");
     }

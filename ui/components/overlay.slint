@@ -172,6 +172,7 @@ export component ModalHost inherits Rectangle {
 
     keys := FocusScope {
         focus-on-tab-navigation: false;
+        focus-on-click: false;
         capture-key-pressed(event) => {
             if event.text == Key.Escape {
                 root.dismissed();

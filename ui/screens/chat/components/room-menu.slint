@@ -436,7 +436,7 @@ component RoomMenuCard inherits MenuCard {
                 icon: RoomMenuActions.icon(action);
                 label: RoomMenuActions.label(action);
                 description: action == RoomMenuAction.notifications ? NotifyModes.state(RoomMenuView.notify) : "";
-                index: index;
+                index: root.asking || root.flyout-held ? -1 : index;
                 expandable: action == RoomMenuAction.notifications;
                 expanded: RoomMenu.flyout-open;
                 destructive: RoomMenuActions.destructive(action);
